@@ -46,4 +46,6 @@ flask-cors
 flask-login
 flask-migrate
 python-dotenv
+psycopg2-binary
+
 

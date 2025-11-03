@@ -240,6 +240,41 @@ def create_app():
     def api_health_inline():
         return jsonify({"ok": True, "status": "up"})
 
+   
+
+    @app.route("/__routes")
+    def __routes():
+        try:
+            rules = sorted([{
+                "rule": r.rule,
+                "endpoint": r.endpoint,
+                "methods": sorted(list(r.methods - {"HEAD","OPTIONS"}))
+            } for r in app.url_map.iter_rules()], key=lambda x: x["rule"])
+            return jsonify({"ok": True, "routes": rules})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+    # --- Public shims so your website links always work
+    @app.route("/register")
+    def public_register():
+        # Try the most likely endpoints; fall back to a message if missing
+        for ep in ("auth.register", "register", "auth.signup"):
+            try:
+                return redirect(url_for(ep))
+            except Exception:
+                continue
+        return "Register route not found. Check /__routes for the correct path.", 404
+
+    @app.route("/login-customer")
+    def public_login():
+        for ep in ("auth.login_customer", "auth.login", "login_customer", "login"):
+            try:
+                return redirect(url_for(ep))
+            except Exception:
+                continue
+        return "Customer login route not found. Check /__routes for the correct path.", 404
+
+
 
     # Import models AFTER db.init_app so tables are registered
     from . import models  # noqa: F401

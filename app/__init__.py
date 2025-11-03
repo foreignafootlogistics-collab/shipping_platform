@@ -3,7 +3,7 @@ import os
 import bcrypt
 from datetime import datetime
 from flask import Flask, render_template, redirect, url_for, jsonify
-from flask_mail import Mail
+from flask_mail import Mail, current_app
 from itsdangerous import URLSafeTimedSerializer
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_migrate import Migrate
@@ -15,6 +15,7 @@ from .config import PROFILE_UPLOAD_FOLDER, DB_PATH
 from .forms import CalculatorForm, AdminCalculatorForm
 from .utils.counters import ensure_counters_table  # NEW
 from app.utils.unassigned import ensure_unassigned_user
+from .models import User
 
 # Centralized extensions (single source of truth)
 # Make sure you have: app/extensions.py -> db = SQLAlchemy()
@@ -35,6 +36,39 @@ def allowed_file(filename: str) -> bool:
     """Check if the uploaded file has an allowed extension."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def _ensure_first_admin():
+    """
+    Seed ONE admin if none exists.
+    Uses ADMIN_EMAIL and ADMIN_PASSWORD env vars.
+    Skips silently if not provided.
+    """
+    email = os.getenv("ADMIN_EMAIL")
+    password = os.getenv("ADMIN_PASSWORD")
+    if not email or not password:
+        current_app.logger.info("[ADMIN SEED] ADMIN_EMAIL/ADMIN_PASSWORD not set; skipping seed.")
+        return
+
+    admin = User.query.filter_by(email=email).first()
+    if admin:
+        # Make sure role is admin
+        if getattr(admin, "role", None) != "admin":
+            admin.role = "admin"
+            setattr(admin, "is_admin", True)
+            db.session.commit()
+            current_app.logger.info("[ADMIN SEED] Existing user upgraded to admin.")
+        else:
+            current_app.logger.info("[ADMIN SEED] Admin already exists; nothing to do.")
+        return
+
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+    u = User(email=email, password=hashed, role="admin", full_name="Administrator")
+    # if your model has is_admin flag, set it:
+    if hasattr(u, "is_admin"):
+        u.is_admin = True
+
+    db.session.add(u)
+    db.session.commit()
+    current_app.logger.info(f"[ADMIN SEED] Created admin user {email}.")
 
 def create_app():
     app = Flask(__name__)
@@ -293,27 +327,24 @@ def create_app():
 
         db.session.commit()
 
-    # Now ensure tables and seed admin (do it AFTER models are imported)
+     # Now ensure tables and seed admin (do it AFTER models are imported)
     with app.app_context():
-        try:
-            db.create_all()
-        except Exception as e:
-            app.logger.warning(f"[DB INIT] create_all skipped/failed: {e}")
+        # DO NOT call db.create_all() here; migrations already created tables.
 
         try:
             _ensure_first_admin()
         except Exception as e:
             app.logger.warning(f"[ADMIN SEED] failed: {e}")
-   
+
         try:
-             ensure_unassigned_user()
+            ensure_unassigned_user()
         except Exception as e:
             app.logger.warning(f"[UNASSIGNED] Failed on startup: {e}")
-    
+
         try:
             ensure_counters_table()
         except Exception as e:
-            app.logger.exception("[COUNTERS] Failed on startup: %s", e)
+            app.logger.warning(f"[COUNTERS] Failed on startup: {e}")
 
         # Run logistics bootstrap now that tables exist
         try:

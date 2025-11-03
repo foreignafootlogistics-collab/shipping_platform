@@ -83,21 +83,7 @@ def create_app():
     try:
         mail.init_app(app)
     except Exception:
-        app.logger.warning("MAIL init skipped or failed; continuing without mail.")
-
-    # ---------------------------------------
-    # One-time bootstraps that need context
-    # ---------------------------------------
-    with app.app_context():
-        try:
-            ensure_unassigned_user()
-        except Exception as e:
-            app.logger.warning(f"[UNASSIGNED] Failed on startup: {e}")
-
-        try:
-            ensure_counters_table()
-        except Exception as e:
-            app.logger.exception("[COUNTERS] Failed on startup: %s", e)
+        app.logger.warning("MAIL init skipped or failed; continuing without mail.")            
 
     # -------------------------------
     # User loader for Flask-Login
@@ -318,6 +304,24 @@ def create_app():
             _ensure_first_admin()
         except Exception as e:
             app.logger.warning(f"[ADMIN SEED] failed: {e}")
+   
+        try:
+             ensure_unassigned_user()
+        except Exception as e:
+            app.logger.warning(f"[UNASSIGNED] Failed on startup: {e}")
+    
+        try:
+            ensure_counters_table()
+        except Exception as e:
+            app.logger.exception("[COUNTERS] Failed on startup: %s", e)
+
+        # Run logistics bootstrap now that tables exist
+        try:
+            from .routes.logistics import bootstrap_after_tables
+            bootstrap_after_tables()
+        except Exception as e:
+            app.logger.warning(f"[LOGISTICS BOOTSTRAP] skipped: {e}")
+
 
     # -------------------------------
     # Teardown

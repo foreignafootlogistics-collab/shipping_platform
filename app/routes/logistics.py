@@ -547,7 +547,18 @@ def _bootstrap_once():
     _ensure_package_columns()
     _BOOTSTRAPPED = True
 
-_bootstrap_once()
+def bootstrap_after_tables():
+    """Call shipment counters/bootstrap AFTER tables exist."""
+    _bootstrap_once()
+
+# Disable auto-run at import time (this breaks alembic / first boot)
+# If you ever need to force-run on import for local testing, set ALLOW_BOOTSTRAP=1
+if os.getenv("ALLOW_BOOTSTRAP", "0") == "1":
+    try:
+        _bootstrap_once()
+    except Exception as e:
+        print(f"[BOOTSTRAP] skipped at import: {e}")
+
 
 
 # --------------------------

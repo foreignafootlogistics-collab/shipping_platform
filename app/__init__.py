@@ -36,6 +36,7 @@ def allowed_file(filename: str) -> bool:
     """Check if the uploaded file has an allowed extension."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
 def _ensure_first_admin():
     """
     Seed ONE admin if none exists.
@@ -69,6 +70,7 @@ def _ensure_first_admin():
     db.session.add(u)
     db.session.commit()
     current_app.logger.info(f"[ADMIN SEED] Created admin user {email}.")
+
 
 def create_app():
     app = Flask(__name__)
@@ -117,7 +119,7 @@ def create_app():
     try:
         mail.init_app(app)
     except Exception:
-        app.logger.warning("MAIL init skipped or failed; continuing without mail.")            
+        app.logger.warning("MAIL init skipped or failed; continuing without mail.")
 
     # -------------------------------
     # User loader for Flask-Login
@@ -295,39 +297,7 @@ def create_app():
     # Import models AFTER db.init_app so tables are registered
     from . import models  # noqa: F401
 
-    def _ensure_first_admin():
-        """Create/ensure an admin account from ADMIN_EMAIL/ADMIN_PASSWORD env vars."""
-        email = os.getenv("ADMIN_EMAIL")
-        password = os.getenv("ADMIN_PASSWORD")
-        if not email or not password:
-            return
-
-        from .models import User
-        admin = User.query.filter_by(email=email).first()
-        if not admin:
-            admin = User()
-            if hasattr(admin, "email"):
-                admin.email = email
-            if hasattr(admin, "name") and not getattr(admin, "name", None):
-                admin.name = "Administrator"
-            db.session.add(admin)
-
-        # mark admin role/flag to satisfy your admin login filter
-        if hasattr(admin, "role"):
-            admin.role = "admin"
-        if hasattr(admin, "is_admin"):
-            admin.is_admin = True
-
-        # store bcrypt hash where your login code checks: User.password
-        pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-        if hasattr(admin, "password_hash"):
-            admin.password_hash = pw_hash
-        if hasattr(admin, "password"):
-            admin.password = pw_hash
-
-        db.session.commit()
-
-     # Now ensure tables and seed admin (do it AFTER models are imported)
+    # Now ensure tables and seed admin (do it AFTER models are imported)
     with app.app_context():
         # DO NOT call db.create_all() here; migrations already created tables.
 
@@ -352,7 +322,6 @@ def create_app():
             bootstrap_after_tables()
         except Exception as e:
             app.logger.warning(f"[LOGISTICS BOOTSTRAP] skipped: {e}")
-
 
     # -------------------------------
     # Teardown

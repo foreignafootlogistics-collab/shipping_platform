@@ -7,6 +7,8 @@ from itsdangerous import URLSafeTimedSerializer
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_migrate import Migrate
 from flask_login import LoginManager
+from flask import jsonify
+
 
 # Project config
 from . import config  # app/config.py
@@ -232,6 +234,12 @@ def create_app():
     @app.route('/')
     def index():
         return "Welcome to Foreign A Foot Logistics!"
+
+
+    @app.route("/api/health")
+    def api_health_inline():
+        return jsonify({"ok": True, "status": "up"})
+
 
     # Import models AFTER db.init_app so tables are registered
     from . import models  # noqa: F401

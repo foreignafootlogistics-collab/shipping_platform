@@ -1,0 +1,15 @@
+<form method="POST" action="{{ url_for('admin.edit_wallet', user_id=user.id) }}" id="editWalletForm">
+    {{ form.hidden_tag() }}
+
+    <div class="mb-3">
+        {{ form.ewallet_balance.label(class="form-label") }}
+        {{ form.ewallet_balance(class="form-control", step="0.01") }}
+    </div>
+
+    <div class="mb-3">
+        {{ form.description.label(class="form-label") }}
+        {{ form.description(class="form-control") }}
+    </div>
+
+    <button type="submit" class="btn btn-primary">{{ form.submit.label.text }}</button>
+</form>

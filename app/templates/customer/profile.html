@@ -1,0 +1,54 @@
+{% extends "layout_customer.html" %}
+{% block title %}Personal Information{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-4">Personal Information</h2>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form method="POST" class="card shadow-sm p-4">
+    {{ form.hidden_tag() }}
+
+    <div class="mb-3">
+      {{ form.full_name.label(class="form-label") }}
+      {{ form.full_name(class="form-control", placeholder="Enter full name") }}
+      {% if form.full_name.errors %}
+        <div class="text-danger small">{{ form.full_name.errors[0] }}</div>
+      {% endif %}
+    </div>
+
+    <div class="mb-3">
+      {{ form.email.label(class="form-label") }}
+      {{ form.email(class="form-control", placeholder="Enter email") }}
+      {% if form.email.errors %}
+        <div class="text-danger small">{{ form.email.errors[0] }}</div>
+      {% endif %}
+    </div>
+
+    <div class="mb-3">
+      {{ form.mobile.label(class="form-label") }}
+      {{ form.mobile(class="form-control", placeholder="Enter mobile number") }}
+      {% if form.mobile.errors %}
+        <div class="text-danger small">{{ form.mobile.errors[0] }}</div>
+      {% endif %}
+    </div>
+
+    <div class="mb-3">
+      {{ form.trn.label(class="form-label") }}
+      {{ form.trn(class="form-control", placeholder="Enter TRN") }}
+      {% if form.trn.errors %}
+        <div class="text-danger small">{{ form.trn.errors[0] }}</div>
+      {% endif %}
+    </div>
+
+    {{ form.submit(class="btn btn-dashboard w-100") }}
+  </form>
+</div>
+{% endblock %}

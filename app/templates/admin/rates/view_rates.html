@@ -1,0 +1,82 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Shipping Rates{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Shipping Rates</h2>
+
+    <!-- Search Form -->
+    <form method="GET" class="row mb-3">
+        <div class="col-md-4">
+            <input type="text" name="search" value="{{ search_query }}" class="form-control" placeholder="Search by weight or rate">
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary">Search</button>
+        </div>
+        <div class="col-md-2">
+            <a href="{{ url_for('admin.view_rates') }}" class="btn btn-secondary">Reset</a>
+        </div>
+    </form>
+
+    <!-- Add Rate Button -->
+    <a href="{{ url_for('admin.add_rate') }}" class="btn btn-success mb-3">
+        <i class="bi bi-plus-circle"></i> Add New Rate
+    </a>
+
+    <!-- Rates Table -->
+    <table class="table table-bordered table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>Max Weight (lb)</th>
+                <th>Rate (JMD)</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in rates %}
+            <tr>
+                <td>{{ r[1] }}</td>
+                <td>${{ "%.2f"|format(r[2]) }}</td>
+                <td>
+                    <!-- Edit Button -->
+                    <a href="{{ url_for('admin.edit_rate', rate_id=r[0]) }}" class="btn btn-sm btn-warning">
+                        <i class="bi bi-pencil-square"></i> Edit
+                    </a>
+                </td>
+            </tr>
+        {% else %}
+            <tr>
+                <td colspan="3" class="text-center">No rates found.</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Pagination -->
+    {% if total_pages > 1 %}
+    <nav>
+        <ul class="pagination justify-content-center">
+            {% if page > 1 %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('admin.view_rates', page=page-1, search=search_query) }}">&laquo; Prev</a>
+            </li>
+            {% endif %}
+
+            {% for p in range(1, total_pages + 1) %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('admin.view_rates', page=p, search=search_query) }}">{{ p }}</a>
+            </li>
+            {% endfor %}
+
+            {% if page < total_pages %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('admin.view_rates', page=page+1, search=search_query) }}">Next &raquo;</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}
+
+

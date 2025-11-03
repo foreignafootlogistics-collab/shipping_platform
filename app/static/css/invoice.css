@@ -1,0 +1,19 @@
+*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:Inter,Arial,sans-serif;color:#222}
+a{color:#4a148c;text-decoration:none}.small{font-size:12px}
+.invoice{max-width:900px;margin:24px auto;background:#fff;border-radius:12px;box-shadow:0 4px 10px rgba(0,0,0,.06);padding:24px;border:1px solid #eee}
+.inv-head{display:flex;gap:16px;border:1px solid #e8e2f2;background:#f9f6ff;border-radius:12px;padding:16px;align-items:center}
+.brand{display:flex;gap:12px;align-items:center}.brand img{height:56px;width:auto}.brand-name{font-weight:700}
+.inv-meta{margin-left:auto;text-align:right}.inv-title{font-size:12px;letter-spacing:.08em;color:#6a1b9a;font-weight:700}
+.inv-number{font-size:20px;font-weight:800;color:#4a148c}.inv-date{margin-top:4px;color:#666}
+.two-col{display:flex;gap:16px;margin:16px 0 8px}.two-col .col{flex:1}.text-right{text-align:right}
+.lbl{font-size:12px;color:#6a1b9a;font-weight:700;text-transform:uppercase}.val{font-weight:600}
+.inv-table{width:100%;border-collapse:collapse;margin-top:12px}
+.inv-table thead th{background:#4a148c;color:#fff;padding:10px;font-size:12px;text-align:left}
+.inv-table th,.inv-table td{border:1px solid #e9e1f5;vertical-align:top}
+.inv-table td{padding:10px;font-size:12px}.inv-table td.text-right{text-align:right}
+.totals{margin-top:16px;display:grid;gap:8px;max-width:360px;margin-left:auto}
+.totals .line{display:flex;justify-content:space-between;padding:10px 12px;border:1px solid #eee;border-radius:10px;background:#fff}
+.totals .grand{border-color:#cdb8f7;background:#f7f2ff;font-weight:800}.text-success{color:#2a7a3b}
+.notes{margin-top:16px;border-top:1px dashed #e3d9f7;padding-top:10px}.footer{margin-top:10px;font-size:12px;color:#777}
+@page{size:A4;margin:20mm}
+@media print{.no-print{display:none!important}.invoice{box-shadow:none;border:none;margin:0;max-width:100%}}

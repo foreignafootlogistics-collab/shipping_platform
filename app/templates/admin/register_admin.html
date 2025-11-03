@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Create Admin - Foreign A Foot Logistics</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Merriweather&display=swap" rel="stylesheet" />
+
+  <!-- Shared CSS file -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/register.css') }}">
+</head>
+<body>
+
+<div class="main-container">
+
+  <!-- Left: Image -->
+  <div class="image-side">
+    <img src="{{ url_for('static', filename='shipping_box.png') }}" alt="Admin Creation" />
+  </div>
+
+  <!-- Right: Admin Registration Form -->
+  <div class="form-side">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="logo" />
+    <p class="slogan">Securely create new admin accounts</p>
+
+    <h2>Create Admin</h2>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('admin.register_admin') }}">
+      {{ form.hidden_tag() }}
+
+      <label for="full_name">Full Name</label>
+      {{ form.full_name(class="form-control", id="full_name", placeholder="Admin's Full Name") }}
+
+      <label for="email">Email Address</label>
+      {{ form.email(class="form-control", id="email", placeholder="admin@example.com") }}
+
+      <label for="password">Password</label>
+      {{ form.password(class="form-control", id="register-password", placeholder="Create Password") }}
+
+      <label for="confirm">Confirm Password</label>
+      {{ form.confirm(class="form-control", id="confirm", placeholder="Repeat Password") }}
+
+      <label class="show-password" for="toggle-register-password">
+        <input type="checkbox" id="toggle-register-password" onclick="togglePassword('register-password')" />
+        Show Password
+      </label>
+
+      <button type="submit">Create Admin</button>
+    </form>
+
+    <div class="links">
+      <a href="{{ url_for('admin.admin_dashboard') }}">Back to Dashboard</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  function togglePassword(id) {
+    const input = document.getElementById(id);
+    input.type = input.type === 'password' ? 'text' : 'password';
+  }
+</script>
+
+</body>
+</html>

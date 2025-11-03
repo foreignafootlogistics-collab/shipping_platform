@@ -1,0 +1,80 @@
+{% extends "layout_customer.html" %}
+{% block title %}Create Pre-Alert{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h3>📦 Create Pre-Alert</h3>
+
+    <div class="d-flex justify-content-end mb-3">
+      <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-dashboard">
+        View All Pre-Alert Shipments
+      </a>
+    </div>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Important Note -->
+    <div class="alert alert-note-purple" role="alert">
+        <strong>Note:</strong> All uploaded invoices <em>must include</em> the following details:
+        <ul>
+            <li>Order Number</li>
+            <li>Customer Name and Address</li>
+            <li>Content of the Order</li>
+            <li>Breakdown of Charges with Total Charge</li>
+        </ul>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data" class="mb-4">
+        {{ form.hidden_tag() }}
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                {{ form.vendor_name.label(class="form-label") }}
+                {{ form.vendor_name(class="form-control") }}
+            </div>
+            <div class="col-md-6">
+                {{ form.courier_name.label(class="form-label") }}
+                {{ form.courier_name(class="form-control") }}
+            </div>
+            <div class="col-md-6">
+                {{ form.tracking_number.label(class="form-label") }}
+                {{ form.tracking_number(class="form-control") }}
+            </div>
+            <div class="col-md-6">
+                {{ form.purchase_date.label(class="form-label") }}
+                {{ form.purchase_date(class="form-control") }}
+            </div>
+            <div class="col-md-6">
+                {{ form.package_contents.label(class="form-label") }}
+                {{ form.package_contents(class="form-control") }}
+            </div>
+            <div class="col-md-6">
+                {{ form.item_value_usd.label(class="form-label") }}
+                {{ form.item_value_usd(class="form-control") }}
+            </div>
+            <div class="col-md-12">
+                {{ form.invoice.label(class="form-label") }}
+                {{ form.invoice(class="form-control") }}
+                <div class="form-text">Allowed formats: jpg, jpeg, png, pdf</div>
+            </div>
+        </div>
+
+        <!-- Buttons container -->
+        <div class="mt-4 d-flex gap-2">
+            {{ form.submit(class="btn btn-dashboard") }}
+            <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+

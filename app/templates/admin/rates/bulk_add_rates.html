@@ -1,0 +1,29 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Bulk Add Rates{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">Bulk Add Shipping Rates (1–10 lb)</h2>
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Max Weight (lb)</th>
+                    <th>Rate (JMD)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for subform in form.rates %}
+                <tr>
+                    <td>{{ subform.max_weight(class="form-control") }}</td>
+                    <td>{{ subform.rate(class="form-control") }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button type="submit" class="btn btn-success">{{ form.submit.label }}</button>
+        <a href="{{ url_for('admin.view_rates') }}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

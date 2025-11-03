@@ -1,0 +1,105 @@
+{% extends 'layout_customer.html' %}
+{% block title %}Schedule Delivery{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Schedule Delivery</h2>
+  <p>Arrange to have your packages delivered at a date and time convenient for you. Choose a location, provide directions, and confirm the recipient’s details.</p>
+
+  <!-- Show form button -->
+  <button id="scheduleDeliveryBtn" class="btn btn-dashboard mb-3">📅 Schedule Delivery</button>
+
+  <!-- Inline form table -->
+  <div id="scheduleDeliveryForm" style="display:none;">
+    <table class="table table-bordered">
+      <thead>
+        <tr>
+          <th>Schedule Date</th>
+          <th>Time</th>
+          <th>Location</th>
+          <th>Directions</th>
+          <th>Mobile #</th>
+          <th>Person Receiving</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><input type="date" id="deliveryDate" class="form-control"></td>
+          <td><input type="time" id="deliveryTime" class="form-control"></td>
+          <td><input type="text" id="deliveryLocation" class="form-control" placeholder="Delivery Location"></td>
+          <td><input type="text" id="deliveryDirections" class="form-control" placeholder="Directions"></td>
+          <td><input type="text" id="deliveryMobile" class="form-control" placeholder="Mobile #"></td>
+          <td><input type="text" id="deliveryPerson" class="form-control" placeholder="Person Receiving"></td>
+        </tr>
+      </tbody>
+    </table>
+    <button class="btn btn-success" id="saveScheduleDelivery">Save</button>
+    <button type="button" class="btn btn-danger" id="cancelScheduleDelivery">Cancel</button>
+  </div>
+
+  <!-- Existing scheduled deliveries -->
+  <h4 class="mt-5">Upcoming Scheduled Deliveries</h4>
+  <table class="table table-striped" id="scheduledDeliveriesList">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Time</th>
+        <th>Location</th>
+        <th>Person Receiving</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for delivery in deliveries %}
+      <tr>
+        <td>{{ delivery.date }}</td>
+        <td>{{ delivery.time }}</td>
+        <td>{{ delivery.location }}</td>
+        <td>{{ delivery.person_receiving }}</td>
+        <td>{{ delivery.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+document.getElementById("scheduleDeliveryBtn").addEventListener("click", function() {
+  document.getElementById("scheduleDeliveryForm").style.display = "block";
+  this.style.display = "none";
+});
+document.getElementById("cancelScheduleDelivery").addEventListener("click", function() {
+  document.getElementById("scheduleDeliveryForm").style.display = "none";
+  document.getElementById("scheduleDeliveryBtn").style.display = "inline-block";
+});
+document.getElementById("saveScheduleDelivery").addEventListener("click", function() {
+  const date = document.getElementById("deliveryDate").value;
+  const time = document.getElementById("deliveryTime").value;
+  const location = document.getElementById("deliveryLocation").value;
+  const directions = document.getElementById("deliveryDirections").value;
+  const mobile = document.getElementById("deliveryMobile").value;
+  const person_receiving = document.getElementById("deliveryPerson").value;
+
+  fetch("{{ url_for('customer.schedule_delivery_add') }}", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ date, time, location, directions, mobile, person_receiving })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.status === "success") {
+      const table = document.querySelector("#scheduledDeliveriesList tbody");
+      const row = `<tr>
+        <td>${data.delivery.date}</td>
+        <td>${data.delivery.time}</td>
+        <td>${data.delivery.location}</td>
+        <td>${data.delivery.person_receiving}</td>
+        <td>${data.delivery.status}</td>
+      </tr>`;
+      table.insertAdjacentHTML("beforeend", row);
+      document.getElementById("scheduleDeliveryForm").style.display = "none";
+      document.getElementById("scheduleDeliveryBtn").style.display = "inline-block";
+    }
+  });
+});
+</script>
+{% endblock %}

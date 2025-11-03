@@ -1,0 +1,172 @@
+{% extends "layout_admin.html" %}
+{% block title %}Messages{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h3 class="mb-4">Admin Messages</h3>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="row g-3">
+    <!-- Inbox & Sent -->
+    <div class="col-lg-6">
+      <!-- Inbox Table -->
+      <div class="card mb-3">
+        <div class="card-header bg-primary text-white fw-bold">
+          Inbox
+        </div>
+        <div class="card-body p-0">
+          {% if inbox|length == 0 %}
+            <p class="text-muted m-3">No messages.</p>
+          {% else %}
+            <div class="table-responsive">
+              <table class="table table-hover table-striped mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Subject</th>
+                    <th>From</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for m in inbox %}
+                  <tr>
+                    <td>{{ m.subject }}</td>
+                    <td>{{ m.sender_label }}</td>
+                    <td>{{ m.date_sent }}</td>
+                    <td>
+                      {% if not m.is_read %}
+                        <span class="badge bg-primary">Unread</span>
+                      {% else %}
+                        <span class="badge bg-secondary">Read</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Sent Table -->
+      <div class="card mb-3">
+        <div class="card-header bg-success text-white fw-bold">
+          Sent Messages
+        </div>
+        <div class="card-body p-0">
+          {% if sent|length == 0 %}
+            <p class="text-muted m-3">No sent messages.</p>
+          {% else %}
+            <div class="table-responsive">
+              <table class="table table-hover table-striped mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Subject</th>
+                    <th>To</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for m in sent %}
+                  <tr>
+                    <td>{{ m.subject }}</td>
+                    <td>{{ m.recipient_name }}</td>
+                    <td>{{ m.date_sent }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Compose / Bulk Message -->
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header bg-info text-white fw-bold">
+          Send Bulk Message
+        </div>
+        <div class="card-body">
+          <form method="POST">
+            {{ form.hidden_tag() }}
+
+            <div class="mb-3">
+              {{ form.subject.label(class="form-label") }}
+              {{ form.subject(class="form-control") }}
+              {% for e in form.subject.errors %}
+                <div class="text-danger small">{{ e }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              {{ form.body.label(class="form-label") }}
+              {{ form.body(class="form-control", rows="5") }}
+              {% for e in form.body.errors %}
+                <div class="text-danger small">{{ e }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Recipients</label><br>
+
+              <!-- Select/Deselect All buttons -->
+              <div class="mb-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="selectAll">Select All</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAll">Deselect All</button>
+              </div>
+
+              <!-- Scrollable checkbox list -->
+              <div style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 8px;">
+                {% for value, label in form.recipient_ids.choices %}
+                  <div class="form-check">
+                    <input 
+                      class="form-check-input recipient-checkbox" 
+                      type="checkbox" 
+                      name="{{ form.recipient_ids.name }}" 
+                      value="{{ value }}"
+                      id="recipient_{{ value }}"
+                      {% if value in (form.recipient_ids.data or []) %}checked{% endif %}>
+                    <label class="form-check-label" for="recipient_{{ value }}">
+                      {{ label }}
+                    </label>
+                  </div>
+                {% endfor %}
+              </div>
+
+              {% for e in form.recipient_ids.errors %}
+                <div class="text-danger small">{{ e }}</div>
+              {% endfor %}
+            </div>
+
+
+<!-- Select/Deselect Script -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const checkboxes = document.querySelectorAll(".recipient-checkbox");
+
+  document.getElementById("selectAll").addEventListener("click", () => {
+    checkboxes.forEach(cb => cb.checked = true);
+  });
+
+  document.getElementById("deselectAll").addEventListener("click", () => {
+    checkboxes.forEach(cb => cb.checked = false);
+  });
+});
+</script>
+
+{% endblock %}

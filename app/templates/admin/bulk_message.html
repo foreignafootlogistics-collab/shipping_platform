@@ -1,0 +1,54 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Send Bulk Message{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h3>Send Bulk Message to Customers</h3>
+  <form method="POST">
+    {{ form.hidden_tag() }}
+
+    <div class="mb-3">
+      {{ form.subject.label(class="form-label") }}
+      {{ form.subject(class="form-control", placeholder="Enter message subject") }}
+      {% for error in form.subject.errors %}
+      <div class="text-danger small">{{ error }}</div>
+      {% endfor %}
+    </div>
+
+    <div class="mb-3">
+      {{ form.message.label(class="form-label") }}
+      {{ form.message(class="form-control", rows="5", placeholder="Write your message here") }}
+      {% for error in form.message.errors %}
+      <div class="text-danger small">{{ error }}</div>
+      {% endfor %}
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">Select Recipients</label>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="checkbox" id="selectAll">
+        <label class="form-check-label" for="selectAll">Select All</label>
+      </div>
+      {% for subfield in form.user_ids %}
+      <div class="form-check">
+        {{ subfield(class="form-check-input user-checkbox", id=subfield.id) }}
+        <label class="form-check-label" for="{{ subfield.id }}">{{ subfield.label.text }}</label>
+      </div>
+      {% endfor %}
+      {% for error in form.user_ids.errors %}
+      <div class="text-danger small">{{ error }}</div>
+      {% endfor %}
+    </div>
+
+    {{ form.submit(class="btn btn-primary") }}
+  </form>
+</div>
+
+<script>
+  document.getElementById('selectAll').addEventListener('change', function () {
+    const checkboxes = document.querySelectorAll('.user-checkbox');
+    checkboxes.forEach(cb => cb.checked = this.checked);
+  });
+</script>
+{% endblock %}
+

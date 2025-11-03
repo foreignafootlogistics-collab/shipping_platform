@@ -1,0 +1,14 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Admin Profile{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-3">Admin Profile</h2>
+  <div class="card shadow-sm p-4">
+    <div class="text-center">
+      <img src="{{ url_for('static', filename='admin_profile.png') }}" class="rounded-circle mb-3" width="120" height="120" alt="Admin">
+      <h4>{{ session.get('admin_name', 'Admin User') }}</h4>
+      <p class="text-muted">{{ session.get('admin_email', 'admin@example.com') }}</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

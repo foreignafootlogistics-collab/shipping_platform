@@ -1,0 +1,174 @@
+{% extends "layout_customer.html" %}
+{% block title %}My Packages{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/status.css') }}">
+
+<div class="container mt-4">
+  <h2 class="mb-4">My Packages</h2>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Filter Form -->
+  <form method="get" action="{{ url_for('customer.view_packages') }}" class="row g-2 mb-3">
+    <div class="col-md-2">
+      <input type="text" name="tracking_number" value="{{ tracking_number }}" class="form-control" placeholder="Tracking #">
+    </div>
+    <div class="col-md-2">
+      <select name="status" class="form-control">
+        <option value="">All Status</option>
+        <option value="overseas" {% if status_filter=='overseas' %}selected{% endif %}>Overseas</option>
+        <option value="ready_to_pick_up" {% if status_filter=='ready_to_pick_up' %}selected{% endif %}>Ready to Pick Up</option>
+        <option value="delivered" {% if status_filter=='delivered' %}selected{% endif %}>Delivered</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <input type="date" name="date_from" value="{{ date_from }}" class="form-control">
+    </div>
+    <div class="col-md-2">
+      <input type="date" name="date_to" value="{{ date_to }}" class="form-control">
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn btn-dashboard w-100">Filter</button>
+    </div>
+  </form>
+
+  <!-- Packages Table -->
+  <div class="table-responsive">
+    <form method="POST" enctype="multipart/form-data">
+      {{ form.hidden_tag() }}
+      <table class="table table-bordered table-hover align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th style="width:50px;" class="text-center">Invoice</th>
+            <th>House AWB / Status</th>
+            <th>Description</th>
+            <th>Tracking Number</th>
+            <th class="text-center">Weight (LBS)</th>
+            <th class="text-center">Declared Value (USD)</th>
+            <th class="text-center">Amount Due</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pkg in packages %}
+          <tr>
+            <!-- Invoice Upload Icon -->
+            <td class="text-center align-middle">
+              <input type="file" name="invoice_file_{{ pkg.id }}" class="d-none upload-input" onchange="this.form.submit();">
+              <button type="button" class="btn btn-sm btn-outline-secondary upload-icon-btn" title="Upload Invoice">
+                <i class="fas fa-file-upload"></i>
+              </button>
+
+              {% if pkg.invoice_file %}
+                <a href="{{ url_for('static', filename='invoices/' ~ pkg.invoice_file) }}" target="_blank" class="ms-1">
+                  <i class="fas fa-paperclip text-success"></i>
+                </a>
+              {% endif %}
+            </td>
+
+            <!-- House AWB / Status -->
+            <td>
+              {{ pkg.house_awb }}
+              <div class="progress mt-1">
+                {% if pkg.status == 'Overseas' %}
+                  <div class="progress-bar bg-danger" style="width:33.33%"></div>
+                {% elif pkg.status == 'Ready_to_pick_up' %}
+                  <div class="progress-bar bg-primary" style="width:66.66%"></div>
+                {% elif pkg.status == 'Delivered' %}
+                  <div class="progress-bar bg-success" style="width:100%"></div>
+                {% endif %}
+              </div>
+              <small class="text-muted">{{ pkg.status }}</small>
+            </td>
+
+            <td>{{ pkg.description }}</td>
+            <td>{{ pkg.tracking_number }}</td>
+
+            <!-- Weight as whole number -->
+            <td class="text-center">{{ pkg.weight|float|round(0,'ceil')|int }}</td>
+
+            <!-- Declared Value Editable and Auto-save -->
+            <td class="text-center">
+              <input type="number" name="declared_value_{{ pkg.id }}" 
+                     class="form-control form-control-sm declared-input" 
+                     value="{{ pkg.declared_value or 65 }}" 
+                     min="0" step="1">
+            </td>
+
+            <!-- Amount Due -->
+            <td class="text-center">${{ "%.2f"|format(pkg.amount_due) }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted">No packages found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </form>
+  </div>
+
+  <!-- Pagination -->
+  <nav aria-label="Page navigation">
+    <ul class="pagination justify-content-center">
+      {% for p in range(1, total_pages + 1) %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+          <a class="page-link" href="?page={{ p }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&tracking_number={{ tracking_number }}">
+            {{ p }}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </nav>
+</div>
+
+<!-- Upload button JS -->
+<script>
+document.querySelectorAll('.upload-icon-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    btn.closest('td').querySelector('.upload-input').click();
+  });
+});
+// Auto-submit declared value change
+document.querySelectorAll('.declared-input').forEach(input => {
+  input.addEventListener('change', () => {
+    const pkgId = input.name.split('_')[2];
+    const value = input.value;
+    
+    fetch('{{ url_for("customer.update_declared_value") }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ form.csrf_token._value() }}'
+      },
+      body: JSON.stringify({ pkg_id: pkgId, declared_value: value })
+    }).then(res => {
+      if(!res.ok) alert('Failed to save declared value');
+    });
+  });
+});
+</script>
+
+<style>
+/* Remove number input spinners */
+.declared-input::-webkit-inner-spin-button,
+.declared-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.declared-input {
+  -moz-appearance: textfield;
+  text-align: center;
+}
+</style>
+{% endblock %}

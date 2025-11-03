@@ -1,0 +1,30 @@
+{% extends "layout_customer.html" %}
+{% block title %}Delivery Address{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-4">📍 Delivery Address</h2>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <form method="POST" class="card shadow-sm p-4">
+    {{ form.hidden_tag() }}
+
+    <div class="mb-3">
+      {{ form.address.label(class="form-label") }}
+      {{ form.address(class="form-control", rows="4", placeholder="Enter your delivery address") }}
+      {% if form.address.errors %}
+        <div class="text-danger small">{{ form.address.errors[0] }}</div>
+      {% endif %}
+    </div>
+
+    {{ form.submit(class="btn btn-dashboard w-100") }}
+  </form>
+</div>
+{% endblock %}

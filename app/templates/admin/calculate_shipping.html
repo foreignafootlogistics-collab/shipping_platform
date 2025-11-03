@@ -1,0 +1,27 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Calculate Shipping{% endblock %}
+{% block content %}
+<h2>Shipping Rate Calculator</h2>
+
+<form method="POST">
+  <label>Weight (lbs):</label>
+  <input type="number" name="weight" step="0.01" required><br>
+
+  <label>Dimensions (L x W x H):</label>
+  <input type="number" name="length" step="0.1" required>
+  <input type="number" name="width" step="0.1" required>
+  <input type="number" name="height" step="0.1" required><br>
+
+  <label>Shipping Type:</label>
+  <select name="shipping_type">
+    <option value="standard">Standard</option>
+    <option value="express">Express</option>
+  </select><br><br>
+
+  <button type="submit">Calculate</button>
+</form>
+
+{% if rate %}
+  <h3>Estimated Shipping Cost: ${{ rate }}</h3>
+{% endif %}
+{% endblock %}

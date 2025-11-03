@@ -1,14 +1,13 @@
 import sqlite3
 import os
+import bcrypt
 from datetime import datetime
-from flask import Flask, render_template
+from flask import Flask, render_template, redirect, url_for, jsonify
 from flask_mail import Mail
 from itsdangerous import URLSafeTimedSerializer
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_migrate import Migrate
 from flask_login import LoginManager
-from flask import jsonify
-
 
 # Project config
 from . import config  # app/config.py
@@ -16,7 +15,6 @@ from .config import PROFILE_UPLOAD_FOLDER, DB_PATH
 from .forms import CalculatorForm, AdminCalculatorForm
 from .utils.counters import ensure_counters_table  # NEW
 from app.utils.unassigned import ensure_unassigned_user
-
 
 # Centralized extensions (single source of truth)
 # Make sure you have: app/extensions.py -> db = SQLAlchemy()
@@ -31,6 +29,7 @@ login_manager.login_message_category = "warning"
 
 # Allowed file types for invoice upload
 ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png'}
+
 
 def allowed_file(filename: str) -> bool:
     """Check if the uploaded file has an allowed extension."""
@@ -116,7 +115,7 @@ def create_app():
     # -------------------------------
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['PROFILE_UPLOAD_FOLDER'], exist_ok=True)
-  
+
     # Token serializer (used by reset links, etc.)
     app.serializer = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 
@@ -157,7 +156,7 @@ def create_app():
             "calculator_form": CalculatorForm(),
             "admin_calculator_form": AdminCalculatorForm()
         }
-    
+
     @app.context_processor
     def inject_settings():
         """Expose settings row to all templates as `settings`."""
@@ -176,7 +175,7 @@ def create_app():
     def inject_now():
         # Return the function (callable) so Jinja can call it if needed
         return {"now": datetime.utcnow}
-    
+
     @app.template_filter('datetimeformat')
     def datetimeformat(value, format='%Y-%m-%d'):
         if not value:
@@ -235,12 +234,9 @@ def create_app():
     def index():
         return "Welcome to Foreign A Foot Logistics!"
 
-
     @app.route("/api/health")
     def api_health_inline():
         return jsonify({"ok": True, "status": "up"})
-
-   
 
     @app.route("/__routes")
     def __routes():
@@ -248,7 +244,7 @@ def create_app():
             rules = sorted([{
                 "rule": r.rule,
                 "endpoint": r.endpoint,
-                "methods": sorted(list(r.methods - {"HEAD","OPTIONS"}))
+                "methods": sorted(list(r.methods - {"HEAD", "OPTIONS"}))
             } for r in app.url_map.iter_rules()], key=lambda x: x["rule"])
             return jsonify({"ok": True, "routes": rules})
         except Exception as e:
@@ -257,7 +253,6 @@ def create_app():
     # --- Public shims so your website links always work
     @app.route("/register")
     def public_register():
-        # Try the most likely endpoints; fall back to a message if missing
         for ep in ("auth.register", "register", "auth.signup"):
             try:
                 return redirect(url_for(ep))
@@ -274,12 +269,60 @@ def create_app():
                 continue
         return "Customer login route not found. Check /__routes for the correct path.", 404
 
-
-
+    # -------------------------------
+    # Models import, DB init & Admin seed
+    # -------------------------------
     # Import models AFTER db.init_app so tables are registered
     from . import models  # noqa: F401
+
+    def _ensure_first_admin():
+        """Create/ensure an admin account from ADMIN_EMAIL/ADMIN_PASSWORD env vars."""
+        email = os.getenv("ADMIN_EMAIL")
+        password = os.getenv("ADMIN_PASSWORD")
+        if not email or not password:
+            return
+
+        from .models import User
+        admin = User.query.filter_by(email=email).first()
+        if not admin:
+            admin = User()
+            if hasattr(admin, "email"):
+                admin.email = email
+            if hasattr(admin, "name") and not getattr(admin, "name", None):
+                admin.name = "Administrator"
+            db.session.add(admin)
+
+        # mark admin role/flag to satisfy your admin login filter
+        if hasattr(admin, "role"):
+            admin.role = "admin"
+        if hasattr(admin, "is_admin"):
+            admin.is_admin = True
+
+        # store bcrypt hash where your login code checks: User.password
+        pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        if hasattr(admin, "password_hash"):
+            admin.password_hash = pw_hash
+        if hasattr(admin, "password"):
+            admin.password = pw_hash
+
+        db.session.commit()
+
+    # Now ensure tables and seed admin (do it AFTER models are imported)
+    with app.app_context():
+        try:
+            db.create_all()
+        except Exception as e:
+            app.logger.warning(f"[DB INIT] create_all skipped/failed: {e}")
+
+        try:
+            _ensure_first_admin()
+        except Exception as e:
+            app.logger.warning(f"[ADMIN SEED] failed: {e}")
+
+    # -------------------------------
+    # Teardown
+    # -------------------------------
     from app.sqlite_utils import close_db
     app.teardown_appcontext(close_db)
-
 
     return app

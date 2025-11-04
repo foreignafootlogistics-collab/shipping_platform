@@ -1,50 +1,29 @@
 # app/config.py
 import os
-import sqlite3
+from pathlib import Path
 
-# -------------------------------
-# Base directory
-# -------------------------------
-BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+BASE_DIR = Path(__file__).resolve().parent.parent
+UPLOAD_FOLDER = BASE_DIR / "uploads"
+PROFILE_UPLOAD_FOLDER = BASE_DIR / "app" / "static" / "profile_pics"
+UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+PROFILE_UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-# -------------------------------
-# Branding & URLs
-# -------------------------------
-LOGO_URL = "https://www.foreignafoot.com/app/static/logo.png"  # ✅ update to your actual logo path
-DASHBOARD_URL = "https://www.foreignafoot.com"  # optional, used in welcome/login emails
+BASE_URL = os.environ.get("BASE_URL", "https://app.faflcourier.com/")
+LOGO_URL = os.environ.get("LOGO_URL", f"{BASE_URL.rstrip('/')}/static/logo.png")
+DASHBOARD_URL = BASE_URL  # if you reference this in templates
 
-# -------------------------------
-# Database paths
-# -------------------------------
-DB_PATH = os.path.join(BASE_DIR, "shipping_platform.db")
-SQLALCHEMY_DATABASE_URI = "sqlite:///" + DB_PATH
+def _normalize_db_url(url: str | None) -> str:
+    if not url:
+        # local dev fallback only
+        return "sqlite:///shipping_platform.db"
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    return url
+
+SQLALCHEMY_DATABASE_URI = _normalize_db_url(os.environ.get("DATABASE_URL"))
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-# -------------------------------
-# Upload folders
-# -------------------------------
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
-PROFILE_UPLOAD_FOLDER = os.path.join(BASE_DIR, "app", "static", "profile_pics")
-
-# Ensure folders exist (safe in dev; in prod do this at deploy time)
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(PROFILE_UPLOAD_FOLDER, exist_ok=True)
-
-# -------------------------------
-# Security
-# -------------------------------
-# NOTE: replace with an env var in production
-SECRET_KEY = os.getenv(
-    "SECRET_KEY",
-    "4abd9feb74d226e1be13f69bbd9e62ee4d131637d9f9c6382b5e9bacf18c3ea8",
-)
-WTF_CSRF_TIME_LIMIT = None  # CSRF tokens never expire in development
-
-# -------------------------------
-# Helper: SQLite connection (legacy)
-# -------------------------------
-def get_db_connection():
-    """Returns a raw SQLite connection to shipping_platform.db (legacy/utility)."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret")
+WTF_CSRF_TIME_LIMIT = None

@@ -1,6 +1,5 @@
-import sqlite3
+# app/__init__.py
 import os
-import bcrypt
 from datetime import datetime
 from flask import Flask, render_template, redirect, url_for, jsonify
 from flask_mail import Mail, current_app
@@ -8,18 +7,19 @@ from itsdangerous import URLSafeTimedSerializer
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_migrate import Migrate
 from flask_login import LoginManager
+from sqlalchemy import text
 
-# Project config
-from . import config  # app/config.py
-from .config import PROFILE_UPLOAD_FOLDER, DB_PATH
+# Project config (single source of truth)
+from . import config as cfg  # ✅ use normalized config from app/config.py
+from .config import PROFILE_UPLOAD_FOLDER
 from .forms import CalculatorForm, AdminCalculatorForm
 from .utils.counters import ensure_counters_table  # NEW
 from app.utils.unassigned import ensure_unassigned_user
-from .models import User
 
 # Centralized extensions (single source of truth)
-# Make sure you have: app/extensions.py -> db = SQLAlchemy()
-from .extensions import db  # ✅ use the shared instance
+# app/extensions.py must define: db = SQLAlchemy()
+from .extensions import db  # ✅ shared instance
+
 migrate = Migrate()
 mail = Mail()
 csrf = CSRFProtect()
@@ -31,7 +31,6 @@ login_manager.login_message_category = "warning"
 # Allowed file types for invoice upload
 ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png'}
 
-
 def allowed_file(filename: str) -> bool:
     """Check if the uploaded file has an allowed extension."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -39,10 +38,11 @@ def allowed_file(filename: str) -> bool:
 
 def _ensure_first_admin():
     """
-    Seed ONE admin if none exists.
-    Uses ADMIN_EMAIL and ADMIN_PASSWORD env vars.
-    Skips silently if not provided.
+    Seed ONE admin if none exists, using ADMIN_EMAIL and ADMIN_PASSWORD env vars.
+    Will also reset admin's password to ADMIN_PASSWORD for recovery if admin exists.
     """
+    from .models import User
+
     email = os.getenv("ADMIN_EMAIL")
     password = os.getenv("ADMIN_PASSWORD")
     if not email or not password:
@@ -51,21 +51,52 @@ def _ensure_first_admin():
 
     admin = User.query.filter_by(email=email).first()
     if admin:
-        # Make sure role is admin
+        # Ensure admin role/flag
+        changed = False
         if getattr(admin, "role", None) != "admin":
             admin.role = "admin"
-            setattr(admin, "is_admin", True)
-            db.session.commit()
-            current_app.logger.info("[ADMIN SEED] Existing user upgraded to admin.")
+            changed = True
+        if hasattr(admin, "is_admin") and not getattr(admin, "is_admin"):
+            admin.is_admin = True
+            changed = True
+
+        # Keep password in sync with env for recovery
+        if hasattr(admin, "set_password"):
+            admin.set_password(password)
+            changed = True
         else:
-            current_app.logger.info("[ADMIN SEED] Admin already exists; nothing to do.")
+            # Werkzeug fallback if model lacks helper
+            try:
+                from werkzeug.security import generate_password_hash
+                if hasattr(admin, "password_hash"):
+                    admin.password_hash = generate_password_hash(password)
+                else:
+                    # last-resort: if your column is named 'password'
+                    admin.password = generate_password_hash(password)
+                changed = True
+            except Exception as e:
+                current_app.logger.warning(f"[ADMIN SEED] could not reset admin password: {e}")
+
+        if changed:
+            db.session.commit()
+            current_app.logger.info("[ADMIN SEED] Admin ensured/updated.")
+        else:
+            current_app.logger.info("[ADMIN SEED] Admin already correct; nothing to do.")
         return
 
-    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
-    u = User(email=email, password=hashed, role="admin", full_name="Administrator")
-    # if your model has is_admin flag, set it:
+    # Create new admin
+    u = User(email=email, role="admin", full_name="Administrator")
     if hasattr(u, "is_admin"):
         u.is_admin = True
+
+    if hasattr(u, "set_password"):
+        u.set_password(password)
+    else:
+        from werkzeug.security import generate_password_hash
+        if hasattr(u, "password_hash"):
+            u.password_hash = generate_password_hash(password)
+        else:
+            u.password = generate_password_hash(password)
 
     db.session.add(u)
     db.session.commit()
@@ -79,21 +110,15 @@ def create_app():
     os.makedirs(app.instance_path, exist_ok=True)
 
     # ==============================
-    # Load Configuration
+    # Load Configuration (single source of truth)
     # ==============================
-    app.config.from_object(config)
-    app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', config.SECRET_KEY)
-
-    db_url = os.getenv("DATABASE_URL")
-    if db_url and db_url.startswith("postgres://"):
-        db_url = db_url.replace("postgres://", "postgresql://", 1)
-
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url or f"sqlite:///{DB_PATH}"
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SECRET_KEY'] = cfg.SECRET_KEY
+    app.config['SQLALCHEMY_DATABASE_URI'] = cfg.SQLALCHEMY_DATABASE_URI
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = cfg.SQLALCHEMY_TRACK_MODIFICATIONS
 
     # Upload folders
     app.config['UPLOAD_FOLDER'] = os.path.join('static', 'invoices')
-    app.config['PROFILE_UPLOAD_FOLDER'] = PROFILE_UPLOAD_FOLDER
+    app.config['PROFILE_UPLOAD_FOLDER'] = str(PROFILE_UPLOAD_FOLDER)
     app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB max
 
     # Flask-Mail settings (consider env vars in production)
@@ -181,14 +206,11 @@ def create_app():
 
     @app.context_processor
     def inject_settings():
-        """Expose settings row to all templates as `settings`."""
+        """Expose settings row to all templates as `settings` via SQLAlchemy."""
         try:
-            conn = sqlite3.connect(DB_PATH)
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            c.execute("SELECT * FROM settings WHERE id=1")
-            row = c.fetchone()
-            conn.close()
+            row = db.session.execute(
+                text("SELECT * FROM settings WHERE id=1")
+            ).mappings().first()
             return {'settings': row}
         except Exception:
             return {'settings': None}
@@ -297,10 +319,8 @@ def create_app():
     # Import models AFTER db.init_app so tables are registered
     from . import models  # noqa: F401
 
-    # Now ensure tables and seed admin (do it AFTER models are imported)
     with app.app_context():
-        # DO NOT call db.create_all() here; migrations already created tables.
-
+        # DO NOT call db.create_all(); use migrations.
         try:
             _ensure_first_admin()
         except Exception as e:
@@ -322,11 +342,5 @@ def create_app():
             bootstrap_after_tables()
         except Exception as e:
             app.logger.warning(f"[LOGISTICS BOOTSTRAP] skipped: {e}")
-
-    # -------------------------------
-    # Teardown
-    # -------------------------------
-    from app.sqlite_utils import close_db
-    app.teardown_appcontext(close_db)
 
     return app

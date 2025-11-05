@@ -1,0 +1,109 @@
+{% extends "layout_customer.html" %}
+{% block title %}Messages{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h3 class="mb-3">Messages</h3>
+
+  <!-- Flash -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="row g-3">
+    <!-- Inbox -->
+    <div class="col-lg-7">
+      <div class="card-box">
+        <div class="d-flex align-items-center mb-2">
+          <h5 class="mb-0">Inbox</h5>
+        </div>
+
+        {% if inbox|length == 0 %}
+          <p class="text-muted mb-0">No messages.</p>
+        {% else %}
+          <ul class="list-group">
+            {% for m in inbox %}
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+              <div class="ms-0 me-2">
+                <div class="fw-bold">
+                  {{ m.subject }}
+                  {% if not m.is_read %}
+                    <span class="badge bg-primary ms-1">Unread</span>
+                  {% endif %}
+                </div>
+                <div class="small text-muted">
+                  From: {{ m.sender_id }} • {{ m.created_at.strftime('%Y-%m-%d %H:%M') }}
+                </div>
+                <div class="mt-1">
+                  {{ m.body }}
+                </div>
+              </div>
+              {% if not m.is_read %}
+                <form method="POST" action="{{ url_for('customer.mark_message_read', msg_id=m.id) }}">
+                  {{ csrf_token() }}
+                  <button class="btn btn-sm btn-outline-secondary">Mark read</button>
+                </form>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+
+      <!-- Sent -->
+      <div class="card-box mt-3">
+        <h5>Sent</h5>
+        {% if sent|length == 0 %}
+          <p class="text-muted mb-0">No sent messages.</p>
+        {% else %}
+          <ul class="list-group">
+            {% for m in sent %}
+            <li class="list-group-item">
+              <div class="fw-bold">{{ m.subject }}</div>
+              <div class="small text-muted">
+                To: {{ m.recipient_id }} • {{ m.created_at.strftime('%Y-%m-%d %H:%M') }}
+              </div>
+              <div class="mt-1">{{ m.body }}</div>
+            </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Compose -->
+    <div class="col-lg-5">
+      <div class="card-box">
+        <h5>New Message</h5>
+        <form method="POST">
+          {{ form.hidden_tag() }}
+          <div class="mb-3">
+            {{ form.subject.label(class="form-label") }}
+            {{ form.subject(class="form-control") }}
+            {% for e in form.subject.errors %}
+              <div class="text-danger small">{{ e }}</div>
+            {% endfor %}
+          </div>
+
+          <div class="mb-3">
+            {{ form.body.label(class="form-label") }}
+            {{ form.body(class="form-control", rows=5) }}
+            {% for e in form.body.errors %}
+              <div class="text-danger small">{{ e }}</div>
+            {% endfor %}
+          </div>
+
+          <button class="btn btn-dashboard">Send</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

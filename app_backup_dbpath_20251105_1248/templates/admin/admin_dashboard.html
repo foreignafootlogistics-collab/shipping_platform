@@ -1,0 +1,147 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <h2 class="mb-4">Welcome to the Admin Dashboard</h2>
+
+  <!-- Dashboard Summary -->
+  <div class="row g-4 mb-4">
+    <!-- Total Users -->
+    <div class="col-md-4">
+      <div class="card dashboard-card card-purple h-100 shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title"><i class="fas fa-users me-2"></i>Total Users</h5>
+          <p class="fs-3">{{ total_users }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Total Packages -->
+    <div class="col-md-4">
+      <div class="card dashboard-card card-green h-100 shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title"><i class="fas fa-boxes me-2"></i>Total Packages</h5>
+          <p class="fs-3">{{ total_packages }}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pending Invoices -->
+    <div class="col-md-4">
+      <a href="{{ url_for('finance.unpaid_invoices', status='pending,unpaid,issued') }}"
+         class="text-decoration-none">
+        <div class="card dashboard-card card-yellow h-100 shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title"><i class="fas fa-file-invoice-dollar me-2"></i>Pending/Unpaid Invoices</h5>
+            <p class="fs-3 mb-0">{{ pending_invoices }}</p>
+            <small class="text-muted">Click to review & collect</small>
+          </div>
+        </div>
+      </a>
+    </div>
+
+  <!-- Charts -->
+  <div class="row mb-4">
+    <div class="col-lg-6 mb-4">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Monthly New Users</h6>
+          <canvas id="userChart"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6 mb-4">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Monthly Packages</h6>
+          <canvas id="pkgChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Scheduled Deliveries Table -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Scheduled Deliveries</h5>
+      <form class="d-flex" method="get" action="{{ url_for('logistics.view_scheduled_deliveries') }}">
+        <input type="date" name="start_date" value="{{ start_date }}" class="form-control form-control-sm me-2">
+        <input type="date" name="end_date" value="{{ end_date }}" class="form-control form-control-sm me-2">
+        <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+      </form>
+    </div>
+    <div class="card-body table-responsive">
+      <table class="table table-bordered table-striped" id="dashboardScheduledDeliveries">
+        <thead class="table-dark">
+          <tr>
+            <th>Date</th>
+            <th>Time</th>
+            <th>Customer</th>
+            <th>Location</th>
+            <th>Person Receiving</th>
+            <th>Mobile</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for delivery in deliveries %}
+          <tr>
+            <td>{{ delivery.scheduled_date }}</td>
+            <td>{{ delivery.scheduled_time }}</td>
+            <td>{{ delivery.user.full_name }}</td>
+            <td>{{ delivery.location }}</td>
+            <td>{{ delivery.person_receiving }}</td>
+            <td>{{ delivery.mobile_number }}</td>
+            <td>{{ delivery.status or 'Scheduled' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const userChart = new Chart(document.getElementById('userChart'), {
+    type: 'line',
+    data: {
+      labels: {{ user_labels|tojson }},
+      datasets: [{
+        label: 'New Users',
+        data: {{ user_data|tojson }},
+        backgroundColor: 'rgba(92, 61, 145, 0.2)',
+        borderColor: 'rgba(92, 61, 145, 1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4
+      }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } } }
+  });
+
+  const pkgChart = new Chart(document.getElementById('pkgChart'), {
+    type: 'bar',
+    data: {
+      labels: {{ pkg_labels|tojson }},
+      datasets: [{
+        label: 'Packages',
+        data: {{ pkg_data|tojson }},
+        backgroundColor: 'rgba(40, 167, 69, 0.7)',
+        borderColor: 'rgba(40, 167, 69, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } } }
+  });
+  // Initialize DataTable for Scheduled Deliveries
+  $(document).ready(function() {
+    $('#dashboardScheduledDeliveries').DataTable({
+      order: [[0, 'desc']],
+      pageLength: 10
+    });
+  });
+</script>
+{% endblock %}

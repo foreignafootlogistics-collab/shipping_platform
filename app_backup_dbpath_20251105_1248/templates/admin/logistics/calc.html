@@ -1,0 +1,294 @@
+<!-- Inline Pricing Data -->
+          <tr id="pricing_{{ pkg.id }}" class="d-none bg-light">
+            <td colspan="9">
+              <div class="row">
+                <!-- Left Section -->
+                <div class="col-md-4 border-end">
+                  <h6>Category & Weight</h6>
+                  <div class="mb-2">
+                    <label class="form-label">Category</label>
+                    <select id="cat_{{ pkg.id }}" class="form-control">
+                      <option value="Other" selected>Other</option>
+                      {% for cat in categories %}
+                        <option value="{{ cat }}">{{ cat }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label">Actual Weight (lbs)</label>
+                    <input type="text" class="form-control" value="{{ pkg.weight }}" readonly>
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label">Rounded Weight (lbs)</label>
+                    <input type="text" class="form-control" value="{{ pkg.weight | round(0, 'ceil') }}" readonly>
+                  </div>
+                </div>
+
+                <!-- Right Section -->
+                <div class="col-md-8">
+                  <h6>Company & Customs Charges</h6>
+                  <div class="row">
+                    <!-- Freight / Handling / Storage / Other -->
+                    <div class="col-md-6 mb-2"><label>Freight</label><input id="freight_{{ pkg.id }}" class="form-control"></div>
+                    <div class="col-md-6 mb-2"><label>Handling</label><input id="handling_{{ pkg.id }}" class="form-control"></div>
+                    <div class="col-md-6 mb-2"><label>Storage</label><input id="storage_{{ pkg.id }}" class="form-control"></div>
+                    <div class="col-md-6 mb-2"><label>Other Fees</label><input id="otherfees_{{ pkg.id }}" class="form-control"></div>
+                    <div class="col-md-12 mb-2"><label><strong>Total Freight</strong></label><input id="freight_total_{{ pkg.id }}" class="form-control fw-bold"></div>
+
+                    <!-- Customs -->
+                    <div class="col-md-4 mb-2"><label>ENLV</label><input id="envl_{{ pkg.id }}" class="form-control"></div>
+                    <div class="col-md-4 mb-2"><label>Stamp</label><input id="stamp_{{ pkg.id }}" class="form-control"></div>
+                    <div class="col-md-4 mb-2"><label>Duty</label><input id="duty_{{ pkg.id }}" class="form-control"></div>
+                    <div class="col-md-6 mb-2"><label>GCT</label><input id="gct_{{ pkg.id }}" class="form-control"></div>
+                    <div class="col-md-6 mb-2"><label>Other Customs</label><input id="othercustoms_{{ pkg.id }}" class="form-control"></div>
+                    <div class="col-md-12 mb-2"><label><strong>Total Customs</strong></label><input id="customs_total_{{ pkg.id }}" class="form-control fw-bold"></div>
+
+                    <!-- Totals -->
+                    <div class="col-md-6 mb-2"><label>Subtotal</label><input id="subtotal_{{ pkg.id }}" class="form-control fw-bold"></div>
+                    <div class="col-md-6 mb-2"><label>Discount</label><input id="discount_{{ pkg.id }}" class="form-control"></div>
+                    <div class="col-md-12 mb-2"><label><strong>Grand Total</strong></label><input id="grandtotal_{{ pkg.id }}" class="form-control fw-bold text-success"></div>
+                  </div>
+                  <div class="d-flex justify-content-end gap-2 mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="runCalculator({{ pkg.id }})">⚙️ Calculate</button>
+                    <button type="button" class="btn btn-sm btn-success" onclick="savePricing({{ pkg.id }})">💾 Save</button>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="9" class="text-center text-muted">
+              No packages found for selected date or filters.
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+
+<script>
+function togglePricing(pkgId) {
+  document.getElementById("pricing_" + pkgId).classList.toggle("d-none");
+}
+
+async function runCalculator(pkgId) {
+  const category = document.getElementById("cat_" + pkgId).value;
+  const value = parseFloat(document.getElementById("value_" + pkgId).value || 0);
+  const weight = parseFloat(document.getElementById("weight_" + pkgId).value || 0);
+  const res = await fetch("{{ url_for('logistics.api_calculate_charges') }}", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category, value, weight })
+  });
+  const data = await res.json();
+
+  document.getElementById("freight_" + pkgId).value = data.freight;
+  document.getElementById("handling_" + pkgId).value = data.handling;
+  document.getElementById("storage_" + pkgId).value = data.storage;
+  document.getElementById("otherfees_" + pkgId).value = data.other_fees;
+  document.getElementById("freight_total_" + pkgId).value = data.freight_total;
+
+  document.getElementById("envl_" + pkgId).value = data.envl;
+  document.getElementById("stamp_" + pkgId).value = data.stamp;
+  document.getElementById("duty_" + pkgId).value = data.duty;
+  document.getElementById("gct_" + pkgId).value = data.gct;
+  document.getElementById("othercustoms_" + pkgId).value = data.other_customs;
+  document.getElementById("customs_total_" + pkgId).value = data.customs_total;
+
+  document.getElementById("subtotal_" + pkgId).value = data.subtotal;
+  document.getElementById("grandtotal_" + pkgId).value = data.grand_total;
+
+  document.getElementById("value_" + pkgId).value = value;
+  document.getElementById("amount_due_" + pkgId).value = data.grand_total;
+}
+
+async function savePricing(pkgId) {
+  const payload = {
+    pkg_id: pkgId,
+    category: document.getElementById("cat_" + pkgId).value,
+    freight: document.getElementById("freight_" + pkgId).value,
+    handling: document.getElementById("handling_" + pkgId).value,
+    storage: document.getElementById("storage_" + pkgId).value,
+    otherfees: document.getElementById("otherfees_" + pkgId).value,
+    freight_total: document.getElementById("freight_total_" + pkgId).value,
+    envl: document.getElementById("envl_" + pkgId).value,
+    stamp: document.getElementById("stamp_" + pkgId).value,
+    duty: document.getElementById("duty_" + pkgId).value,
+    gct: document.getElementById("gct_" + pkgId).value,
+    othercustoms: document.getElementById("othercustoms_" + pkgId).value,
+    customs_total: document.getElementById("customs_total_" + pkgId).value,
+    subtotal: document.getElementById("subtotal_" + pkgId).value,
+    discount: document.getElementById("discount_" + pkgId).value,
+    grandtotal: document.getElementById("grandtotal_" + pkgId).value,
+  };
+
+  await fetch("{{ url_for('logistics.api_save_pricing') }}", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  alert("Pricing data saved!");
+}
+</script>
+
+
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/status.css') }}">
+
+<div class="container mt-4">
+  <!-- Page Title -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>📦 View Packages</h2>
+  </div>
+
+  <!-- Search & Filters -->
+  <form method="GET" action="{{ url_for('logistics.logistics_dashboard') }}" class="row g-2 mb-3">
+    <input type="hidden" name="tab" value="view_packages">
+    <div class="col-md-3">
+      <input type="text" name="search" class="form-control" placeholder="Search by name or tracking"
+             value="{{ search or '' }}">
+    </div>
+    <div class="col-md-2">
+      <select name="status" class="form-control">
+        <option value="">All Statuses</option>
+        <option value="Overseas" {% if status_filter == 'Overseas' %}selected{% endif %}>Overseas</option>
+        <option value="Ready for Pick Up" {% if status_filter == 'Ready for Pick Up' %}selected{% endif %}>Ready for Pick Up</option>
+        <option value="Delivered" {% if status_filter == 'Delivered' %}selected{% endif %}>Delivered</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <input type="date" name="date_from" class="form-control"
+             value="{{ date_from or now().strftime('%Y-%m-%d') }}">
+    </div>
+    <div class="col-md-2">
+      <input type="date" name="date_to" class="form-control"
+             value="{{ date_to or now().strftime('%Y-%m-%d') }}">
+    </div>
+    <div class="col-md-2">
+      <button type="submit" class="btn btn-primary w-100">Filter</button>
+    </div>
+  </form>
+
+  <!-- Packages Table + Bulk Actions -->
+  <form method="POST" id="bulkActionForm" action="{{ url_for('logistics.logistics_dashboard', tab='shipment') }}">
+    {{ bulk_form.hidden_tag() }}
+
+    <div class="d-flex justify-content-end mb-2 gap-2">
+      <button type="submit" class="btn btn-success btn-sm" id="moveToShipmentBtn">
+        Move to Shipment Log
+      </button>
+      <a href="{{ url_for('logistics.download_packages') }}" class="btn btn-secondary btn-sm">
+        Download Packages
+      </a>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-bordered table-striped table-hover align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th style="width:70px;">
+              <input type="checkbox" id="selectAll"> Actions
+            </th>
+            <th>User</th>
+            <th>Package</th>
+            <th>House AWB</th>
+            <th>Description</th>
+            <th>Date Received</th>
+            <th>Weight</th>
+            <th>Item Value ($)</th>
+            <th>Amount Due ($)</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for pkg in all_packages %}
+          <tr>
+            <td>
+              <input type="checkbox" name="package_ids" value="{{ pkg.id }}" class="package-checkbox">
+              <button type="button" class="btn btn-sm btn-outline-secondary ms-1"
+                      onclick="togglePricing({{ pkg.id }})" title="Show Pricing Data">⚙️</button>
+            </td>
+            <td>
+              <strong>{{ pkg.full_name }}</strong><br>
+              <small class="text-muted">{{ pkg.registration_number }}</small>
+            </td>
+            <td>
+              {% set status = pkg.status %}
+              {% include 'partials/status_tracker.html' with context %}
+              <br>
+              <small class="text-muted">{{ pkg.tracking_number }}</small>
+            </td>
+            <td>{{ pkg.house_awb or '-' }}</td>
+            <td>{{ pkg.description }}</td>
+            <td>{{ pkg.created_at.strftime('%Y-%m-%d') if pkg.created_at else '-' }}</td>
+            <td>{{ pkg.weight }} lbs</td>
+            <td><input type="number" id="value_{{ pkg.id }}" value="{{ pkg.value or 0 }}" class="form-control form-control-sm text-end" readonly></td>
+            <td><input type="number" id="amount_due_{{ pkg.id }}" value="{{ pkg.amount_due or 0 }}" class="form-control form-control-sm text-end" readonly></td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="9" class="text-center text-muted">
+              No packages found for selected date or filters.
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+</div>
+  <!-- Pagination -->
+  {% if total_pages > 1 %}
+  <nav aria-label="Page navigation">
+    <ul class="pagination justify-content-center">
+      {% for p in range(1, total_pages + 1) %}
+      <li class="page-item {% if p == page %}active{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('logistics.logistics_dashboard', page=p, search=search, status=status_filter, date_from=date_from, date_to=date_to, tab='view_packages') }}">
+           {{ p }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </nav>
+  {% endif %}
+</div>
+<script>
+  // Toggle pricing row
+  function togglePricing(pkgId) {
+    document.getElementById("pricing_" + pkgId)?.classList.toggle("d-none");
+  }
+
+  // Select All checkboxes
+  document.getElementById('selectAll').addEventListener('change', function() {
+    document.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = this.checked);
+  });
+
+  // Move to Shipment Log - submit only selected checkboxes
+  document.getElementById('bulkActionForm').addEventListener('submit', function(e) {
+    const selected = Array.from(document.querySelectorAll('.package-checkbox:checked'));
+    if(selected.length === 0){
+      e.preventDefault();
+      alert("⚠️ Please select at least one package.");
+      return;
+    }
+  });
+</script>
+<style>
+.btn-group .btn {
+  border-radius: 0;
+  border-right: 1px solid #ccc;
+}
+.btn-group .btn:last-child {
+  border-right: none;
+}
+.btn-outline-light.text-secondary:hover {
+  background-color: #6f42c1;
+  color: #fff !important;
+}
+</style>
+
+{% endblock %}

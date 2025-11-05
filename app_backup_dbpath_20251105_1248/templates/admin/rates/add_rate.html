@@ -1,0 +1,26 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Add Rate{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-4">Add Shipping Rate</h2>
+
+  <form method="POST">
+    {{ form.hidden_tag() }}
+
+    <div class="mb-3">
+      {{ form.max_weight.label(class="form-label") }}
+      {{ form.max_weight(class="form-control") }}
+    </div>
+
+    <div class="mb-3">
+      {{ form.rate.label(class="form-label") }}
+      {{ form.rate(class="form-control") }}
+    </div>
+
+    <button type="submit" class="btn btn-primary">    {{ form.submit.label.text }}</button>
+  </form>
+</div>
+{% endblock %}
+
+

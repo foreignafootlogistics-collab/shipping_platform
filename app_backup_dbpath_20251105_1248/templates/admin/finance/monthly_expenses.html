@@ -1,0 +1,77 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Monthly Expenses{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-4">Monthly Expenses</h2>
+
+  <!-- Add Expense Form -->
+  <div class="card mb-4 shadow-sm">
+    <div class="card-body">
+      <form method="POST" class="row g-3">
+        {{ form.hidden_tag() }}
+        <div class="col-md-3">
+          {{ form.category.label(class="form-label") }}
+          {{ form.category(class="form-select") }}
+        </div>
+        <div class="col-md-3">
+          {{ form.amount.label(class="form-label") }}
+          {{ form.amount(class="form-control") }}
+        </div>
+        <div class="col-md-3">
+          {{ form.date.label(class="form-label") }}
+          {{ form.date(class="form-control") }}
+        </div>
+        <div class="col-md-3">
+          {{ form.description.label(class="form-label") }}
+          {{ form.description(class="form-control") }}
+        </div>
+        <div class="col-12">
+          {{ form.submit(class="btn btn-success") }}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Expenses Table -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Date</th>
+              <th>Category</th>
+              <th>Amount ($)</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for expense in expenses %}
+            <tr>
+              <td>{{ expense['date']|datetimeformat('%Y-%m-%d') }}</td>
+              <td>{{ expense['category'] }}</td>
+              <td>${{ '%.2f'|format(expense['amount']) }}</td>
+              <td>{{ expense['description'] or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" class="text-center text-muted">No expenses recorded yet.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          {% if total_expenses %}
+          <tfoot>
+            <tr class="table-secondary">
+              <th colspan="2" class="text-end">Total:</th>
+              <th>${{ '%.2f'|format(total_expenses) }}</th>
+              <th></th>
+            </tr>
+          </tfoot>
+          {% endif %}
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

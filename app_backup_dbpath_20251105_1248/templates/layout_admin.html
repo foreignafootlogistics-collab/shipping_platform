@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>{% block title %}Admin Dashboard{% endblock %} - Foreign A Foot Logistics</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+
+
+  <!-- Font Awesome -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+  <!-- Custom Admin CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+
+</head>
+
+<body>
+
+<div class="container-fluid">
+  <div class="row">
+
+    <!-- Sidebar -->
+<nav class="col-md-2 d-md-block sidebar collapse p-3" style="background-color: #4a148c;">
+  <div class="text-center mb-4 text-white">
+    {% set settings_logo = settings.logo_path if (settings is defined and settings and settings.logo_path) else 'logo.png' %}
+    <img src="{{ url_for('static', filename=settings_logo) }}"
+         alt="Foreign A Foot Logo"
+         class="img-fluid mb-2"
+         style="max-height: 200px;">
+
+    <h5 class="mt-1">Foreign A Foot Logistics</h5>
+    <hr style="border-color: rgba(255,255,255,0.3);">
+  </div>
+
+  <div class="accordion" id="sidebarAccordion">
+
+    <!-- Dashboard -->
+    <div class="accordion-item border-0">
+      <h2 class="accordion-header">
+        <a href="{{ url_for('admin.dashboard') }}" 
+           class="nav-link text-white {% if request.path == url_for('admin.dashboard') %}active{% endif %}">
+          <i class="fas fa-tachometer-alt me-2"></i> Dashboard
+        </a>
+      </h2>
+    </div>
+
+    {# ---- Accounts & Profiles (accordion) ---- #}
+    {% set is_accounts = request.blueprint in ['accounts_profiles'] or request.path.startswith('/accounts') %}
+    <div class="accordion-item border-0">
+      <h2 class="accordion-header" id="headingAccounts">
+        <button
+          class="accordion-button {{ '' if is_accounts else 'collapsed' }} text-white"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#collapseAccounts"
+          aria-expanded="{{ 'true' if is_accounts else 'false' }}"
+          aria-controls="collapseAccounts"
+          style="background-color:#4a148c;"
+        >
+          <i class="fas fa-users me-2"></i> Accounts & Profiles
+        </button>
+      </h2>
+
+      <div id="collapseAccounts"
+           class="accordion-collapse collapse {{ 'show' if is_accounts else '' }}"
+           aria-labelledby="headingAccounts"
+           data-bs-parent="#sidebarAccordion">
+        <div class="accordion-body p-0">
+          <ul class="nav flex-column ms-3">
+
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'accounts_profiles.manage_users' else '' }}"
+                 href="{{ url_for('accounts_profiles.manage_users') }}">
+                <i class="bi bi-people me-2"></i> Manage Users
+              </a>
+            </li>
+
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'admin.register_admin' else '' }}"
+                 href="{{ url_for('admin.register_admin') }}">
+                <i class="bi bi-person-plus me-2"></i> Register Admin
+              </a>
+            </li>
+
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_messages' else '' }}"
+                 href="{{ url_for('admin.view_messages') }}">
+                <i class="bi bi-chat-dots me-2"></i> Messages
+              </a>
+            </li>
+
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_notifications' else '' }}"
+                 href="{{ url_for('admin.view_notifications') }}">
+                <i class="bi bi-bell me-2"></i> Notifications
+              </a>
+            </li>
+
+          </ul>
+        </div>
+      </div>
+    </div>
+
+
+    {# ---- Logistics (accordion) ---- #}
+    {% set is_logistics = request.blueprint == 'logistics' or '/logistics' in request.path %}
+    {% set tab = request.args.get('tab', '') %}
+    <div class="accordion-item border-0">
+      <h2 class="accordion-header" id="headingLogistics">
+        <button
+          class="accordion-button {{ '' if is_logistics else 'collapsed' }} text-white"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#collapseLogistics"
+          aria-expanded="{{ 'true' if is_logistics else 'false' }}"
+          aria-controls="collapseLogistics"
+          style="background-color:#4a148c;"
+        >
+          <i class="fas fa-truck me-2"></i> Logistics
+        </button>
+      </h2>
+
+      <div id="collapseLogistics"
+           class="accordion-collapse collapse {{ 'show' if is_logistics else '' }}"
+           aria-labelledby="headingLogistics"
+           data-bs-parent="#sidebarAccordion">
+        <div class="accordion-body p-0">
+          <ul class="nav flex-column ms-3">
+    
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and (tab=='' or tab is none) else '' }}"
+                 href="{{ url_for('logistics.logistics_dashboard') }}">
+                <i class="bi bi-speedometer2 me-2"></i> Logistics Dashboard
+              </a>
+            </li>
+
+            {# Tabs inside the same logistics_dashboard route #}
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='prealerts' else '' }}"
+                 href="{{ url_for('logistics.logistics_dashboard', tab='prealerts') }}">
+                <i class="bi bi-bell-fill me-2"></i> Pre-Alerts
+              </a>
+            </li>
+
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='viewPackages' else '' }}"
+                 href="{{ url_for('logistics.logistics_dashboard', tab='viewPackages') }}">
+                <i class="bi bi-box-seam me-2"></i> View Packages
+              </a>
+            </li>
+
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='shipmentLog' else '' }}"
+                 href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog') }}">
+                <i class="bi bi-list-check me-2"></i> Shipment Log
+              </a>
+            </li>
+
+            <li class="nav-item d-flex align-items-center justify-content-between">
+              <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='upload' else '' }}"
+                 href="{{ url_for('logistics.logistics_dashboard', tab='upload') }}">
+                <span><i class="bi bi-upload me-2"></i> Upload Packages</span>
+              </a>
+              {# quick action (optional) can reuse same tab link #}
+              <a class="btn btn-sm btn-outline-light me-3"
+                 href="{{ url_for('logistics.logistics_dashboard', tab='upload') }}"
+                 title="Upload">
+                <i class="bi bi-plus-lg"></i>
+              </a>
+            </li>
+
+          </ul>
+        </div>
+      </div>
+    </div>
+
+
+
+    {# ---- Finance (accordion) ---- #}
+    {% set is_finance = request.blueprint == 'finance' or request.path.startswith('/finance') %}
+    <div class="accordion-item border-0">
+      <h2 class="accordion-header" id="headingFinance">
+        <button
+          class="accordion-button {{ '' if is_finance else 'collapsed' }} text-white"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#collapseFinance"
+          aria-expanded="{{ 'true' if is_finance else 'false' }}"
+          aria-controls="collapseFinance"
+          style="background-color:#4a148c;"
+        >
+          <i class="fas fa-money-bill-wave me-2"></i> Finance
+        </button>
+      </h2>
+
+      <div id="collapseFinance"
+           class="accordion-collapse collapse {{ 'show' if is_finance else '' }}"
+           aria-labelledby="headingFinance"
+           data-bs-parent="#sidebarAccordion">
+        <div class="accordion-body p-0">
+          <ul class="nav flex-column ms-3">
+
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'finance.finance_dashboard' else '' }}"
+                 href="{{ url_for('finance.finance_dashboard') }}">
+                <i class="bi bi-speedometer2 me-2"></i> Finance Dashboard
+              </a>
+            </li>
+
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'finance.unpaid_invoices' else '' }}"
+                 href="{{ url_for('finance.unpaid_invoices') }}">
+                <i class="bi bi-clock-history me-2"></i> Unpaid / Issued Invoices
+              </a>
+            </li>
+
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_income' else '' }}"
+                 href="{{ url_for('finance.monthly_income') }}">
+                <i class="bi bi-graph-up-arrow me-2"></i> Monthly Income
+              </a>
+            </li>
+
+            <li class="nav-item d-flex align-items-center justify-content-between">
+              <a class="nav-link {{ 'active' if request.endpoint in ['finance.monthly_expenses','finance.view_expenses'] else '' }}"
+                 href="{{ url_for('finance.monthly_expenses') }}">
+                <span><i class="bi bi-cash-stack me-2"></i> Monthly Expenses</span>
+              </a>
+              <a class="btn btn-sm btn-outline-light me-3"
+                 href="{{ url_for('finance.add_expense') }}"
+                 title="Add Expense">
+                <i class="bi bi-plus-lg"></i>
+              </a>
+            </li>
+
+            <li class="nav-item">
+              <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_profit_loss' else '' }}"
+                 href="{{ url_for('finance.monthly_profit_loss') }}">
+                <i class="bi bi-balance-scale me-2"></i> Profit / Loss
+              </a>
+            </li>
+
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+<div class="accordion-item border-0">
+  <h2 class="accordion-header" id="headingSettings">
+    <button class="accordion-button {% if request.path == url_for('settings.manage_settings') %}text-warning{% else %}collapsed text-white{% endif %}" 
+            type="button" data-bs-toggle="collapse" data-bs-target="#collapseSettings" 
+            aria-expanded="{{ 'true' if request.path == url_for('settings.manage_settings') else 'false' }}" 
+            aria-controls="collapseSettings">
+      <i class="fas fa-cogs me-2"></i> Settings
+    </button>
+  </h2>
+  <div id="collapseSettings" class="accordion-collapse collapse {% if request.path == url_for('settings.manage_settings') %}show{% endif %}" 
+       aria-labelledby="headingSettings" data-bs-parent="#sidebarAccordion">
+    <div class="accordion-body p-0">
+      <ul class="nav flex-column ms-3">
+        <li class="nav-item">
+          <a href="{{ url_for('settings.manage_settings') }}" 
+             class="nav-link {% if request.path == url_for('settings.manage_settings') %}active{% endif %}">
+            Manage Settings
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</div>
+</nav>
+    
+    <!-- Main content -->
+    <main class="col-md-10 ms-sm-auto px-md-4 py-4 content">
+      <!-- Top Bar -->
+      <div class="d-flex justify-content-end align-items-center mb-4">
+        <!-- Notifications -->
+        <a href="{{ url_for('admin.view_notifications') }}" class="position-relative me-3 text-dark">
+          <i class="fas fa-bell fa-lg"></i>
+          {% if unread_notifications_count > 0 %}
+            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+              {{ unread_notifications_count }}
+            </span>
+          {% endif %}
+        </a>
+
+        <!-- Messages -->
+        <a href="{{ url_for('admin.view_messages') }}" class="position-relative me-3 text-dark">
+          <i class="fas fa-envelope fa-lg"></i>
+          {% if unread_messages_count > 0 %}
+            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning">
+              {{ unread_messages_count }}
+            </span>
+          {% endif %}
+        </a>
+        <!-- Calculator -->
+        <a href="#" class="position-relative me-3 text-dark" data-bs-toggle="modal" data-bs-target="#adminCalculatorModal" title="Calculator">
+          <i class="fas fa-calculator fa-lg"></i>
+        </a>
+
+  <!-- Admin profile dropdown -->
+  <div class="dropdown">
+    <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle"
+       id="adminDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+      <img src="{{ url_for('static', filename='admin_profile.png') }}" alt="Admin Profile" class="admin-profile-img">
+      <span class="ms-2 text-dark fw-semibold">Admin</span>
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="adminDropdown">
+      <li><a class="dropdown-item" href="{{ url_for('admin.admin_profile') }}"><i class="fas fa-user me-2"></i>Profile</a></li>
+      <li><a class="dropdown-item" href="{{ url_for('admin_auth.admin_logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+    </ul>
+  </div>
+</div>
+{% include 'admin/admin_calculator_modal.html' %}
+
+{% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+<!-- Wallet Modal -->
+<div class="modal fade" id="walletModal" tabindex="-1" aria-labelledby="walletModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="walletModalLabel">Edit Wallet</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="walletModalBody">
+        <!-- AJAX-loaded form will appear here -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.print.min.js"></script>
+
+<!-- Bootstrap JS Bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.open-wallet-modal').forEach(btn => {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      let userId = this.getAttribute('data-user-id');
+
+      fetch(`/admin/wallet/${userId}/edit`)
+        .then(res => res.text())
+        .then(html => {
+          document.getElementById('walletModalBody').innerHTML = html;
+
+          let form = document.querySelector('#walletModalBody form');
+          form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            let formData = new FormData(this);
+
+            fetch(this.action, {
+              method: 'POST',
+              body: formData,
+              headers: { "X-Requested-With": "XMLHttpRequest" }
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (data.success) {
+                // Update the wallet button text
+                document.querySelector(`.open-wallet-modal[data-user-id="${userId}"]`).innerHTML =
+                  `Wallet: $${data.new_balance.toFixed(2)}`;
+
+                // Hide the modal
+                let modal = bootstrap.Modal.getInstance(document.getElementById('walletModal'));
+                modal.hide();
+              } else {
+                alert("Error updating wallet");
+              }
+            });
+          });
+
+          // Show the modal
+          let modal = new bootstrap.Modal(document.getElementById('walletModal'));
+          modal.show();
+        });
+    });
+  });
+});
+</script>
+{% endblock %}
+
+<footer class="text-center py-3 mt-4" style="background-color: #4a148c; color: #fff;">
+  <small>&copy; {{ current_year }} Foreign A Foot Logistics. All rights reserved.</small>
+</footer>
+
+</body>
+</html>

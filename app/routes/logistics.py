@@ -27,7 +27,7 @@ from app.routes.admin_auth_routes import admin_required
 from app.models import Prealert, User, ScheduledDelivery, ShipmentLog, Invoice, Package
 from app.forms import PackageBulkActionForm, UploadPackageForm, PreAlertForm, InvoiceFinalizeForm, PaymentForm, ScheduledDeliveryForm
 from app.utils import email_utils, update_wallet
-from app.config import DB_PATH, UPLOAD_FOLDER
+from app.config import UPLOAD_FOLDER
 from app.calculator_data import calculate_charges, CATEGORIES, get_freight, USD_TO_JMD
 from flask_wtf import FlaskForm
 from flask import current_app
@@ -1244,7 +1244,7 @@ def logistics_dashboard():
 def bulk_assign_packages():
     from flask import request, redirect, url_for, flash
     import sqlite3
-    from app.config import DB_PATH
+
 
     user_code  = (request.form.get('user_code') or '').strip()
     reset_flag = request.form.get('reset_status') == '1'

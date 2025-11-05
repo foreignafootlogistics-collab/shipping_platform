@@ -1,6 +1,6 @@
 # app/utils/counters.py
 import sqlite3
-from app.config import DB_PATH
+
 
 __all__ = ["ensure_counters_table", "next_bill_number_tx", "next_invoice_number_tx"]
 

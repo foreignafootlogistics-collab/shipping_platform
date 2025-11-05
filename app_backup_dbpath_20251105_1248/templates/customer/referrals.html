@@ -1,0 +1,107 @@
+{% extends 'layout_customer.html' %}
+{% block title %}Refer a Friend - Foreign A Foot Logistics{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="text-center mb-4">
+    <h1 class="display-5 fw-bold text-purple">Earn Rewards by Sharing the Love!</h1>
+    <p class="lead text-muted">Invite friends and earn bonuses for every successful referral.</p>
+  </div>
+
+  <div class="card shadow-sm p-4 mb-4">
+    <h3>Your Referral Code</h3>
+    <div class="d-flex align-items-center gap-3 my-3">
+      <input type="text" readonly class="form-control fw-bold fs-4 text-center" value="{{ referral_code }}">
+      <button class="btn btn-dashboard" onclick="navigator.clipboard.writeText('{{ referral_code }}')" aria-label="Copy referral code to clipboard">
+        <i class="fas fa-copy me-2"></i>Copy Code
+      </button>
+    </div>
+    <p class="text-muted">Share this code with your friends. When they register, they get $100 instantly!</p>
+
+    <!-- Social Media Share Buttons -->
+    <div class="text-center mt-4">
+      <h5 class="mb-3">Share Your Code on Social Media</h5>
+
+      <!-- Facebook -->
+      <a href="https://www.facebook.com/sharer/sharer.php?u={{ request.url_root }}register?ref={{ referral_code }}" 
+         target="_blank" 
+         class="btn btn-primary me-2 mb-2">
+        <i class="fab fa-facebook-f me-1"></i> Facebook
+      </a>
+
+      <!-- WhatsApp -->
+      <a href="https://api.whatsapp.com/send?text=Join%20Foreign%20A%20Foot%20Logistics%20and%20get%20$100%20credit!%20Use%20my%20referral%20code%3A%20{{ referral_code }}%20Sign%20up%20here:%20{{ request.url_root }}register?ref={{ referral_code }}" 
+         target="_blank" 
+         class="btn btn-success me-2 mb-2">
+        <i class="fab fa-whatsapp me-1"></i> WhatsApp
+      </a>
+
+      <!-- Twitter (X) -->
+      <a href="https://twitter.com/intent/tweet?text=Join%20Foreign%20A%20Foot%20Logistics!%20Get%20$100%20with%20my%20referral%20code%3A%20{{ referral_code }}%20Sign%20up:%20{{ request.url_root }}register?ref={{ referral_code }}" 
+         target="_blank" 
+         class="btn btn-info me-2 mb-2">
+        <i class="fab fa-twitter me-1"></i> Twitter
+      </a>
+
+      <!-- Instagram (link to your profile) -->
+      <a href="https://www.instagram.com/yourusername" target="_blank" class="btn btn-danger mb-2">
+        <i class="fab fa-instagram me-1"></i> Instagram
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-5">
+    <div class="col-md-4 text-center">
+      <i class="fas fa-user-plus fa-3x text-purple mb-3"></i>
+      <h5>1. Share Your Code</h5>
+      <p>Send your unique referral code to your friends and family.</p>
+    </div>
+    <div class="col-md-4 text-center">
+      <i class="fas fa-user-check fa-3x text-purple mb-3"></i>
+      <h5>2. They Register</h5>
+      <p>Your friend signs up using your code and instantly receives $100 credit.</p>
+    </div>
+    <div class="col-md-4 text-center">
+      <i class="fas fa-gift fa-3x text-purple mb-3"></i>
+      <h5>3. You Earn</h5>
+      <p>After your friend ships their first package overseas, you get $100 in your wallet!</p>
+    </div>
+  </div>
+
+  <div class="card shadow-sm p-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+         {% for category, message in messages %}
+           <div class="alert alert-{{ category }} mt-3">{{ message }}</div>
+         {% endfor %}
+       {% endif %}
+     {% endwith %}
+    <h4>Send a Referral Email</h4>
+    <form method="POST" class="row g-3">
+      <div class="col-md-8">
+        <input type="email" name="friend_email" class="form-control" placeholder="Friend's Email" required>
+      </div>
+      <div class="col-md-4 d-grid">
+        <button type="submit" class="btn btn-purple">Send Invite</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+  .text-purple {
+    color: #6f42c1;
+  }
+  .btn-purple {
+    background-color: #6f42c1;
+    color: white;
+  }
+  .btn-purple:hover {
+    background-color: #5930a2;
+  }
+  .btn i {
+    font-size: 1.1rem;
+    vertical-align: middle;
+  }
+</style>
+{% endblock %}

@@ -1,0 +1,174 @@
+<!-- Calculator Modal -->
+<div class="modal fade" id="calculatorModal" tabindex="-1" aria-labelledby="calculatorModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 shadow-lg rounded-4">
+      <div class="modal-header bg-purple text-white rounded-top-4">
+        <h5 class="modal-title" id="calculatorModalLabel">Customs & Freight Calculator</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+
+        <!-- Form -->
+        <form id="calculatorForm" method="POST" action="{{ url_for('calculator.calculator_ajax') }}" class="row g-3">
+          {{ calculator_form.hidden_tag() }} <!-- CSRF token -->
+
+          <div class="col-md-6">
+            {{ calculator_form.category.label(class="form-label") }}
+            {{ calculator_form.category(class="form-select", required=True) }}
+          </div>
+
+          <div class="col-md-3">
+            {{ calculator_form.invoice_usd.label(class="form-label") }}
+            {{ calculator_form.invoice_usd(class="form-control", step="0.01", required=True) }}
+          </div>
+
+          <div class="col-md-3">
+            {{ calculator_form.weight.label(class="form-label") }}
+            {{ calculator_form.weight(class="form-control", step="1", required=True) }}
+          </div>
+
+          <div class="col-12 mt-2">
+            {{ calculator_form.submit(class="btn btn-purple w-100 py-2 fw-bold") }}
+          </div>
+        </form>
+
+        <!-- Calculation Result -->
+        <div id="calculatorResult" class="mt-4" style="display:none;">
+          <div class="row g-3">
+            
+            <!-- Customs Charges Column -->
+            <div class="col-md-6">
+              <div class="card p-3 shadow-sm">
+                <h6 class="fw-bold text-purple mb-3">Customs Charges</h6>
+                <div><b>Base JMD:</b> <span id="base_jmd"></span></div>
+                <div><b>Duty:</b> <span id="duty"></span></div>
+                <div><b>SCF:</b> <span id="scf"></span></div>
+                <div><b>ENVL:</b> <span id="envl"></span></div>
+                <div><b>CAF:</b> <span id="caf"></span></div>
+                <div><b>GCT:</b> <span id="gct"></span></div>
+                <div><b>Stamp:</b> <span id="stamp"></span></div>
+                <div class="fw-bold mt-2"><b>Customs Total:</b> <span id="customs_total"></span></div>
+              </div>
+            </div>
+
+            <!-- Freight Charges Column -->
+            <div class="col-md-6">
+              <div class="card p-3 shadow-sm">
+                <h6 class="fw-bold text-purple mb-3">Freight Charges</h6>
+                <div><b>Freight:</b> <span id="freight"></span></div>
+                <div><b>Handling:</b> <span id="handling"></span></div>
+                <div class="fw-bold mt-2"><b>Freight Total:</b> <span id="freight_total"></span></div>
+              </div>
+            </div>
+
+            <!-- Grand Total -->
+            <div class="col-12">
+              <div class="card p-3 shadow-sm bg-purple text-white fw-bold text-center">
+                <b>Grand Total:</b> <span id="grand_total"></span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Theme Colors */
+.bg-purple { background-color: #4a148c !important; }
+.text-purple { color: #4a148c !important; }
+.btn-purple { background-color: #4a148c; color: #fff; }
+.btn-purple:hover { background-color: #3a0f63; color: #fff; }
+
+/* Rounded Cards */
+.card { border-radius: 0.75rem; }
+
+/* Responsive adjustments */
+@media (max-width: 576px) {
+  #calculatorForm .col-md-6, 
+  #calculatorForm .col-md-3 { flex: 0 0 100%; max-width: 100%; }
+}
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const calcForm = document.getElementById('calculatorForm');
+
+  if(calcForm) {
+    calcForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      // Grab CSRF token
+      const csrfToken = calcForm.querySelector('input[name="csrf_token"]').value;
+
+      const payload = {
+        category: calcForm.category.value,
+        invoice_usd: parseFloat(calcForm.invoice_usd.value),
+        weight: parseFloat(calcForm.weight.value),
+        csrf_token: csrfToken
+      };
+
+      try {
+        const response = await fetch('{{ url_for("calculator.calculator_ajax") }}', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+          },
+          body: JSON.stringify(payload)
+        });
+
+        // Parse response safely
+        const text = await response.text();
+        let data;
+        try { data = JSON.parse(text); } 
+        catch { 
+          console.error("Response is not JSON:", text); 
+          alert("Calculation failed. Check console."); 
+          return; 
+        }
+
+        if(data.error){
+          alert(Array.isArray(data.error) ? data.error.join("\n") : data.error);
+          return;
+        }
+
+        // Fill Customs Charges
+        const customsFields = ["base_jmd","duty","scf","envl","caf","gct","stamp","customs_total"];
+        customsFields.forEach(f => {
+          const el = document.getElementById(f);
+          if(el && data[f] !== undefined){
+            el.innerText = parseFloat(data[f]).toLocaleString();
+          }
+        });
+
+        // Fill Freight Charges
+        const freightFields = ["freight","handling","freight_total"];
+        freightFields.forEach(f => {
+          const el = document.getElementById(f);
+          if(el && data[f] !== undefined){
+            el.innerText = parseFloat(data[f]).toLocaleString();
+          }
+        });
+
+        // Calculate Grand Total dynamically if not returned from backend
+        const grandTotalEl = document.getElementById('grand_total');
+        if(grandTotalEl){
+          const customsTotal = parseFloat(data.customs_total) || 0;
+          const freightTotal = parseFloat(data.freight_total) || 0;
+          grandTotalEl.innerText = (customsTotal + freightTotal).toLocaleString();
+        }
+
+        // Show result
+        document.getElementById('calculatorResult').style.display = 'block';
+
+      } catch(err){
+        console.error(err);
+        alert('Calculation failed. Please try again.');
+      }
+    });
+  }
+});
+</script>

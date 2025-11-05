@@ -1,0 +1,39 @@
+{# partials/status_tracker.html #}
+
+{% set s = (status or '') %}
+
+{# default fallback #}
+{% set progress_width = 0 %}
+{% set progress_color = 'secondary' %}
+
+{% if s == 'Overseas' %}
+    {% set progress_width = 33 %}
+    {% set progress_color = 'danger' %}
+{% elif s == 'Ready for Pick Up' %}
+    {% set progress_width = 66 %}
+    {% set progress_color = 'primary' %}
+{% elif s == 'Delivered' %}
+    {% set progress_width = 100 %}
+    {% set progress_color = 'success' %}
+{% elif s == 'Unassigned' %}
+    {# stays 0% #}
+    {% set progress_width = 0 %}
+    {% set progress_color = 'warning' %}
+{% endif %}
+
+<!-- Status Badge -->
+<span class="badge 
+    {% if s == 'Overseas' %}bg-danger
+    {% elif s == 'Ready for Pick Up' %}bg-primary
+    {% elif s == 'Delivered' %}bg-success
+    {% elif s == 'Unassigned' %}bg-warning text-dark
+    {% else %}bg-secondary{% endif %}">
+    {{ s }}
+</span>
+
+<!-- Progress Bar -->
+<div class="status-progress mt-1 {{ progress_color }}">
+    <div class="fill" style="width: {{ progress_width }}%;"></div>
+</div>
+
+

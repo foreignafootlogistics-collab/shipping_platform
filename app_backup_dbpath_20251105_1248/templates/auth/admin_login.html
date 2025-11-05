@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Login - Foreign A Foot Logistics</title>
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Merriweather&display=swap" rel="stylesheet" />
+  
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #222;
+      padding: 30px;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .main-container {
+      background: #fff;
+      border-radius: 16px;
+      max-width: 900px;
+      width: 100%;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      display: flex;
+      overflow: hidden;
+    }
+
+    .image-side {
+      flex: 1;
+      min-width: 320px;
+      background: #f5f7fa;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 30px;
+    }
+
+    .image-side img {
+      max-width: 100%;
+      border-radius: 12px;
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+    }
+
+    .form-side {
+      flex: 1;
+      padding: 40px 50px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .logo {
+      max-width: 220px;
+      margin: 0 auto 15px auto;
+      filter: drop-shadow(0 2px 2px rgba(118, 75, 162, 0.3));
+    }
+
+    .slogan {
+      font-family: 'Merriweather', serif;
+      font-size: 18px;
+      font-weight: 600;
+      color: #764ba2;
+      text-align: center;
+      margin-bottom: 35px;
+      letter-spacing: 0.06em;
+      opacity: 0.85;
+    }
+
+    h2 {
+      font-family: 'Merriweather', serif;
+      font-weight: 700;
+      font-size: 32px;
+      margin-bottom: 35px;
+      text-align: center;
+      color: #4a148c;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      user-select: none;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+      font-size: 14px;
+      color: #555;
+    }
+
+    input[type="email"],
+    input[type="password"] {
+      width: 100%;
+      padding: 14px 18px;
+      margin-bottom: 22px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.3s ease;
+    }
+
+    input[type="email"]:focus,
+    input[type="password"]:focus {
+      border-color: #764ba2;
+      box-shadow: 0 0 8px #9c47c3aa;
+    }
+
+    .show-password {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 30px;
+      font-size: 14px;
+      color: #764ba2;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .show-password input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+    }
+
+    button {
+      display: block;
+      background: #764ba2;
+      color: #fff;
+      font-weight: 700;
+      font-size: 18px;
+      padding: 14px 0;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      width: 100%;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background: #5b3683;
+    }
+
+    .links {
+      text-align: center;
+      margin-top: 22px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #764ba2;
+    }
+
+    .links a {
+      color: #4a148c;
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .links a:hover {
+      text-decoration: underline;
+    }
+
+    .alert {
+      text-align: center;
+      font-weight: 600;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .alert-danger {
+      background: #ffdde0;
+      color: #a70011;
+    }
+
+    .alert-success {
+      background: #d8f5e0;
+      color: #007b39;
+    }
+
+    @media (max-width: 700px) {
+      .main-container {
+        flex-direction: column;
+      }
+      .image-side {
+        min-height: 220px;
+        padding: 20px;
+      }
+      .form-side {
+        padding: 30px 25px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="main-container">
+
+  <!-- Left: Image -->
+  <div class="image-side">
+    <img src="{{ url_for('static', filename='shipping_box.png') }}" alt="Shipping Box" />
+  </div>
+
+  <!-- Right: Login Form -->
+  <div class="form-side">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="logo" />
+    <p class="slogan">Delivering the world to you!</p>
+
+    <h2>Admin Login</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="{{ url_for('admin_auth.admin_login') }}">
+      {{ form.hidden_tag() }}
+
+      <label for="email">Email Address</label>
+      {{ form.email(class="form-control", placeholder="admin@example.com", id="email") }}
+
+      <label for="password">Password</label>
+      {{ form.password(class="form-control", placeholder="Your Password", id="admin-password") }}
+
+      <label class="show-password" for="toggle-admin-password">
+        <input type="checkbox" id="toggle-admin-password" onclick="togglePassword('admin-password')" />
+        Show Password
+      </label>
+
+      {{ form.submit(class="btn btn-primary") }}
+    </form>
+
+    <div class="links">
+      <a href="{{ url_for('auth.forgot_password') }}">Forgot password?</a><br />
+      <a href="{{ url_for('admin_auth.admin_login') }}">Back to Admin Login</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  function togglePassword(id) {
+    const input = document.getElementById(id);
+    input.type = input.type === 'password' ? 'text' : 'password';
+  }
+</script>
+
+</body>
+</html>
+

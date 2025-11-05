@@ -22,7 +22,7 @@ from flask import jsonify, abort
 from app.models import db, User, Wallet, Message, ScheduledDelivery, WalletTransaction, Package, Invoice, Notification
 from app.utils.invoice_utils import generate_invoice  # We'll define this
 from flask_login import login_required, current_user, login_user, logout_user
-from app.config import DB_PATH
+
 from app.calculator import calculate_charges
 from app.calculator_data import categories
 from app.utils.rates import get_rate_for_weight

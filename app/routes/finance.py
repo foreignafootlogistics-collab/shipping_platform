@@ -8,7 +8,7 @@ from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired, Email
 from app.forms import LoginForm, ExpenseForm
 from app.routes.admin_auth_routes import admin_required
-from app.config import DB_PATH
+
 from app.calculator_data import USD_TO_JMD
 
 finance_bp = Blueprint('finance', __name__, url_prefix='/finance')

@@ -1,5 +1,5 @@
 import sqlite3
-from app.config import DB_PATH  # Adjust path if needed
+DB_PATH = None  # legacy placeholder; Postgres uses SQLAlchemy
 
 def update_wallet(user_id, amount, description, conn=None):
     """Add or subtract amount from user's wallet and log the transaction."""

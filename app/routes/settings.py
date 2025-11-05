@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import sqlite3
 from app.sqlite_utils import get_db 
 from app.routes.admin_auth_routes import admin_required
-from app.config import DB_PATH
+
 import os
 from werkzeug.utils import secure_filename
 

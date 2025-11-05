@@ -1,0 +1,184 @@
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:5: import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:25: from app.config import DB_PATH
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:81: def _table_cols(cur: sqlite3.Cursor, table: str) -> set[str]:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:112:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:113:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:197:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:198:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:227:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:307:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:308:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:337:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:338:         conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:397:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:447:                 except sqlite3.IntegrityError:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:457:             except sqlite3.IntegrityError:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:474:                 except sqlite3.IntegrityError:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:504:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:505:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:606:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:607:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:841:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:861:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:878:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\accounts_profiles_routes.py:889:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:2: import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:25: from app.config import DB_PATH
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:144:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:145:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:198:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:292:     except sqlite3.IntegrityError:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:331:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:332:     conn.row_factory = sqlite3.Row  # access columns by name
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:350:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:377:         except sqlite3.IntegrityError:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:729:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:730:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:971:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:972:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1096:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1147:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1148:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1207:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1277:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1278:         conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1351:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1352:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1390:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1411:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1424:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1429:     except sqlite3.OperationalError:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1441:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1442:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1508:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1509:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\admin_routes.py:1742:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\auth_routes.py:2: import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\auth_routes.py:18: DB_PATH = 'shipping_platform.db'
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\auth_routes.py:57:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\auth_routes.py:58:         conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\auth_routes.py:104:         except sqlite3.IntegrityError:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\auth_routes.py:145:         # Use helper instead of sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\auth_routes.py:191:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\auth_routes.py:248:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:3: import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:31: DB_PATH = 'shipping_platform.db'
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:53:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:101:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:102:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:193:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:217:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:235:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:236:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:352:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:353:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:418:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:430:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:431:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:467:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:468:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:508:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:546:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:547:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:623:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:624:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:767:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:782:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:805:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:830:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:831:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:862:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:942:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:943:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\customer_routes.py:980:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:4: import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:11: from app.config import DB_PATH
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:36:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:37:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:216:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:217:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:288:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:289:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:331:             conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:352:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:353:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:366:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:367:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:412:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:428:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:429:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:519:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\finance.py:520:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:6: import sqlite3, time
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:30: from app.config import DB_PATH, UPLOAD_FOLDER
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:342:     conn = sqlite3.connect(DB_PATH, timeout=30, isolation_level=None)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:343:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:361:         except sqlite3.OperationalError as e:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:398:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:438:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:484:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:656:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:744:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:889:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:890:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1246:     import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1247:     from app.config import DB_PATH
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1261:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1375:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1376:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1437:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1438:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1723:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1724:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1833:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1834:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1856:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1857:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1977:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:1978:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2045:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2128:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2199:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2211: # Shipment Logs (sqlite3 version)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2234:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2310:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2311:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2343:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2374:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2375:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2424:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2446:       except sqlite3.IntegrityError:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2500:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2501:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\logistics.py:2629:     conn = sqlite3.connect(DB_PATH); c = conn.cursor()
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\settings.py:2: import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\settings.py:5: from app.config import DB_PATH
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\routes\settings.py:81:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\counters.py:2: import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\counters.py:3: from app.config import DB_PATH
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\counters.py:13:     conn = sqlite3.connect(DB_PATH, timeout=5)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\counters.py:33: def _increment_counter_tx(cur: sqlite3.Cursor, name: str) -> int:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\counters.py:46: def next_bill_number_tx(conn: sqlite3.Connection) -> str:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\counters.py:56: def next_invoice_number_tx(conn: sqlite3.Connection) -> str:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\rates.py:1: import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\rates.py:11:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\unassigned.py:2: import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\unassigned.py:4: from app.config import DB_PATH
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\unassigned.py:21:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\unassigned.py:22:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\unassigned.py:51:             updates.append("password=?"); params.append(sqlite3.Binary(DUMMY_BCRYPT_BYTES))
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\unassigned.py:96:             updates.append("password=?"); params.append(sqlite3.Binary(DUMMY_BCRYPT_BYTES))
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\unassigned.py:120:         fields.append("password"); values.append(sqlite3.Binary(DUMMY_BCRYPT_BYTES))
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:1: import sqlite3
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:2: from app.config import DB_PATH  # Adjust path if needed
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:8:         conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:9:         conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:33:     except sqlite3.Error as e:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:50:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:51:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:79:     except sqlite3.Error as e:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:93:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:94:     conn.row_factory = sqlite3.Row
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:127:     except sqlite3.Error as e:
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:140:     conn = sqlite3.connect(DB_PATH)
+C:\Users\forei\OneDrive\Desktop\foreign_a_foot_project\app\utils\wallet.py:141:     conn.row_factory = sqlite3.Row

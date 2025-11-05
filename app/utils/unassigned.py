@@ -1,7 +1,7 @@
 # app/utils/unassigned.py
 import sqlite3
 from datetime import datetime
-from app.config import DB_PATH
+
 
 # Precomputed bcrypt hash for the string "!UNASSIGNED!"
 # Keep it as bytes so we can store as BLOB (LargeBinary).

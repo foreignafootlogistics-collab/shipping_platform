@@ -1,0 +1,98 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Monthly Profit & Loss{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-4">Monthly Profit / Loss</h2>
+
+  <div class="row mb-4">
+    <div class="col-md-4">
+      <div class="card border-success">
+        <div class="card-body">
+          <h5>Total Income</h5>
+          <p class="fs-4 text-success">${{ "%.2f"|format(total_income) }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card border-danger">
+        <div class="card-body">
+          <h5>Total Expenses</h5>
+          <p class="fs-4 text-danger">${{ "%.2f"|format(total_expenses) }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card border-primary">
+        <div class="card-body">
+          <h5>Net Profit / Loss</h5>
+          <p class="fs-4 {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+            ${{ "%.2f"|format(net_profit) }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profit/Loss Chart -->
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title mb-3">Monthly Profit/Loss Chart</h5>
+      <canvas id="profitChart" height="100"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const ctx = document.getElementById('profitChart');
+
+  // Prepare data from backend summary
+  const months = {{ summary | map(attribute=0) | list | tojson }};
+  const profits = {{ summary | map(attribute=3) | list | tojson }};
+
+  // Set bar colors based on positive/negative
+  const barColors = profits.map(p => p >= 0 ? 'rgba(75, 192, 192, 0.7)' : 'rgba(255, 99, 132, 0.7)');
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: months,
+      datasets: [{
+        label: 'Profit / Loss ($)',
+        data: profits,
+        backgroundColor: barColors,
+        borderRadius: 5,
+        barThickness: 40
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: true }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: 'Amount ($)' }
+        },
+        x: {
+          title: { display: true, text: 'Month' }
+        }
+      },
+      interaction: {
+        intersect: false,
+        mode: 'index',
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            return '$' + context.raw.toFixed(2);
+          }
+        }
+      }
+    }
+  });
+</script>
+{% endblock %}

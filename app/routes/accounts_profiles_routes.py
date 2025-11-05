@@ -22,7 +22,7 @@ from werkzeug.utils import secure_filename
 
 from app.forms import UploadUsersForm, ConfirmUploadForm
 from app.utils import next_registration_number
-from app.config import DB_PATH
+
 from app.models import User, db
 from app.routes.admin_auth_routes import admin_required
 

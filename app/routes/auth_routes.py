@@ -7,11 +7,13 @@ from app.forms import RegisterForm, LoginForm  # Import your FlaskForm classes
 from app.utils import email_utils
 from app.utils import next_registration_number
 from app.utils import apply_referral_bonus, update_wallet
-from app.populate_referral_codes import generate_referral_code
 from flask_login import login_user, current_user
 from app.models import User  # your SQLAlchemy model that implements UserMixin
 from app.config import get_db_connection
 
+def generate_referral_code(length=6):
+    import random, string
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
 
 auth_bp = Blueprint('auth', __name__, template_folder='../templates')

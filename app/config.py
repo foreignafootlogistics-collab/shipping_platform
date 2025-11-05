@@ -36,3 +36,21 @@ SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret")
 WTF_CSRF_TIME_LIMIT = None
+
+# ---- Back-compat shim for legacy routes that still import get_db_connection ----
+def get_db_connection():
+    """
+    TEMPORARY: returns a raw DBAPI connection from SQLAlchemy's engine.
+    This lets old code that expected sqlite3.connect(...) keep working long enough
+    for us to migrate those routes to SQLAlchemy.
+    """
+    try:
+        from app.extensions import db  # your SQLAlchemy instance
+        return db.engine.raw_connection()
+    except Exception:
+        # Last-resort fallback to local SQLite if engine isn't ready (dev only)
+        import sqlite3
+        try:
+            return sqlite3.connect((BASE_DIR / "shipping_platform.db").resolve().as_posix())
+        except Exception as e:
+            raise RuntimeError(f"Unable to provide a database connection: {e}")

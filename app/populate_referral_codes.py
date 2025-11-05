@@ -1,26 +1,56 @@
-import sqlite3
-import random
+# app/populate_referral_codes.py
+# SQLAlchemy-only helpers for referral codes (no sqlite3 / DB_PATH).
+
+from __future__ import annotations
+import secrets
 import string
-from app.config import DB_PATH  # adjust import if needed
+from typing import Optional
 
-def generate_referral_code(length=6):
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
+from sqlalchemy import text
+from app.extensions import db
+from app.models import User
 
-def main():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
+ALPHABET = string.ascii_uppercase + string.digits
 
-    c.execute("SELECT id, referral_code FROM users")
-    users = c.fetchall()
 
-    for user_id, code in users:
-        if not code:
-            new_code = generate_referral_code()
-            c.execute("UPDATE users SET referral_code = ? WHERE id = ?", (new_code, user_id))
-            print(f"Updated user {user_id} with referral code {new_code}")
+def _random_code(length: int = 8) -> str:
+    return "".join(secrets.choice(ALPHABET) for _ in range(length))
 
-    conn.commit()
-    conn.close()
 
-if __name__ == "__main__":
-    main()
+def _is_code_taken(code: str) -> bool:
+    return db.session.execute(
+        text("SELECT 1 FROM users WHERE referral_code = :c LIMIT 1"),
+        {"c": code},
+    ).scalar() is not None
+
+
+def generate_referral_code(user: Optional[User] = None, length: int = 8) -> str:
+    """
+    Public API kept for back-compat with auth_routes import.
+    If a User is provided, caller may set user.referral_code = generated and commit.
+    """
+    for _ in range(25):
+        code = _random_code(length)
+        if not _is_code_taken(code):
+            return code
+    for _ in range(25):
+        code = _random_code(length + 2)
+        if not _is_code_taken(code):
+            return code
+    return _random_code(length + 4)
+
+
+def assign_missing_referral_codes(commit: bool = True) -> int:
+    """Backfill: assign codes to users missing referral_code. Returns count."""
+    updated = 0
+    users = db.session.query(User).filter(
+        (User.referral_code.is_(None)) | (User.referral_code == "")
+    ).all()
+
+    for u in users:
+        u.referral_code = generate_referral_code(u)
+        updated += 1
+
+    if updated and commit:
+        db.session.commit()
+    return updated

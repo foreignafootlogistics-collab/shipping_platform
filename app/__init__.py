@@ -321,8 +321,5 @@ if os.getenv("ENABLE_DEBUG_ROUTES") == "1":
             app.logger.warning(f"[ADMIN SEED] failed: {e}")
 
         app.logger.info("[BOOT] Skipping legacy SQLite bootstraps (migrated to Postgres).")
-
     
-
-
     return app

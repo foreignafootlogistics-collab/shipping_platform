@@ -37,41 +37,38 @@ def allowed_file(filename: str) -> bool:
 
 
 def _ensure_first_admin():
-    """Seed ONE admin from env vars; keep password in sync. Uses bcrypt bytes."""
+    """
+    Create ONE admin from ADMIN_EMAIL / ADMIN_PASSWORD **only if none exists**.
+    Does NOT reset the password on later boots.
+    """
     from .models import User
-    import bcrypt
 
     email = os.getenv("ADMIN_EMAIL")
     password = os.getenv("ADMIN_PASSWORD")
+
+    # If vars aren't set, just skip seeding quietly.
     if not email or not password:
         current_app.logger.info("[ADMIN SEED] ADMIN_EMAIL/ADMIN_PASSWORD not set; skipping seed.")
         return
 
-    admin = User.query.filter_by(email=email).first()
-    if admin:
-        changed = False
-        if getattr(admin, "role", None) != "admin":
-            admin.role = "admin"; changed = True
-        if hasattr(admin, "is_admin") and not getattr(admin, "is_admin"):
-            admin.is_admin = True; changed = True
-
-        # ensure bcrypt bytes (avoid double-hash)
-        if not admin.password or isinstance(admin.password, str) or not admin.password.startswith(b"$2b$"):
-            admin.password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
-            changed = True
-
-        if changed:
-            db.session.commit()
-            current_app.logger.info("[ADMIN SEED] Admin ensured/updated.")
-        else:
-            current_app.logger.info("[ADMIN SEED] Admin already correct; nothing to do.")
+    # If an admin with this email already exists, do nothing.
+    existing = User.query.filter_by(email=email, role="admin").first()
+    if existing:
+        current_app.logger.info("[ADMIN SEED] Admin already exists; not modifying.")
         return
 
-    # create new admin
+    # Otherwise create the initial admin (bcrypt bytes-compatible)
+    import bcrypt
+    pw_bytes = password.encode("utf-8")
+    hashed = bcrypt.hashpw(pw_bytes, bcrypt.gensalt(rounds=12))
+
     u = User(email=email, role="admin", full_name="Administrator")
+    # If your model has is_admin flag, set it
     if hasattr(u, "is_admin"):
         u.is_admin = True
-    u.password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())  # bcrypt BYTES
+
+    # Store as bytes; your login compares with bcrypt.checkpw
+    u.password = hashed
     db.session.add(u)
     db.session.commit()
     current_app.logger.info(f"[ADMIN SEED] Created admin user {email}.")

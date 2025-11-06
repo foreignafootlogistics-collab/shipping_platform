@@ -324,7 +324,7 @@ class AdminRate(db.Model):
     __tablename__ = "rate_brackets"
 
     id = db.Column(db.Integer, primary_key=True)
-    max_weight = db.Column(db.Integer, nullable=False)  # e.g. 10 lbs, 20 lbs
+    max_weight = db.Column(db.Integer, nullable=False, unique=True, index=True)
     rate = db.Column(db.Float, nullable=False)          # JMD cost for that bracket
 
     def __repr__(self):

@@ -69,71 +69,47 @@ def _check_password(user, plain: str) -> bool:
 # ---------- Admin Login ----------
 @admin_auth_bp.route('/login', methods=['GET', 'POST'])
 def admin_login():
+    from sqlalchemy.orm import load_only
+    from app.extensions import db
+
+    # already logged in?
     if current_user.is_authenticated and getattr(current_user, 'role', None) == 'admin':
         return redirect(url_for('admin.dashboard'))
 
     form = AdminLoginForm()
     if form.validate_on_submit():
         email = (form.email.data or "").strip()
-        raw_password = (form.password.data or "")
-        password_bytes = raw_password.encode("utf-8")
-
-        admin = User.query.filter_by(email=email, role='admin').first()
-
-        def _ok(msg):
-            current_app.logger.info(f"[ADMIN LOGIN] {msg}")
-
-        def _warn(msg):
-            current_app.logger.warning(f"[ADMIN LOGIN] {msg}")
-
-        if not admin:
-            _warn(f"no admin for email={email}")
-            flash("Invalid email or password.", "danger")
-            return render_template('auth/admin_login.html', form=form)
-
-        verified = False
+        raw_pw = (form.password.data or "").encode('utf-8')
 
         try:
-            # 1) bcrypt bytes in `password`
-            if not verified and hasattr(admin, "password") and admin.password:
-                stored = admin.password
-                if isinstance(stored, str):
-                    stored = stored.encode("utf-8")
-                try:
-                    import bcrypt
-                    if bcrypt.checkpw(password_bytes, stored):
-                        verified = True
-                        _ok("bcrypt ok via admin.password")
-                except Exception as e:
-                    _warn(f"bcrypt check failed: {e}")
+            # Only load the columns we NEED to avoid any weird column/type issues
+            admin = (
+                User.query.options(load_only(User.id, User.email, User.password, User.role))
+                .filter(User.email == email, User.role == 'admin')
+                .first()
+            )
 
-            # 2) Werkzeug hash in `password_hash`
-            if not verified and hasattr(admin, "password_hash") and admin.password_hash:
-                try:
-                    from werkzeug.security import check_password_hash
-                    if check_password_hash(admin.password_hash, raw_password):
-                        verified = True
-                        _ok("werkzeug ok via admin.password_hash")
-                except Exception as e:
-                    _warn(f"werkzeug check failed: {e}")
+            if not admin or not admin.password:
+                flash("Invalid email or password.", "danger")
+                return render_template('auth/admin_login.html', form=form)
 
-            # 3) Plain text fallback (rare, legacy)
-            if not verified and hasattr(admin, "password") and isinstance(admin.password, str):
-                if admin.password == raw_password:
-                    verified = True
-                    _ok("plain-text fallback matched (legacy!)")
+            stored = admin.password
+            # allow either bytes or str in DB
+            if isinstance(stored, str):
+                stored = stored.encode('utf-8')
 
+            if bcrypt.checkpw(raw_pw, stored):
+                # IMPORTANT: we must pass the actual model instance to login_user
+                login_user(admin, remember=False)
+                session['admin_id'] = admin.id
+                session['role'] = 'admin'
+                return redirect(url_for('admin.dashboard'))
+
+            flash("Invalid email or password.", "danger")
         except Exception as e:
-            _warn(f"unexpected error while verifying password: {e}")
-
-        if verified:
-            login_user(admin)
-            session['admin_id'] = admin.id
-            session['role'] = 'admin'
-            flash("Admin login successful!", "success")
-            return redirect(url_for('admin.dashboard'))
-
-        flash("Invalid email or password.", "danger")
+            # TEMP: surface the real error so we can see it
+            # (Replace with logging only after we fix it)
+            flash(f"Login error: {e}", "danger")
 
     return render_template('auth/admin_login.html', form=form)
 

@@ -8,6 +8,8 @@ from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from sqlalchemy import text
+from werkzeug.security import generate_password_hash
+
 
 # Project config (single source of truth)
 from . import config as cfg  # ✅ use normalized config from app/config.py
@@ -37,7 +39,7 @@ def allowed_file(filename: str) -> bool:
 def _ensure_first_admin():
     """
     Seed ONE admin if none exists, using ADMIN_EMAIL and ADMIN_PASSWORD env vars.
-    Will also reset admin's password to ADMIN_PASSWORD for recovery if admin exists.
+    Always store admin password as Werkzeug string hash (no bcrypt bytes).
     """
     from .models import User
 
@@ -48,59 +50,39 @@ def _ensure_first_admin():
         return
 
     admin = User.query.filter_by(email=email).first()
+
     if admin:
-        # Ensure admin role/flag
         changed = False
+
+        # ensure role
         if getattr(admin, "role", None) != "admin":
             admin.role = "admin"
             changed = True
+
+        # ensure admin flag if present
         if hasattr(admin, "is_admin") and not getattr(admin, "is_admin"):
             admin.is_admin = True
             changed = True
 
-        # Keep password in sync with env for recovery
-        if hasattr(admin, "set_password"):
-            admin.set_password(password)
-            changed = True
-        else:
-            # Werkzeug fallback if model lacks helper
-            try:
-                from werkzeug.security import generate_password_hash
-                if hasattr(admin, "password_hash"):
-                    admin.password_hash = generate_password_hash(password)
-                else:
-                    # last-resort: if your column is named 'password'
-                    admin.password = generate_password_hash(password)
-                changed = True
-            except Exception as e:
-                current_app.logger.warning(f"[ADMIN SEED] could not reset admin password: {e}")
+        # ALWAYS hash password using werkzeug (TEXT)
+        admin.password = generate_password_hash(password)
+        changed = True
 
         if changed:
             db.session.commit()
-            current_app.logger.info("[ADMIN SEED] Admin ensured/updated.")
-        else:
-            current_app.logger.info("[ADMIN SEED] Admin already correct; nothing to do.")
+            current_app.logger.info("[ADMIN SEED] Admin ensured/updated]")
         return
 
-    # Create new admin
+    # new admin create
     u = User(email=email, role="admin", full_name="Administrator")
     if hasattr(u, "is_admin"):
         u.is_admin = True
 
-    if hasattr(u, "set_password"):
-        u.set_password(password)
-    else:
-        from werkzeug.security import generate_password_hash
-        if hasattr(u, "password_hash"):
-            u.password_hash = generate_password_hash(password)
-        else:
-            u.password = generate_password_hash(password)
+    u.password = generate_password_hash(password)
 
     db.session.add(u)
     db.session.commit()
     current_app.logger.info(f"[ADMIN SEED] Created admin user {email}.")
-
-
 def create_app():
     app = Flask(__name__)
 

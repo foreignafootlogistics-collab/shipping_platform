@@ -70,7 +70,6 @@ def _check_password(user, plain: str) -> bool:
 @admin_auth_bp.route('/login', methods=['GET', 'POST'])
 def admin_login():
     from sqlalchemy.orm import load_only
-    from app.extensions import db
 
     # already logged in?
     if current_user.is_authenticated and getattr(current_user, 'role', None) == 'admin':
@@ -79,36 +78,25 @@ def admin_login():
     form = AdminLoginForm()
     if form.validate_on_submit():
         email = (form.email.data or "").strip()
-        raw_pw = (form.password.data or "").encode('utf-8')
+        password = form.password.data or ""
 
         try:
-            # Only load the columns we NEED to avoid any weird column/type issues
             admin = (
                 User.query.options(load_only(User.id, User.email, User.password, User.role))
                 .filter(User.email == email, User.role == 'admin')
                 .first()
             )
 
-            if not admin or not admin.password:
-                flash("Invalid email or password.", "danger")
-                return render_template('auth/admin_login.html', form=form)
-
-            stored = admin.password
-            # allow either bytes or str in DB
-            if isinstance(stored, str):
-                stored = stored.encode('utf-8')
-
-            if bcrypt.checkpw(raw_pw, stored):
-                # IMPORTANT: we must pass the actual model instance to login_user
+            if admin and admin.password and check_password_hash(admin.password, password):
                 login_user(admin, remember=False)
                 session['admin_id'] = admin.id
                 session['role'] = 'admin'
+                flash("Admin login successful!", "success")
                 return redirect(url_for('admin.dashboard'))
 
             flash("Invalid email or password.", "danger")
         except Exception as e:
-            # TEMP: surface the real error so we can see it
-            # (Replace with logging only after we fix it)
+            # helpful while stabilizing; you can swap to logging later
             flash(f"Login error: {e}", "danger")
 
     return render_template('auth/admin_login.html', form=form)

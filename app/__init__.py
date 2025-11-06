@@ -13,8 +13,6 @@ from sqlalchemy import text
 from . import config as cfg  # ✅ use normalized config from app/config.py
 from .config import PROFILE_UPLOAD_FOLDER
 from .forms import CalculatorForm, AdminCalculatorForm
-from .utils.counters import ensure_counters_table  # NEW
-from app.utils.unassigned import ensure_unassigned_user
 
 # Centralized extensions (single source of truth)
 # app/extensions.py must define: db = SQLAlchemy()
@@ -326,21 +324,6 @@ def create_app():
         except Exception as e:
             app.logger.warning(f"[ADMIN SEED] failed: {e}")
 
-        try:
-            ensure_unassigned_user()
-        except Exception as e:
-            app.logger.warning(f"[UNASSIGNED] Failed on startup: {e}")
-
-        try:
-            ensure_counters_table()
-        except Exception as e:
-            app.logger.warning(f"[COUNTERS] Failed on startup: {e}")
-
-        # Run logistics bootstrap now that tables exist
-        try:
-            from .routes.logistics import bootstrap_after_tables
-            bootstrap_after_tables()
-        except Exception as e:
-            app.logger.warning(f"[LOGISTICS BOOTSTRAP] skipped: {e}")
+        app.logger.info("[BOOT] Skipping legacy SQLite bootstraps (migrated to Postgres).")
 
     return app

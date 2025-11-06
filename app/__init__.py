@@ -39,9 +39,10 @@ def allowed_file(filename: str) -> bool:
 def _ensure_first_admin():
     """
     Seed ONE admin if none exists, using ADMIN_EMAIL and ADMIN_PASSWORD env vars.
-    Always store admin password as Werkzeug string hash (no bcrypt bytes).
+    Stores a bcrypt hash (bytes) in User.password. Never calls set_password.
     """
     from .models import User
+    import bcrypt
 
     email = os.getenv("ADMIN_EMAIL")
     password = os.getenv("ADMIN_PASSWORD")
@@ -49,40 +50,50 @@ def _ensure_first_admin():
         current_app.logger.info("[ADMIN SEED] ADMIN_EMAIL/ADMIN_PASSWORD not set; skipping seed.")
         return
 
+    # helper: make bcrypt hash (bytes) from plaintext password
+    def _bcrypt_hash(pw_str: str) -> bytes:
+        return bcrypt.hashpw(pw_str.encode("utf-8"), bcrypt.gensalt(rounds=12))
+
     admin = User.query.filter_by(email=email).first()
 
     if admin:
         changed = False
 
-        # ensure role
+        # ensure role/flag
         if getattr(admin, "role", None) != "admin":
             admin.role = "admin"
             changed = True
-
-        # ensure admin flag if present
         if hasattr(admin, "is_admin") and not getattr(admin, "is_admin"):
             admin.is_admin = True
             changed = True
 
-        # ALWAYS hash password using werkzeug (TEXT)
-        admin.password = generate_password_hash(password)
-        changed = True
+        # always reset password to env (recovery convenience)
+        try:
+            admin.password = _bcrypt_hash(password)  # bytes
+            changed = True
+        except Exception as e:
+            current_app.logger.warning(f"[ADMIN SEED] bcrypt hash failed: {e}")
+            return
 
         if changed:
             db.session.commit()
-            current_app.logger.info("[ADMIN SEED] Admin ensured/updated]")
+            current_app.logger.info("[ADMIN SEED] Admin ensured/updated.")
+        else:
+            current_app.logger.info("[ADMIN SEED] Admin already correct; nothing to do.")
         return
 
-    # new admin create
-    u = User(email=email, role="admin", full_name="Administrator")
-    if hasattr(u, "is_admin"):
-        u.is_admin = True
+    # Create new admin
+    try:
+        u = User(email=email, role="admin", full_name="Administrator")
+        if hasattr(u, "is_admin"):
+            u.is_admin = True
+        u.password = _bcrypt_hash(password)  # bytes
+        db.session.add(u)
+        db.session.commit()
+        current_app.logger.info(f"[ADMIN SEED] Created admin user {email}.")
+    except Exception as e:
+        current_app.logger.warning(f"[ADMIN SEED] create failed: {e}")
 
-    u.password = generate_password_hash(password)
-
-    db.session.add(u)
-    db.session.commit()
-    current_app.logger.info(f"[ADMIN SEED] Created admin user {email}.")
 def create_app():
     app = Flask(__name__)
 

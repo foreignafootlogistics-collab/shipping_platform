@@ -37,12 +37,9 @@ def allowed_file(filename: str) -> bool:
 
 
 def _ensure_first_admin():
-    """
-    Ensure ONE admin using ADMIN_EMAIL / ADMIN_PASSWORD.
-    Store password as a Werkzeug PBKDF2 string (not bytes) so bcrypt/bytes issues go away.
-    """
+    """Seed ONE admin from env vars; keep password in sync. Uses bcrypt bytes."""
     from .models import User
-    from werkzeug.security import generate_password_hash
+    import bcrypt
 
     email = os.getenv("ADMIN_EMAIL")
     password = os.getenv("ADMIN_PASSWORD")
@@ -54,31 +51,27 @@ def _ensure_first_admin():
     if admin:
         changed = False
         if getattr(admin, "role", None) != "admin":
-            admin.role = "admin"
-            changed = True
+            admin.role = "admin"; changed = True
         if hasattr(admin, "is_admin") and not getattr(admin, "is_admin"):
-            admin.is_admin = True
-            changed = True
+            admin.is_admin = True; changed = True
 
-        # Always reset to a clean Werkzeug hash (string)
-        admin.password = generate_password_hash(password)
-        changed = True
+        # ensure bcrypt bytes (avoid double-hash)
+        if not admin.password or isinstance(admin.password, str) or not admin.password.startswith(b"$2b$"):
+            admin.password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+            changed = True
 
         if changed:
-            from .extensions import db
             db.session.commit()
             current_app.logger.info("[ADMIN SEED] Admin ensured/updated.")
         else:
             current_app.logger.info("[ADMIN SEED] Admin already correct; nothing to do.")
         return
 
-    # Create fresh admin
+    # create new admin
     u = User(email=email, role="admin", full_name="Administrator")
     if hasattr(u, "is_admin"):
         u.is_admin = True
-
-    u.password = generate_password_hash(password)  # store as str
-    from .extensions import db
+    u.password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())  # bcrypt BYTES
     db.session.add(u)
     db.session.commit()
     current_app.logger.info(f"[ADMIN SEED] Created admin user {email}.")

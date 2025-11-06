@@ -311,6 +311,24 @@ def create_app():
                 continue
         return "Customer login route not found. Check /__routes for the correct path.", 404
 
+    @app.route("/__debug/db")
+    def __debug_db():
+        try:
+            from sqlalchemy import text
+            url = str(db.engine.url)
+            name = db.engine.name
+            # very light query just to confirm connectivity and data
+            n_users = db.session.execute(text("select count(*) from users")).scalar()
+            emails = db.session.execute(text("select email from users limit 3")).scalars().all()
+            return {
+                "engine_url": url,
+                "engine_name": name,
+                "user_count": int(n_users or 0),
+                "sample_emails": emails,
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
     # -------------------------------
     # Models import, DB init & Admin seed
     # -------------------------------
@@ -325,5 +343,8 @@ def create_app():
             app.logger.warning(f"[ADMIN SEED] failed: {e}")
 
         app.logger.info("[BOOT] Skipping legacy SQLite bootstraps (migrated to Postgres).")
+
+    
+
 
     return app

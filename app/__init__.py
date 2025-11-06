@@ -283,13 +283,17 @@ def create_app():
                 continue
         return "Customer login route not found. Check /__routes for the correct path.", 404
 
+
+# -------------------------------
+# (Optional) Debug-only routes
+# -------------------------------
+if os.getenv("ENABLE_DEBUG_ROUTES") == "1":
     @app.route("/__debug/db")
     def __debug_db():
         try:
             from sqlalchemy import text
             url = str(db.engine.url)
             name = db.engine.name
-            # very light query just to confirm connectivity and data
             n_users = db.session.execute(text("select count(*) from users")).scalar()
             emails = db.session.execute(text("select email from users limit 3")).scalars().all()
             return {
@@ -300,6 +304,8 @@ def create_app():
             }
         except Exception as e:
             return {"error": str(e)}
+
+   
 
     # -------------------------------
     # Models import, DB init & Admin seed

@@ -1,75 +1,120 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
 from flask_login import login_user, logout_user, login_required, current_user
-from app.models import User
-from app.forms import AdminLoginForm
+from werkzeug.security import check_password_hash
 import bcrypt
 from functools import wraps
 
-admin_auth_bp = Blueprint('admin_auth', __name__, url_prefix='/admin_auth')
+from app.models import User
+from app.forms import AdminLoginForm
 
+admin_auth_bp = Blueprint("admin_auth", __name__, url_prefix="/admin_auth")
+
+# ---------- Single admin_required ----------
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             flash("Please log in as admin to access this page.", "danger")
-            return redirect(url_for('admin_auth.admin_login'))
-        if getattr(current_user, 'role', None) != 'admin':
+            return redirect(url_for("admin_auth.admin_login"))
+        if (getattr(current_user, "role", None) != "admin") and not getattr(current_user, "is_admin", False):
             flash("Unauthorized access.", "danger")
-            # Redirect customers to their login or dashboard
-            return redirect(url_for('auth.login'))
+            return redirect(url_for("auth.login"))
         return f(*args, **kwargs)
     return decorated_function
 
+
+def _check_password(user, plain: str) -> bool:
+    """
+    Accept bcrypt (bytes or str), Werkzeug password_hash, or plain text (legacy).
+    """
+    # 1) If the model has a helper, prefer it.
+    if hasattr(user, "check_password"):
+        try:
+            return bool(user.check_password(plain))
+        except Exception:
+            pass
+
+    # Pull potential fields
+    pw_attr = getattr(user, "password", None)
+    ph_attr = getattr(user, "password_hash", None)
+
+    # 2) bcrypt stored in .password (bytes or str)
+    try:
+        if isinstance(pw_attr, (bytes, bytearray)) and pw_attr.startswith(b"$2"):
+            return bcrypt.checkpw(plain.encode("utf-8"), pw_attr)
+        if isinstance(pw_attr, str) and pw_attr.startswith("$2"):
+            return bcrypt.checkpw(plain.encode("utf-8"), pw_attr.encode("utf-8"))
+    except Exception:
+        pass
+
+    # 3) Werkzeug-style hash in password_hash or password
+    try:
+        if isinstance(ph_attr, str) and "$" in ph_attr:
+            return check_password_hash(ph_attr, plain)
+        if isinstance(pw_attr, str) and "$" in pw_attr:
+            return check_password_hash(pw_attr, plain)
+    except Exception:
+        pass
+
+    # 4) Last-resort plain-text compare (legacy)
+    try:
+        if isinstance(pw_attr, str) and "$" not in pw_attr:
+            return pw_attr == plain
+    except Exception:
+        pass
+
+    return False
+
+
 # ---------- Admin Login ----------
-@admin_auth_bp.route('/login', methods=['GET', 'POST'])
+@admin_auth_bp.route("/login", methods=["GET", "POST"])
 def admin_login():
-    if current_user.is_authenticated and getattr(current_user, 'role', None) == 'admin':
-        return redirect(url_for('admin.dashboard'))
+    if current_user.is_authenticated and (
+        getattr(current_user, "role", None) == "admin" or getattr(current_user, "is_admin", False)
+    ):
+        return redirect(url_for("admin.dashboard"))
 
     form = AdminLoginForm()
     if form.validate_on_submit():
-        email = form.email.data.strip()
-        password_bytes = form.password.data.encode('utf-8')
+        email = (form.email.data or "").strip().lower()
+        plain = form.password.data or ""
 
-        # Query admin user by role='admin'
-        admin = User.query.filter_by(email=email, role='admin').first()
+        try:
+            # Find the user by email (case-insensitive)
+            user = User.query.filter(User.email.ilike(email)).first()
+            if not user:
+                flash("No account with that email.", "danger")
+                return render_template("auth/admin_login.html", form=form), 401
 
-        if admin and admin.password:
-            stored_password = admin.password
-            if isinstance(stored_password, str):
-                stored_password = stored_password.encode('utf-8')
+            # Must be an admin
+            is_admin = (getattr(user, "role", None) == "admin") or bool(getattr(user, "is_admin", False))
+            if not is_admin:
+                flash("You do not have admin access.", "danger")
+                return render_template("auth/admin_login.html", form=form), 403
 
-            if bcrypt.checkpw(password_bytes, stored_password):
-                login_user(admin)
-                session['admin_id'] = admin.id 
-                session['role'] = 'admin'
-                flash("Admin login successful!", "success")
-                return redirect(url_for('admin.dashboard'))
+            # Check password robustly
+            if not _check_password(user, plain):
+                flash("Invalid email or password.", "danger")
+                return render_template("auth/admin_login.html", form=form), 401
 
-        flash("Invalid email or password.", "danger")
+            login_user(user)
+            session["admin_id"] = user.id
+            session["role"] = "admin"
+            flash("Admin login successful!", "success")
+            return redirect(url_for("admin.dashboard"))
 
-    return render_template('auth/admin_login.html', form=form)
+        except Exception as e:
+            current_app.logger.exception(f"[ADMIN LOGIN] error: {e}")
+            flash("Something went wrong while logging in. The issue has been logged.", "danger")
+            return render_template("auth/admin_login.html", form=form), 500
+
+    return render_template("auth/admin_login.html", form=form)
 
 
 # ---------- Admin Logout ----------
-@admin_auth_bp.route('/logout')
+@admin_auth_bp.route("/logout")
 @admin_required
 def admin_logout():
     logout_user()
-    flash('You have been logged out.', 'info')
-    return redirect(url_for('admin_auth.admin_login'))
-
-
-# ---------- Admin Required Decorator ----------
-def admin_required(f):
-    from functools import wraps
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated:
-            flash("Please log in to access the admin dashboard.", "danger")
-            return redirect(url_for('admin_auth.admin_login'))
-        if getattr(current_user, 'role', None) != 'admin':
-            flash("Unauthorized access.", "danger")
-            return redirect(url_for('admin_auth.admin_login'))
-        return f(*args, **kwargs)
-    return decorated_function
+    flash("You have been logged out.", "info")
+    return redirect(url_for("admin_auth.admin_login"))

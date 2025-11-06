@@ -389,85 +389,8 @@ def register_admin():
 @admin_bp.route('/dashboard')
 @admin_required
 def dashboard():
-    from app.forms import AdminCalculatorForm
-    from app import db
-    from app.models import User, Package, Invoice, ScheduledDelivery
-    from sqlalchemy import func
-    from datetime import datetime
-
-    admin_calculator_form = AdminCalculatorForm()
-
-    # ---- Cards ----
-    total_users = User.query.count()
-    total_packages = Package.query.count()
-    pending_invoices = Invoice.query.filter(
-        Invoice.status.in_(('pending', 'unpaid', 'issued'))
-    ).count()
-
-    deliveries = ScheduledDelivery.query.order_by(
-        ScheduledDelivery.scheduled_date.desc()
-    ).limit(10).all()
-
-    # ---- Charts (use date_registered for users, date_received for packages) ----
-    current_year = datetime.now().year
-
-    # Month labels in Jan..Dec order
-    month_map = {
-        1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr',
-        5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Aug',
-        9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
-    }
-
-    # Initialize with zeros
-    user_data_dict = {m: 0 for m in month_map}
-    pkg_data_dict  = {m: 0 for m in month_map}
-
-    # NOTE: We use SQLite-friendly strftime on COALESCE(date_pref, created_at)
-    user_year_col  = func.strftime('%Y', func.date(func.coalesce(User.date_registered, User.created_at)))
-    user_month_col = func.strftime('%m', func.date(func.coalesce(User.date_registered, User.created_at)))
-
-    user_counts = (
-        db.session.query(
-            user_month_col.label('m'),
-            func.count(User.id)
-        )
-        .filter(user_year_col == str(current_year))
-        .group_by('m')
-        .all()
-    )
-    for m_str, count in user_counts:
-        # '01'..'12' -> 1..12
-        m = int(m_str)
-        user_data_dict[m] = count
-
-    pkg_year_col  = func.strftime('%Y', func.date(func.coalesce(Package.date_received, Package.created_at)))
-    pkg_month_col = func.strftime('%m', func.date(func.coalesce(Package.date_received, Package.created_at)))
-
-    pkg_counts = (
-        db.session.query(
-            pkg_month_col.label('m'),
-            func.count(Package.id)
-        )
-        .filter(pkg_year_col == str(current_year))
-        .group_by('m')
-        .all()
-    )
-    for m_str, count in pkg_counts:
-        m = int(m_str)
-        pkg_data_dict[m] = count
-
-    return render_template(
-        'admin/admin_dashboard.html',
-        total_users=total_users,
-        total_packages=total_packages,
-        pending_invoices=pending_invoices,
-        deliveries=deliveries,
-        user_labels=[month_map[m] for m in month_map],
-        user_data=[user_data_dict[m] for m in month_map],
-        pkg_labels=[month_map[m] for m in month_map],
-        pkg_data=[pkg_data_dict[m] for m in month_map],
-        admin_calculator_form=admin_calculator_form
-    )
+    # TEMP: minimal response to confirm login works and redirect is fine
+    return "OK: admin logged in", 200
 # ---------------------------
 # VIEW RATES
 # ---------------------------

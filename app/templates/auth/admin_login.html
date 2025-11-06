@@ -221,14 +221,20 @@
       {% endif %}
     {% endwith %}
 
-    <form method="POST" action="{{ url_for('admin_auth.admin_login') }}">
+    <form method="POST" action="{{ url_for('admin_auth.admin_login') }}" autocomplete="off">
       {{ form.hidden_tag() }}
 
       <label for="email">Email Address</label>
       {{ form.email(class="form-control", placeholder="admin@example.com", id="email") }}
+      {% for err in form.email.errors %}
+        <div class="alert alert-danger" style="margin-top:6px">{{ err }}</div>
+      {% endfor %}
 
       <label for="password">Password</label>
       {{ form.password(class="form-control", placeholder="Your Password", id="admin-password") }}
+      {% for err in form.password.errors %}
+        <div class="alert alert-danger" style="margin-top:6px">{{ err }}</div>
+      {% endfor %}
 
       <label class="show-password" for="toggle-admin-password">
         <input type="checkbox" id="toggle-admin-password" onclick="togglePassword('admin-password')" />

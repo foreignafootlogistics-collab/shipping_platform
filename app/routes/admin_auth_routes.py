@@ -67,49 +67,75 @@ def _check_password(user, plain: str) -> bool:
 
 
 # ---------- Admin Login ----------
-@admin_auth_bp.route("/login", methods=["GET", "POST"])
+@admin_auth_bp.route('/login', methods=['GET', 'POST'])
 def admin_login():
-    if current_user.is_authenticated and (
-        getattr(current_user, "role", None) == "admin" or getattr(current_user, "is_admin", False)
-    ):
-        return redirect(url_for("admin.dashboard"))
+    if current_user.is_authenticated and getattr(current_user, 'role', None) == 'admin':
+        return redirect(url_for('admin.dashboard'))
 
     form = AdminLoginForm()
     if form.validate_on_submit():
-        email = (form.email.data or "").strip().lower()
-        plain = form.password.data or ""
+        email = (form.email.data or "").strip()
+        raw_password = (form.password.data or "")
+        password_bytes = raw_password.encode("utf-8")
+
+        admin = User.query.filter_by(email=email, role='admin').first()
+
+        def _ok(msg):
+            current_app.logger.info(f"[ADMIN LOGIN] {msg}")
+
+        def _warn(msg):
+            current_app.logger.warning(f"[ADMIN LOGIN] {msg}")
+
+        if not admin:
+            _warn(f"no admin for email={email}")
+            flash("Invalid email or password.", "danger")
+            return render_template('auth/admin_login.html', form=form)
+
+        verified = False
 
         try:
-            # Find the user by email (case-insensitive)
-            user = User.query.filter(User.email.ilike(email)).first()
-            if not user:
-                flash("No account with that email.", "danger")
-                return render_template("auth/admin_login.html", form=form), 401
+            # 1) bcrypt bytes in `password`
+            if not verified and hasattr(admin, "password") and admin.password:
+                stored = admin.password
+                if isinstance(stored, str):
+                    stored = stored.encode("utf-8")
+                try:
+                    import bcrypt
+                    if bcrypt.checkpw(password_bytes, stored):
+                        verified = True
+                        _ok("bcrypt ok via admin.password")
+                except Exception as e:
+                    _warn(f"bcrypt check failed: {e}")
 
-            # Must be an admin
-            is_admin = (getattr(user, "role", None) == "admin") or bool(getattr(user, "is_admin", False))
-            if not is_admin:
-                flash("You do not have admin access.", "danger")
-                return render_template("auth/admin_login.html", form=form), 403
+            # 2) Werkzeug hash in `password_hash`
+            if not verified and hasattr(admin, "password_hash") and admin.password_hash:
+                try:
+                    from werkzeug.security import check_password_hash
+                    if check_password_hash(admin.password_hash, raw_password):
+                        verified = True
+                        _ok("werkzeug ok via admin.password_hash")
+                except Exception as e:
+                    _warn(f"werkzeug check failed: {e}")
 
-            # Check password robustly
-            if not _check_password(user, plain):
-                flash("Invalid email or password.", "danger")
-                return render_template("auth/admin_login.html", form=form), 401
-
-            login_user(user)
-            session["admin_id"] = user.id
-            session["role"] = "admin"
-            flash("Admin login successful!", "success")
-            return redirect(url_for("admin.dashboard"))
+            # 3) Plain text fallback (rare, legacy)
+            if not verified and hasattr(admin, "password") and isinstance(admin.password, str):
+                if admin.password == raw_password:
+                    verified = True
+                    _ok("plain-text fallback matched (legacy!)")
 
         except Exception as e:
-            current_app.logger.exception(f"[ADMIN LOGIN] error: {e}")
-            flash("Something went wrong while logging in. The issue has been logged.", "danger")
-            return render_template("auth/admin_login.html", form=form), 500
+            _warn(f"unexpected error while verifying password: {e}")
 
-    return render_template("auth/admin_login.html", form=form)
+        if verified:
+            login_user(admin)
+            session['admin_id'] = admin.id
+            session['role'] = 'admin'
+            flash("Admin login successful!", "success")
+            return redirect(url_for('admin.dashboard'))
 
+        flash("Invalid email or password.", "danger")
+
+    return render_template('auth/admin_login.html', form=form)
 
 # ---------- Admin Logout ----------
 @admin_auth_bp.route("/logout")

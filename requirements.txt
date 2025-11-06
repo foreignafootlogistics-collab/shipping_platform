@@ -46,8 +46,9 @@ flask-cors
 flask-login
 flask-migrate
 python-dotenv
-psycopg==3.2.12
-psycopg-binary==3.2.12
+psycopg[binary]==3.2.12
 
 
 
+
+alembic

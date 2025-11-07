@@ -40,8 +40,8 @@ import sqlalchemy as sa
 from sqlalchemy import func, extract
 from app.extensions import db
 from app.models import (
-    User, Wallet, Message, ScheduledDelivery, WalletTransaction, Package, Invoice, Notification, Payment, RateBracket  # existing
-    
+    User, Wallet, Message, ScheduledDelivery, WalletTransaction, Package, Invoice, Notification, Payment
+from app.models import AdminRate as RateBracket    
 )
 
 admin_bp = Blueprint(

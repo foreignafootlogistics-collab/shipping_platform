@@ -325,7 +325,14 @@ class AdminRate(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     max_weight = db.Column(db.Integer, nullable=False, unique=True, index=True)
-    rate = db.Column(db.Float, nullable=False)          # JMD cost for that bracket
+    rate = db.Column(db.Float, nullable=False)  # JMD cost for that bracket
 
     def __repr__(self):
         return f"<AdminRate {self.max_weight}lbs → {self.rate} JMD>"
+
+# ------------------------------------------
+# Backwards compatibility for old code:
+# allows import RateBracket from app.models
+# without breaking any existing logic
+# ------------------------------------------
+RateBracket = AdminRate

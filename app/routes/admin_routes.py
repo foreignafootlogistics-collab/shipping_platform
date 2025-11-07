@@ -42,6 +42,7 @@ from app.extensions import db
 from app.models import (
     User, Wallet, Message, ScheduledDelivery, WalletTransaction, Package, Invoice, Notification, Payment, RateBracket    
 )
+from app.routes.admin_auth_routes import admin_required
 
 admin_bp = Blueprint(
     'admin', __name__,

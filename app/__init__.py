@@ -91,6 +91,19 @@ def create_app():
         mail.init_app(app)
     except Exception:
         app.logger.warning("MAIL init skipped or failed; continuing without mail.")
+    
+    @app.teardown_request
+    def teardown_request(exc):
+        if exc:
+            db.session.rollback()
+        db.session.remove()
+
+    @app.template_filter("jmd")
+    def jmd(value):
+        try:
+            return f"JMD {float(value):,.2f}"
+        except (ValueError, TypeError):
+            return "JMD 0.00"
 
     # Login user loader
     @login_manager.user_loader

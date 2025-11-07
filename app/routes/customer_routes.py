@@ -1,7 +1,6 @@
-# app/routes/customer_routes.py
+# app/routes/customer_routes.py (imports)
 
-import os
-import re
+import os, re
 from math import ceil
 from datetime import datetime, date
 
@@ -14,25 +13,30 @@ from werkzeug.utils import secure_filename
 
 import bcrypt
 import sqlalchemy as sa
-from sqlalchemy import func
 
-from app.extensions import db
-from app.utils import email_utils
-from app.utils.helpers import customer_required
-from app.utils.invoice_utils import generate_invoice
+# Forms / utils
 from app.forms import (
     LoginForm, PersonalInfoForm, AddressForm, PasswordChangeForm,
     PreAlertForm, PackageUpdateForm, SendMessageForm, CalculatorForm
 )
-from app.calculator_data import CATEGORIES  # unified constant
+from app.utils import email_utils
+from app.utils.helpers import customer_required
+from app.utils.invoice_utils import generate_invoice
+from app.calculator_data import categories
 from app import allowed_file, mail
-from flask_mail import Message as MailMessage  # avoid name clash
+from app.extensions import db
 
-# MODELS (ORM)
+# Models — NO Bill model; alias Message to avoid clash with Flask-Mail's Message
 from app.models import (
-    User, Package, Prealert, AuthorizedPickup, ScheduledDelivery,
-    WalletTransaction, Notification, Message, Invoice, Payment, Bill  # Bill if you have it
+    User, Package, Invoice,
+    AuthorizedPickup, ScheduledDelivery,
+    Notification,
+    Message as DBMessage,  # 👈 avoid name clash with Flask-Mail
+    Wallet, WalletTransaction, Payment
 )
+
+# Email class from Flask-Mail (alias to avoid clash)
+from flask_mail import Message as MailMessage
 
 customer_bp = Blueprint('customer', __name__, template_folder='templates/customer')
 
@@ -359,36 +363,15 @@ def update_declared_value():
 # -----------------------------
 # Bills & Payments
 # -----------------------------
+# ===== Bills → Invoices list =====
 @customer_bp.route('/bills')
-@customer_required
+@login_required
 def view_bills():
-    # This assumes you have a Bill model. If the schema differs, adjust fields.
-    bills = (db.session.query(Bill, Package, Invoice)
-             .outerjoin(Package, Bill.package_id == Package.id)
-             .outerjoin(Invoice, sa.and_(Invoice.user_id == Bill.user_id,
-                                          Invoice.description == Bill.description))
-             .filter(Bill.user_id == current_user.id)
-             .order_by(Bill.created_at.desc())
-             .all())
-
-    # Build a simple list of dicts for template compatibility
-    rows = []
-    for b, p, i in bills:
-        rows.append({
-            "id": b.id,
-            "user_id": b.user_id,
-            "package_id": b.package_id,
-            "description": b.description,
-            "amount": b.amount,
-            "status": b.status,
-            "due_date": b.due_date,
-            "created_at": b.created_at,
-            "package_description": getattr(p, "description", None),
-            "package_status": getattr(p, "status", None),
-            "invoice_id": getattr(i, "id", None),
-        })
-    return render_template("customer/bills.html", bills=rows)
-
+    invoices = (Invoice.query
+                .filter_by(user_id=current_user.id)
+                .order_by(Invoice.date_submitted.desc().nullslast(), Invoice.id.desc())
+                .all())
+    return render_template("customer/bills.html", invoices=invoices)
 
 @customer_bp.route('/payments')
 @customer_required
@@ -401,44 +384,61 @@ def view_payments():
 
 
 @customer_bp.route('/submit-invoice', methods=['GET', 'POST'])
-@customer_required
+@login_required
 def submit_invoice():
-    user_id = current_user.id
-    bill_id = request.args.get('bill_id', type=int)
+    # expect ?package_id=123 in the query string
+    package_id = request.args.get('package_id', type=int)
 
     if request.method == 'POST':
         declared_value = request.form.get('declared_value')
-        description = request.form.get('description')
-        invoice_file = request.files.get('invoice_file')
+        invoice_file   = request.files.get('invoice_file')
 
-        if not (invoice_file and allowed_file(invoice_file.filename)):
+        if not package_id:
+            flash("Missing package id.", "danger")
+            return redirect(url_for('customer.view_packages'))
+
+        # validate package belongs to current user
+        pkg = Package.query.filter_by(id=package_id, user_id=current_user.id).first()
+        if not pkg:
+            flash("Package not found or unauthorized.", "danger")
+            return redirect(url_for('customer.view_packages'))
+
+        # basic file checks
+        if not (invoice_file and invoice_file.filename):
+            flash("Please attach an invoice file (PDF/JPG/PNG).", "warning")
+            return redirect(request.url)
+
+        if not allowed_file(invoice_file.filename):  # expects pdf/jpg/jpeg/png
             flash("Invalid file type. Please upload PDF, JPG, or PNG.", "danger")
             return redirect(request.url)
 
+        # save the file
         filename = secure_filename(invoice_file.filename)
         upload_folder = current_app.config.get('UPLOAD_FOLDER', INVOICE_UPLOAD_FOLDER)
         os.makedirs(upload_folder, exist_ok=True)
         invoice_file.save(os.path.join(upload_folder, filename))
 
-        # Ensure bill belongs to user
-        bill = Bill.query.filter_by(id=bill_id, user_id=user_id).first()
-        if not bill:
-            flash("Bill not found or unauthorized.", "danger")
-            return redirect(url_for('customer.view_bills'))
+        # persist to this package
+        try:
+            if declared_value:
+                try:
+                    pkg.declared_value = float(declared_value)
+                except ValueError:
+                    flash("Declared value must be a number.", "warning")
+                    return redirect(request.url)
 
-        pkg = Package.query.filter_by(id=bill.package_id, user_id=user_id).first()
-        if not pkg:
-            flash("Package not found or unauthorized.", "danger")
-            return redirect(url_for('customer.view_bills'))
+            pkg.invoice_file = filename
+            db.session.commit()
+            flash("Invoice submitted successfully and package updated.", "success")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Failed to save invoice: {e}", "danger")
 
-        pkg.declared_value = declared_value
-        pkg.invoice_file = filename
-        db.session.commit()
+        return redirect(url_for('customer.view_packages'))
 
-        flash("Invoice submitted successfully and package updated.", "success")
-        return redirect(url_for('customer.view_bills'))
+    # GET — show form; keep passing the package_id so the form action keeps it
+    return render_template('customer/submit_invoice.html', package_id=package_id)
 
-    return render_template('customer/submit_invoice.html', bill_id=bill_id)
 
 
 # -----------------------------
@@ -546,41 +546,48 @@ def invoice_pdf(invoice_id):
 def view_messages():
     form = SendMessageForm()
 
-    # Choose an admin recipient
-    admin = User.query.filter_by(is_admin=True).order_by(User.id.asc()).first() or User.query.order_by(User.id.asc()).first()
+    # Choose an admin recipient (first admin, else first user)
+    admin = (
+        User.query.filter_by(is_admin=True).order_by(User.id.asc()).first()
+        or User.query.order_by(User.id.asc()).first()
+    )
 
     if request.method == "POST" and form.validate_on_submit():
         if not admin:
             flash("No admin user found to receive messages.", "danger")
             return redirect(url_for("customer.view_messages"))
 
-        msg = Message(
+        msg = DBMessage(  # 👈 use DBMessage (your ORM model)
             sender_id=current_user.id,
             recipient_id=admin.id,
             subject=form.subject.data.strip(),
             body=form.body.data.strip(),
-            created_at=datetime.utcnow()
+            created_at=datetime.utcnow(),
         )
         db.session.add(msg)
         db.session.commit()
         flash("Message sent!", "success")
         return redirect(url_for("customer.view_messages"))
 
-    inbox = (Message.query
-             .filter_by(recipient_id=current_user.id)
-             .order_by(Message.created_at.desc())
-             .all())
-    sent = (Message.query
-            .filter_by(sender_id=current_user.id)
-            .order_by(Message.created_at.desc())
-            .all())
+    inbox = (
+        DBMessage.query
+        .filter_by(recipient_id=current_user.id)
+        .order_by(DBMessage.created_at.desc())
+        .all()
+    )
+    sent = (
+        DBMessage.query
+        .filter_by(sender_id=current_user.id)
+        .order_by(DBMessage.created_at.desc())
+        .all()
+    )
     return render_template("customer/messages.html", form=form, inbox=inbox, sent=sent)
 
 
 @customer_bp.route("/messages/mark_read/<int:msg_id>", methods=["POST"])
 @login_required
 def mark_message_read(msg_id):
-    msg = Message.query.get_or_404(msg_id)
+    msg = DBMessage.query.get_or_404(msg_id)  # 👈 use DBMessage
     if msg.recipient_id != current_user.id:
         flash("Not authorized.", "danger")
         return redirect(url_for("customer.view_messages"))
@@ -596,18 +603,22 @@ def inject_message_counts():
     count = 0
     try:
         if current_user.is_authenticated:
-            count = db.session.scalar(
-                sa.select(func.count()).select_from(Message).where(
-                    Message.recipient_id == current_user.id,
-                    Message.is_read.is_(False)
+            count = (
+                db.session.scalar(
+                    sa.select(sa.func.count())
+                    .select_from(DBMessage)
+                    .where(
+                        DBMessage.recipient_id == current_user.id,
+                        DBMessage.is_read.is_(False),
+                    )
                 )
-            ) or 0
+                or 0
+            )
     except Exception as e:
         db.session.rollback()
         current_app.logger.warning("inject_message_counts failed: %s", e)
         count = 0
     return dict(unread_messages_count=int(count))
-
 
 # -----------------------------
 # Notifications

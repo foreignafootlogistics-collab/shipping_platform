@@ -4,49 +4,59 @@
 {% block content %}
 <h2>Package Details</h2>
 
-<ul>
+<ul class="list-unstyled">
   <li><strong>Invoice:</strong>
     {% if pkg.invoice_file %}
       <a href="{{ url_for('static', filename='invoices/' ~ pkg.invoice_file) }}" target="_blank">View Invoice</a>
     {% else %}
-      Not uploaded
+      <span class="text-muted">Not uploaded</span>
     {% endif %}
   </li>
 
-  <li><strong>House AWB:</strong> {{ pkg.house_awb }}</li>
-  <li><strong>Status:</strong> {{ pkg.status }}</li>
-  <li><strong>Description:</strong> {{ pkg.description }}</li>
-  <li><strong>Tracking Number:</strong> {{ pkg.tracking_number }}</li>
-  <li><strong>Weight:</strong> {{ pkg.weight|float|round(0, 'ceil') }} lbs</li>
-  <li><strong>Date Received:</strong> 
-    {% if pkg.received_date %}
-      {{ pkg.received_date|datetimeformat('%Y-%m-%d %H:%M:%S') }}
+  <li><strong>House AWB:</strong> {{ pkg.house_awb or "-" }}</li>
+  <li><strong>Status:</strong> {{ pkg.status or "-" }}</li>
+  <li><strong>Description:</strong> {{ pkg.description or "-" }}</li>
+  <li><strong>Tracking Number:</strong> {{ pkg.tracking_number or "-" }}</li>
+  <li><strong>Weight:</strong>
+    {% if pkg.weight is not none %}
+      {{ (pkg.weight|float)|round(0, 'ceil') }} lbs
     {% else %}
       <span class="text-muted">Not available</span>
     {% endif %}
   </li>
-  <li><strong>Declared Value:</strong> {{ (pkg.declared_value or 65)|currency }}</li>
-  <li><strong>Amount Due:</strong> 
-    {% if pkg.status == 'ready_to_pick_up' %}
-      {{ pkg.amount_due|currency }}
+  <li><strong>Date Received:</strong>
+    {% if pkg.received_date %}
+      {{ pkg.received_date }} {# stored as text in DB; shown as-is #}
     {% else %}
-      $0.00
+      <span class="text-muted">Not available</span>
+    {% endif %}
+  </li>
+  <li><strong>Declared Value:</strong> {{ (pkg.declared_value or 65)|jmd }}</li>
+  <li><strong>Amount Due:</strong>
+    {% if (pkg.status or '')|lower == 'ready for pick up' %}
+      {{ (pkg.amount_due or 0)|jmd }}
+    {% else %}
+      {{ 0|jmd }}
     {% endif %}
   </li>
 </ul>
 
-{% if pkg.status == 'overseas' %}
+{# Allow submit only while Overseas #}
+{% if (pkg.status or '')|lower == 'overseas' %}
   <hr>
   <h3>Submit Invoice & Declared Value</h3>
 
-  <form method="POST" enctype="multipart/form-data" class="mb-3">
+  <form method="POST"
+        enctype="multipart/form-data"
+        action="{{ url_for('customer.package_detail', pkg_id=pkg.id) }}"
+        class="mb-3">
     {{ form.hidden_tag() }}
 
     <div class="mb-3">
       {{ form.declared_value.label(class="form-label") }}
       {{ form.declared_value(class="form-control", value=pkg.declared_value or 65) }}
       {% if form.declared_value.errors %}
-        <div class="text-danger">{{ form.declared_value.errors[0] }}</div>
+        <div class="text-danger small">{{ form.declared_value.errors[0] }}</div>
       {% endif %}
     </div>
 
@@ -54,14 +64,17 @@
       {{ form.invoice_file.label(class="form-label") }}
       {{ form.invoice_file(class="form-control") }}
       {% if form.invoice_file.errors %}
-        <div class="text-danger">{{ form.invoice_file.errors[0] }}</div>
+        <div class="text-danger small">{{ form.invoice_file.errors[0] }}</div>
       {% endif %}
     </div>
 
-    <button type="submit" class="btn btn-dashboard">Submit</button>
+    <button type="submit" class="btn btn-primary">Submit</button>
+    <a class="btn btn-outline-secondary"
+       href="{{ url_for('customer.submit_invoice', package_id=pkg.id) }}">
+      Use full-page uploader
+    </a>
   </form>
 {% endif %}
 
 <a href="{{ url_for('customer.view_packages') }}">← Back to Packages</a>
 {% endblock %}
-

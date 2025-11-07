@@ -330,9 +330,5 @@ class AdminRate(db.Model):
     def __repr__(self):
         return f"<AdminRate {self.max_weight}lbs → {self.rate} JMD>"
 
-# ------------------------------------------
-# Backwards compatibility for old code:
-# allows import RateBracket from app.models
-# without breaking any existing logic
-# ------------------------------------------
+# Back-compat
 RateBracket = AdminRate

@@ -10,7 +10,7 @@ from flask import Blueprint, render_template, request
 from flask_login import login_required
 
 from app.extensions import db
-from app.models import User, Package, Invoice, Prealert, ScheduledDelivery, Expense, ShipmentLog, shipment_packages
+from app.models import User, Package, Invoice, Prealert, ScheduledDelivery, ShipmentLog, shipment_packages
 from app.routes.admin_auth_routes import admin_required
 
 analytics_bp = Blueprint("analytics", __name__, url_prefix="/analytics")

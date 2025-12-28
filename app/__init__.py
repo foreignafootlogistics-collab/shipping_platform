@@ -197,6 +197,8 @@ def create_app():
     from .routes.finance import finance_bp
     from .routes.settings import settings_bp
     from .routes.api_routes import api_bp
+    from .routes.analytics_routes import analytics_bp
+
 
     app.register_blueprint(customer_bp, url_prefix='/customer')
     app.register_blueprint(admin_bp, url_prefix='/admin')
@@ -209,11 +211,25 @@ def create_app():
     app.register_blueprint(finance_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(analytics_bp, url_prefix='/analytics')
+
 
     # Basic routes
-    @app.route('/')
+    @app.route("/", methods=["GET"])
     def index():
-        return "Welcome to Foreign A Foot Logistics!"
+        # If already logged in, send them where they belong
+        from flask_login import current_user
+
+        if current_user.is_authenticated:
+            # admin users
+            if getattr(current_user, "is_admin", False) or getattr(current_user, "role", "") == "admin":
+                return redirect(url_for("admin.dashboard"))
+            # customers
+            return redirect(url_for("customer.customer_dashboard"))
+
+        # not logged in → customer login page
+        return redirect(url_for("auth.login"))
+
 
     @app.route("/api/health")
     def api_health_inline():

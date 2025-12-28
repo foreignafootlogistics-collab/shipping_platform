@@ -80,7 +80,7 @@ def _to_date(value):
     return None
 
 @analytics_bp.route("/daily-stats")
-@admin_required()
+@admin_required
 def daily_stats():
     today = date.today()
     start_7 = today - timedelta(days=6)        # window for last 7 days
@@ -216,7 +216,7 @@ def daily_stats():
 # CUSTOMER RETENTION OVERVIEW
 # ---------------------------------------------
 @analytics_bp.route('/customer/retention')
-@admin_required()
+@admin_required
 def customer_retention():
     today = date.today()
     d60 = today - timedelta(days=60)
@@ -645,7 +645,7 @@ def shipment_performance():
 
 
 @analytics_bp.route("/customer/segments")
-@admin_required()
+@admin_required
 def customer_segments():
     """
     Customer segmentation based on package activity in the last 90 days.

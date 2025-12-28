@@ -1,8 +1,8 @@
 # app/__init__.py
 import os
 from datetime import datetime
-from flask import Flask, render_template, redirect, url_for, jsonify
-from flask_mail import Mail, current_app
+from flask import Flask, render_template, redirect, url_for, jsonify, current_app
+from flask_mail import Mail
 from itsdangerous import URLSafeTimedSerializer
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_migrate import Migrate

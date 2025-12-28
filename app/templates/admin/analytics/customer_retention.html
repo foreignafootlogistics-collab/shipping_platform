@@ -1,0 +1,244 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Analytics & Insights — Customer Retention{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <h2 class="fw-bold" style="color:#4a148c;">Analytics &amp; Insights — Customer Retention</h2>
+  <p class="text-muted mb-4">
+    Snapshot based on package activity and registrations around today
+    ({{ today.isoformat() }}).
+  </p>
+
+  <!-- Top summary cards -->
+  <div class="row g-4 mb-4">
+    <!-- Active in last 60 days -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">
+            <i class="bi bi-people-fill me-1"></i> Active (Last 60 Days)
+          </h6>
+          <h3 class="mb-0">{{ active_users }}</h3>
+          <small class="text-muted">Users with packages in the last 60 days</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Previously active 60–120 days ago -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">
+            <i class="bi bi-arrow-left-right me-1"></i> Previously Active
+          </h6>
+          <h3 class="mb-0">{{ prev_active_users }}</h3>
+          <small class="text-muted">Had packages 60–120 days ago</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Returning users -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">
+            <i class="bi bi-arrow-repeat me-1"></i> Returning Users
+          </h6>
+          <h3 class="mb-0">{{ returning_users }}</h3>
+          <small class="text-muted">Active now & were active before</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- New users last 30 days -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">
+            <i class="bi bi-person-plus-fill me-1"></i> New Users (Last 30 Days)
+          </h6>
+          <h3 class="mb-0">{{ new_users }}</h3>
+          <small class="text-muted">Registered in the last 30 days</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Retention vs Churn -->
+  <div class="row g-4 mb-4">
+    <div class="col-md-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title mb-3">Retention Overview</h5>
+
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="text-muted">Retention Rate</span>
+            <span class="fw-bold text-success">{{ retention_rate }}%</span>
+          </div>
+          <div class="progress mb-3" style="height: 12px;">
+            <div class="progress-bar bg-success"
+                 role="progressbar"
+                 style="width: {{ retention_rate }}%;"
+                 aria-valuenow="{{ retention_rate }}"
+                 aria-valuemin="0"
+                 aria-valuemax="100">
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="text-muted">Churn Rate</span>
+            <span class="fw-bold text-danger">{{ churn_rate }}%</span>
+          </div>
+          <div class="progress" style="height: 12px;">
+            <div class="progress-bar bg-danger"
+                 role="progressbar"
+                 style="width: {{ churn_rate }}%;"
+                 aria-valuenow="{{ churn_rate }}"
+                 aria-valuemin="0"
+                 aria-valuemax="100">
+            </div>
+          </div>
+
+          <p class="mt-3 small text-muted">
+            Retention and churn are calculated based on users who were active
+            60–120 days ago and whether they are still active in the last 60 days.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Simple breakdown numbers -->
+    <div class="col-md-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h5 class="card-title mb-3">Breakdown</h5>
+          <table class="table table-sm align-middle mb-0">
+            <tbody>
+              <tr>
+                <th scope="row" style="width: 50%;">Previously Active (60–120 days ago)</th>
+                <td class="text-end">{{ prev_active_users }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Returning (still active now)</th>
+                <td class="text-end text-success">{{ returning_users }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Churned (no activity in last 60 days)</th>
+                <td class="text-end text-danger">{{ churned_users }}</td>
+              </tr>
+              <tr>
+                <th scope="row">Active Now (last 60 days)</th>
+                <td class="text-end">{{ active_users }}</td>
+              </tr>
+              <tr>
+                <th scope="row">New Customers (last 30 days)</th>
+                <td class="text-end">{{ new_users }}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p class="mt-3 small text-muted">
+            This section helps you understand how many customers are coming back
+            vs. how many are becoming inactive, based on package activity.
+          </p>
+        </div>
+      </div>
+    </div>   
+  </div>  
+  <div class="row g-4">
+    <!-- Returning Customers Table -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-success text-white">
+          <h5 class="mb-0">
+            <i class="bi bi-arrow-repeat me-2"></i>Returning Customers (Last 10)
+          </h5>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-striped mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th>Reg #</th>
+                  <th>Last Activity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if returning_customers and returning_customers|length > 0 %}
+                  {% for u in returning_customers %}
+                    <tr>
+                      <td>{{ u.full_name }}</td>
+                      <td>{{ u.registration_number }}</td>
+                      <td>{{ u.last_activity }}</td>
+                    </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="3" class="text-center text-muted py-3">
+                      No returning customers found for this period.
+                    </td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Churned Customers Table -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-header bg-danger text-white">
+          <h5 class="mb-0">
+            <i class="bi bi-person-x-fill me-2"></i>Churned Customers (Last 10)
+          </h5>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-striped mb-0 align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th>Reg #</th>
+                  <th>Last Activity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if churned_customers and churned_customers|length > 0 %}
+                  {% for u in churned_customers %}
+                    <tr>
+                      <td>{{ u.full_name }}</td>
+                      <td>{{ u.registration_number }}</td>
+                      <td>{{ u.last_activity }}</td>
+                    </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="3" class="text-center text-muted py-3">
+                      No churned customers found for this period.
+                    </td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>  {# <- closes the row g-4 #}
+
+  <!-- Info note -->
+  <div class="alert alert-info small mt-4">
+    <strong>How this works:</strong>
+    <ul class="mb-0">
+      <li><strong>Activity</strong> is based on package dates (received/created).</li>
+      <li><strong>New Users</strong> are based on their registration date.</li>
+      <li><strong>Retention</strong> = Returning / Previously Active.</li>
+      <li><strong>Churn</strong> = Churned / Previously Active.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+

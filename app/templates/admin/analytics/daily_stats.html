@@ -1,0 +1,174 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Analytics & Insights — Daily Snapshot{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+  <h2 class="fw-bold" style="color:#4a148c;">Analytics &amp; Insights — Daily Snapshot</h2>
+
+  <!-- ===== TOP ROW: TODAY STATS ===== -->
+  <div class="row g-3 mb-4">
+
+    <!-- New Customers Today -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">
+              <i class="fas fa-user-plus me-1"></i> New Customers Today
+            </h6>
+          </div>
+          <div class="display-6 fw-bold">{{ today_new_users }}</div>
+          <small class="text-muted d-block mt-1">
+            Based on <code>date_registered</code> / <code>created_at</code>
+          </small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Packages Uploaded Today -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">
+              <i class="fas fa-box-open me-1"></i> Packages Uploaded Today
+            </h6>
+          </div>
+          <div class="display-6 fw-bold">{{ today_new_packages }}</div>
+          <small class="text-muted d-block mt-1">
+            Based on package <code>created_at</code> / <code>date_received</code>
+          </small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pre-Alerts Today -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">
+              <i class="fas fa-bell me-1"></i> Pre-Alerts Today
+            </h6>
+          </div>
+          <div class="display-6 fw-bold">{{ today_prealerts }}</div>
+          <small class="text-muted d-block mt-1">
+            Pre-alerts created today
+          </small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Deliveries Today -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">
+              <i class="fas fa-truck me-1"></i> Deliveries Today
+            </h6>
+          </div>
+          <div class="display-6 fw-bold">{{ today_deliveries }}</div>
+          <small class="text-muted d-block mt-1">
+            Scheduled for today
+          </small>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== SECOND ROW: THIS MONTH STATS ===== -->
+  <div class="row g-3 mb-4">
+
+    <!-- New Customers This Month -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="mb-2">
+            <i class="fas fa-user-friends me-1"></i> New Customers This Month
+          </h6>
+          <div class="display-6 fw-bold">{{ month_new_users }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Packages This Month -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="mb-2">
+            <i class="fas fa-boxes me-1"></i> Packages This Month
+          </h6>
+          <div class="display-6 fw-bold">{{ month_new_packages }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pre-Alerts This Month -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="mb-2">
+            <i class="fas fa-bell me-1"></i> Pre-Alerts This Month
+          </h6>
+          <div class="display-6 fw-bold">{{ month_prealerts }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Deliveries This Month -->
+    <div class="col-md-3">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h6 class="mb-2">
+            <i class="fas fa-truck-loading me-1"></i> Deliveries This Month
+          </h6>
+          <div class="display-6 fw-bold">{{ month_deliveries }}</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== LAST 7 DAYS TABLE ===== -->
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Last 7 Days Activity</h5>
+      <small class="text-muted">Today: {{ today.isoformat() }}</small>
+    </div>
+    <div class="card-body table-responsive">
+      <table class="table table-striped align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Date</th>
+            <th class="text-end">New Customers</th>
+            <th class="text-end">Packages Uploaded</th>
+            <th class="text-end">Pre-Alerts</th>
+            <th class="text-end">Deliveries</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in last7_stats %}
+          <tr class="{% if row.date == today.isoformat() %}table-primary{% endif %}">
+            <td>
+              {{ row.date }}
+              {% if row.date == today.isoformat() %}
+                <span class="badge bg-primary ms-1">Today</span>
+              {% endif %}
+            </td>
+            <td class="text-end">{{ row.users }}</td>
+            <td class="text-end">{{ row.packages }}</td>
+            <td class="text-end">{{ row.prealerts }}</td>
+            <td class="text-end">{{ row.deliveries }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+

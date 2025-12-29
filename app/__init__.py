@@ -98,6 +98,17 @@ def create_app():
         BASE_URL=os.getenv('BASE_URL', 'http://localhost:5000'),
     )
 
+    # Production cookie security (Render / HTTPS)
+    if os.getenv("FLASK_ENV") == "production" or os.getenv("RENDER") == "true":
+        app.config.update(
+            SESSION_COOKIE_SECURE=True,
+            SESSION_COOKIE_HTTPONLY=True,
+            SESSION_COOKIE_SAMESITE="Lax",
+            REMEMBER_COOKIE_SECURE=True,
+            REMEMBER_COOKIE_HTTPONLY=True,
+            REMEMBER_COOKIE_SAMESITE="Lax",
+        )
+
     # Extensions
     db.init_app(app)
     migrate.init_app(app, db)

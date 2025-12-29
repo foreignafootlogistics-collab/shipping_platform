@@ -286,10 +286,6 @@ def create_app():
     # Import models and do one-time boot work
     from . import models  # noqa: F401
     with app.app_context():
-        try:
-            _ensure_first_admin()
-        except Exception as e:
-            app.logger.warning(f"[ADMIN SEED] failed: {e}")
         app.logger.info("[BOOT] App ready.")
 
     return app

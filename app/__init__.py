@@ -143,10 +143,18 @@ def create_app():
 
     @app.context_processor
     def inject_calculator_form():
-        return {
-            "calculator_form": CalculatorForm(),
-            "admin_calculator_form": AdminCalculatorForm()
-        }
+        try:
+            return {
+                "calculator_form": CalculatorForm(),
+                "admin_calculator_form": AdminCalculatorForm(),
+            }
+        except Exception:
+            # NEVER return None from a context_processor
+            return {
+                "calculator_form": None,
+                "admin_calculator_form": None,
+            }
+
 
     @app.context_processor
     def inject_settings():

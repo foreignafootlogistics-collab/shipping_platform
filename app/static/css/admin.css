@@ -294,3 +294,32 @@ footer {
 .admin-profile-img:hover {
   transform: scale(1.05);
 }
+/* ================================
+   Mobile Sidebar (Bootstrap collapse)
+   ================================ */
+@media (max-width: 767.98px) {
+
+  /* Sidebar becomes an off-canvas overlay */
+  #adminSidebar.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 280px;               /* you can adjust */
+    z-index: 1040;              /* above page content */
+    overflow-y: auto;
+    transform: translateX(-100%);  /* hidden by default */
+    transition: transform .25s ease-in-out;
+  }
+
+  /* When collapse is open */
+  #adminSidebar.sidebar.show {
+    transform: translateX(0);
+  }
+
+  /* Main content should take full width on mobile */
+  main.content {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+}

@@ -1,9 +1,10 @@
-# app/models.py
-from datetime import datetime
+# at the top of app/models.py (or wherever User lives)
 import hashlib
+import random
+import string
+from datetime import datetime
 from flask_login import UserMixin
-from app.extensions import db  # ✅ single source of truth for SQLAlchemy
-
+from app.extensions import db
 
 # -------------------------------
 # User and Wallet Models
@@ -14,7 +15,11 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String, nullable=False, unique=True, index=True)
     password = db.Column(db.LargeBinary, nullable=False)
-    role = db.Column(db.String, nullable=False, default='customer')
+
+    role = db.Column(db.String(50), nullable=False, default='customer')
+    # customer | admin | accounts_manager | finance | operations | etc.
+    is_superadmin = db.Column(db.Boolean, default=False)
+
     full_name = db.Column(db.String)
     trn = db.Column(db.String)
     mobile = db.Column(db.String)
@@ -25,8 +30,9 @@ class User(db.Model, UserMixin):
     date_registered = db.Column(db.String)
     address = db.Column(db.String)
     wallet_balance = db.Column(db.Float, default=0.0)
+
     referred_by = db.Column(db.Integer)
-    referral_code = db.Column(db.String)
+    referral_code = db.Column(db.String, unique=True)  # <--- unique
     referrer_id = db.Column(db.Integer)
     is_admin = db.Column(db.Boolean, default=False)
 
@@ -49,6 +55,19 @@ class User(db.Model, UserMixin):
     def __repr__(self):
         return f"<User {self.email}>"
 
+    @staticmethod
+    def generate_referral_code(full_name: str) -> str:
+        """
+        Creates a referral code in the format:
+        FAFL-FIRSTNAME-1234
+        """
+        if not full_name:
+            base = "USER"
+        else:
+            base = full_name.split()[0].upper()  # first name only
+
+        rand = str(random.randint(1000, 9999))
+        return f"FAFL-{base}-{rand}"
 
 class Wallet(db.Model):
     __tablename__ = 'wallets'
@@ -93,24 +112,30 @@ class Invoice(db.Model):
     invoice_number = db.Column(db.String, unique=True, nullable=False, index=True)
     description = db.Column(db.String)
 
-    # Totals across packages
+    # Totals
     total_weight = db.Column(db.Float, default=0)
     invoice_value = db.Column(db.Float, default=0)
 
-    # Breakdown fields (summed across packages)
     duty = db.Column(db.Float, default=0)
     scf = db.Column(db.Float, default=0)
     envl = db.Column(db.Float, default=0)
     caf = db.Column(db.Float, default=0)
     gct = db.Column(db.Float, default=0)
     handling = db.Column(db.Float, default=0)
-    total = db.Column(db.Float, default=0)
 
-    # Metadata
-    status = db.Column(db.String, default="unpaid")
+    # NEW REQUIRED FIELDS FOR FINANCE
+    amount = db.Column(db.Float, default=0)         # legacy
+    amount_due = db.Column(db.Float, default=0)     # open balance
+    grand_total = db.Column(db.Float, default=0)    # full sum with fees
+
+    # DATES
+    date_issued = db.Column(db.DateTime)            # NEW required
     date_submitted = db.Column(db.DateTime)
     date_paid = db.Column(db.DateTime)
     due_date = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # NEW required
+
+    status = db.Column(db.String, default="unpaid")
 
     user = db.relationship("User", back_populates="invoices")
     packages = db.relationship("Package", back_populates="invoice", lazy=True)
@@ -118,38 +143,55 @@ class Invoice(db.Model):
     def __repr__(self):
         return f"<Invoice {self.invoice_number} User {self.user_id}>"
 
-
 class Package(db.Model):
     __tablename__ = 'packages'
 
     id = db.Column(db.Integer, primary_key=True)
-    house_number = db.Column(db.String)
-    manifest_date = db.Column(db.String)
-    customer_name = db.Column(db.String)
-    customer_id = db.Column(db.String)
-    merchant = db.Column(db.String)
-    tracking_number = db.Column(db.String, index=True)
-    date_received = db.Column(db.String)
-    weight = db.Column(db.Numeric(10, 2))  # keep as Numeric if you need exact decimals
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
-    external_company = db.Column(db.Boolean, default=False)  # True if from the other company
 
-    # Link to invoices
-    invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True, index=True)
-
-    description = db.Column(db.String)
-    status = db.Column(db.String)
-    received_date = db.Column(db.String)
-    created_at = db.Column(db.String)
+    # Admin input fields
     house_awb = db.Column(db.String)
-    value = db.Column(db.Float, default=99)
-    amount_due = db.Column(db.Float, default=0)
-    invoice_file = db.Column(db.String)
+    merchant = db.Column(db.String)
+    description = db.Column(db.String)
+    tracking_number = db.Column(db.String, index=True)
+    shipper = db.Column(db.String(255))
+
+    epc = db.Column(db.Integer, default=0, nullable=False)
+
+    # Customer/user
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    external_company = db.Column(db.Boolean, default=False)
+
+    # Dates — FIXED
+    received_date = db.Column(db.DateTime)   # when package reached JA
+    date_received = db.Column(db.DateTime)   # keep legacy compatibility
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Weight / Value
+    weight = db.Column(db.Float, default=0.00)
     declared_value = db.Column(db.Float)
+    value = db.Column(db.Float, default=99)
+
+    # Invoice linkage
+    invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True, index=True)
+    invoice_file = db.Column(db.String)
+
+    # Finance
+    amount_due = db.Column(db.Float, default=0)
+
+    # Status and destination
+    status = db.Column(db.String, default="Overseas")
     destination_country = db.Column(db.String)
 
+    # Relations
     user = db.relationship('User', back_populates='packages')
     invoice = db.relationship('Invoice', back_populates='packages')
+
+    # Shipment many-to-many
+    shipments = db.relationship(
+        'ShipmentLog',
+        secondary='shipment_packages',
+        back_populates='packages'
+    )
 
     def __repr__(self):
         return f"<Package {self.tracking_number} User {self.user_id}>"
@@ -162,21 +204,22 @@ class ShipmentLog(db.Model):
     sl_id = db.Column(db.String, unique=True, nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # relationship to packages through association table (defined below)
-    packages = db.relationship('Package', secondary='shipment_packages', back_populates='shipments')
+    packages = db.relationship(
+        'Package',
+        secondary='shipment_packages',
+        back_populates='shipments'
+    )
 
     def __repr__(self):
         return f"<ShipmentLog {self.sl_id}>"
 
 
-# Association table for many-to-many
 shipment_packages = db.Table(
     'shipment_packages',
     db.Column('shipment_id', db.Integer, db.ForeignKey('shipment_log.id')),
     db.Column('package_id', db.Integer, db.ForeignKey('packages.id'))
 )
 
-# Attach reverse relationship to Package
 Package.shipments = db.relationship('ShipmentLog', secondary=shipment_packages, back_populates='packages')
 
 
@@ -185,20 +228,24 @@ class Prealert(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+
     vendor_name = db.Column(db.String)
     courier_name = db.Column(db.String)
     tracking_number = db.Column(db.String, index=True)
-    purchase_date = db.Column(db.String)
     package_contents = db.Column(db.String)
+
+    purchase_date = db.Column(db.Date)  # FIXED from string → date object
     item_value_usd = db.Column(db.Float)
+
     invoice_filename = db.Column(db.String)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     prealert_number = db.Column(db.Integer)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship('User', back_populates='prealerts')
 
     def __repr__(self):
-        return f"<Prealert {self.prealert_number} Customer {self.customer_id}>"
+        return f"<Prealert PA-{self.prealert_number}>"
 
 
 # -------------------------------
@@ -332,3 +379,129 @@ class AdminRate(db.Model):
 
 # Back-compat
 RateBracket = AdminRate
+
+class Expense(db.Model):
+    __tablename__ = "expenses"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)              # stored as a calendar date
+    category = db.Column(db.String(100), nullable=False)   # e.g. Rent, Fuel, Salaries
+    amount = db.Column(db.Float, nullable=False, default=0.0)
+    description = db.Column(db.String(255))
+
+    def __repr__(self):
+        return f"<Expense {self.id} {self.category} {self.amount}>"
+
+# -------------------------------
+# Settings (company / display / rates)
+# -------------------------------
+class Settings(db.Model):
+    __tablename__ = "settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Company info
+    company_name    = db.Column(db.String(255))
+    company_address = db.Column(db.String(255))
+    company_email   = db.Column(db.String(255))
+
+    # Logo path relative to /static
+    logo_path = db.Column(db.String(255))
+
+    # Display & currency
+    currency_code   = db.Column(db.String(10), default="JMD")
+    currency_symbol = db.Column(db.String(10), default="$")
+    usd_to_jmd      = db.Column(db.Float, default=0.0)
+    date_format     = db.Column(db.String(32), default="%Y-%m-%d")
+
+    # Legacy simple rates (you can still use these elsewhere if you want)
+    base_rate    = db.Column(db.Float, default=0.0)
+    handling_fee = db.Column(db.Float, default=0.0)
+
+    # --- FREIGHT TAB (top of 2nd screenshot) ---
+    # “Special Bill freight Below 1lb (JMD)”
+    special_below_1lb_jmd   = db.Column(db.Numeric(10, 2), default=0)
+
+    # “JMD Charge Per 0.1 lb Below 1lb”
+    per_0_1lb_below_1lb_jmd = db.Column(db.Numeric(10, 2), default=0)
+
+    # “Minimum Billable Weight”
+    min_billable_weight     = db.Column(db.Integer, default=1)
+
+    # “JMD Per Lb rate above 100Lbs”
+    per_lb_above_100_jmd    = db.Column(db.Numeric(10, 2), default=0)
+
+    # “JMD Handling Fee above 100Lbs”
+    handling_above_100_jmd  = db.Column(db.Numeric(10, 2), default=0)
+
+    # “Weight Rounding Method” (Always Round Up / Nearest, etc.)
+    weight_round_method     = db.Column(db.String(50), default="round_up")
+
+    # --- CUSTOMS/DUTY TAB (1st screenshot) ---
+    # “Customs Duty Enabled” checkbox
+    customs_enabled       = db.Column(db.Boolean, default=True)
+
+    # “Customs Exchange Rate”
+    customs_exchange_rate = db.Column(db.Numeric(10, 4), default=155)
+
+    # “GCT 25 (%)”
+    gct_25_rate           = db.Column(db.Numeric(5, 2), default=25)
+
+    # “GCT 15 (%)”
+    gct_15_rate           = db.Column(db.Numeric(5, 2), default=15)
+
+    # “Customs CAF Residential (JMD)”
+    caf_residential_jmd   = db.Column(db.Numeric(10, 2), default=2500)
+
+    # “Customs CAF Commercial (JMD)”
+    caf_commercial_jmd    = db.Column(db.Numeric(10, 2), default=5000)
+
+    # “Customs Diminimis Point (USD)”
+    diminis_point_usd     = db.Column(db.Numeric(10, 2), default=100)
+
+    # “Default Duty Rate (%)”
+    default_duty_rate     = db.Column(db.Numeric(5, 2), default=20)
+
+    # “Customs Insurance Rate (%)”
+    insurance_rate        = db.Column(db.Numeric(5, 2), default=1)
+
+    # “Customs SCF Rate (%)”
+    scf_rate              = db.Column(db.Numeric(5, 2), default=0.3)
+
+    # “Customs ENVL Rate (%)”
+    envl_rate             = db.Column(db.Numeric(5, 2), default=0.5)
+
+    # “Stamp Duty (JMD)”
+    stamp_duty_jmd        = db.Column(db.Numeric(10, 2), default=100)
+
+    # Other text blobs
+    branches       = db.Column(db.Text)       # JSON/text of branches/locations
+    terms          = db.Column(db.Text)
+    privacy_policy = db.Column(db.Text)
+
+    # US warehouse address fields
+    us_street       = db.Column(db.String(255))
+    us_suite_prefix = db.Column(db.String(50))
+    us_city         = db.Column(db.String(100))
+    us_state        = db.Column(db.String(100))
+    us_zip          = db.Column(db.String(20))
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
+
+    def __repr__(self):
+        return f"<Settings id={self.id}>"
+class Counter(db.Model):
+    __tablename__ = "counters"
+
+    name = db.Column(db.String(50), primary_key=True)
+    value = db.Column(db.Integer, default=0, nullable=False)
+
+    def __repr__(self):
+        return f"<Counter {self.name}={self.value}>"
+

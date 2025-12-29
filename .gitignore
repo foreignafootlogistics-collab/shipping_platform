@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# Local env
+.env
+
+# Local uploads / temp previews
+uploads/
+instance/tmp_preview_uploads/
+instance/tmp_user_previews/
+
+# Local DBs
+instance/*.db
+*.db
+*.db-shm
+*.db-wal
+
+# Backups / legacy folders
+app_backup_dbpath_20251105_1248/
+legacy_sqlite/

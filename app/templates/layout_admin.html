@@ -15,7 +15,6 @@
   <!-- Bootstrap Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
 
-
   <!-- Font Awesome -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 
@@ -24,7 +23,6 @@
 
   {# ✅ page-level styles will now render #}
   {% block styles %}{% endblock %}
-
 </head>
 
 <body>
@@ -33,327 +31,338 @@
   <div class="row">
 
     <!-- Sidebar -->
-<nav id="adminSidebar" class="col-md-2 d-md-block sidebar collapse p-3" style="background-color: #4a148c;">
-  <div class="text-center mb-4 text-white">
-    {% set settings_logo = settings.logo_path if (settings is defined and settings and settings.logo_path) else 'logo.png' %}
-    <img src="{{ url_for('static', filename=settings_logo) }}"
-         alt="Foreign A Foot Logo"
-         class="img-fluid mb-2"
-         style="max-height: 200px;">
+    <nav id="adminSidebar" class="col-md-2 d-md-block sidebar collapse p-3" style="background-color: #4a148c;">
+      <div class="text-center mb-4 text-white">
+        {% set settings_logo = settings.logo_path if (settings is defined and settings and settings.logo_path) else 'logo.png' %}
+        <img src="{{ url_for('static', filename=settings_logo) }}"
+             alt="Foreign A Foot Logo"
+             class="img-fluid mb-2"
+             style="max-height: 200px;">
 
-    <h5 class="mt-1">Foreign A Foot Logistics</h5>
-    <hr style="border-color: rgba(255,255,255,0.3);">
-  </div>
-  <div class="text-white small">LAYOUT VERSION: 2025-12-28</div>
-
-  <div class="accordion" id="sidebarAccordion">
-
-    <!-- Dashboard -->
-    <div class="accordion-item border-0">
-      <h2 class="accordion-header">
-        <a href="{{ url_for('admin.dashboard') }}" 
-           class="nav-link text-white {% if request.path == url_for('admin.dashboard') %}active{% endif %}">
-          <i class="fas fa-tachometer-alt me-2"></i> Dashboard
-        </a>
-      </h2>
-    </div>
-
-    {# ---- Accounts & Profiles (accordion) ---- #}
-    {% set is_accounts = request.blueprint in ['accounts_profiles'] or request.path.startswith('/accounts') %}
-    <div class="accordion-item border-0">
-      <h2 class="accordion-header" id="headingAccounts">
-        <button
-          class="accordion-button {{ '' if is_accounts else 'collapsed' }} text-white"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#collapseAccounts"
-          aria-expanded="{{ 'true' if is_accounts else 'false' }}"
-          aria-controls="collapseAccounts"
-          style="background-color:#4a148c;"
-        >
-          <i class="fas fa-users me-2"></i> Accounts & Profiles
-        </button>
-      </h2>
-
-      <div id="collapseAccounts"
-           class="accordion-collapse collapse {{ 'show' if is_accounts else '' }}"
-           aria-labelledby="headingAccounts"
-           data-bs-parent="#sidebarAccordion">
-        <div class="accordion-body p-0">
-          <ul class="nav flex-column ms-3">
-
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'accounts_profiles.manage_users' else '' }}"
-                 href="{{ url_for('accounts_profiles.manage_users') }}">
-                <i class="bi bi-people me-2"></i> Manage Users
-              </a>
-            </li>
-
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'admin.register_admin' else '' }}"
-                 href="{{ url_for('admin.register_admin') }}">
-                <i class="bi bi-person-plus me-2"></i> Register Admin
-              </a>
-            </li>
-
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_messages' else '' }}"
-                 href="{{ url_for('admin.view_messages') }}">
-                <i class="bi bi-chat-dots me-2"></i> Messages
-              </a>
-            </li>
-
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_notifications' else '' }}"
-                 href="{{ url_for('admin.view_notifications') }}">
-                <i class="bi bi-bell me-2"></i> Notifications
-              </a>
-            </li>
-
-          </ul>
-        </div>
+        <h5 class="mt-1">Foreign A Foot Logistics</h5>
+        <hr style="border-color: rgba(255,255,255,0.3);">
       </div>
-    </div>
 
+      <div class="text-white small">LAYOUT VERSION: 2025-12-28</div>
 
-    {# ---- Logistics (accordion) ---- #}
-    {% set is_logistics = request.blueprint == 'logistics' or '/logistics' in request.path %}
-    {% set tab = request.args.get('tab', '') %}
-    <div class="accordion-item border-0">
-      <h2 class="accordion-header" id="headingLogistics">
-        <button
-          class="accordion-button {{ '' if is_logistics else 'collapsed' }} text-white"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#collapseLogistics"
-          aria-expanded="{{ 'true' if is_logistics else 'false' }}"
-          aria-controls="collapseLogistics"
-          style="background-color:#4a148c;"
-        >
-          <i class="fas fa-truck me-2"></i> Logistics
-        </button>
-      </h2>
+      <div class="accordion" id="sidebarAccordion">
 
-      <div id="collapseLogistics"
-           class="accordion-collapse collapse {{ 'show' if is_logistics else '' }}"
-           aria-labelledby="headingLogistics"
-           data-bs-parent="#sidebarAccordion">
-        <div class="accordion-body p-0">
-          <ul class="nav flex-column ms-3">
-    
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and (tab=='' or tab is none) else '' }}"
-                 href="{{ url_for('logistics.logistics_dashboard') }}">
-                <i class="bi bi-speedometer2 me-2"></i> Logistics Dashboard
-              </a>
-            </li>
-
-            {# Tabs inside the same logistics_dashboard route #}
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='prealerts' else '' }}"
-                 href="{{ url_for('logistics.logistics_dashboard', tab='prealerts') }}">
-                <i class="bi bi-bell-fill me-2"></i> Pre-Alerts
-              </a>
-            </li>
-
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='view_packages' else '' }}"
-                 href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}">
-                <i class="bi bi-box-seam me-2"></i> View Packages
-              </a>
-            </li>
-
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='shipmentLog' else '' }}"
-                 href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog') }}">
-                <i class="bi bi-list-check me-2"></i> Shipment Log
-              </a>
-            </li>
-
-            <li class="nav-item d-flex align-items-center justify-content-between">
-              <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='uploadPackages' else '' }}"
-                 href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
-                <span><i class="bi bi-upload me-2"></i> Upload Packages</span>
-              </a>
-            </li>
-          </ul>
+        <!-- Dashboard -->
+        <div class="accordion-item border-0">
+          <h2 class="accordion-header">
+            <a href="{{ url_for('admin.dashboard') }}"
+               class="nav-link text-white {% if request.path == url_for('admin.dashboard') %}active{% endif %}">
+              <i class="fas fa-tachometer-alt me-2"></i> Dashboard
+            </a>
+          </h2>
         </div>
-      </div>
-    </div>
 
+        {# ---- Accounts & Profiles (accordion) ---- #}
+        {% set is_accounts = request.blueprint in ['accounts_profiles'] or request.path.startswith('/accounts') %}
+        <div class="accordion-item border-0">
+          <h2 class="accordion-header" id="headingAccounts">
+            <button
+              class="accordion-button {{ '' if is_accounts else 'collapsed' }} text-white"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#collapseAccounts"
+              aria-expanded="{{ 'true' if is_accounts else 'false' }}"
+              aria-controls="collapseAccounts"
+              style="background-color:#4a148c;"
+            >
+              <i class="fas fa-users me-2"></i> Accounts & Profiles
+            </button>
+          </h2>
 
+          <div id="collapseAccounts"
+               class="accordion-collapse collapse {{ 'show' if is_accounts else '' }}"
+               aria-labelledby="headingAccounts"
+               data-bs-parent="#sidebarAccordion">
+            <div class="accordion-body p-0">
+              <ul class="nav flex-column ms-3">
 
-    {# ---- Finance (accordion) ---- #}
-    {% set is_finance = request.blueprint == 'finance' or request.path.startswith('/finance') %}
-    <div class="accordion-item border-0">
-      <h2 class="accordion-header" id="headingFinance">
-        <button
-          class="accordion-button {{ '' if is_finance else 'collapsed' }} text-white"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#collapseFinance"
-          aria-expanded="{{ 'true' if is_finance else 'false' }}"
-          aria-controls="collapseFinance"
-          style="background-color:#4a148c;"
-        >
-          <i class="fas fa-money-bill-wave me-2"></i> Finance
-        </button>
-      </h2>
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'accounts_profiles.manage_users' else '' }}"
+                     href="{{ url_for('accounts_profiles.manage_users') }}">
+                    <i class="bi bi-people me-2"></i> Manage Users
+                  </a>
+                </li>
 
-      <div id="collapseFinance"
-           class="accordion-collapse collapse {{ 'show' if is_finance else '' }}"
-           aria-labelledby="headingFinance"
-           data-bs-parent="#sidebarAccordion">
-        <div class="accordion-body p-0">
-          <ul class="nav flex-column ms-3">
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'admin.register_admin' else '' }}"
+                     href="{{ url_for('admin.register_admin') }}">
+                    <i class="bi bi-person-plus me-2"></i> Register Admin
+                  </a>
+                </li>
 
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'finance.finance_dashboard' else '' }}"
-                 href="{{ url_for('finance.finance_dashboard') }}">
-                <i class="bi bi-speedometer2 me-2"></i> Finance Dashboard
-              </a>
-            </li>
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_messages' else '' }}"
+                     href="{{ url_for('admin.view_messages') }}">
+                    <i class="bi bi-chat-dots me-2"></i> Messages
+                  </a>
+                </li>
 
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'finance.unpaid_invoices' else '' }}"
-                 href="{{ url_for('finance.unpaid_invoices') }}">
-                <i class="bi bi-clock-history me-2"></i> Unpaid / Issued Invoices
-              </a>
-            </li>
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_notifications' else '' }}"
+                     href="{{ url_for('admin.view_notifications') }}">
+                    <i class="bi bi-bell me-2"></i> Notifications
+                  </a>
+                </li>
 
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_income' else '' }}"
-                 href="{{ url_for('finance.monthly_income') }}">
-                <i class="bi bi-graph-up-arrow me-2"></i> Monthly Income
-              </a>
-            </li>
-
-            <li class="nav-item d-flex align-items-center justify-content-between">
-              <a class="nav-link {{ 'active' if request.endpoint in ['finance.monthly_expenses','finance.view_expenses'] else '' }}"
-                 href="{{ url_for('finance.monthly_expenses') }}">
-                <span><i class="bi bi-cash-stack me-2"></i> Monthly Expenses</span>
-              </a>              
-            </li>
-
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_profit_loss' else '' }}"
-                 href="{{ url_for('finance.monthly_profit_loss') }}">
-                <i class="bi bi-balance-scale me-2"></i> Profit / Loss
-              </a>
-            </li>
-
-          </ul>
+              </ul>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
 
-    {# ---- Analytics & Insights (accordion) ---- #}
-    {% set is_analytics = request.blueprint == 'analytics' or request.path.startswith('/analytics') %}
-    <div class="accordion-item border-0">
-      <h2 class="accordion-header" id="headingAnalytics">
-        <button
-          class="accordion-button {{ '' if is_analytics else 'collapsed' }} text-white"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#collapseAnalytics"
-          aria-expanded="{{ 'true' if is_analytics else 'false' }}"
-          aria-controls="collapseAnalytics"
-          style="background-color:#4a148c;"
-        >
-          <i class="fas fa-chart-line me-2"></i> Analytics &amp; Insights
-        </button>
-      </h2>
+        {# ---- Logistics (accordion) ---- #}
+        {% set is_logistics = request.blueprint == 'logistics' or '/logistics' in request.path %}
+        {% set tab = request.args.get('tab', '') %}
+        <div class="accordion-item border-0">
+          <h2 class="accordion-header" id="headingLogistics">
+            <button
+              class="accordion-button {{ '' if is_logistics else 'collapsed' }} text-white"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#collapseLogistics"
+              aria-expanded="{{ 'true' if is_logistics else 'false' }}"
+              aria-controls="collapseLogistics"
+              style="background-color:#4a148c;"
+            >
+              <i class="fas fa-truck me-2"></i> Logistics
+            </button>
+          </h2>
 
-      <div id="collapseAnalytics"
-           class="accordion-collapse collapse {{ 'show' if is_analytics else '' }}"
-           aria-labelledby="headingAnalytics"
-           data-bs-parent="#sidebarAccordion">
-        <div class="accordion-body p-0">
-          <ul class="nav flex-column ms-3">
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'analytics.daily_stats' else '' }}"
-                 href="{{ url_for('analytics.daily_stats') }}">
-                <i class="bi bi-graph-up me-2"></i> Daily Stats
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'analytics.customer_retention' else '' }}"
-                 href="{{ url_for('analytics.customer_retention') }}">
-                <i class="bi bi-arrow-repeat me-2"></i> Customer Retention
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'analytics.package_breakdown' else '' }}"
-                 href="{{ url_for('analytics.package_breakdown') }}">
-                <i class="bi bi-box-seam me-2"></i> Package Breakdown
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'analytics.shipment_performance' else '' }}"
-                 href="{{ url_for('analytics.shipment_performance') }}">
-                <i class="bi bi-truck me-2"></i> Shipment Performance
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'analytics.customer_segments' else '' }}"
-                 href="{{ url_for('analytics.customer_segments') }}">
-                <i class="bi bi-people me-2"></i> Customer Segments
-              </a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link {{ 'active' if request.endpoint == 'analytics.referral_leaderboard' else '' }}"
-                 href="{{ url_for('analytics.referral_leaderboard') }}">
-                <i class="fas fa-user-friends me-2"></i> Referral Leaderboard
-              </a>
-            </li>
-          </ul>
+          <div id="collapseLogistics"
+               class="accordion-collapse collapse {{ 'show' if is_logistics else '' }}"
+               aria-labelledby="headingLogistics"
+               data-bs-parent="#sidebarAccordion">
+            <div class="accordion-body p-0">
+              <ul class="nav flex-column ms-3">
 
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and (tab=='' or tab is none) else '' }}"
+                     href="{{ url_for('logistics.logistics_dashboard') }}">
+                    <i class="bi bi-speedometer2 me-2"></i> Logistics Dashboard
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='prealerts' else '' }}"
+                     href="{{ url_for('logistics.logistics_dashboard', tab='prealerts') }}">
+                    <i class="bi bi-bell-fill me-2"></i> Pre-Alerts
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='view_packages' else '' }}"
+                     href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}">
+                    <i class="bi bi-box-seam me-2"></i> View Packages
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='shipmentLog' else '' }}"
+                     href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog') }}">
+                    <i class="bi bi-list-check me-2"></i> Shipment Log
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='uploadPackages' else '' }}"
+                     href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
+                    <span><i class="bi bi-upload me-2"></i> Upload Packages</span>
+                  </a>
+                </li>
+
+              </ul>
+            </div>
+          </div>
         </div>
+
+        {# ---- Finance (accordion) ---- #}
+        {% set is_finance = request.blueprint == 'finance' or request.path.startswith('/finance') %}
+        <div class="accordion-item border-0">
+          <h2 class="accordion-header" id="headingFinance">
+            <button
+              class="accordion-button {{ '' if is_finance else 'collapsed' }} text-white"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#collapseFinance"
+              aria-expanded="{{ 'true' if is_finance else 'false' }}"
+              aria-controls="collapseFinance"
+              style="background-color:#4a148c;"
+            >
+              <i class="fas fa-money-bill-wave me-2"></i> Finance
+            </button>
+          </h2>
+
+          <div id="collapseFinance"
+               class="accordion-collapse collapse {{ 'show' if is_finance else '' }}"
+               aria-labelledby="headingFinance"
+               data-bs-parent="#sidebarAccordion">
+            <div class="accordion-body p-0">
+              <ul class="nav flex-column ms-3">
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'finance.finance_dashboard' else '' }}"
+                     href="{{ url_for('finance.finance_dashboard') }}">
+                    <i class="bi bi-speedometer2 me-2"></i> Finance Dashboard
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'finance.unpaid_invoices' else '' }}"
+                     href="{{ url_for('finance.unpaid_invoices') }}">
+                    <i class="bi bi-clock-history me-2"></i> Unpaid / Issued Invoices
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_income' else '' }}"
+                     href="{{ url_for('finance.monthly_income') }}">
+                    <i class="bi bi-graph-up-arrow me-2"></i> Monthly Income
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint in ['finance.monthly_expenses','finance.view_expenses'] else '' }}"
+                     href="{{ url_for('finance.monthly_expenses') }}">
+                    <span><i class="bi bi-cash-stack me-2"></i> Monthly Expenses</span>
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_profit_loss' else '' }}"
+                     href="{{ url_for('finance.monthly_profit_loss') }}">
+                    <i class="bi bi-balance-scale me-2"></i> Profit / Loss
+                  </a>
+                </li>
+
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {# ---- Analytics & Insights (accordion) ---- #}
+        {% set is_analytics = request.blueprint == 'analytics' or request.path.startswith('/analytics') %}
+        <div class="accordion-item border-0">
+          <h2 class="accordion-header" id="headingAnalytics">
+            <button
+              class="accordion-button {{ '' if is_analytics else 'collapsed' }} text-white"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#collapseAnalytics"
+              aria-expanded="{{ 'true' if is_analytics else 'false' }}"
+              aria-controls="collapseAnalytics"
+              style="background-color:#4a148c;"
+            >
+              <i class="fas fa-chart-line me-2"></i> Analytics &amp; Insights
+            </button>
+          </h2>
+
+          <div id="collapseAnalytics"
+               class="accordion-collapse collapse {{ 'show' if is_analytics else '' }}"
+               aria-labelledby="headingAnalytics"
+               data-bs-parent="#sidebarAccordion">
+            <div class="accordion-body p-0">
+              <ul class="nav flex-column ms-3">
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.daily_stats' else '' }}"
+                     href="{{ url_for('analytics.daily_stats') }}">
+                    <i class="bi bi-graph-up me-2"></i> Daily Stats
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.customer_retention' else '' }}"
+                     href="{{ url_for('analytics.customer_retention') }}">
+                    <i class="bi bi-arrow-repeat me-2"></i> Customer Retention
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.package_breakdown' else '' }}"
+                     href="{{ url_for('analytics.package_breakdown') }}">
+                    <i class="bi bi-box-seam me-2"></i> Package Breakdown
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.shipment_performance' else '' }}"
+                     href="{{ url_for('analytics.shipment_performance') }}">
+                    <i class="bi bi-truck me-2"></i> Shipment Performance
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.customer_segments' else '' }}"
+                     href="{{ url_for('analytics.customer_segments') }}">
+                    <i class="bi bi-people me-2"></i> Customer Segments
+                  </a>
+                </li>
+
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.referral_leaderboard' else '' }}"
+                     href="{{ url_for('analytics.referral_leaderboard') }}">
+                    <i class="fas fa-user-friends me-2"></i> Referral Leaderboard
+                  </a>
+                </li>
+
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings -->
+        <div class="accordion-item border-0">
+          <h2 class="accordion-header" id="headingSettings">
+            <button class="accordion-button {% if request.path == url_for('settings.manage_settings') %}text-warning{% else %}collapsed text-white{% endif %}"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#collapseSettings"
+                    aria-expanded="{{ 'true' if request.path == url_for('settings.manage_settings') else 'false' }}"
+                    aria-controls="collapseSettings"
+                    style="background-color:#4a148c;"
+            >
+              <i class="fas fa-cogs me-2"></i> Settings
+            </button>
+          </h2>
+
+          <div id="collapseSettings"
+               class="accordion-collapse collapse {% if request.path == url_for('settings.manage_settings') %}show{% endif %}"
+               aria-labelledby="headingSettings"
+               data-bs-parent="#sidebarAccordion">
+            <div class="accordion-body p-0">
+              <ul class="nav flex-column ms-3">
+                <li class="nav-item">
+                  <a href="{{ url_for('settings.manage_settings') }}"
+                     class="nav-link {% if request.path == url_for('settings.manage_settings') %}active{% endif %}">
+                    Manage Settings
+                  </a>
+                </li>
+
+                {% if current_user.is_authenticated and current_user.is_superadmin %}
+                <li class="nav-item">
+                  <a href="{{ url_for('admin.manage_admins') }}"
+                     class="nav-link {% if request.path == url_for('admin.manage_admins') %}active{% endif %}">
+                    Manage Admins
+                  </a>
+                </li>
+                {% endif %}
+              </ul>
+            </div>
+          </div>
+        </div>
+
       </div>
-    </div>
+    </nav>
 
-
-    <!-- Settings -->
-<div class="accordion-item border-0">
-  <h2 class="accordion-header" id="headingSettings">
-    <button class="accordion-button {% if request.path == url_for('settings.manage_settings') %}text-warning{% else %}collapsed text-white{% endif %}" 
-            type="button" data-bs-toggle="collapse" data-bs-target="#collapseSettings" 
-            aria-expanded="{{ 'true' if request.path == url_for('settings.manage_settings') else 'false' }}" 
-            aria-controls="collapseSettings">
-      <i class="fas fa-cogs me-2"></i> Settings
-    </button>
-  </h2>
-  <div id="collapseSettings" class="accordion-collapse collapse {% if request.path == url_for('settings.manage_settings') %}show{% endif %}" 
-       aria-labelledby="headingSettings" data-bs-parent="#sidebarAccordion">
-    <div class="accordion-body p-0">
-      <ul class="nav flex-column ms-3">
-        <li class="nav-item">
-          <a href="{{ url_for('settings.manage_settings') }}" 
-             class="nav-link {% if request.path == url_for('settings.manage_settings') %}active{% endif %}">
-            Manage Settings
-          </a>
-        </li>
-
-        {% if current_user.is_authenticated and current_user.is_superadmin %}
-        <li class="nav-item">
-          <a href="{{ url_for('admin.manage_admins') }}"
-             class="nav-link {% if request.path == url_for('admin.manage_admins') %}active{% endif %}">
-            Manage Admins
-          </a>
-        </li>
-        {% endif %}
-      </ul>
-    </div>
-  </div>
-</div>
-
-</div>
-</nav>
-    
     <!-- Main content -->
     <main class="col-md-10 ms-sm-auto px-md-4 py-4 content">
-      <!-- Top Bar -->
-      <div class="d-flex justify-content-between align-items-center mb-4">
+
+      <!-- Top Bar (FIXED: icons grouped, not spread out) -->
+      <div class="d-flex align-items-center mb-4">
 
         <!-- ☰ Mobile sidebar toggle -->
         <button
@@ -368,46 +377,53 @@
           <i class="fas fa-bars"></i>
         </button>
 
-        <!-- Notifications -->
-        <a href="{{ url_for('admin.view_notifications') }}" class="position-relative me-3 text-dark">
-          <i class="fas fa-bell fa-lg"></i>
-          {% if unread_notifications_count > 0 %}
-            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-              {{ unread_notifications_count }}
-            </span>
-          {% endif %}
-        </a>
+        <!-- Right side: icons + profile -->
+        <div class="d-flex align-items-center ms-auto gap-3">
 
-        <!-- Messages -->
-        <a href="{{ url_for('admin.view_messages') }}" class="position-relative me-3 text-dark">
-          <i class="fas fa-envelope fa-lg"></i>
-          {% if unread_messages_count > 0 %}
-            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning">
-              {{ unread_messages_count }}
-            </span>
-          {% endif %}
-        </a>
-        <!-- Calculator -->
-        <a href="#" class="position-relative me-3 text-dark" data-bs-toggle="modal" data-bs-target="#adminCalculatorModal" title="Calculator">
-          <i class="fas fa-calculator fa-lg"></i>
-        </a>
+          <!-- Notifications -->
+          <a href="{{ url_for('admin.view_notifications') }}" class="position-relative text-dark">
+            <i class="fas fa-bell fa-lg"></i>
+            {% if unread_notifications_count > 0 %}
+              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                {{ unread_notifications_count }}
+              </span>
+            {% endif %}
+          </a>
 
-  <!-- Admin profile dropdown -->
-  <div class="dropdown">
-    <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle"
-       id="adminDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-      <img src="{{ url_for('static', filename='admin_profile.png') }}" alt="Admin Profile" class="admin-profile-img">
-      <span class="ms-2 text-dark fw-semibold">Admin</span>
-    </a>
-    <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="adminDropdown">
-      <li><a class="dropdown-item" href="{{ url_for('admin.admin_profile') }}"><i class="fas fa-user me-2"></i>Profile</a></li>
-      <li><a class="dropdown-item" href="{{ url_for('admin_auth.admin_logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
-    </ul>
-  </div>
-</div>
-{% include 'admin/admin_calculator_modal.html' %}
+          <!-- Messages -->
+          <a href="{{ url_for('admin.view_messages') }}" class="position-relative text-dark">
+            <i class="fas fa-envelope fa-lg"></i>
+            {% if unread_messages_count > 0 %}
+              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning">
+                {{ unread_messages_count }}
+              </span>
+            {% endif %}
+          </a>
 
-{% block content %}{% endblock %}
+          <!-- Calculator -->
+          <a href="#" class="text-dark" data-bs-toggle="modal" data-bs-target="#adminCalculatorModal" title="Calculator">
+            <i class="fas fa-calculator fa-lg"></i>
+          </a>
+
+          <!-- Admin profile dropdown -->
+          <div class="dropdown">
+            <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle"
+               id="adminDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+              <img src="{{ url_for('static', filename='admin_profile.png') }}" alt="Admin Profile" class="admin-profile-img">
+              <span class="ms-2 text-dark fw-semibold">Admin</span>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="adminDropdown">
+              <li><a class="dropdown-item" href="{{ url_for('admin.admin_profile') }}"><i class="fas fa-user me-2"></i>Profile</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('admin_auth.admin_logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+      {% include 'admin/admin_calculator_modal.html' %}
+
+      {% block content %}{% endblock %}
     </main>
   </div>
 </div>
@@ -542,7 +558,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
 <!-- ✅ Page-specific scripts will go here -->
 {% block scripts %}{% endblock %}
-
 
 <footer class="text-center py-3 mt-4" style="background-color: #4a148c; color: #fff;">
   <small>&copy; {{ current_year }} Foreign A Foot Logistics. All rights reserved.</small>

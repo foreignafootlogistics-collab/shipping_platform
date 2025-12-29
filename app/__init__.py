@@ -151,8 +151,8 @@ def create_app():
     @app.context_processor
     def inject_settings():
         try:
-            row = db.session.execute(text("SELECT * FROM settings WHERE id=1")).mappings().first()
-            return {'settings': row}
+            from .models import Settings
+            settings = Settings.query.get(1)
         except Exception:
             return {'settings': None}
 

@@ -49,8 +49,18 @@
   const ctx = document.getElementById('profitChart');
 
   // Prepare data from backend summary
-  const months = {{ summary | map(attribute=0) | list | tojson }};
-  const profits = {{ summary | map(attribute=3) | list | tojson }};
+  const months  = {{ (summary | map(attribute='month')  | list | default([])) | tojson }};
+  const profits = {{ (summary | map(attribute='profit') | list | default([])) | tojson }};
+
+  // Convert "YYYY-MM" → "Mon YYYY"
+  function formatMonth(label) {
+    const [year, month] = label.split("-");
+    const date = new Date(year, month - 1);
+    return date.toLocaleString("en-US", { month: "short", year: "numeric" });
+  }
+
+  const prettyMonths = months.map(formatMonth);
+
 
   // Set bar colors based on positive/negative
   const barColors = profits.map(p => p >= 0 ? 'rgba(75, 192, 192, 0.7)' : 'rgba(255, 99, 132, 0.7)');
@@ -58,7 +68,7 @@
   new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: months,
+      labels: prettymonths,
       datasets: [{
         label: 'Profit / Loss ($)',
         data: profits,

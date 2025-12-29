@@ -4,6 +4,8 @@ __pycache__/
 
 # Local env
 .env
+.flaskenv
+venv/
 
 # Local uploads / temp previews
 uploads/

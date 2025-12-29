@@ -23,8 +23,7 @@ def _save_logo(file_storage):
     return path.replace('static' + os.sep, '').replace('\\', '/')
 
 
-settings_bp = Blueprint('settings', __name__, url_prefix='/settings')
-
+settings_bp = Blueprint('settings', __name__, url_prefix='/admin/settings')
 
 # Small helper to always work on row id=1
 def _get_settings_row(create_if_missing: bool = True) -> Settings | None:

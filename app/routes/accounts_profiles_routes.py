@@ -1,8 +1,9 @@
 # app/routes/accounts_profiles_routes.py
+from __future__ import annotations
+
 from flask import (
     Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app
 )
-import sqlite3
 import os
 import uuid
 import json
@@ -14,19 +15,29 @@ import io
 import csv
 import xlsxwriter
 import math
+
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from werkzeug.utils import secure_filename
+from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 
 from app.forms import UploadUsersForm, ConfirmUploadForm
-from app.utils import next_registration_number
-
-from app.models import User, db
+from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
+from app.calculator_data import CATEGORIES
+
+# Models (these exist in your file)
+from app.models import User, Invoice, Payment, Package, Prealert, Message, Settings
 
 accounts_bp = Blueprint('accounts_profiles', __name__)
+
+@accounts_bp.route("/__whoami_accounts")
+def __whoami_accounts():
+    return "accounts_profiles_routes.py LOADED ✅ 2025-12-29", 200
+
 
 # -------------------------
 # Constants / Regex / Utils
@@ -42,7 +53,7 @@ def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # -------------------------
-# Preview Blob (large data lives on disk instead of cookie/session)
+# Preview Blob
 # -------------------------
 def _user_preview_dir() -> str:
     try:
@@ -76,21 +87,39 @@ def _delete_user_preview_blob(token: str) -> None:
         pass
 
 # -------------------------
-# SQL Helpers
+# Helpers
 # -------------------------
-def _table_cols(cur: sqlite3.Cursor, table: str) -> set[str]:
-    cur.execute(f"PRAGMA table_info({table})")
-    return {row[1] for row in cur.fetchall()}
+def _current_max_fafl_number() -> int:
+    """Scan existing registration_number values like 'FAFL12345' and return max suffix (default 10000)."""
+    max_num = 10000
+    try:
+        q = db.session.query(User.registration_number).filter(User.registration_number.ilike("FAFL%"))
+        for (reg,) in q:
+            try:
+                n = int(str(reg)[4:])
+                max_num = max(max_num, n)
+            except Exception:
+                continue
+    except Exception:
+        db.session.rollback()
+    return max_num
+
+def _safe_commit():
+    try:
+        db.session.commit()
+        return True
+    except Exception:
+        db.session.rollback()
+        return False
 
 # -------------------------
-# Manage Users (list/search/sort/paginate + upload preview)
+# Manage Users
 # -------------------------
 @accounts_bp.route('/manage-users', methods=['GET', 'POST'])
 @admin_required
 def manage_users():
     page      = request.args.get('page', 1, type=int)
     per_page  = 20
-    offset    = (page - 1) * per_page
     search    = (request.args.get('search') or '').strip()
     sort_by   = (request.args.get('sort') or 'recent').strip()
     date_from = request.args.get('date_from')
@@ -109,70 +138,75 @@ def manage_users():
         else:
             session.pop('preview_users_token', None)
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
+    # Build query
+    q = User.query
 
-    # WHERE
-    where = "WHERE 1=1"
-    params = []
     if search:
-        like = f"%{search.lower()}%"
-        where += """
-            AND (
-                LOWER(u.full_name) LIKE ?
-                OR LOWER(u.email) LIKE ?
-                OR LOWER(u.registration_number) LIKE ?
-                OR LOWER(IFNULL(u.address, '')) LIKE ?
-            )
-        """
-        params.extend([like, like, like, like])
+        like = f"%{search}%"
+        # guard address via hasattr because your model has it
+        q = q.filter(or_(
+            User.full_name.ilike(like),
+            User.email.ilike(like),
+            User.registration_number.ilike(like),
+            User.address.ilike(like)
+        ))
 
+    # Filter by date_registered (string in your model)
     if date_from:
-        where += " AND date(u.date_registered) >= ?"
-        params.append(date_from)
+        q = q.filter(User.date_registered >= date_from)
     if date_to:
-        where += " AND date(u.date_registered) <= ?"
-        params.append(date_to)
+        q = q.filter(User.date_registered <= date_to)
 
-    # Total
-    c.execute(f"SELECT COUNT(*) AS cnt FROM users u {where}", params)
-    total_users = int(c.fetchone()['cnt'] or 0)
-    total_pages = max((total_users + per_page - 1) // per_page, 1)
-
-    # ORDER BY
+    # Sort
     if sort_by == 'alphabetical_asc':
-        order_by = "u.registration_number COLLATE NOCASE ASC"
+        q = q.order_by(User.registration_number.asc())
     elif sort_by == 'alphabetical_desc':
-        order_by = "u.registration_number COLLATE NOCASE DESC"
+        q = q.order_by(User.registration_number.desc())
     else:
-        order_by = """
-            (u.date_registered IS NULL) ASC,
-            u.date_registered DESC,
-            u.created_at DESC,
-            u.id DESC
-        """
+        # prefer date_registered, then created_at, then id
+        if hasattr(User, 'date_registered'):
+            q = q.order_by(User.date_registered.desc(), User.id.desc())
+        elif hasattr(User, 'created_at'):
+            q = q.order_by(User.created_at.desc(), User.id.desc())
+        else:
+            q = q.order_by(User.id.desc())
 
-    # Fetch page
-    c.execute(f"""
-        SELECT
-            u.id, u.full_name, u.email, u.registration_number,
-            u.date_registered, u.address, u.mobile,
-            (
-                SELECT COUNT(*)
-                FROM invoices i
-                WHERE i.user_id = u.id AND i.status IN ('pending','unpaid')
-            ) AS unpaid_count
-        FROM users u
-        {where}
-        ORDER BY {order_by}
-        LIMIT ? OFFSET ?
-    """, params + [per_page, offset])
-    users = [dict(row) for row in c.fetchall()]
-    conn.close()
+    pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+    users = []
+    user_ids = [u.id for u in pagination.items]
 
-    for u in users:
-        u['unpaid_count'] = int(u.get('unpaid_count') or 0)
+    # unpaid_count per user: invoices with status in ('pending','unpaid')
+    unpaid_map = {uid: 0 for uid in user_ids}
+    if user_ids:
+        try:
+            sub = (
+                db.session.query(Invoice.user_id, func.count(Invoice.id))
+                .filter(
+                    Invoice.user_id.in_(user_ids),
+                    func.lower(Invoice.status).in_(('pending', 'unpaid'))
+                )
+                .group_by(Invoice.user_id)
+                .all()
+            )
+            for uid, cnt in sub:
+                unpaid_map[uid] = int(cnt or 0)
+        except Exception:
+            db.session.rollback()
+
+    for u in pagination.items:
+        users.append({
+            "id": u.id,
+            "full_name": u.full_name,
+            "email": u.email,
+            "registration_number": u.registration_number,
+            "date_registered": u.date_registered,
+            "address": u.address,
+            "mobile": u.mobile,
+            "trn": u.trn,
+            "unpaid_count": unpaid_map.get(u.id, 0),
+        })
+
+    total_pages = max(pagination.pages or 1, 1)
 
     return render_template(
         'admin/accounts_profiles/manage_users.html',
@@ -188,24 +222,7 @@ def manage_users():
         excel_preview=excel_preview
     )
 
-# -------------------------
-# Sensitive Info (TRN/Address)
-# -------------------------
-@accounts_bp.route('/users/<int:id>/sensitive', methods=['GET'])
-@admin_required
-def sensitive_info(id: int):
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute("SELECT trn, address, full_name FROM users WHERE id = ?", (id,))
-    user = c.fetchone()
-    conn.close()
 
-    if not user:
-        flash("User not found.", "danger")
-        return redirect(url_for('accounts_profiles.view_users'))
-
-    return render_template('admin/accounts_profiles/sensitive_info.html', user=user)
 
 # -------------------------
 # Add User
@@ -224,23 +241,27 @@ def add_user():
         flash("All fields are required.", "danger")
         return redirect(url_for('accounts_profiles.manage_users'))
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT id FROM users WHERE email=? OR trn=?", (email, trn))
-    if c.fetchone():
-        conn.close()
+    exists = User.query.filter(or_(User.email == email, User.trn == trn)).first()
+    if exists:
         flash("Email or TRN already exists.", "danger")
         return redirect(url_for('accounts_profiles.manage_users'))
 
-    reg_no = next_registration_number()
-    hashed = bcrypt.hashpw(raw_password.encode(), bcrypt.gensalt()).decode()
+    reg_no = f"FAFL{_current_max_fafl_number() + 1}"
 
-    c.execute("""
-        INSERT INTO users (full_name, email, trn, mobile, password, registration_number, date_registered)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (full_name, email, trn, mobile, hashed, reg_no, date_registered))
-    conn.commit()
-    conn.close()
+    # store as bytes (LargeBinary)
+    hashed = bcrypt.hashpw(raw_password.encode('utf-8'), bcrypt.gensalt())
+
+    u = User(
+        full_name=full_name,
+        email=email,
+        trn=trn,
+        mobile=mobile,
+        password=hashed,
+        registration_number=reg_no,
+        date_registered=date_registered
+    )
+    db.session.add(u)
+    _safe_commit()
 
     flash(f"User {full_name} added with registration number {reg_no}.", "success")
     return redirect(url_for('accounts_profiles.manage_users'))
@@ -283,7 +304,6 @@ def upload_users():
         if pd.isna(val) or str(val).strip() == "":
             return None
         if isinstance(val, (int, float)):
-            # Excel ordinal hack
             try:
                 base = pd.Timestamp('1899-12-30')
                 dt = base + pd.to_timedelta(int(val), unit='D')
@@ -303,21 +323,8 @@ def upload_users():
 
     df['_date_iso'] = df['Date Registered'].apply(to_iso)
 
-    # compute next FAFL*
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute("""
-        SELECT CAST(SUBSTR(registration_number, 5) AS INTEGER) AS n
-        FROM users
-        WHERE registration_number LIKE 'FAFL%' AND LENGTH(registration_number) > 4
-        ORDER BY n DESC
-        LIMIT 1
-    """)
-    row = c.fetchone()
-    current_max = int(row['n']) if row and row['n'] is not None else 10000
+    current_max = _current_max_fafl_number()
     next_num = current_max + 1
-    conn.close()
 
     session_rows = []
     preview_rows = []
@@ -333,16 +340,9 @@ def upload_users():
         if not any([full_name, email, trn, mobile, password, iso_date]):
             continue
 
-        # decide reg #
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute("SELECT registration_number FROM users WHERE email = ? OR trn = ?", (email, trn))
-        exist = c.fetchone()
-        conn.close()
-
+        exist = User.query.filter(or_(User.email == email, User.trn == trn)).first()
         if exist:
-            assigned_reg = exist['registration_number'] or "(keep)"
+            assigned_reg = exist.registration_number or "(keep)"
             will_update = True
         else:
             assigned_reg = f"FAFL{next_num}"
@@ -394,10 +394,6 @@ def confirm_upload_users():
         flash("No data to import. Please upload again.", "warning")
         return redirect(url_for('accounts_profiles.manage_users'))
 
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_reg_unique ON users(registration_number)")
-
     imported = 0
     updated = 0
     errors = []
@@ -423,62 +419,48 @@ def confirm_upload_users():
             continue
 
         date_registered = iso_date or datetime.now().strftime('%Y-%m-%d')
-        hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode('utf-8')
+        hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())  # bytes
 
-        if will_update:
-            c.execute("SELECT id FROM users WHERE email = ? OR trn = ?", (email, trn))
-            rec = c.fetchone()
-            if rec:
-                user_id = rec[0]
-                c.execute("""
-                    UPDATE users
-                       SET full_name = ?, trn = ?, mobile = ?, password = ?, date_registered = ?, email = ?
-                     WHERE id = ?
-                """, (full_name, trn, mobile, hashed_pw, date_registered, email, user_id))
+        try:
+            existing = User.query.filter(or_(User.email == email, User.trn == trn)).first()
+            if will_update and existing:
+                existing.full_name = full_name
+                existing.trn = trn
+                existing.mobile = mobile
+                existing.password = hashed_pw
+                existing.date_registered = date_registered
+                existing.email = email
+                _safe_commit()
                 updated += 1
             else:
-                # treat as new if vanished meanwhile
+                u = User(
+                    full_name=full_name,
+                    email=email,
+                    trn=trn,
+                    mobile=mobile,
+                    password=hashed_pw,
+                    date_registered=date_registered,
+                    registration_number=assigned_reg
+                )
+                db.session.add(u)
                 try:
-                    c.execute("""
-                        INSERT INTO users (full_name, email, trn, mobile, password, date_registered, registration_number)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """, (full_name, email, trn, mobile, hashed_pw, date_registered, assigned_reg))
+                    db.session.commit()
                     imported += 1
-                except sqlite3.IntegrityError:
-                    errors.append(f"Reg # conflict for {email} ({assigned_reg}).")
-        else:
-            # insert with assigned_reg; on conflict, pick next available
-            try:
-                c.execute("""
-                    INSERT INTO users (full_name, email, trn, mobile, password, date_registered, registration_number)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (full_name, email, trn, mobile, hashed_pw, date_registered, assigned_reg))
-                imported += 1
-            except sqlite3.IntegrityError:
-                c.execute("""
-                    SELECT CAST(SUBSTR(registration_number, 5) AS INTEGER) AS n
-                    FROM users
-                    WHERE registration_number LIKE 'FAFL%' AND LENGTH(registration_number) > 4
-                    ORDER BY n DESC
-                    LIMIT 1
-                """)
-                rowmax = c.fetchone()
-                max_now = int(rowmax[0]) if rowmax and rowmax[0] is not None else 10000
-                new_reg = f"FAFL{max_now + 1}"
-                try:
-                    c.execute("""
-                        INSERT INTO users (full_name, email, trn, mobile, password, date_registered, registration_number)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """, (full_name, email, trn, mobile, hashed_pw, date_registered, new_reg))
-                    imported += 1
-                except sqlite3.IntegrityError:
-                    errors.append(f"Could not assign unique reg # for {email}.")
-                    continue
+                except IntegrityError:
+                    db.session.rollback()
+                    new_reg = f"FAFL{_current_max_fafl_number() + 1}"
+                    u.registration_number = new_reg
+                    db.session.add(u)
+                    try:
+                        db.session.commit()
+                        imported += 1
+                    except IntegrityError:
+                        db.session.rollback()
+                        errors.append(f"Could not assign unique reg # for {email}.")
+        except Exception as e:
+            db.session.rollback()
+            errors.append(f"Error processing {email or trn}: {e}")
 
-    conn.commit()
-    conn.close()
-
-    # Clear token + file
     if token:
         _delete_user_preview_blob(token)
         session.pop('preview_users_token', None)
@@ -501,40 +483,37 @@ def export_users():
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-
-    query = "SELECT full_name, email, registration_number, trn, date_registered FROM users WHERE 1=1"
-    params = []
+    q = db.session.query(
+        User.full_name, User.email, User.registration_number, User.trn, User.date_registered
+    )
 
     if search:
         like = f"%{search}%"
-        query += " AND (full_name LIKE ? OR email LIKE ? OR registration_number LIKE ? OR address LIKE ?)"
-        params.extend([like, like, like, like])
+        q = q.filter(or_(
+            User.full_name.ilike(like),
+            User.email.ilike(like),
+            User.registration_number.ilike(like),
+            User.address.ilike(like)
+        ))
     if date_from:
-        query += " AND date(date_registered) >= ?"
-        params.append(date_from)
+        q = q.filter(User.date_registered >= date_from)
     if date_to:
-        query += " AND date(date_registered) <= ?"
-        params.append(date_to)
+        q = q.filter(User.date_registered <= date_to)
 
     if sort_by == 'alphabetical':
-        query += " ORDER BY full_name COLLATE NOCASE ASC"
+        q = q.order_by(User.full_name.asc())
     else:
-        query += " ORDER BY date_registered DESC"
+        q = q.order_by(User.date_registered.desc())
 
-    c.execute(query, params)
-    users = c.fetchall()
-    conn.close()
+    rows = q.all()
 
     # CSV
     if export_format == 'csv':
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(['Name', 'Email', 'Reg #', 'TRN', 'Date Registered'])
-        for u in users:
-            writer.writerow([u['full_name'], u['email'], u['registration_number'], u['trn'], u['date_registered']])
+        for full_name, email, reg, trn, date_registered in rows:
+            writer.writerow([full_name, email, reg, trn, date_registered])
         output.seek(0)
         return send_file(
             io.BytesIO(output.getvalue().encode()),
@@ -549,8 +528,8 @@ def export_users():
         doc = SimpleDocTemplate(output, pagesize=letter)
         elements = [Paragraph("Registered Users", getSampleStyleSheet()['Heading1'])]
         data = [['Name', 'Email', 'Reg #', 'TRN', 'Date Registered']]
-        for u in users:
-            data.append([u['full_name'], u['email'], u['registration_number'], u['trn'], u['date_registered']])
+        for full_name, email, reg, trn, date_registered in rows:
+            data.append([full_name, email, reg, trn, str(date_registered or "")])
         table = Table(data)
         table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
@@ -578,9 +557,9 @@ def export_users():
         headers = ['Name', 'Email', 'Reg #', 'TRN', 'Date Registered']
         for col_num, header in enumerate(headers):
             worksheet.write(0, col_num, header)
-        for row_num, user in enumerate(users, start=1):
+        for row_num, (full_name, email, reg, trn, date_registered) in enumerate(rows, start=1):
             worksheet.write_row(row_num, 0, [
-                user['full_name'], user['email'], user['registration_number'], user['trn'], user['date_registered']
+                full_name, email, reg, trn, str(date_registered or "")
             ])
         workbook.close()
         output.seek(0)
@@ -594,223 +573,295 @@ def export_users():
     return "Invalid export format", 400
 
 # -------------------------
-# View User (with safe/dynamic packages + invoices/payments)
+# View User (packages + invoices/payments + prealerts)
 # -------------------------
 @accounts_bp.route('/users/<int:id>', methods=['GET', 'POST'])
 @admin_required
 def view_user(id):
-    user_id = int(id)
-    import math
-    from datetime import datetime as _dt
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-
-    # -- User
-    c.execute("SELECT * FROM users WHERE id = ?", (id,))
-    user_row = c.fetchone()
-    if not user_row:
-        conn.close()
+    user = db.session.get(User, id)
+    if not user:
         flash("User not found.", "danger")
         return redirect(url_for('accounts_profiles.manage_users'))
-    user = dict(user_row)
-    user_id = user['id']
 
-    # Addresses
+    # 🔹 US warehouse address pulled from Settings (row id=1)
+    settings = db.session.get(Settings, 1)
+
+    if settings:
+        street       = settings.us_street or "3200 NW 112th Avenue"
+        suite_prefix = settings.us_suite_prefix or "KCDA-FAFL# "
+        city         = settings.us_city or "Doral"
+        state        = settings.us_state or "Florida"
+        zip_code     = settings.us_zip or "33172"
+    else:
+        # Fallback defaults if settings row missing
+        street       = "3200 NW 112th Avenue"
+        suite_prefix = "KCDA-FAFL# "
+        city         = "Doral"
+        state        = "Florida"
+        zip_code     = "33172"
+
     us_address = {
-        "recipient": user["full_name"],
-        "address_line1": "4652 N Hiatus Rd",
-        "address_line2": f"{user.get('registration_number', '')} A",
-        "city": "Sunrise",
-        "state": "Florida",
-        "zip": "33351",
+        "recipient":      user.full_name or "",
+        "address_line1":  street,
+        "address_line2":  f"{suite_prefix}{user.registration_number or ''}",
+        "city":           city,
+        "state":          state,
+        "zip":            zip_code,
     }
-    home_address = user.get('address')
+    home_address = user.address
 
-    # -- Messages
-    c.execute("""
-        SELECT subject, body, date_sent
-        FROM messages
-        WHERE recipient_id = ? OR sender_id = ?
-        ORDER BY date_sent DESC
-    """, (id, id))
-    messages = c.fetchall()
+    # Messages (subject, body, created_at)
+    try:
+        messages = (
+            db.session.query(Message.subject, Message.body, Message.created_at)
+            .filter(or_(Message.recipient_id == id, Message.sender_id == id))
+            .order_by(Message.created_at.desc())
+            .all()
+        )
+    except Exception:
+        db.session.rollback()
+        messages = []
 
-    # -- Prealerts
-    c.execute("""
-        SELECT
-            prealert_number,
-            vendor_name,
-            courier_name,
-            tracking_number,
-            purchase_date,
-            package_contents,
-            item_value_usd,
-            invoice_filename,
-            created_at
-        FROM prealerts
-        WHERE customer_id = ?
-        ORDER BY created_at DESC
-    """, (id,))
-    prealerts = c.fetchall()
+    # Prealerts
+    try:
+        prealerts = (
+            db.session.query(
+                Prealert.prealert_number,
+                Prealert.vendor_name,
+                Prealert.courier_name,
+                Prealert.tracking_number,
+                Prealert.purchase_date,
+                Prealert.package_contents,
+                Prealert.item_value_usd,
+                Prealert.invoice_filename,
+                Prealert.created_at
+            )
+            .filter(Prealert.customer_id == id)
+            .order_by(Prealert.created_at.desc())
+            .all()
+        )
+    except Exception:
+        db.session.rollback()
+        prealerts = []
 
-    # ------- Helpers for safe column usage
-    def _table_cols(cur, table):
-        cur.execute(f"PRAGMA table_info({table})")
-        return {row[1] for row in cur.fetchall()}
-
-    pkg_cols = _table_cols(c, "packages")
-
-    date_candidates = ["date_received", "received_date", "received_at", "created_at"]
-    date_parts = [f"p.{col}" for col in date_candidates if col in pkg_cols]
-    date_expr = "COALESCE(" + ", ".join(date_parts + ["NULL"]) + ")"
-
-    declared_candidates = ["value", "invoice_value", "declared_value", "item_value_usd"]
-    decl_parts = [f"p.{col}" for col in declared_candidates if col in pkg_cols]
-    if not decl_parts:
-        decl_parts = ["0"]
-    declared_expr = "COALESCE(" + ", ".join(decl_parts) + ", 0)"
-
-    # -------- PACKAGES PAGINATION (10 per page)
+    # Packages (paginated + filters)
     pkg_page = request.args.get("pkg_page", 1, type=int)
     pkg_per_page = 10
-    pkg_offset = (pkg_page - 1) * pkg_per_page
 
-    # total count
-    c.execute("SELECT COUNT(*) AS cnt FROM packages p WHERE p.user_id = ?", (id,))
-    total_pkgs = int(c.fetchone()["cnt"] or 0)
-    pkg_total_pages = max((total_pkgs + pkg_per_page - 1) // pkg_per_page, 1)
-
-    # paged rows
-    sql = f"""
-        SELECT
-            p.id,
-            p.user_id,
-            p.house_awb,
-            p.status,
-            p.description,
-            p.tracking_number,
-            p.weight,
-            {date_expr}     AS date_received,
-            {declared_expr} AS declared_value,
-            COALESCE(p.amount_due, 0) AS amount_due,
-            p.invoice_file
-        FROM packages p
-        WHERE p.user_id = ?
-        ORDER BY {date_expr} DESC, p.id DESC
-        LIMIT ? OFFSET ?
-    """
-    c.execute(sql, (id, pkg_per_page, pkg_offset))
-    pkg_rows = c.fetchall()
-
-    def _fmt_date(v):
-        if not v: return None
-        if isinstance(v, _dt): return v.strftime("%Y-%m-%d")
-        try:
-            return _dt.fromisoformat(str(v)).strftime("%Y-%m-%d")
-        except Exception:
-            return str(v)
+    # --- filters coming from the modal (we'll build the modal next step) ---
+    pkg_from = (request.args.get("pkg_from") or "").strip()
+    pkg_to   = (request.args.get("pkg_to") or "").strip()
+    pkg_awb  = (request.args.get("pkg_awb") or "").strip()
+    pkg_tn   = (request.args.get("pkg_tn") or "").strip()
 
     packages = []
-    for r in pkg_rows:
-        d = dict(r)
-        d["date_received"] = _fmt_date(d.get("date_received"))
-        # round weight UP to whole number
-        try:
-            d["weight"] = math.ceil(float(d.get("weight") or 0))
-        except Exception:
-            d["weight"] = 0
-        # ensure declared_value is numeric
-        try:
-            d["declared_value"] = float(d.get("declared_value") or 0)
-        except Exception:
-            d["declared_value"] = 0.0
-        packages.append(d)
+    total_pkgs = 0
 
-    user_id = int(id)
+    try:
+        base = Package.query.filter(Package.user_id == id)
 
-    # -- Invoices (uses only existing columns + consistent ordering)
-    c.execute("""
-        SELECT
-            id,
-            invoice_number,
-            LOWER(status) AS status,
-            /* For display, prefer amount_due (open) -> grand_total -> amount */
-            COALESCE(amount_due, grand_total, amount, 0) AS amount_display,
-            /* Normalize a display date: prefer issued -> submitted -> created */
-            COALESCE(date_issued, date_submitted, created_at) AS date_display
-        FROM invoices
-        WHERE user_id = ?
-        ORDER BY DATE(COALESCE(date_issued, date_submitted, created_at)) DESC,
-                 id DESC
-    """, (user_id,))  # <-- make sure you're passing user_id here
-    invoices = c.fetchall()
+        # Choose the best date column available on Package
+        date_col = None
+        for attr in ("date_received", "received_date", "created_at"):
+            if hasattr(Package, attr):
+                date_col = getattr(Package, attr)
+                break
 
-    # Totals
-    # Outstanding (open) balance = sum of amount_due for open statuses
-    c.execute("""
-        SELECT IFNULL(SUM(amount_due), 0)
-        FROM invoices
-        WHERE user_id = ?
-          AND amount_due > 0
-          AND LOWER(status) IN ('pending','issued')
-    """, (user_id,))
-    row = c.fetchone()
-    total_owed = float(row[0] if row else 0.0)
+        # Apply filters
+        if pkg_from and date_col is not None:
+            base = base.filter(date_col >= pkg_from)
 
-    # Total paid to date = sum of amount on paid invoices
-    c.execute("""
-        SELECT IFNULL(SUM(amount), 0)
-        FROM invoices
-        WHERE user_id = ?
-          AND LOWER(status) = 'paid'
-    """, (user_id,))
-    total_paid = float(c.fetchone()[0] or 0.0)
+        if pkg_to and date_col is not None:
+            base = base.filter(date_col <= pkg_to)
 
-    # What you call “balance” in the UI:
-    # If you intend “current outstanding,” just show total_owed.
-    # If you intend “lifetime owed minus lifetime paid,” keep this, but it mixes time windows.
-    balance = total_owed  # or: total_owed - 0.0 if you prefer to be explicit
+        if pkg_awb and hasattr(Package, "house_awb"):
+            base = base.filter(Package.house_awb.ilike(f"%{pkg_awb}%"))
+
+        if pkg_tn and hasattr(Package, "tracking_number"):
+            base = base.filter(Package.tracking_number.ilike(f"%{pkg_tn}%"))
+
+        total_pkgs = base.count()
+
+        order_col = getattr(Package, "created_at", Package.id)
+        page_obj = base.order_by(order_col.desc()).paginate(
+            page=pkg_page, per_page=pkg_per_page, error_out=False
+        )
+
+        def _fmt_date(v):
+            if not v:
+                return None
+            try:
+                return v if isinstance(v, str) else v.strftime("%Y-%m-%d")
+            except Exception:
+                return str(v)
+
+        for p in page_obj.items:
+            # pick a best-effort date field from the row
+            date_received = None
+            for attr in ("date_received", "received_date", "created_at"):
+                if getattr(p, attr, None):
+                    date_received = getattr(p, attr)
+                    break
+
+            declared_value = 0.0
+            for attr in ("declared_value", "value"):
+                if getattr(p, attr, None) is not None:
+                    try:
+                        declared_value = float(getattr(p, attr))
+                        break
+                    except Exception:
+                        pass
+
+            amt_due = 0.0
+            if getattr(p, "amount_due", None) is not None:
+                try:
+                    amt_due = float(p.amount_due)
+                except Exception:
+                    amt_due = 0.0
+
+            weight = 0
+            if getattr(p, "weight", None) is not None:
+                try:
+                    weight = math.ceil(float(p.weight))
+                except Exception:
+                    weight = 0
+
+            packages.append({
+                "id": p.id,
+                "user_id": p.user_id,
+                "house_awb": getattr(p, "house_awb", None),
+                "status": getattr(p, "status", None),
+                "description": getattr(p, "description", None),
+                "tracking_number": getattr(p, "tracking_number", None),
+                "weight": weight,
+                "date_received": _fmt_date(date_received),
+                "declared_value": declared_value,
+                "amount_due": amt_due,
+                "invoice_file": getattr(p, "invoice_file", None),
+            })
+
+    except Exception:
+        db.session.rollback()
+        packages = []
+        total_pkgs = 0
+        pkg_from = pkg_to = pkg_awb = pkg_tn = ""
 
 
-
-    # -- Payments (joined by invoice_id -> invoices.user_id)
-    c.execute("""
-        SELECT
-            p.id AS bill_number,
-            p.payment_date,
-            p.payment_type,
-            p.amount,
-            p.authorized_by,
-            i.file_path AS invoice_path
-        FROM payments p
-        LEFT JOIN invoices i ON p.invoice_id = i.id
-        WHERE i.user_id = ?
-        ORDER BY p.payment_date DESC
-    """, (id,))
-    payments = c.fetchall()
-
-    # Wallet & referral defaults
-    wallet_balance = user.get('wallet_balance') if user.get('wallet_balance') is not None else 0.0
-    referral_code  = user.get('referral_code') or ''
-    user['wallet_balance'] = wallet_balance
-    user['referral_code']  = referral_code
-
-    conn.close()
-
-    active_tab = request.args.get("tab", "packages")
-
-    # For "showing X–Y" helper
+    pkg_total_pages = max((total_pkgs + pkg_per_page - 1) // pkg_per_page, 1)
     pkg_show_from = 0 if total_pkgs == 0 else ((pkg_page - 1) * pkg_per_page + 1)
     pkg_show_to   = min(pkg_page * pkg_per_page, total_pkgs)
 
+       # ---------------- Invoices for this user ----------------
+    invoices = []
+    total_owed = 0.0
+    total_paid = 0.0
+
+    try:
+        inv_query = Invoice.query
+
+        # Match by whatever fields your Invoice model actually has
+        conds = []
+        if hasattr(Invoice, "user_id"):
+            conds.append(Invoice.user_id == id)
+        if hasattr(Invoice, "customer_id"):
+            conds.append(Invoice.customer_id == id)
+        if hasattr(Invoice, "customer_code"):
+            conds.append(Invoice.customer_code == (user.registration_number or ""))
+
+        if conds:
+            inv_query = inv_query.filter(or_(*conds))
+
+        # Load full objects so Jinja can use inv.id / inv.invoice_number, etc.
+        invoices = (
+            inv_query
+            .order_by(
+                # try to pick the best date field available
+                getattr(
+                    Invoice,
+                    "date",
+                    getattr(Invoice, "date_submitted", Invoice.id)
+                ).desc()
+            )
+            .all()
+        )
+
+        # Totals (use grand_total / amount_due if present, otherwise fall back to total)
+        def _inv_amount(inv):
+            for attr in ("amount_due", "grand_total", "total"):
+                if hasattr(inv, attr) and getattr(inv, attr) is not None:
+                    try:
+                        return float(getattr(inv, attr))
+                    except Exception:
+                        pass
+            return 0.0
+
+        total_owed = sum(
+            _inv_amount(inv)
+            for inv in invoices
+            if (inv.status or "").lower() != "paid"
+        )
+
+        total_paid = float(
+            db.session.query(func.coalesce(func.sum(Payment.amount_jmd), 0.0))
+            .filter(Payment.user_id == id)
+            .scalar() or 0.0
+        )
+
+    except Exception as e:
+        current_app.logger.exception("Error loading invoices for user %s: %s", id, e)
+        db.session.rollback()
+        invoices = []
+        total_owed = 0.0
+        total_paid = 0.0
+
+    balance = total_owed
+
+
+    # Payments (alias fields to keep your template happy)
+    payments = []
+    try:
+        payments = (
+            db.session.query(
+                Payment.id.label("bill_number"),
+                Payment.created_at.label("payment_date"),   # alias
+                Payment.method.label("payment_type"),       # alias
+                Payment.amount_jmd.label("amount"),         # alias
+                Payment.invoice_id.label("invoice_id"),
+                db.literal(None).label("authorized_by"),    # not in model
+                Invoice.invoice_number.label("invoice_number"),
+            )
+            .outerjoin(Invoice, Payment.invoice_id == Invoice.id)
+            .filter(Payment.user_id == id)
+            .order_by(Payment.created_at.desc())
+            .all()
+        )
+    except Exception:
+        db.session.rollback()
+        payments = []
+
+    wallet_balance = user.wallet_balance or 0.0
+    referral_code  = user.referral_code or ''
+    active_tab = request.args.get("tab", "packages")
+
+    
+    categories = list(CATEGORIES.keys())
+
     return render_template(
         'admin/accounts_profiles/view_user.html',
-        user=user,
+        user={
+            "id": user.id,
+            "full_name": user.full_name or "",
+            "email": user.email or "",
+            "registration_number": user.registration_number or "",
+            "address": user.address or "",
+            "mobile": user.mobile or "",
+            "trn": user.trn,
+            "wallet_balance": wallet_balance,
+            "referral_code": referral_code
+        },
         user_id=id,
         prealerts=prealerts,
-        packages=packages,               # paginated slice
+        packages=packages,
         invoices=invoices,
         payments=payments,
         total_owed=total_owed,
@@ -818,19 +869,21 @@ def view_user(id):
         balance=balance,
         messages=messages,
         wallet_balance=wallet_balance,
-        referral_code=referral_code,        
+        referral_code=referral_code,
         us_address=us_address,
         home_address=home_address,
         active_tab=active_tab,
-
-        # pagination vars for Packages tab
         pkg_page=pkg_page,
         pkg_total_pages=pkg_total_pages,
         pkg_show_from=pkg_show_from,
         pkg_show_to=pkg_show_to,
-        total_pkgs=total_pkgs
+        total_pkgs=total_pkgs,
+        pkg_from=pkg_from,
+        pkg_to=pkg_to,
+        pkg_awb=pkg_awb,
+        pkg_tn=pkg_tn,
+        categories=categories,
     )
-
 
 # -------------------------
 # Change Password
@@ -838,15 +891,10 @@ def view_user(id):
 @accounts_bp.route('/change-password/<int:id>', methods=['GET', 'POST'])
 @admin_required
 def change_password(id: int):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT id, full_name FROM users WHERE id = ?", (id,))
-    user = c.fetchone()
-    conn.close()
-
+    user = db.session.get(User, id)
     if not user:
         flash("User not found.", "danger")
-        return redirect(url_for("accounts_profiles.manage_users"))
+        return redirect(url_for('accounts_profiles.manage_users'))
 
     if request.method == 'POST':
         new_password = request.form['password']
@@ -854,20 +902,16 @@ def change_password(id: int):
 
         if new_password != confirm_password:
             flash("Passwords do not match.", "danger")
-            return render_template('admin/accounts_profiles/change_password.html', user=user)
+            return render_template('admin/accounts_profiles/change_password.html', user={"id": user.id, "full_name": user.full_name})
 
-        hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())  # bytes
+        user.password = hashed_pw
+        _safe_commit()
 
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("UPDATE users SET password = ? WHERE id = ?", (hashed_pw, id))
-        conn.commit()
-        conn.close()
-
-        flash(f"Password updated for {user[1]}.", "success")
+        flash(f"Password updated for {user.full_name or 'user'}.", "success")
         return redirect(url_for("accounts_profiles.view_user", id=id))
 
-    return render_template('admin/accounts_profiles/change_password.html', user=user)
+    return render_template('admin/accounts_profiles/change_password.html', user={"id": user.id, "full_name": user.full_name or ''})
 
 # -------------------------
 # Delete Account
@@ -875,35 +919,33 @@ def change_password(id: int):
 @accounts_bp.route('/delete-account/<int:id>', methods=['GET', 'POST'])
 @admin_required
 def delete_account(id: int):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT id, full_name FROM users WHERE id = ?", (id,))
-    user = c.fetchone()
-    conn.close()
-
+    user = db.session.get(User, id)
     if not user:
         flash("User not found.", "danger")
-        return redirect(url_for("accounts_profiles.manage_users"))
+        return redirect(url_for('accounts_profiles.manage_users'))
 
     if request.method == 'POST':
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("DELETE FROM users WHERE id = ?", (id,))
-        conn.commit()
-        conn.close()
+        try:
+            db.session.delete(user)
+            db.session.commit()
+            flash(f"Account for {user.full_name or 'user'} has been deleted.", "success")
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Failed to delete account: {e}", "danger")
+        return redirect(url_for('accounts_profiles.manage_users'))
 
-        flash(f"Account for {user[1]} has been deleted.", "success")
-        return redirect(url_for("accounts_profiles.manage_users"))
-
-    return render_template('admin/accounts_profiles/delete_account.html', user=user)
+    return render_template('admin/accounts_profiles/delete_account.html', user={"id": user.id, "full_name": user.full_name or ''})
 
 # -------------------------
-# Manage Account (SQLAlchemy-backed simple editor)
+# Manage Account (simple editor)
 # -------------------------
 @accounts_bp.route('/manage_account/<int:id>', methods=['GET', 'POST'])
 @admin_required
 def manage_account(id: int):
-    user = User.query.get_or_404(id)
+    user = db.session.get(User, id)
+    if not user:
+        flash("User not found.", "danger")
+        return redirect(url_for('accounts_profiles.manage_users'))
 
     if request.method == 'POST':
         user.full_name = request.form.get('full_name')
@@ -911,12 +953,28 @@ def manage_account(id: int):
         user.mobile = request.form.get('mobile')
         user.address = request.form.get('address')
         user.referral_code = request.form.get('referral_code')
-        user.authorized_person = request.form.get('authorized_person')
+        user.authorized_person = request.form.get('authorized_person')  # your model doesn’t have this; safe to ignore in template
         user.is_active = bool(int(request.form.get('is_active', 0)))
-        db.session.commit()
+        _safe_commit()
 
         flash('Account updated successfully.', 'success')
-        return redirect(url_for('accounts_profiles.manage_account', id=id))
+        return redirect(url_for('accounts_profiles.view_user', id=id))
 
-    return render_template('accounts_profiles/manage_account.html', user=user)
+    return render_template('admin/accounts_profiles/view_user.html', user=user)
 
+@accounts_bp.route('/users/<int:id>/wallet', methods=['POST'])
+@admin_required
+def update_wallet(id):
+    user = db.session.get(User, id)
+    if not user:
+        flash("User not found.", "danger")
+        return redirect(url_for('accounts_profiles.manage_users'))
+
+    amount = float(request.form.get('amount', 0) or 0)
+    desc   = (request.form.get('description') or '').strip()
+
+    user.wallet_balance = (user.wallet_balance or 0) + amount
+    _safe_commit()
+
+    flash(f"Wallet updated by {amount:+.2f}. New balance: {user.wallet_balance:.2f}", "success")
+    return redirect(url_for('accounts_profiles.view_user', id=id))

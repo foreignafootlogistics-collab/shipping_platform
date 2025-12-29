@@ -13,6 +13,8 @@ from . import config as cfg
 from .config import PROFILE_UPLOAD_FOLDER
 from .forms import CalculatorForm, AdminCalculatorForm
 from .extensions import db  # SQLAlchemy shared instance
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 
 migrate = Migrate()
 mail = Mail()
@@ -71,6 +73,8 @@ def _ensure_first_admin():
 
 def create_app():
     app = Flask(__name__)
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
     # Folders
     os.makedirs(app.instance_path, exist_ok=True)

@@ -522,13 +522,7 @@
                     </button>
                   {% endif %}
                 </td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="7" class="text-center text-muted py-4">
-                  No invoices yet.
-                </td>
-              </tr>
+              </tr>              
               {% endfor %}
             </tbody>
           </table>
@@ -1130,7 +1124,13 @@ $(document).ready(function () {
 
   // Other tabs can use DataTables
   $('#prealertsTable').DataTable({ order: [[0, 'desc']], pageLength: 10 });
-  $('#invoiceTable').DataTable();
+  $('#invoiceTable').DataTable({
+    order: [[0, 'desc']],
+    pageLength: 10,
+    language: {
+      emptyTable: "No invoices yet."
+    }
+  });
   $('#paymentsTable').DataTable();
   $('#messagesTable').DataTable();
   $('#scheduledeliveryTable').DataTable();

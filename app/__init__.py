@@ -27,6 +27,17 @@ ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png'}
 def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def _safe_ctx(fn):
+    def wrapper():
+        try:
+            rv = fn()
+            return rv if isinstance(rv, dict) else {}
+        except Exception as e:
+            app.logger.exception(f"[CTX_PROCESSOR_FAIL] {fn.__name__}: {e}")
+            return {}
+    wrapper.__name__ = fn.__name__
+    return wrapper
+
 
 def _ensure_first_admin():
     """
@@ -57,20 +68,9 @@ def _ensure_first_admin():
     current_app.logger.info(f"[ADMIN SEED] Created admin user {email}.")
 
 
+
 def create_app():
     app = Flask(__name__)
-
-def _safe_ctx(fn):
-    def wrapper():
-        try:
-            rv = fn()
-            return rv if isinstance(rv, dict) else {}
-        except Exception as e:
-            app.logger.exception(f"[CTX_PROCESSOR_FAIL] {fn.__name__}: {e}")
-            return {}
-    wrapper.__name__ = fn.__name__
-    return wrapper
-
 
     # Folders
     os.makedirs(app.instance_path, exist_ok=True)

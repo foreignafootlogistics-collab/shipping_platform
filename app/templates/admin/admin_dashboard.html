@@ -7,28 +7,35 @@
 
   <!-- Dashboard Summary -->
   <div class="row g-4 mb-4">
-    <!-- Total Users -->
+
+    <!-- Total Users (CLICKABLE) -->
     <div class="col-md-4">
-      <div class="card dashboard-card card-purple h-100 shadow-sm">
-        <div class="card-body">
-          <h5 class="card-title">
-            <i class="fas fa-users me-2"></i>Total Users
-          </h5>
-          <p class="fs-3 mb-0">{{ total_users }}</p>
+      <a href="{{ url_for('accounts_profiles.manage_users') }}" class="text-decoration-none">
+        <div class="card dashboard-card card-purple h-100 shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">
+              <i class="fas fa-users me-2"></i>Total Users
+            </h5>
+            <p class="fs-3 mb-0">{{ total_users }}</p>
+            <small class="text-muted">Click to manage users</small>
+          </div>
         </div>
-      </div>
+      </a>
     </div>
 
-    <!-- Total Packages -->
+    <!-- Total Packages (CLICKABLE) -->
     <div class="col-md-4">
-      <div class="card dashboard-card card-green h-100 shadow-sm">
-        <div class="card-body">
-          <h5 class="card-title">
-            <i class="fas fa-boxes me-2"></i>Total Packages
-          </h5>
-          <p class="fs-3 mb-0">{{ total_packages }}</p>
+      <a href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}" class="text-decoration-none">
+        <div class="card dashboard-card card-green h-100 shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title">
+              <i class="fas fa-boxes me-2"></i>Total Packages
+            </h5>
+            <p class="fs-3 mb-0">{{ total_packages }}</p>
+            <small class="text-muted">Click to view packages</small>
+          </div>
         </div>
-      </div>
+      </a>
     </div>
 
     <!-- Pending Invoices -->
@@ -46,6 +53,7 @@
         </div>
       </a>
     </div>
+
   </div>
 
   <!-- Today / Recent Analytics Strip -->
@@ -92,7 +100,6 @@
       </div>
     </div>
   </div>
-
 
   <!-- Charts -->
   <div class="row mb-4">

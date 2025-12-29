@@ -46,63 +46,80 @@
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-  const ctx = document.getElementById('profitChart');
+  const canvas = document.getElementById('profitChart');
 
   // Prepare data from backend summary
   const months  = {{ (summary | map(attribute='month')  | list | default([])) | tojson }};
   const profits = {{ (summary | map(attribute='profit') | list | default([])) | tojson }};
 
-  // Convert "YYYY-MM" → "Mon YYYY"
-  function formatMonth(label) {
-    const [year, month] = label.split("-");
-    const date = new Date(year, month - 1);
-    return date.toLocaleString("en-US", { month: "short", year: "numeric" });
-  }
+  // If no data, show message and stop
+  if (!months.length || !profits.length) {
+    canvas.replaceWith(
+      Object.assign(document.createElement('div'), {
+        className: 'alert alert-warning mb-0',
+        innerText: 'No profit/loss data yet (no paid invoices or expenses found).'
+      })
+    );
+  } else {
+    // Convert "YYYY-MM" → "Mon YYYY"
+    function formatMonth(label) {
+      const parts = String(label).split("-");
+      if (parts.length !== 2) return label;
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      if (!year || !month) return label;
+      const date = new Date(year, month - 1, 1);
+      return date.toLocaleString("en-US", { month: "short", year: "numeric" });
+    }
 
-  const prettyMonths = months.map(formatMonth);
+    const prettyMonths = months.map(formatMonth);
 
+    // Set bar colors based on positive/negative
+    const barColors = profits.map(p => p >= 0
+      ? 'rgba(75, 192, 192, 0.7)'
+      : 'rgba(255, 99, 132, 0.7)'
+    );
 
-  // Set bar colors based on positive/negative
-  const barColors = profits.map(p => p >= 0 ? 'rgba(75, 192, 192, 0.7)' : 'rgba(255, 99, 132, 0.7)');
-
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: prettymonths,
-      datasets: [{
-        label: 'Profit / Loss ($)',
-        data: profits,
-        backgroundColor: barColors,
-        borderRadius: 5,
-        barThickness: 40
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { display: true }
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: prettyMonths,   // ✅ fixed case
+        datasets: [{
+          label: 'Profit / Loss ($)',
+          data: profits,
+          backgroundColor: barColors,
+          borderRadius: 5,
+          barThickness: 40
+        }]
       },
-      scales: {
-        y: {
-          beginAtZero: true,
-          title: { display: true, text: 'Amount ($)' }
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: true }
         },
-        x: {
-          title: { display: true, text: 'Month' }
-        }
-      },
-      interaction: {
-        intersect: false,
-        mode: 'index',
-      },
-      tooltip: {
-        callbacks: {
-          label: function(context) {
-            return '$' + context.raw.toFixed(2);
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: 'Amount ($)' }
+          },
+          x: {
+            title: { display: true, text: 'Month' }
+          }
+        },
+        interaction: {
+          intersect: false,
+          mode: 'index',
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const val = Number(context.raw || 0);
+              return '$' + val.toFixed(2);
+            }
           }
         }
       }
-    }
-  });
+    });
+  }
 </script>
 {% endblock %}

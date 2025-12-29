@@ -642,10 +642,11 @@ def monthly_income():
 
 
 # ---------------------- MONTHLY PROFIT/LOSS ---------------------- #
+
+
 @finance_bp.route('/monthly_profit_loss')
 @admin_required(roles=['finance'])
 def monthly_profit_loss():
-    # Build monthly aggregates entirely in Python for the last 6 months
     today = date.today()
     current_month_key = today.strftime('%Y-%m')
 
@@ -668,43 +669,47 @@ def monthly_profit_loss():
         .all()
     )
 
+    # Build last 6 months keys (oldest -> newest)
+    month_keys = []
+    y, m = today.year, today.month
+    for i in range(5, -1, -1):
+        yy, mm = y, m - i
+        while mm <= 0:
+            mm += 12
+            yy -= 1
+        month_keys.append(f"{yy:04d}-{mm:02d}")
+
     # Aggregate by YYYY-MM
-    monthly_data = {}
+    monthly_data = {k: {'income': 0.0, 'expenses': 0.0} for k in month_keys}
 
     for r in paid_rows:
         if not r.date_paid:
             continue
         d = r.date_paid if isinstance(r.date_paid, date) else r.date_paid.date()
         key = d.strftime('%Y-%m')
-        monthly_data.setdefault(key, {'income': 0.0, 'expenses': 0.0})
-        monthly_data[key]['income'] += float(r.amount or 0)
+        if key in monthly_data:
+            monthly_data[key]['income'] += float(r.amount or 0)
 
     for r in expense_rows:
         if not r.date:
             continue
         d = r.date if isinstance(r.date, date) else r.date.date()
         key = d.strftime('%Y-%m')
-        monthly_data.setdefault(key, {'income': 0.0, 'expenses': 0.0})
-        monthly_data[key]['expenses'] += float(r.amount or 0)
-
-    # Sort by month and keep last 6
-    sorted_keys = sorted(monthly_data.keys())
-    if len(sorted_keys) > 6:
-        sorted_keys = sorted_keys[-6:]
+        if key in monthly_data:
+            monthly_data[key]['expenses'] += float(r.amount or 0)
 
     summary = []
-    for key in sorted_keys:
+    for key in month_keys:
         income = monthly_data[key]['income']
         expenses = monthly_data[key]['expenses']
-        profit = income - expenses
         summary.append({
             'month': key,
             'income': income,
             'expenses': expenses,
-            'profit': profit,
+            'profit': income - expenses,
         })
 
-    # Current month totals
+    # Current month totals (still correct)
     current = monthly_data.get(current_month_key, {'income': 0.0, 'expenses': 0.0})
     total_income = current['income']
     total_expenses = current['expenses']

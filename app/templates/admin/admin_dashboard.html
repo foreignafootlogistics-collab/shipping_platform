@@ -11,8 +11,10 @@
     <div class="col-md-4">
       <div class="card dashboard-card card-purple h-100 shadow-sm">
         <div class="card-body">
-          <h5 class="card-title"><i class="fas fa-users me-2"></i>Total Users</h5>
-          <p class="fs-3">{{ total_users }}</p>
+          <h5 class="card-title">
+            <i class="fas fa-users me-2"></i>Total Users
+          </h5>
+          <p class="fs-3 mb-0">{{ total_users }}</p>
         </div>
       </div>
     </div>
@@ -21,8 +23,10 @@
     <div class="col-md-4">
       <div class="card dashboard-card card-green h-100 shadow-sm">
         <div class="card-body">
-          <h5 class="card-title"><i class="fas fa-boxes me-2"></i>Total Packages</h5>
-          <p class="fs-3">{{ total_packages }}</p>
+          <h5 class="card-title">
+            <i class="fas fa-boxes me-2"></i>Total Packages
+          </h5>
+          <p class="fs-3 mb-0">{{ total_packages }}</p>
         </div>
       </div>
     </div>
@@ -33,35 +37,95 @@
          class="text-decoration-none">
         <div class="card dashboard-card card-yellow h-100 shadow-sm">
           <div class="card-body">
-            <h5 class="card-title"><i class="fas fa-file-invoice-dollar me-2"></i>Pending/Unpaid Invoices</h5>
+            <h5 class="card-title">
+              <i class="fas fa-file-invoice-dollar me-2"></i>Pending/Unpaid Invoices
+            </h5>
             <p class="fs-3 mb-0">{{ pending_invoices }}</p>
-            <small class="text-muted">Click to review & collect</small>
+            <small class="text-muted">Click to review &amp; collect</small>
           </div>
         </div>
       </a>
     </div>
+  </div>
+
+  <!-- Today / Recent Analytics Strip -->
+  <div class="row g-4 mb-4">
+    <!-- New Customers Today -->
+    <div class="col-md-4 col-lg-4">
+      <div class="card dashboard-card h-100 shadow-sm">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">
+            <i class="fas fa-user-plus me-2"></i>New Customers Today
+          </h6>
+          <p class="fs-3 mb-0 text-dark">
+            {{ today_new_users|default(0, true) }}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Packages Uploaded Today -->
+    <div class="col-md-4 col-lg-4">
+      <div class="card dashboard-card h-100 shadow-sm">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">
+            <i class="fas fa-box-open me-2"></i>Packages Uploaded Today
+          </h6>
+          <p class="fs-3 mb-0 text-dark">
+            {{ today_new_packages|default(0, true) }}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Customers (Last 90 Days) -->
+    <div class="col-md-4 col-lg-4">
+      <div class="card dashboard-card h-100 shadow-sm">
+        <div class="card-body">
+          <h6 class="text-muted mb-1">
+            <i class="fas fa-chart-line me-2"></i>Active Customers (Last 90 Days)
+          </h6>
+          <p class="fs-3 mb-0 text-dark">
+            {{ active_customers_90d|default(0, true) }}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
   <!-- Charts -->
   <div class="row mb-4">
     <div class="col-lg-6 mb-4">
-      <div class="card shadow-sm">
+      <div class="card shadow-sm h-100">
         <div class="card-body">
-          <h6 class="card-title">Monthly New Users</h6>
+          <h6 class="card-title d-flex justify-content-between align-items-center">
+            <span>Monthly New Users</span>
+            <small class="text-muted">
+              This month: <strong>{{ this_month_new_users }}</strong>
+            </small>
+          </h6>
           <canvas id="userChart"></canvas>
         </div>
       </div>
     </div>
+
     <div class="col-lg-6 mb-4">
-      <div class="card shadow-sm">
+      <div class="card shadow-sm h-100">
         <div class="card-body">
-          <h6 class="card-title">Monthly Packages</h6>
+          <h6 class="card-title d-flex justify-content-between align-items-center">
+            <span>Monthly Packages</span>
+            <small class="text-muted">
+              This month: <strong>{{ this_month_new_packages }}</strong>
+            </small>
+          </h6>
           <canvas id="pkgChart"></canvas>
         </div>
       </div>
     </div>
   </div>
-</div>
-<!-- Scheduled Deliveries Table -->
+
+  <!-- Scheduled Deliveries Table -->
   <div class="card shadow-sm mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
       <h5 class="mb-0">Scheduled Deliveries</h5>
@@ -119,7 +183,10 @@
         tension: 0.4
       }]
     },
-    options: { responsive: true, plugins: { legend: { display: false } } }
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } }
+    }
   });
 
   const pkgChart = new Chart(document.getElementById('pkgChart'), {
@@ -134,8 +201,12 @@
         borderWidth: 1
       }]
     },
-    options: { responsive: true, plugins: { legend: { display: false } } }
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } }
+    }
   });
+
   // Initialize DataTable for Scheduled Deliveries
   $(document).ready(function() {
     $('#dashboardScheduledDeliveries').DataTable({

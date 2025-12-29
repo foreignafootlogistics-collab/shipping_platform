@@ -2,6 +2,9 @@
 # Calculator Data & Functions
 # ===========================
 
+# --- Default category name ---
+DEFAULT_CATEGORY = "Other"
+
 # ===== STEP 1: Categories & Duty/GCT Rates =====
 CATEGORIES = {
     "Clothing & Footwear": {"duty": 20, "gct": 16.5},
@@ -33,6 +36,18 @@ CATEGORIES = {
 
 categories = list(CATEGORIES.keys())  # for dropdown choices
 
+
+def normalize_category(category: str) -> str:
+    """
+    Make sure any missing/unknown category becomes 'Other'.
+    """
+    if not category:
+        return DEFAULT_CATEGORY
+    category = str(category).strip()
+    if category not in CATEGORIES:
+        return DEFAULT_CATEGORY
+    return category
+
 # ===== STEP 2: Freight Rate Table =====
 
 
@@ -60,7 +75,12 @@ def calculate_charges(category, invoice_usd, weight):
     Calculate customs and freight charges for a shipment.
     If invoice <= $100, all customs charges are 0.
     """
-    rates = CATEGORIES.get(category, {"duty": 20, "gct": 16.5})
+    # 🔑 Force unknown/missing categories to 'Other'
+    category = normalize_category(category)
+
+    # Always use a defined entry (no hard-coded dict anymore)
+    rates = CATEGORIES.get(category, CATEGORIES[DEFAULT_CATEGORY])
+
     base_jmd = invoice_usd * USD_TO_JMD
 
     if invoice_usd <= 100:
@@ -75,7 +95,7 @@ def calculate_charges(category, invoice_usd, weight):
         stamp = 100
         customs_total = duty + scf + envl + caf + gct + stamp
 
-    # Freight & Handling
+    # Freight & Handling are based on weight + AdminRate table
     freight = get_freight(weight)
     handling = 0
     if 40 < weight <= 50:
@@ -93,6 +113,7 @@ def calculate_charges(category, invoice_usd, weight):
     grand_total = customs_total + freight_total
 
     return {
+        "category": category,  # optional but useful to return
         "base_jmd": round(base_jmd, 2),
         "duty": round(duty, 2),
         "scf": round(scf, 2),

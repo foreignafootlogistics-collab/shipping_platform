@@ -21,61 +21,65 @@
           <!-- Profile Avatar -->
           <div class="profile-avatar text-center">
             {% if profile_picture %}
-             <img src="{{ url_for('static', filename='profile_pics/' + profile_picture) }}" 
-                  alt="Profile Picture" 
-                  class="img-fluid rounded-circle mb-2">
-          {% else %}
-            {% set colors = ['#FFEB3B', '#4CAF50'] %} {# yellow and green #}
-            {% set color_index = current_user.id % 2 %}
-            <div class="rounded-circle mb-2 d-flex align-items-center justify-content-center profile-initials-avatar"
-                style="
-                  width:100px; 
-                  height:100px; 
-                  font-weight:bold; 
-                  font-size:2rem; 
-                  color:#000; 
-                  background-color: {{ colors[color_index] }};
-                  border: 3px solid #4a148c; /* purple border to tie in theme */
-                  text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
-                  cursor: pointer;
-       ">
-              {{ current_user.full_name[:1]|upper }}{{ current_user.full_name.split(' ')[-1][:1]|upper }}
-            </div>
-          {% endif %}
+              <img src="{{ url_for('static', filename='profile_pics/' + profile_picture) }}" 
+                   alt="Profile Picture" 
+                   class="img-fluid rounded-circle mb-2">
+            {% else %}
+              {% set colors = ['#FFEB3B', '#4CAF50'] %} {# yellow and green #}
+              {% set color_index = current_user.id % 2 %}
+              <div class="rounded-circle mb-2 d-flex align-items-center justify-content-center profile-initials-avatar"
+                   style="
+                     width:100px; 
+                     height:100px; 
+                     font-weight:bold; 
+                     font-size:2rem; 
+                     color:#000; 
+                     background-color: {{ colors[color_index] }};
+                     border: 3px solid #4a148c;
+                     text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+                     cursor: pointer;
+                   ">
+                {{ current_user.full_name[:1]|upper }}{{ current_user.full_name.split(' ')[-1][:1]|upper }}
+              </div>
+            {% endif %}
 
-         <form action="{{ url_for('customer.upload_profile_pic') }}" method="POST" enctype="multipart/form-data">
-           <input type="file" name="profile_pic" accept="image/*" class="form-control form-control-sm mb-2" required>
-           <button type="submit" class="btn btn-dashboard w-100">Upload</button>
-         </form>
-       </div>
-
+            <form action="{{ url_for('customer.upload_profile_pic') }}" method="POST" enctype="multipart/form-data">
+              <input type="file" name="profile_pic" accept="image/*" class="form-control form-control-sm mb-2" required>
+              <button type="submit" class="btn btn-dashboard w-100">Upload</button>
+            </form>
+          </div>
 
           <!-- Profile Details -->
           <div class="profile-details mt-3">
             <div class="profile-row">
               <div class="label">Name</div>
-              <div class="value">{{ user[0] }}</div>
+              <div class="value">{{ user.full_name }}</div>
             </div>
 
             <div class="profile-row">
               <div class="label">Email</div>
-              <div class="value">{{ user[1] }}</div>
+              <div class="value">{{ user.email }}</div>
             </div>
 
             <div class="profile-row">
               <div class="label">Mobile</div>
-              <div class="value">{{ user[2] }}</div>
+              <div class="value">{{ user.mobile }}</div>
             </div>
 
             <div class="profile-row">
               <div class="label">Registration</div>
-              <div class="value">{{ user[3] }}</div>
+              <div class="value">{{ user.registration_number }}</div>
             </div>
 
             <div class="mt-3 d-flex align-items-center">
               <label class="label me-2 mb-0">Referral Code:</label>
-              <span class="badge referral-code-badge" id="referralCode">{{ referral_code }}</span>
-              <button class="btn btn-dashboard-outline ms-2" title="Copy Code" onclick="copyReferralCode()">
+              <span class="badge referral-code-badge" id="referralCode">
+                {{ user.referral_code or "Not set" }}
+              </span>
+              <button type="button"
+                      id="copyReferralBtn"
+                      class="btn btn-dashboard-outline ms-2"
+                      title="Copy Code">
                 <i class="fas fa-copy"></i>
               </button>
             </div>
@@ -162,53 +166,54 @@
   </div>
 
   <!-- Ready for Pick Up Packages -->
-<div class="dashboard-section">
-  <div class="d-flex justify-content-between align-items-center mb-2">
-    <h3>READY PACKAGES</h3>
-    <a href="{{ url_for('customer.schedule_delivery_overview') }}" class="btn btn-dashboard btn-sm">
-      Schedule Delivery
-    </a>
+  <div class="dashboard-section">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h3>READY PACKAGES</h3>
+      <a href="{{ url_for('customer.schedule_delivery_overview') }}" class="btn btn-dashboard btn-sm">
+        Schedule Delivery
+      </a>
+    </div>
+
+    <div class="ready-packages">
+      <table class="table table-hover table-striped">
+        <thead class="table-dark">
+          <tr>
+            <th>House AWB / Status</th>
+            <th>Description</th>
+            <th>Tracking Number</th>
+            <th>Weight</th>
+            <th>Received Date</th>
+            <th>Amount Due</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if ready_packages %}
+            {% for pkg in ready_packages %}
+              <tr>
+                <td>
+                  {{ pkg.house_awb }}<br>
+                  <small class="text-muted">Status: {{ pkg.status }}</small>
+                </td>
+                <td>{{ pkg.description }}</td>
+                <td>{{ pkg.tracking_number }}</td>
+                <td>{{ pkg.weight }}</td>
+                <td>{{ pkg.received_date }}</td>
+                <td>${{ "%.2f"|format(pkg.amount_due) }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="6" class="text-center">No packages ready for pick up.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <div class="ready-packages">
-    <table class="table table-hover table-striped">
-      <thead class="table-dark">
-        <tr>
-          <th>House AWB / Status</th>
-          <th>Description</th>
-          <th>Tracking Number</th>
-          <th>Weight</th>
-          <th>Received Date</th>
-          <th>Amount Due</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% if ready_packages %}
-          {% for pkg in ready_packages %}
-            <tr>
-              <td>
-                {{ pkg.house_awb }}<br>
-                <small class="text-muted">Status: {{ pkg.status }}</small>
-              </td>
-              <td>{{ pkg.description }}</td>
-              <td>{{ pkg.tracking_number }}</td>
-              <td>{{ pkg.weight }}</td>
-              <td>{{ pkg.received_date }}</td>
-              <td>${{ "%.2f"|format(pkg.amount_due) }}</td>
-            </tr>
-          {% endfor %}
-        {% else %}
-          <tr>
-            <td colspan="6" class="text-center">No packages ready for pick up.</td>
-          </tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
 </div>
 
-
-<!-- Toggle & Copy & Calculator Script -->
+<!-- Toggle & Copy Script -->
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   // Toggle Addresses
@@ -217,25 +222,33 @@ document.addEventListener("DOMContentLoaded", function () {
   const overseasAddress = document.getElementById("overseas-address");
   const homeAddress = document.getElementById("home-address");
 
-  overseasBtn.addEventListener("click", function () {
-    overseasAddress.style.display = "grid";
-    homeAddress.style.display = "none";
-  });
-  homeBtn.addEventListener("click", function () {
-    overseasAddress.style.display = "none";
-    homeAddress.style.display = "block";
-  });
-
-  // Copy Referral Code
-  const copyBtn = document.getElementById("copyReferralBtn");
-  if(copyBtn){
-    copyBtn.addEventListener("click", function(){
-      const code = document.getElementById("referralCode").innerText;
-      navigator.clipboard.writeText(code).then(() => alert("Referral code copied!"));
+  if (overseasBtn && homeBtn) {
+    overseasBtn.addEventListener("click", function () {
+      overseasAddress.style.display = "grid";
+      homeAddress.style.display = "none";
+    });
+    homeBtn.addEventListener("click", function () {
+      overseasAddress.style.display = "none";
+      homeAddress.style.display = "block";
     });
   }
 
-  
+  // Copy Referral Code
+  const copyBtn = document.getElementById("copyReferralBtn");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", function () {
+      const codeEl = document.getElementById("referralCode");
+      if (!codeEl) return;
+      const code = codeEl.innerText.trim();
+      if (!code || code === "Not set") {
+        alert("No referral code assigned yet.");
+        return;
+      }
+      navigator.clipboard.writeText(code).then(() => {
+        alert("Referral code copied!");
+      });
+    });
+  }
 });
 </script>
 
@@ -277,6 +290,5 @@ document.addEventListener("DOMContentLoaded", function () {
   box-shadow: 0 8px 20px rgba(0,0,0,0.3);
   filter: brightness(1.1);
 }
-
 </style>
 {% endblock %}

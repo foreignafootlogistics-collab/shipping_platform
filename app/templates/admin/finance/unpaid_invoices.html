@@ -50,22 +50,43 @@
         </tr>
       </thead>
       <tbody>
-        {% for r in invoices %}
-        <tr>
-          <td><a href="{{ url_for('admin.view_invoice', invoice_id=r['invoice_id']) }}" class="text-decoration-none">
-            {{ r['invoice_number'] or r['invoice_id'] }}</a></td>
-          <td>{{ r['customer'] }}</td>
-          <td>{{ r['registration_number'] }}</td>
-          <td><span class="badge {{ 'bg-info' if r['status']|lower=='issued' else 'bg-warning' }}">{{ r['status']|capitalize }}</span></td>
-          <td class="text-end">${{ '%.2f'|format((r['amount_due'] or 0)|float) }}</td>
-          <td>{{ r['date_issued'] }}</td>
-          <td><a href="{{ url_for('admin.view_invoice', invoice_id=r['invoice_id']) }}" class="btn btn-sm btn-outline-primary">View</a></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="text-center text-muted">No matching invoices.</td></tr>
-        {% endfor %}
+        {% if invoices %}
+          {% for r in invoices %}
+          <tr>
+            <td>
+              <a href="{{ url_for('admin.view_invoice', invoice_id=r['invoice_id']) }}"
+                 class="text-decoration-none">
+                {{ r['invoice_number'] or r['invoice_id'] }}
+              </a>
+            </td>
+            <td>{{ r['customer'] }}</td>
+            <td>{{ r['registration_number'] }}</td>
+            <td>
+              <span class="badge {{ 'bg-info' if r['status']|lower=='issued' else 'bg-warning' }}">
+                {{ r['status']|capitalize }}
+              </span>
+            </td>
+            <td class="text-end">
+              ${{ '%.2f'|format((r['amount_due'] or 0)|float) }}
+            </td>
+            <td>{{ r['date_issued'] }}</td>
+            <td>
+              <a href="{{ url_for('admin.view_invoice', invoice_id=r['invoice_id']) }}"
+                 class="btn btn-sm btn-outline-primary">
+                View
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        {% endif %}
       </tbody>
     </table>
+
+    {% if not invoices %}
+      <div class="alert alert-info text-center mb-0">
+        No matching invoices.
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

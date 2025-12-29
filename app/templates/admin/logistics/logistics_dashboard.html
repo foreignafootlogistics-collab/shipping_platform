@@ -24,56 +24,142 @@
   <!-- Tabs -->
   <ul class="nav nav-tabs logistics-tabs" id="logisticsTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link {% if tab == 'prealert' %}active{% endif %}"
-              id="prealerts-tab"
-              data-bs-toggle="tab"
-              data-bs-target="#prealerts"
-              type="button"
-              role="tab">Pre-Alert Shipments</button>
+      <a class="nav-link {% if active_tab == 'prealert' %}active{% endif %}"
+         id="prealerts-tab"
+         href="{{ url_for('logistics.logistics_dashboard', tab='prealert') }}">
+        Pre-Alert Shipments
+      </a>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link {% if tab == 'view_packages' %}active{% endif %}"
-              id="view-tab"
-              data-bs-toggle="tab"
-              data-bs-target="#viewPackages"
-              type="button"
-              role="tab">View Packages</button>
+      <a class="nav-link {% if active_tab == 'view_packages' %}active{% endif %}"
+         id="view-tab"
+         href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}">
+        View Packages
+      </a>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link {% if tab == 'shipmentLog' %}active{% endif %}"
-              id="shipment-tab"
-              data-bs-toggle="tab"
-              data-bs-target="#shipmentLog"
-              type="button"
-              role="tab">Shipment Log</button>
+      <a class="nav-link {% if active_tab == 'shipmentLog' %}active{% endif %}"
+         id="shipment-tab"
+         href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog') }}">
+        Shipment Log
+      </a>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link {% if tab == 'uploadPackages' %}active{% endif %}"
-              id="upload-tab"
-              data-bs-toggle="tab"
-              data-bs-target="#uploadPackages"
-              type="button"
-              role="tab">Upload Packages</button>
+      <a class="nav-link {% if active_tab == 'uploadPackages' %}active{% endif %}"
+         id="upload-tab"
+         href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
+        Upload Packages
+      </a>
     </li>
   </ul>
 
-  <!-- Tab content (wraps ALL panes) -->
+  <!-- Tab content (ALL panes live only in here) -->
   <div class="tab-content mt-3" id="logisticsTabsContent">
 
-    <!-- Pre-Alerts -->
-    <div class="tab-pane fade {% if tab == 'prealert' %}show active{% endif %}"
+    {# ---------------- PREALERT TAB ---------------- #}
+    {% if active_tab == 'prealert' %}
+    <div class="tab-pane show active"
          id="prealerts" role="tabpanel" aria-labelledby="prealerts-tab">
-      {% include "admin/logistics/prealerts.html" %}
-    </div>
+      <div class="table-responsive mt-3">
+        <table id="dashboardPrealertsTable" class="table table-striped table-bordered">
+          <thead>
+            <tr>
+              <th>Pre-Alert #</th>
+              <th>Customer</th>
+              <th>Vendor</th>
+              <th>Courier</th>
+              <th>Tracking #</th>
+              <th>Purchase Date</th>
+              <th>Contents</th>
+              <th>Value (USD)</th>
+              <th>Invoice</th>
+              <th>Submitted On</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if prealerts %}
+              {% for p in prealerts %}
+              <tr>
+                <!-- 1. Pre-Alert # -->
+                <td>{{ p.code }}</td>
 
-    <!-- View Packages -->
-    <div class="tab-pane fade {% if tab == 'view_packages' %}show active{% endif %}"
+                <!-- 2. Customer -->
+                <td>
+                  {{ p.customer_name or 'N/A' }}<br>
+                  <small class="text-muted">{{ p.registration_number or '' }}</small>
+                </td>
+
+                <!-- 3. Vendor -->
+                <td>{{ p.vendor_name or 'N/A' }}</td>
+
+                <!-- 4. Courier -->
+                <td>{{ p.courier_name or 'N/A' }}</td>
+
+                <!-- 5. Tracking # -->
+                <td>{{ p.tracking_number or 'N/A' }}</td>
+
+                <!-- 6. Purchase Date -->
+                <td>
+                  {% if p.purchase_date %}
+                    {{ p.purchase_date }}
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </td>
+
+                <!-- 7. Contents -->
+                <td>{{ p.package_contents or 'N/A' }}</td>
+
+                <!-- 8. Value (USD) -->
+                <td>${{ '%.2f'|format(p.item_value_usd or 0) }}</td>
+
+                <!-- 9. Invoice -->
+                <td>
+                  {% if p.invoice_filename %}
+                    <a href="{{ url_for('static', filename='uploads/invoices/' ~ p.invoice_filename) }}"
+                       target="_blank">
+                      View
+                    </a>
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </td>
+
+                <!-- 10. Submitted On -->
+                <td>
+                  {% if p.created_at %}
+                    {{ p.created_at }}
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="10" class="text-center text-muted">
+                  No pre-alert shipments found.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+    {% endif %}
+
+    {# ---------------- VIEW PACKAGES TAB ---------------- #}
+    {% if active_tab == 'view_packages' %}
+    <div class="tab-pane show active"
          id="viewPackages" role="tabpanel" aria-labelledby="view-tab">
       {% include "admin/logistics/view_packages.html" %}
     </div>
+    {% endif %}
 
-    <!-- Shipment Log -->
-    <div class="tab-pane fade {% if tab == 'shipmentLog' %}show active{% endif %}"
+    {# ---------------- SHIPMENT LOG TAB ---------------- #}
+    {% if active_tab == 'shipmentLog' %}
+    <div class="tab-pane show active"
          id="shipmentLog" role="tabpanel" aria-labelledby="shipment-tab">
 
       <div class="row mb-3">
@@ -85,7 +171,7 @@
 
             <!-- Toolbar -->
             <div class="btn-group btn-group-sm" role="group" aria-label="Shipment toolbar">
-              <!-- Create new shipment (go to View Packages to select) -->
+              <!-- Create new shipment (blank batch) -->
               <form method="POST"
                     action="{{ url_for('logistics.create_empty_shipment') }}"
                     class="d-inline">
@@ -94,7 +180,6 @@
                   <i class="fas fa-plus"></i>
                 </button>
               </form>
-
 
               <!-- Search packages (open modal) -->
               <button class="btn btn-outline-success" title="Search packages"
@@ -108,11 +193,6 @@
                       {% if not selected_shipment %}disabled{% endif %}>
                 <i class="fas fa-trash-alt"></i>
               </button>
-
-              <!-- (Optional) filters toggle if you add any later -->
-              <!-- <button class="btn btn-outline-secondary" title="Filters" data-bs-toggle="collapse" data-bs-target="#batchFilters">
-                <i class="fas fa-filter"></i>
-              </button> -->
             </div>
           </div>
 
@@ -129,7 +209,6 @@
                       {{ (s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
                     </small>
                   </a>
-                  {# 🚫 No per-item delete button here anymore #}
                 </li>
               {% endfor %}
             {% else %}
@@ -142,7 +221,6 @@
             {% endif %}
           </ul>
         </div>
-
 
         <!-- Main: Packages -->
         <div class="col-md-9">
@@ -158,21 +236,27 @@
             <form method="POST"
                   id="shipmentForm"
                   class="d-flex align-items-center gap-2"
-                  action="{{ url_for('logistics.bulk_shipment_action', shipment_id=selected_shipment.id) }}">
+                  action="{{ url_for('logistics.bulk_shipment_action', shipment_id=selected_shipment.id) }}"
+                  novalidate>
               {{ bulk_form.hidden_tag() }}
               <input type="hidden" name="tab" value="shipmentLog">
               <select name="action" class="form-select w-auto" required>
                 <option value="" selected disabled>Select Action</option>
-                <option value="calc_outstanding">🧮 Calculate Outstanding</option>
-                <option value="save_calculated">💾 Save Calculated</option>
+                <option value="calc_outstanding">🧮 Calculate Outstanding</option>                
                 <option value="move">🔁 Move to Shipment…</option>
                 <option value="ready">✅ Mark Ready for Pick Up</option>
-                <option value="generate_invoice">🧾 Generate Invoices</option>
+                <option value="generate_invoice">🧾 Generate Invoice</option>
                 <option value="notify_ready">📣 Email: Ready for Pick-Up</option>
                 <option value="send_invoices">📧 Email: Invoices (Totals)</option>
                 <option value="remove_from_shipment">🗑 Remove from this Shipment</option>
               </select>
-              <button type="submit" class="btn btn-purple btn-sm">Apply</button>
+              <button type="button"
+                      id="shipmentApplyBtn"
+                      class="btn btn-purple btn-sm"
+                      onclick="handleShipmentApply(event)">
+                Apply
+             </button>
+
           </div>
 
           {% if shipment_packages %}
@@ -181,7 +265,9 @@
               <thead class="bg-purple text-white small">
                 <tr>
                   <th style="width:30px;">
-                     <input type="checkbox" id="selectAll" />
+                     <input type="checkbox" 
+                            id="selectAll"
+                            onclick="toggleShipmentSelectAll(this)">
                   </th>
                   <th>Action</th>
                   <th>User</th>
@@ -190,21 +276,33 @@
                   <th>Description</th>
                   <th>Date Received</th>
                   <th>Weight</th>
-                  <th>Item Value ($)</th>
-                  <th>Outstanding ($)</th>                  
+                  <th>Item Value ($)</th>                  
+                  <th>Outstanding ($)</th>
                 </tr>
               </thead>
               <tbody class="small">
                 {% for pkg in shipment_packages %}
                 <tr>
                   <td>
-                    <input type="checkbox" name="package_ids" value="{{ pkg.id }}" class="package-checkbox" />
+                    <input type="checkbox" 
+                           name="package_ids"
+                           value="{{ pkg.id }}"
+                           class="package-checkbox"
+                           onclick="updateShipmentHeaderCheckbox()">
                   </td>
                   <td class="text-center">
                     <button type="button"
                             class="btn btn-sm btn-outline-primary"
-                            onclick="togglePricing({{ pkg.id }})">⚙️</button>
+                            data-bs-toggle="modal"
+                            data-bs-target="#chargesModal"
+                            data-pkg-id="{{ pkg.id }}"
+                            data-desc="{{ pkg.description or '' }}"
+                            data-weight="{{ pkg.weight or 0 }}"
+                            data-value="{{ pkg.value or 50 }}">
+                      <i class="bi bi-calculator"></i>
+                    </button>
                   </td>
+
                   <td>
                     <strong>{{ pkg.full_name }}</strong><br>
                     <small class="text-muted">{{ pkg.registration_number }}</small>
@@ -218,10 +316,10 @@
                   <td>{{ pkg.house_awb or '-' }}</td>
                   <td>{{ pkg.description or '-' }}</td>
                   <td>{{ pkg.date_received.strftime('%Y-%m-%d') if pkg.date_received else '-' }}</td>
-                  <td><input id="weight_{{ pkg.id }}" type="number" class="form-control form-control-sm text-end" value="{{ pkg.weight or 0 }}"></td>
-                  <td><input id="value_{{ pkg.id }}"  type="number" class="form-control form-control-sm text-end" value="{{ pkg.value  or 50 }}"></td>
-                  <td><input id="amount_due_{{ pkg.id }}" type="number" class="form-control form-control-sm text-end" value="{{ pkg.amount_due or 0 }}" readonly></td>
-                </tr>                
+                  <td><input id="weight_{{ pkg.id }}" type="number" step="0.01" min="0" class="form-control form-control-sm text-end" value="{{ pkg.weight or 0 }}"></td>
+                  <td><input id="value_{{ pkg.id }}"  type="number" step="0.01" min="0" class="form-control form-control-sm text-end" value="{{ pkg.value  or 50 }}"></td>                  
+                  <td><input id="amount_due_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm text-end" value="{{ pkg.amount_due or 0 }}" readonly></td>
+                </tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -233,107 +331,11 @@
           </form>  {# closes form opened near the bulk actions #}
           {% endif %} {# end if selected_shipment #}
 
-        </div>
-      </div>
-      
-
-      {% for pkg in shipment_packages %}
-      <div id="pricing_{{ pkg.id }}" class="d-none bg-light small border rounded p-3 my-2">
-        <div class="row">
-          <div class="col-md-4 border-end">
-            <div class="mb-1">
-              <label class="small">Category</label>
-              <select id="cat_{{ pkg.id }}" class="form-control form-control-sm">
-                {% for cat in categories %}
-                  <option value="{{ cat }}" {% if pkg.category == cat %}selected{% endif %}>{{ cat }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="mb-1">
-              <label class="small">Invoice USD</label>
-              <input id="pricing_value_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm"
-                     value="{{ pkg.value or 50 }}">
-            </div>
-            <div class="mb-1">
-              <label class="small">Weight (lbs)</label>
-              <input id="pricing_weight_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm"
-                     value="{{ pkg.weight or 0 }}">
-            </div>
-          </div>
-
-          <div class="col-md-8">
-            <div class="row g-2">
-              <!-- 👉 Make all these editable so we can manually key customs/freight if desired -->
-              <div class="col-md-4"><label class="small">Duty</label>
-                <input id="duty_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm">
-              </div>
-              <div class="col-md-4"><label class="small">SCF</label>
-                <input id="scf_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm">
-              </div>
-              <div class="col-md-4"><label class="small">ENVL</label>
-                <input id="envl_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm">
-              </div>
-              <div class="col-md-4"><label class="small">CAF</label>
-                <input id="caf_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm">
-              </div>
-              <div class="col-md-4"><label class="small">GCT</label>
-                <input id="gct_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm">
-              </div>
-              <div class="col-md-4"><label class="small">Stamp</label>
-                <input id="stamp_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm">
-              </div>
-
-              <div class="col-md-6"><label class="small fw-bold">Customs Total</label>
-                <input id="customs_total_{{ pkg.id }}" type="number" step="0.01"
-                       class="form-control form-control-sm fw-bold">
-              </div>
-              <div class="col-md-3"><label class="small">Freight</label>
-                <input id="freight_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm">
-              </div>
-              <div class="col-md-3"><label class="small">Handling</label>
-                <input id="handling_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm">
-              </div>
-
-              <div class="col-md-6"><label class="small fw-bold">Freight Total</label>
-                <input id="freight_total_{{ pkg.id }}" type="number" step="0.01"
-                       class="form-control form-control-sm fw-bold">
-              </div>
-
-              <!-- ✅ NEW: Other Charges -->
-              <div class="col-md-6"><label class="small">Other Charges</label>
-                <input id="other_charges_{{ pkg.id }}" type="number" step="0.01"
-                       class="form-control form-control-sm" value="{{ pkg.other_charges or 0 }}">
-              </div>
-
-              <div class="col-md-6"><label class="small fw-bold text-success">Grand Total</label>
-                <input id="grandtotal_{{ pkg.id }}" type="number" step="0.01"
-                       class="form-control form-control-sm fw-bold text-success">
-              </div>
-            </div>
-
-            <div class="d-flex flex-wrap justify-content-end gap-2 mt-2">
-              <!-- Existing auto-calc -->
-              <button type="button" class="btn btn-sm btn-outline-primary" onclick="runCalculator({{ pkg.id }})">
-                ⚙️ Calculate
-              </button>
-
-              <!-- ✅ NEW: Save only item value (invoice USD) -->
-              <button type="button" class="btn btn-sm btn-outline-secondary" onclick="saveValueOnly({{ pkg.id }})">
-                💾 Save Value Only
-              </button>
-
-              <!-- ✅ NEW: Save manual charges (no auto-calc) -->
-              <button type="button" class="btn btn-sm btn-success" onclick="saveManualCharges({{ pkg.id }})">
-                💾 Save Charges
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {% endfor %}
+        </div> <!-- /col-md-9 -->
+      </div>  <!-- /row mb-3 -->
 
       
+
       <!-- Move to Shipment Modal -->
       <div class="modal fade" id="moveShipmentModal" tabindex="-1" aria-labelledby="moveShipmentLabel" aria-hidden="true">
         <div class="modal-dialog modal-sm modal-dialog-centered">
@@ -370,7 +372,6 @@
           </div>
         </div>
       </div>
- 
 
       <!-- Search Packages Modal -->
       <div class="modal fade" id="shipmentSearchModal" tabindex="-1" aria-labelledby="shipmentSearchLabel" aria-hidden="true">
@@ -458,8 +459,168 @@
         </div>
       </div>
 
+      <!-- Charges / Fees Modal -->
+      <div class="modal fade" id="chargesModal" tabindex="-1" aria-labelledby="chargesModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+          <div class="modal-content">
 
-      <!-- Bulk Invoice Preview (modal-only, no page reload) -->
+            <div class="modal-header" style="background:#4a148c; color:#fff;">
+              <h5 class="modal-title" id="chargesModalLabel">
+                Calculate Charges for Package
+              </h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+              <form id="chargesForm" onsubmit="return false;">
+                <input type="hidden" id="chargesPkgId">
+
+                <!-- Basic Info -->
+                <div class="row g-3 mb-2">
+                  <div class="col-12">
+                    <label class="form-label fw-semibold">Package</label>
+                    <input type="text" id="chargesPkgDesc" class="form-control form-control-sm" readonly>
+                  </div>
+
+                  <div class="col-md-4">
+                    <label for="chargesCategory" class="form-label fw-semibold">Category</label>
+                    <select id="chargesCategory" class="form-select form-select-sm">
+                      {% for cat in categories %}
+                        <option value="{{ cat }}"
+                                {% if (pkg.category if pkg is defined and pkg.category else 'Other') == cat %}selected{% endif %}>
+                          {{ cat }}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+
+                  <div class="col-md-4">
+                    <label for="chargesWeight" class="form-label fw-semibold">Weight (lbs)</label>
+                    <input type="number" step="0.01" id="chargesWeight" class="form-control form-control-sm">
+                  </div>
+
+                  <div class="col-md-4">
+                    <label for="chargesValue" class="form-label fw-semibold">Item Value (USD)</label>
+                    <input type="number" step="0.01" id="chargesValue" class="form-control form-control-sm">
+                  </div>
+                </div>
+
+                <hr class="my-3">
+
+                <!-- Results -->
+                <div id="chargesResult" style="display:none;">
+                  <h6 class="fw-bold mb-2">Breakdown</h6>
+                  <div class="row g-2 small">
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">Duty</div>
+                        <input type="number" step="0.01" id="resDuty" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">GCT</div>
+                        <input type="number" step="0.01" id="resGct" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">SCF</div>
+                        <input type="number" step="0.01" id="resScf" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">ENVL</div>
+                        <input type="number" step="0.01" id="resEnvl" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">CAF</div>
+                        <input type="number" step="0.01" id="resCaf" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted small">Stamp</div>
+                        <input type="number" step="0.01" id="resStamp" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+
+                    <!-- Customs Total / Freight / Handling -->
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted small">Customs Total</div>
+                        <input type="number" step="0.01" id="resCustomsTotal" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">Freight</div>
+                        <input type="number" step="0.01" id="resFreight" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">Handling</div>
+                        <input type="number" step="0.01" id="resHandling" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <!-- Freight Total / Other Charges -->
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted small">Freight Total</div>
+                        <input type="number" step="0.01" id="resFreightTotal" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted small">Other Charges</div>
+                        <input type="number" step="0.01" id="resOther" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-8">
+                      <div class="border rounded p-2 bg-light">
+                        <div class="text-muted">Grand Total (JMD)</div>
+                        <input type="number" step="0.01" id="resTotal" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="chargesError"
+                     class="alert alert-danger mt-3 py-2 px-3 small"
+                     style="display:none;"></div>
+              </form>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm"
+                      data-bs-dismiss="modal">
+                Close
+              </button>
+              <button type="button"
+                      id="btnApplyToPkg"
+                      class="btn btn-outline-success btn-sm"
+                      style="display:none;">
+                Apply & Save
+              </button>
+              <button type="button"
+                      id="btnCalcCharges"
+                      class="btn btn-purple btn-sm">
+                <i class="bi bi-calculator"></i> Calculate Charges
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Bulk Invoice Preview Modal -->
       <div class="modal fade" id="bulkInvoicePreviewModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered">
           <div class="modal-content">
@@ -486,23 +647,36 @@
                       <th colspan="3" class="text-end">Total Amount Due</th>
                       <th class="text-end" id="inv-prev-total">0.00</th>
                     </tr>
-                  </tfoot>       
+                  </tfoot>
                 </table>
               </div>
             </div>
 
             <div class="modal-footer">
-              <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-              <button class="btn btn-purple" id="btn-finalize-invoices">Finalize Invoices</button>
+              <button type="button" 
+                      class="btn btn-secondary"
+                      data-bs-dismiss="modal">
+                Cancel
+              </button>
+              <button id="btn-finalize-invoices"
+                      class="btn btn-purple"
+                      type="button"                      
+                      onclick="finalizeInvoicesFromModal(event)">
+                Generate Customer Invoice(s)
+              </button>
             </div>
           </div>
         </div>
       </div>
-    
-    </div>
 
-    <!-- Upload -->
-    <div class="tab-pane fade {% if tab == 'uploadPackages' %}show active{% endif %}"
+    </div> <!-- /shipmentLog tab-pane -->
+    {% endif %}
+
+    <!-- ======================= -->
+    <!-- Upload Packages Tab     -->
+    <!-- ======================= -->
+    {% if active_tab == 'uploadPackages' %}
+    <div class="tab-pane show active"
          id="uploadPackages" role="tabpanel" aria-labelledby="upload-tab">
 
       <div class="card shadow-sm mt-3 border-0">
@@ -572,7 +746,6 @@
                 <i class="fas fa-file-csv me-1"></i> Download Invalid Rows
               </a>
             {% endif %}
-           </div>
           </div>
 
           <div class="table-responsive border rounded shadow-sm">
@@ -584,13 +757,13 @@
                     <th>{{ h }}</th>
                   {% endfor %}
                   <th>Status</th>
-                  <th style="display:none;">__row_index</th> <!-- hidden index col -->
+                  <th style="display:none;">__row_index</th>
                 </tr>
               </thead>
               <tbody>
                 {% for row in preview_rows %}
                   {% set i = loop.index0 %}
-                  {% set errs = preview_errors.get(i) if preview_errors else None %}
+                  {% set errs = (preview_errors.get(i) or preview_errors.get(i|string)) if preview_errors else None %}
                   <tr class="{% if errs %}table-danger{% else %}table-light{% endif %}">
                     <td>
                       <input type="checkbox"
@@ -619,7 +792,6 @@
                       {% endif %}
                     </td>
 
-                    <!-- hidden index cell -->
                     <td style="display:none;">{{ i }}</td>
                   </tr>
                 {% endfor %}
@@ -630,7 +802,8 @@
           <!-- Confirm form -->
           <form id="confirmForm" method="POST"
                 action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
-                class="mt-3 d-flex flex-wrap align-items-end gap-2">
+                class="mt-3 d-flex flex-wrap align-items-end gap-2"
+                onsubmit="return handleConfirmSubmit(event);">
             {{ upload_form.csrf_token }}
             <input type="hidden" name="tab" value="uploadPackages">
             <input type="hidden" name="stage" value="confirm">
@@ -657,20 +830,22 @@
               </a>
             </div>
           </form>
-          {% endif %}
+          {% endif %}  {# end if preview_headers and preview_rows #}
+
         </div> <!-- /card-body -->
       </div>   <!-- /card -->
-    </div>     <!-- /uploadPackages tab-pane -->
 
-  
-  </div> <!-- ✅ CLOSE .tab-content here -->
+    </div>     <!-- /uploadPackages tab-pane -->
+    {% endif %}
+  </div> <!-- /tab-content -->
 </div>  <!-- /container -->
 
-<!-- JS -->
+
 <script>
 const categoryRates = {{ CATEGORIES|tojson }};
 const USD_TO_JMD    = {{ USD_TO_JMD }};
 
+// ---------- helper for JSON POST ----------
 async function postJSON(url, body) {
   const r = await fetch(url, {
     method: 'POST',
@@ -680,13 +855,221 @@ async function postJSON(url, body) {
     },
     body: JSON.stringify(body)
   });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) {
+    const txt = await r.text();
+    throw new Error('Request failed: ' + txt);
+  }
   return r.json();
 }
 
-// Open preview modal using JSON API
+/* ============================
+   CHARGES MODAL / CALCULATOR
+   ============================ */
+(function() {
+  const chargesModal   = document.getElementById('chargesModal');
+  if (!chargesModal) return;
+
+  const pkgIdInput     = document.getElementById('chargesPkgId');
+  const pkgDescInput   = document.getElementById('chargesPkgDesc');
+  const weightInput    = document.getElementById('chargesWeight');
+  const valueInput     = document.getElementById('chargesValue');
+  const categorySelect = document.getElementById('chargesCategory');
+  const btnCalc        = document.getElementById('btnCalcCharges');
+  const btnApply       = document.getElementById('btnApplyToPkg');
+  const resultBox      = document.getElementById('chargesResult');
+  const errorBox       = document.getElementById('chargesError');
+
+  // Editable result inputs
+  const resDuty         = document.getElementById('resDuty');
+  const resGct          = document.getElementById('resGct');
+  const resScf          = document.getElementById('resScf');
+  const resEnvl         = document.getElementById('resEnvl');
+  const resCaf          = document.getElementById('resCaf');
+  const resStamp        = document.getElementById('resStamp');
+  const resCustomsTotal = document.getElementById('resCustomsTotal');
+  const resFreight      = document.getElementById('resFreight');
+  const resHandling     = document.getElementById('resHandling');
+  const resFreightTotal = document.getElementById('resFreightTotal');
+  const resOther        = document.getElementById('resOther');
+  const resTotal        = document.getElementById('resTotal');
+
+  // When the modal opens, fill in data from the button
+  chargesModal.addEventListener('show.bs.modal', function(event) {
+    const btn = event.relatedTarget;
+    if (!btn) return;
+
+    const pkgId  = btn.getAttribute('data-pkg-id');
+    const weight = btn.getAttribute('data-weight') || "0";
+    const value  = btn.getAttribute('data-value')  || "0";
+    const desc   = btn.getAttribute('data-desc')   || "";
+
+    pkgIdInput.value   = pkgId;
+    pkgDescInput.value = desc;
+    weightInput.value  = weight;
+    valueInput.value   = value;
+
+    // reset UI state
+    resultBox.style.display = 'none';
+    errorBox.style.display  = 'none';
+    errorBox.textContent    = '';
+    btnApply.style.display  = 'none';
+
+    // clear result inputs
+    [
+      resDuty, resGct, resScf, resEnvl, resCaf, resStamp,
+      resCustomsTotal, resFreight, resHandling, resFreightTotal,
+      resOther, resTotal
+    ].forEach(el => { if (el) el.value = ''; });
+  });
+
+  // Calculate charges via backend endpoint
+  btnCalc.addEventListener('click', function() {
+    const category = categorySelect.value;
+    const weight   = weightInput.value || "0";
+    const value    = valueInput.value  || "0";
+
+    if (!category) {
+      errorBox.style.display  = 'block';
+      errorBox.textContent    = "Please select a category.";
+      resultBox.style.display = 'none';
+      btnApply.style.display  = 'none';
+      return;
+    }
+
+    const url = new URL("{{ url_for('logistics.shipment_calc_charges') }}", window.location.origin);
+    url.searchParams.set("category",  category);
+    url.searchParams.set("weight",    weight);
+    url.searchParams.set("value_usd", value);
+
+    fetch(url.toString(), {
+      method: "GET",
+      headers: { "Accept": "application/json" }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.ok) throw new Error(data.error || "Unknown error");
+        const d   = data.data || {};
+        const fmt = (x) => (x == null ? "0.00" : Number(x).toFixed(2));
+
+        if (resDuty)         resDuty.value         = fmt(d.duty);
+        if (resGct)          resGct.value          = fmt(d.gct);
+        if (resScf)          resScf.value          = fmt(d.scf);
+        if (resEnvl)         resEnvl.value         = fmt(d.envl);
+        if (resCaf)          resCaf.value          = fmt(d.caf);
+        if (resStamp)        resStamp.value        = fmt(d.stamp);
+        if (resCustomsTotal) resCustomsTotal.value = fmt(d.customs_total);
+        if (resFreight)      resFreight.value      = fmt(d.freight);
+        if (resHandling)     resHandling.value     = fmt(d.handling);
+        if (resFreightTotal) resFreightTotal.value = fmt(d.freight_total);
+        if (resOther)        resOther.value        = fmt(d.other_charges || 0);
+
+        const total = d.grand_total || d.total_jmd || 0;
+        if (resTotal) resTotal.value = fmt(total);
+
+        errorBox.style.display  = 'none';
+        resultBox.style.display = 'block';
+        btnApply.style.display  = 'inline-block';
+      })
+      .catch(err => {
+        console.error(err);
+        errorBox.textContent    = "Failed to calculate charges: " + err.message;
+        errorBox.style.display  = 'block';
+        resultBox.style.display = 'none';
+        btnApply.style.display  = 'none';
+      });
+  });
+
+  // Helper: safe number from input
+  function numVal(el) {
+    if (!el) return 0;
+    const v = parseFloat(el.value || '0');
+    return isNaN(v) ? 0 : v;
+  }
+
+  // Apply + save back to table + DB
+  btnApply.addEventListener('click', async function() {
+    const pkgId = pkgIdInput.value;
+    if (!pkgId) return;
+
+    // Read current inputs (manual edits included)
+    const payload = {
+      category: (categorySelect.value || 'Other'),
+      value:    numVal(valueInput),
+      weight:   numVal(weightInput),
+
+      duty:          numVal(resDuty),
+      gct:           numVal(resGct),
+      scf:           numVal(resScf),
+      envl:          numVal(resEnvl),
+      caf:           numVal(resCaf),
+      stamp:         numVal(resStamp),
+      customs_total: numVal(resCustomsTotal),
+      freight:       numVal(resFreight),
+      handling:      numVal(resHandling),
+      freight_total: numVal(resFreightTotal),
+      other_charges: numVal(resOther)
+    };
+
+    // Grand total: use field if entered, else recompute
+    let grand = numVal(resTotal);
+    if (!grand) {
+      grand = payload.customs_total + payload.freight + payload.handling + payload.other_charges;
+    }
+    payload.grand_total = grand;
+    payload.amount_due  = grand;
+
+    // Update the row inputs so UI matches
+    const amountField = document.getElementById('amount_due_' + pkgId);
+    if (amountField) amountField.value = grand.toFixed(2);
+
+    const valueField = document.getElementById('value_' + pkgId);
+    if (valueField) valueField.value = payload.value.toFixed(2);
+
+    const weightField = document.getElementById('weight_' + pkgId);
+    if (weightField) weightField.value = payload.weight.toFixed(2);
+
+    const otherField = document.getElementById('other_' + pkgId);
+    if (otherField) otherField.value = payload.other_charges.toFixed(2);
+
+    // Save to DB via API
+    const updateUrl = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace(/\/0$/, `/${pkgId}`);
+
+    try {
+      const res = await fetch(updateUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error('Update API failed');
+      await res.json();
+
+      alert(`Saved charges for package ${pkgId}.`);
+      // Optional: close modal after save
+      const modalObj = bootstrap.Modal.getInstance(chargesModal);
+      if (modalObj) modalObj.hide();
+    } catch (err) {
+      console.error(err);
+      alert('⚠️ Error saving charges for this package.');
+    }
+  });
+
+})();
+
+/* ================================
+   BULK INVOICE PREVIEW + FINALIZE
+   ================================ */
 async function openInvoicePreview(selectedPkgIds) {
-  const data = await postJSON("{{ url_for('logistics.bulk_invoice_preview') }}", { package_ids: selectedPkgIds });
+  console.log('openInvoicePreview, ids =', selectedPkgIds);
+
+  const data = await postJSON("{{ url_for('logistics.bulk_invoice_preview') }}", {
+    package_ids: selectedPkgIds
+  });
+
+  console.log('bulk_invoice_preview response:', data);
 
   const tbody = document.querySelector('#inv-prev-tbody');
   if (!tbody) {
@@ -717,62 +1100,94 @@ async function openInvoicePreview(selectedPkgIds) {
   if (totalCell) totalCell.textContent = grand.toFixed(2);
 
   const note = document.getElementById('detained-note');
-  if (note) note.textContent = data.detained_skipped ? `• ${data.detained_skipped} detained package(s) skipped` : '';
+  if (note) {
+    note.textContent = data.detained_skipped
+      ? `• ${data.detained_skipped} detained package(s) skipped`
+      : '';
+  }
 
   const modalEl = document.getElementById('bulkInvoicePreviewModal');
   const modal = new bootstrap.Modal(modalEl);
   modal.show();
 }
 
-// Finalize invoices from the modal
-async function finalizeInvoicesFromModal() {
+async function finalizeInvoicesFromModal(ev) {
+  // This will stop any default form submit behaviour
+  if (ev && ev.preventDefault) ev.preventDefault();
+
+  console.log('Finalize button clicked');
+
   const checks = [...document.querySelectorAll('.inv-user:checked')];
   const selections = checks.map(ch => ({
     user_id: Number(ch.dataset.uid),
     package_ids: ch.dataset.pkgs.split(',').map(x => Number(x))
   }));
 
+  console.log('Selections:', selections);
+
   if (!selections.length) {
     alert('Select at least one customer.');
     return;
   }
 
-  const res = await postJSON("{{ url_for('logistics.bulk_invoice_finalize_json') }}", { selections });
-  alert(`Created ${res.created} invoice(s).`);
-  setTimeout(() => window.location.reload(), 500);
+  try {
+    const res = await postJSON(
+      "{{ url_for('logistics.bulk_invoice_finalize_json') }}",
+      { selections }
+    );
+    console.log('bulk_invoice_finalize_json response:', res);
+
+    if (res.error) {
+      alert('⚠️ Server error: ' + res.error);
+      return;
+    }
+
+    alert(`Created ${res.created} invoice(s).`);
+
+    // reload to show updated invoice_id on packages / invoice list
+    setTimeout(() => window.location.reload(), 500);
+  } catch (err) {
+    console.error('Error calling finalize-json:', err);
+    alert('⚠️ Error generating invoices: ' + (err.message || err));
+  }
 }
 
-// Wire the modal's finalize button
-document.addEventListener('click', (e) => {
-  if (e.target && e.target.id === 'btn-finalize-invoices') {
-    finalizeInvoicesFromModal().catch(err => alert(err));
+// We KEEP the shipmentForm handler but REMOVE the old btn-finalize-invoices binding.
+// Leave this part as-is (or keep what you already have) for the shipment form:
+document.addEventListener('DOMContentLoaded', function () {
+  const finBtn = document.getElementById('btn-finalize-invoices');
+  // optional: we don't strictly need this since we use onclick on the button
+  if (finBtn) {
+    finBtn.addEventListener('click', function (e) {
+      // This won't hurt; it just also routes clicks through the same function.
+      finalizeInvoicesFromModal(e);
+    });
   }
 });
+
+
+/* ============================
+   SHIPMENT TABLE / BULK ACTION
+   ============================ */
 
 let dt = null;
 let dtInitialized = false;
 
 function initShipmentTable() {
   if (dtInitialized) return;
+
   const $table = $('#shipmentTable');
   if (!$table.length) return;
-
   if ($.fn.DataTable.isDataTable('#shipmentTable')) return;
 
   dt = $table.DataTable({
-    // default page size
     pageLength: 10,
-
-    // allow user to pick sizes
     lengthChange: true,
     lengthMenu: [[10, 25, 50, 100, 500], [10, 25, 50, 100, 500]],
-
-    // put Buttons on the left, page-length on the right
-  dom:
+    dom:
       "<'row g-2 align-items-center mb-2'<'col-md-6'B><'col-md-6 text-md-end'l>>" +
       "rt" +
       "<'row align-items-center mt-2'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
-
     order: [[2, 'asc']],
     buttons: [
       { extend: 'copyHtml5',  className: 'btn btn-sm btn-purple'   },
@@ -781,7 +1196,7 @@ function initShipmentTable() {
       { extend: 'print',      className: 'btn btn-sm btn-secondary'}
     ],
     columnDefs: [
-      { orderable: false, targets: [0, 1] } // ← disable sort on Select + Action
+      { orderable: false, targets: [0, 1] }
     ],
     rowCallback: function (row) {
       if ($(row).hasClass('no-dt') || $(row).hasClass('d-none')) {
@@ -791,61 +1206,138 @@ function initShipmentTable() {
     language: { emptyTable: 'No packages in this shipment.' }
   });
 
- // ✅ Insert this snippet here:
-  $('#shipmentTable').off('change', '#selectAll').on('change', '#selectAll', function () {
-    const checked = this.checked;
-    if (!dt) return;
-    dt.rows({ search: 'applied', page: 'current' }).nodes().to$()
-      .find('input.package-checkbox')
-      .prop('checked', checked);
-  })
+  // stop header checkbox cell from triggering sort
+  $(document)
+    .off('click.shipmentHeader', '#shipmentTable thead th:first-child, #selectAll')
+    .on('click.shipmentHeader', '#shipmentTable thead th:first-child, #selectAll', function (e) {
+      e.stopPropagation();
+    });
 
- // ✅ Working Select-All toggle
-$('#selectAll').off('change').on('change', function () {
-  const checked = this.checked;
-  if (!dt) return;
-  // select checkboxes only in visible page
-  dt.rows({ search: 'applied', page: 'current' }).nodes().to$()
-    .find('input.package-checkbox')
-    .prop('checked', checked);
-});
-
-// ✅ Update selectAll when any checkbox changes
-$('#shipmentTable tbody').off('change', '.package-checkbox').on('change', '.package-checkbox', function () {
-  const allBoxes = dt.$('.package-checkbox').length;
-  const checkedBoxes = dt.$('.package-checkbox:checked').length;
-  $('#selectAll').prop('checked', allBoxes > 0 && allBoxes === checkedBoxes);
-});
-
-
-  // NEW: stop header clicks from triggering sort
-  $(document).on('click', '#shipmentTable thead th:first-child, #selectAll', function (e) {
-    e.stopPropagation();
+  // whenever DataTables redraws (paging/search), resync header checkbox
+  dt.on('draw.shipment', function () {
+    updateShipmentHeaderCheckbox();
   });
 
-  
-  dt.on('draw', function () {
-    const total   = dt.$('.package-checkbox').length;
-    const checked = dt.$('.package-checkbox:checked').length;
-    $('#selectAll').prop('checked', total > 0 && total === checked);
-  });
-
-  // ✅ Beautify the page-length dropdown (top-right)
+  // style length dropdown
   $('#shipmentTable_wrapper .dataTables_length select')
     .addClass('form-select form-select-sm');
   $('#shipmentTable_wrapper .dataTables_length label')
     .addClass('mb-0 small');
 
   dtInitialized = true;
+
+  // initial sync
+  updateShipmentHeaderCheckbox();
 }
 
+// 🔑 GLOBAL handler so we can bind it anywhere
+async function handleShipmentApply(e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const form = document.getElementById('shipmentForm');
+  if (!form) {
+    console.error('shipmentForm not found');
+    return;
+  }
+
+  const actionSel = form.querySelector('select[name="action"]');
+  const action    = actionSel ? actionSel.value : '';
+
+  if (!action) {
+    alert('⚠️ Please select an action.');
+    return;
+  }
+
+  // Collect selected package IDs (use DataTables if active)
+  let ids = [];
+  if (dt && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+    // Use DataTables API so it can see all rows, not just the current page
+    ids = dt.$('.package-checkbox:checked').map(function () {
+      return this.value;
+    }).get();
+  } else {
+    // Fallback: plain DOM query
+    ids = Array.from(document.querySelectorAll('.package-checkbox:checked'))
+               .map(cb => cb.value);
+  }
+
+  if (!ids.length) {
+    alert('⚠️ Please select at least one package.');
+    return;
+  }
+
+  console.log('handleShipmentApply action=', action, 'ids=', ids);
+
+  // 🔹 Generate Invoice → open preview modal via JSON
+  if (action === 'generate_invoice') {
+    try {
+      await openInvoicePreview(ids);
+    } catch (err) {
+      console.error('Error in openInvoicePreview:', err);
+      alert('⚠️ Could not load invoice preview.');
+    }
+    return; // stop here, do NOT submit the form
+  }
+
+  // 🔹 Move to another shipment → open "Move" modal
+  if (action === 'move') {
+    const hiddenIds = document.getElementById('move_package_ids');
+    if (hiddenIds) hiddenIds.value = ids.join(',');
+
+    const modalEl = document.getElementById('moveShipmentModal');
+    if (modalEl) {
+      const modal = new bootstrap.Modal(modalEl);
+      modal.show();
+    }
+    return; // no form submit
+  }
+
+  // For all other actions, attach hidden inputs then POST to /bulk-action as before
+  const oldHolder = document.getElementById('selectedIdsContainer');
+  if (oldHolder) oldHolder.remove();
+
+  const holder = document.createElement('div');
+  holder.id = 'selectedIdsContainer';
+  ids.forEach(id => {
+    const input = document.createElement('input');
+    input.type  = 'hidden';
+    input.name  = 'package_ids';
+    input.value = id;
+    holder.appendChild(input);
+  });
+  form.appendChild(holder);
+
+  // Optional: handle a create_shipment action
+  if (action === 'create_shipment') {
+    window.location.href = "{{ url_for('logistics.logistics_dashboard', tab='view_packages', create_shipment=1) }}";
+    return;
+  }
+
+  if (!confirm(`Perform "${action}" on ${ids.length} package(s)?`)) {
+    return;
+  }
+
+  // Normal submit for non-invoice, non-move actions
+  form.submit();
+}
+
+
 $(document).ready(function () {
-  // If Shipment tab is already active, init immediately.
-  if (document.querySelector('#shipmentLog.tab-pane.show.active')) {
+  // Pre-Alerts table in logistics dashboard
+  if ($('#dashboardPrealertsTable').length) {
+    $('#dashboardPrealertsTable').DataTable({
+      order: [[0, 'desc']],
+      pageLength: 10,
+      language: {
+        emptyTable: "No pre-alert shipments found."
+      }
+    });
+  }
+
+  if (document.querySelector('#shipmentLog.tab-pane.show.active, #shipmentLog.tab-pane.active')) {
     initShipmentTable();
   }
 
-  // Init when the Shipment tab is shown
   $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
     const target = $(e.target).attr('data-bs-target');
     if (target === '#shipmentLog') {
@@ -854,166 +1346,18 @@ $(document).ready(function () {
     }
   });
 
-  // Bulk action submit
-  $('#shipmentForm').on('submit', async function (e) {
-    const action = $(this).find('select[name="action"]').val();
-    if (!action) {
-      e.preventDefault();
-      alert('⚠️ Please select an action.');
-      return;
-    }
-
-    const ids = dt ? dt.$('.package-checkbox:checked').map(function(){ return this.value; }).get()
-                   : $('.package-checkbox:checked').map(function(){ return this.value; }).get();
-
-    if (!ids.length) {
-      e.preventDefault();
-      alert('⚠️ Please select at least one package.');
-      return;
-    }
-    if (action === 'generate_invoice') {
-  e.preventDefault();
-  const ids = dt
-    ? dt.$('.package-checkbox:checked').map(function(){ return this.value; }).get()
-    : $('.package-checkbox:checked').map(function(){ return this.value; }).get();
-
-  if (!ids.length) {
-    alert('⚠️ Please select at least one package.');
-    return;
+  // Wire the Apply button
+  const applyBtn = document.getElementById('shipmentApplyBtn');
+  if (applyBtn) {
+    applyBtn.addEventListener('click', handleShipmentApply);
   }
-
-  openInvoicePreview(ids).catch(err => {
-    console.error(err);
-    alert('⚠️ Could not load invoice preview.');
-  });
-  return;
-}
-
-    // 🔢 Bulk calculate outstanding
-    if (action === 'calc_outstanding') {
-      e.preventDefault();
-
-      const rows = ids.map(id => {
-        const { category, invoice, weight } = readRowInputs(id);
-        return { pkg_id: parseInt(id, 10), category, invoice, weight };
-      });
-
-      try {
-        const res = await fetch('{{ url_for("logistics.bulk_calc_outstanding") }}', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
-          body: JSON.stringify({ rows })
-        });
-        if (!res.ok) throw new Error('Bulk calculation failed');
-        const data = await res.json();
-
-        (data.results || []).forEach(r => {
-          const id = r.pkg_id;
-          const amount = parseFloat(r.grand_total || r.amount_due || 0) || 0;
-
-          const amountEl = document.getElementById(`amount_due_${id}`);
-          if (amountEl) amountEl.value = amount.toFixed(2);
-
-          const grandEl  = document.getElementById(`grandtotal_${id}`);
-          if (grandEl) grandEl.value = amount.toFixed(2);
-
-          if (r.breakdown) {
-            const map = {
-              duty: 'duty_', scf: 'scf_', envl: 'envl_', caf: 'caf_', gct: 'gct_', stamp: 'stamp_',
-              customs_total: 'customs_total_', freight: 'freight_', handling: 'handling_', freight_total: 'freight_total_'
-            };
-            Object.entries(map).forEach(([k, prefix]) => {
-              const el = document.getElementById(prefix + id);
-              if (el && r.breakdown[k] != null) el.value = Number(r.breakdown[k]).toFixed(2);
-            });
-          }
-        });
-
-        alert(`Calculated outstanding for ${data.results?.length || 0} package(s).`);
-
-        // Optional: immediately persist each computed amount_due
-        // for (const r of data.results || []) {
-        //   const updUrl = '{{ url_for("logistics.api_update_package", pkg_id=0) }}'.replace(/\/0$/, '/' + r.pkg_id);
-        //   await fetch(updUrl, {
-        //     method: 'POST',
-       //     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
-        //     body: JSON.stringify({ value: r.invoice, amount_due: r.grand_total })
-        //   });
-        // }
-
-      } catch (err) {
-        console.error(err);
-        alert('⚠️ Error during bulk calculation. See console.');
-      }
-      return;
-    }
-    if (action === 'save_calculated') {
-  e.preventDefault();
-
-  // Build rows from current inputs in the table
-  const rows = ids.map(id => {
-    const getNum = (sel) => parseFloat((document.getElementById(sel + id)?.value || 0)) || 0;
-    return {
-      pkg_id: parseInt(id, 10),
-      value:       getNum('value_') || getNum('pricing_value_'),
-      amount_due:  getNum('amount_due_') || getNum('grandtotal_'),
-      duty:        getNum('duty_'),
-      scf:         getNum('scf_'),
-      envl:        getNum('envl_'),
-      caf:         getNum('caf_'),
-      gct:         getNum('gct_'),
-      stamp:       getNum('stamp_'),
-      freight:     getNum('freight_'),
-      handling:    getNum('handling_'),
-      category:    (document.getElementById('cat_' + id)?.value || 'Other'),
-      weight:      parseFloat((document.getElementById('weight_' + id)?.value || 0)) || 0
-      // If you keep "other charges" separately and have a column, include it here.
-    };
-  });
-
-  try {
-    const res = await fetch('{{ url_for("logistics.bulk_save_packages") }}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
-      body: JSON.stringify({ rows })
-    });
-    if (!res.ok) throw new Error('Bulk save failed');
-    const data = await res.json();
-    alert(`Saved ${data.updated} package(s).`);
-  } catch (err) {
-    console.error(err);
-    alert('⚠️ Error during bulk save. See console.');
-  }
-  return;
-}
-
-    if (action === 'move') {
-    e.preventDefault();
-    // fill the hidden field in the modal and show it
-    document.getElementById('move_package_ids').value = ids.join(',');
-    const modal = new bootstrap.Modal(document.getElementById('moveShipmentModal'));
-    modal.show();
-    return;
-    }
-
-    $('#selectedIdsContainer').remove();
-    const $holder = $('<div id="selectedIdsContainer" />');
-    ids.forEach(id => $holder.append($('<input>', { type: 'hidden', name: 'package_ids', value: id })));
-    $(this).append($holder);
-
-    if (action === 'create_shipment') {
-      e.preventDefault();
-      window.location.href = "{{ url_for('logistics.logistics_dashboard', tab='view_packages', create_shipment=1) }}";
-      return;
-    }
-
-    if (!confirm(`Perform "${action}" on ${ids.length} package(s)?`)) {
-      e.preventDefault();
-    }
-  });
 });
 
-// Helper: read row inputs with sensible defaults
+
+/* ======================
+   VARIOUS SAVE HELPERS
+   ====================== */
+
 function readRowInputs(pkgId) {
   const catEl     = document.getElementById(`cat_${pkgId}`);
   const valEl     = document.getElementById(`pricing_value_${pkgId}`) || document.getElementById(`value_${pkgId}`);
@@ -1026,8 +1370,6 @@ function readRowInputs(pkgId) {
   return { category, invoice, weight };
 }
 
-
-// Charges calculator
 async function runCalculator(pkgId) {
   const cat     = document.getElementById(`cat_${pkgId}`).value;
   const invoice = parseFloat(document.getElementById(`pricing_value_${pkgId}`).value || 0);
@@ -1059,7 +1401,6 @@ async function runCalculator(pkgId) {
   }
 }
 
-// Save pricing
 const updateUrlTemplate = "{{ url_for('logistics.api_update_package', pkg_id=0) }}";
 
 async function savePricing(pkgId) {
@@ -1071,9 +1412,9 @@ async function savePricing(pkgId) {
   try {
     const res = await fetch(updateUrl, {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
-        'X-CSRFToken': '{{ csrf_token() }}' 
+        'X-CSRFToken': '{{ csrf_token() }}'
       },
       body: JSON.stringify({ value: invoice, amount_due: grand })
     });
@@ -1090,6 +1431,7 @@ async function savePricing(pkgId) {
     alert('⚠️ Error saving pricing. See console.');
   }
 }
+
 function readNumber(id) {
   const el = document.getElementById(id);
   return el ? (parseFloat(el.value || '0') || 0) : 0;
@@ -1106,7 +1448,7 @@ async function saveValueOnly(pkgId) {
         'Content-Type': 'application/json',
         'X-CSRFToken': '{{ csrf_token() }}'
       },
-      body: JSON.stringify({ value: invoice }) // only value
+      body: JSON.stringify({ value: invoice })
     });
     if (!res.ok) throw new Error('Save Value Only failed');
     await res.json();
@@ -1119,27 +1461,21 @@ async function saveValueOnly(pkgId) {
 }
 
 async function saveManualCharges(pkgId) {
-  // read all visible fields (manually keyed or previously calculated)
   const payload = {
     category: (document.getElementById(`cat_${pkgId}`)?.value) || undefined,
     value: readNumber(`pricing_value_${pkgId}`) || readNumber(`value_${pkgId}`),
     weight: readNumber(`pricing_weight_${pkgId}`) || readNumber(`weight_${pkgId}`),
-
     duty: readNumber(`duty_${pkgId}`),
     scf: readNumber(`scf_${pkgId}`),
     envl: readNumber(`envl_${pkgId}`),
     caf: readNumber(`caf_${pkgId}`),
     gct: readNumber(`gct_${pkgId}`),
     stamp: readNumber(`stamp_${pkgId}`),
-
     customs_total: readNumber(`customs_total_${pkgId}`),
     freight: readNumber(`freight_${pkgId}`),
     handling: readNumber(`handling_${pkgId}`),
     freight_total: readNumber(`freight_total_${pkgId}`),
-
     other_charges: readNumber(`other_charges_${pkgId}`),
-
-    // if the user typed a grand total, we’ll respect it; otherwise compute a safe sum
     grand_total: (function () {
       const gt = readNumber(`grandtotal_${pkgId}`);
       if (gt > 0) return gt;
@@ -1153,7 +1489,6 @@ async function saveManualCharges(pkgId) {
     })()
   };
 
-  // also reflect amount_due on the row “Outstanding ($)” column
   payload.amount_due = payload.grand_total;
 
   const url = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace(/\/0$/, `/${pkgId}`);
@@ -1183,7 +1518,6 @@ async function saveManualCharges(pkgId) {
   }
 }
 
-// --- Auto-sum helper for manual entry ---
 function bindAutoSum(pkgId) {
   const ids = [
     `customs_total_${pkgId}`,
@@ -1202,7 +1536,6 @@ function bindAutoSum(pkgId) {
   });
 }
 
-// --- Modified togglePricing to activate autosum ---
 function togglePricing(pkgId) {
   const row = document.getElementById('pricing_' + pkgId);
   if (!row) return;
@@ -1210,7 +1543,9 @@ function togglePricing(pkgId) {
   if (!row.classList.contains('d-none')) bindAutoSum(pkgId);
 }
 
-// Upload spinner UX
+/* ======================
+   UPLOAD SPINNER
+   ====================== */
 (function () {
   const form = document.getElementById('uploadForm');
   const spinner = document.getElementById('spinner');
@@ -1229,132 +1564,69 @@ function togglePricing(pkgId) {
   });
 })();
 
-
-// --- Helpers ---
-function activateTabByTarget(targetSelector) {
-  if (!targetSelector) return;
-
-  const trigger   = document.querySelector(`#logisticsTabs button[data-bs-target="${targetSelector}"]`);
-  const pane      = document.querySelector(targetSelector);
-  const container = document.getElementById('logisticsTabsContent');
-
-  if (!trigger || !pane || !container) return;
-
-  // Clear existing actives
-  document.querySelectorAll('#logisticsTabs .nav-link.active').forEach(b => b.classList.remove('active'));
-  container.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('show','active'));
-
-  // Activate via Bootstrap API
-  const tab = new bootstrap.Tab(trigger);
-  tab.show();
-}
-
-// Map server "tab" -> pane id
-const TAB_MAP = {
-  prealert:      '#prealerts',
-  view_packages: '#viewPackages',
-  shipmentLog:   '#shipmentLog',
-  uploadPackages:'#uploadPackages'
-};
-
-document.addEventListener('DOMContentLoaded', function () {
-  // Rescue: ensure all panes are inside the content container
-  const container = document.getElementById('logisticsTabsContent');
-  if (container) {
-    document.querySelectorAll('.tab-pane[role="tabpanel"]').forEach(pane => {
-      if (!container.contains(pane)) container.appendChild(pane);
-    });
-  }
-
-  // Preferred order: 1) localStorage  2) server tab  3) current active  4) first tab
-  const saved = localStorage.getItem('activeLogisticsTab');
-
-  const serverTabKey = "{{ tab or '' }}";           // e.g. "shipmentLog" or "view_packages"
-  const serverTarget = TAB_MAP[serverTabKey] || null;
-
-  const currentActiveBtn = document.querySelector('#logisticsTabs .nav-link.active');
-  const currentTarget = currentActiveBtn ? currentActiveBtn.getAttribute('data-bs-target') : null;
-
-  const firstBtn = document.querySelector('#logisticsTabs button[data-bs-toggle="tab"]');
-  const firstTarget = firstBtn ? firstBtn.getAttribute('data-bs-target') : null;
-
-  const preferredTarget = saved || serverTarget || currentTarget || firstTarget;
-
-  // Activate after layout is ready
-  setTimeout(() => activateTabByTarget(preferredTarget), 0);
-
-  // Save on tab change
-  document.querySelectorAll('#logisticsTabs button[data-bs-toggle="tab"]').forEach(btn => {
-    btn.addEventListener('shown.bs.tab', e => {
-      const target = e.target.getAttribute('data-bs-target');
-      if (target) localStorage.setItem('activeLogisticsTab', target);
-    });
-  });
-});
-
-
+/* ==========================
+   UPLOAD PREVIEW TABLE (CSV)
+   ========================== */
 document.addEventListener('DOMContentLoaded', function () {
   const tableEl = document.getElementById('previewTable');
   if (!tableEl) return;
 
-  const dt = $(tableEl).DataTable({
-    pageLength: 25,
-    lengthMenu: [10, 25, 50, 100, 250, 500],
-    order: [],
-    dom: 'Bfrtip',
-    buttons: [
-      { extend: 'copyHtml5',  className: 'btn btn-sm btn-secondary' },
-      { extend: 'excelHtml5', className: 'btn btn-sm btn-success'  },
-      { extend: 'csvHtml5',   className: 'btn btn-sm btn-info'     },
-      { extend: 'print',      className: 'btn btn-sm btn-outline-secondary'}
-    ]
-  });
+  const getRowCheckboxes = () =>
+    Array.from(document.querySelectorAll('#previewTable input.row-select'));
 
+  // Header "select all" checkbox
   const selectAll = document.getElementById('selectAllPreview');
   if (selectAll) {
     selectAll.addEventListener('change', function () {
-      dt.rows({ search: 'applied' }).nodes().to$()
-        .find('input.row-select')
-        .prop('checked', this.checked);
+      const checked = this.checked;
+      getRowCheckboxes().forEach(cb => { cb.checked = checked; });
     });
   }
 
+  // "Select All Valid" button
   const selectValidBtn = document.getElementById('selectValidBtn');
   if (selectValidBtn) {
     selectValidBtn.addEventListener('click', function () {
-      dt.rows().every(function () {
-        const $row = $(this.node());
-        const isInvalid = $row.hasClass('table-danger');
-        $row.find('input.row-select').prop('checked', !isInvalid);
+      getRowCheckboxes().forEach(cb => {
+        const tr = cb.closest('tr');
+        const isInvalid = tr && tr.classList.contains('table-danger');
+        cb.checked = !isInvalid;   // only non-error rows
       });
-    });
-  }
-
-  const confirmForm   = document.getElementById('confirmForm');
-  const selectedInput = document.getElementById('selectedIndicesInput');
-
-  if (confirmForm && selectedInput) {
-    confirmForm.addEventListener('submit', function (e) {
-      const selectedIdx = dt
-        .rows()
-        .nodes()
-        .to$()
-        .find('input.row-select:checked')
-        .map(function(){ return parseInt(this.value, 10); })
-        .get();
-
-      if (!selectedIdx.length) {
-        e.preventDefault();
-        alert('Select at least one valid row to import.');
-        return;
-      }
-
-      selectedInput.value = JSON.stringify(selectedIdx);
     });
   }
 });
 
+// Called by the Confirm form's onsubmit
+function handleConfirmSubmit(e) {
+  const table = document.getElementById('previewTable');
+  if (!table) {
+    // no preview table – let submit continue; backend will just bail
+    return true;
+  }
 
+  const checkboxes = table.querySelectorAll('input.row-select:checked');
+  const indices = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
+
+  if (!indices.length) {
+    if (e) e.preventDefault();
+    alert('⚠️ Please select at least one valid row to import.');
+    return false;
+  }
+
+  // Put the selected row indexes into the hidden input as JSON
+  const hidden = document.getElementById('selectedIndicesInput');
+  if (hidden) {
+    hidden.value = JSON.stringify(indices);
+  }
+
+  // allow the form to submit
+  return true;
+}
+
+
+/* ==========================
+   SHIPMENT SEARCH MODAL
+   ========================== */
 document.getElementById('shipmentSearchForm')?.addEventListener('submit', async function (e) {
   e.preventDefault();
   const params = new URLSearchParams(new FormData(this));
@@ -1385,8 +1657,33 @@ document.getElementById('shipmentSearchForm')?.addEventListener('submit', async 
   }
 });
 
+/* ==========================
+   SIMPLE SELECT-ALL HELPERS
+   ========================== */
+function toggleShipmentSelectAll(master) {
+  const tbody = document.querySelector('#shipmentTable tbody');
+  if (!tbody) return;
 
+  const checkboxes = tbody.querySelectorAll('.package-checkbox');
+  checkboxes.forEach(cb => {
+    cb.checked = master.checked;
+  });
+
+  // keep header checkbox in sync (in case DT redraws later)
+  updateShipmentHeaderCheckbox();
+}
+
+function updateShipmentHeaderCheckbox() {
+  const header = document.getElementById('selectAll');
+  const tbody  = document.querySelector('#shipmentTable tbody');
+  if (!header || !tbody) return;
+
+  const boxes   = tbody.querySelectorAll('.package-checkbox');
+  const checked = tbody.querySelectorAll('.package-checkbox:checked');
+  header.checked = (boxes.length > 0 && boxes.length === checked.length);
+}
 </script>
+
 
 <style>
   .logistics-header { background-color: #4a148c; }
@@ -1404,58 +1701,27 @@ document.getElementById('shipmentSearchForm')?.addEventListener('submit', async 
     color: #4a148c;
     border: 1px solid rgba(74, 20, 140, 0.3);
   }
-
-  /* ✅ Hide inactive panes completely; show only the active one */
-  #logisticsTabsContent > .tab-pane:not(.active) {
-    display: none !important;
-    visibility: hidden !important;
-  }
-  #logisticsTabsContent > .tab-pane.active {
-    display: block !important;
-    visibility: visible !important;
-  }
-
-  /* Make invalid rows easy to spot */
   #previewTable tbody tr.table-danger td {
     border-top: 2px solid #dc3545;
     border-bottom: 2px solid #dc3545;
   }
-  /* Subtle background for valid rows */
   #previewTable tbody tr.table-light td {
     background-color: #f8f9fa;
   }
-
-  .text-purple { color: #4a148c !important; }
-  .bg-purple { background-color: #4a148c !important; }
   .border-purple { border-color: #4a148c !important; }
-
-  .btn-purple {
-    background-color: #4a148c; color: #fff;
-    border: 1px solid #4a148c; transition: .2s;
-  }
-  .btn-purple:hover { background-color: #6a1b9a; border-color: #6a1b9a; color: #fff; }
-
   .btn-outline-purple {
     background: transparent; color: #4a148c;
     border: 1px solid #4a148c; transition: .2s;
   }
   .btn-outline-purple:hover { background-color: #4a148c; color: #fff; }
-
-  .badge-purple {
-    background-color: #4a148c; color: #fff;
-  }
-  .badge-purple-soft {
-    background-color: rgba(74,20,140,.12);
-    color: #4a148c; border: 1px solid rgba(74,20,140,.25);
-  }
-
-  /* Table header already purple via .bg-purple; keep numbers aligned */
+  .badge-purple { background-color: #4a148c; color: #fff; }
   #previewTable td, #previewTable th { vertical-align: middle; }
-
-#shipmentTable thead th * {
-  pointer-events: auto !important;
-}
-
+  #shipmentTable thead th * { pointer-events: auto !important; }
+  /* 🔑 Force Bootstrap tab behaviour in case theme CSS broke it */
+  .tab-content > .tab-pane { display: none; }
+  .tab-content > .tab-pane.active,
+  .tab-content > .tab-pane.show { display: block !important; }
 </style>
 {% endblock %}
+
 

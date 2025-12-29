@@ -11,7 +11,7 @@
   <div class="card shadow-sm p-4 mb-4">
     <h3>Your Referral Code</h3>
     <div class="d-flex align-items-center gap-3 my-3">
-      <input type="text" readonly class="form-control fw-bold fs-4 text-center" value="{{ referral_code }}">
+      <input type="text" readonly class="form-control fw-bold fs-4 text-center" value="{{ referral_code or 'No Code Assigned' }}">
       <button class="btn btn-dashboard" onclick="navigator.clipboard.writeText('{{ referral_code }}')" aria-label="Copy referral code to clipboard">
         <i class="fas fa-copy me-2"></i>Copy Code
       </button>
@@ -30,7 +30,7 @@
       </a>
 
       <!-- WhatsApp -->
-      <a href="https://api.whatsapp.com/send?text=Join%20Foreign%20A%20Foot%20Logistics%20and%20get%20$100%20credit!%20Use%20my%20referral%20code%3A%20{{ referral_code }}%20Sign%20up%20here:%20{{ request.url_root }}register?ref={{ referral_code }}" 
+      <a href="https://api.whatsapp.com/send?text=Join%20Foreign%20A%20Foot%20Logistics%20and%20get%20$100%20credit!%20Use%20my%20referral%20code%3A%20{{ referral_code }}%20Sign%20up%20here:%20{{ request.url_root }}register?ref={{ referral_code or '' }}" 
          target="_blank" 
          class="btn btn-success me-2 mb-2">
         <i class="fab fa-whatsapp me-1"></i> WhatsApp
@@ -78,11 +78,13 @@
      {% endwith %}
     <h4>Send a Referral Email</h4>
     <form method="POST" class="row g-3">
+      {{ form.hidden_tag() }}
+
       <div class="col-md-8">
-        <input type="email" name="friend_email" class="form-control" placeholder="Friend's Email" required>
+        {{ form.friend_email(class="form-control", placeholder="Friend's Email") }}
       </div>
       <div class="col-md-4 d-grid">
-        <button type="submit" class="btn btn-purple">Send Invite</button>
+        {{ form.submit(class="btn btn-purple") }}
       </div>
     </form>
   </div>

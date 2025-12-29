@@ -48,7 +48,18 @@
       {{ form.password(class="form-control", id="register-password", placeholder="Create Password") }}
 
       <label for="confirm">Confirm Password</label>
-      {{ form.confirm(class="form-control", id="confirm", placeholder="Repeat Password") }}
+      {{ form.confirm(class="form-control", id="confirm", placeholder="Repeat Password") }}    
+      
+
+      <!-- 🔹 Admin Role Selector (Add this block) -->
+      <label for="role">Admin Role</label>
+      <select name="role" class="form-control" id="role" required>
+        <option value="admin">General Admin</option>
+        <option value="accounts_manager">Accounts & Profiles</option>
+        <option value="finance">Finance Only</option>
+        <option value="operations">Logistics Only</option>
+        <option value="superadmin">Super Admin (Full Access)</option>
+      </select>
 
       <label class="show-password" for="toggle-register-password">
         <input type="checkbox" id="toggle-register-password" onclick="togglePassword('register-password')" />
@@ -59,7 +70,7 @@
     </form>
 
     <div class="links">
-      <a href="{{ url_for('admin.admin_dashboard') }}">Back to Dashboard</a>
+      <a href="{{ url_for('admin.dashboard') }}">Back to Dashboard</a>
     </div>
   </div>
 </div>

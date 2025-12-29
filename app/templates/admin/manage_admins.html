@@ -1,0 +1,84 @@
+{% extends "layout_admin.html" %}
+{% block title %}Manage Admins{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2 class="mb-3">Manage Admin Users</h2>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    <div class="card-body">
+      <p class="text-muted mb-3">
+        Only <strong>Super Admin</strong> can view and change these roles.
+      </p>
+
+      <div class="table-responsive">
+        <table class="table table-striped align-middle">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Current Role</th>
+              <th>Superadmin?</th>
+              <th style="width: 260px;">Change Role</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for adm in admins %}
+              <tr>
+                <td>{{ adm.full_name or '—' }}</td>
+                <td>{{ adm.email }}</td>
+                <td>
+                  <span class="badge bg-primary">{{ adm.role or 'admin' }}</span>
+                </td>
+                <td>
+                  {% if adm.is_superadmin %}
+                    <span class="badge bg-danger">SUPERADMIN</span>
+                  {% else %}
+                    <span class="badge bg-secondary">No</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {# Don't let you change your own role here to avoid locking yourself out #}
+                  {% if adm.id == current_user.id %}
+                    <small class="text-muted">You cannot change your own role here.</small>
+                  {% elif adm.is_superadmin %}
+                    <small class="text-muted">Superadmin role cannot be changed here.</small>
+                  {% else %}
+                    <form method="POST"
+                          action="{{ url_for('admin.update_admin_role', user_id=adm.id) }}"                      
+                          class="d-flex gap-2">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <select name="role" class="form-select form-select-sm" required>
+                        <option value="admin"            {{ 'selected' if adm.role == 'admin' else '' }}>General Admin</option>
+                        <option value="accounts_manager" {{ 'selected' if adm.role == 'accounts_manager' else '' }}>Accounts &amp; Profiles</option>
+                        <option value="finance"          {{ 'selected' if adm.role == 'finance' else '' }}>Finance Only</option>
+                        <option value="operations"       {{ 'selected' if adm.role == 'operations' else '' }}>Logistics Only</option>
+                        <option value="superadmin"       {{ 'selected' if adm.role == 'superadmin' else '' }}>Super Admin (Full)</option>
+                      </select>
+                      <button type="submit" class="btn btn-sm btn-primary">
+                        Update
+                      </button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

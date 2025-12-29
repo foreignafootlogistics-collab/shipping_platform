@@ -1,63 +1,60 @@
 # app/utils/counters.py
-import sqlite3
+
+from app.extensions import db
+from app.models import Counter
+
+__all__ = ["ensure_counters_exist", "next_bill_number", "next_invoice_number"]
 
 
-__all__ = ["ensure_counters_table", "next_bill_number_tx", "next_invoice_number_tx"]
-
-def ensure_counters_table():
+def ensure_counters_exist():
     """
-    Create the counters table if missing and seed basic rows.
-    SQLite-safe: no BEGIN IMMEDIATE, no WAL toggling, no cross-table scans.
+    Ensure required counters exist.
+    Safe for Postgres & SQLite.
     """
-    # Small timeout so brief write locks don't explode
-    conn = sqlite3.connect(DB_PATH, timeout=5)
-    try:
-        c = conn.cursor()
+    required = ["invoice_seq", "bill_seq", "shipment_seq"]
 
-        # Create the simple (name, value) table
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS counters (
-              name  TEXT PRIMARY KEY,
-              value INTEGER NOT NULL
-            )
-        """)
+    for name in required:
+        if not Counter.query.get(name):
+            db.session.add(Counter(name=name, value=0))
 
-        # Seed the counters you use; adjust names to your code paths
-        for k in ("shipment_seq", "invoice_seq", "bill_seq"):
-            c.execute("INSERT OR IGNORE INTO counters(name, value) VALUES (?, 0)", (k,))
+    db.session.commit()
 
-        conn.commit()
-    finally:
-        conn.close()
 
-def _increment_counter_tx(cur: sqlite3.Cursor, name: str) -> int:
+def _increment(name: str) -> int:
     """
-    Increment a named counter inside the *current* transaction and return its value.
-    Caller should already be in a transaction (BEGIN/COMMIT handled by caller).
+    Atomically increment a named counter using SELECT...FOR UPDATE.
+
+    Works on Postgres and SQLite.
     """
-    cur.execute("UPDATE counters SET value = value + 1 WHERE name = ?", (name,))
-    if cur.rowcount == 0:
-        cur.execute("INSERT INTO counters(name, value) VALUES(?, 1)", (name,))
-        return 1
-    row = cur.execute("SELECT value FROM counters WHERE name = ?", (name,)).fetchone()
-    return int(row[0])
+    # Obtain row with FOR UPDATE lock
+    counter = (
+        db.session.query(Counter)
+        .with_for_update()     # prevents race conditions
+        .filter(Counter.name == name)
+        .first()
+    )
+
+    if not counter:
+        counter = Counter(name=name, value=0)
+        db.session.add(counter)
+
+    counter.value += 1
+    db.session.commit()
+
+    return counter.value
 
 
-def next_bill_number_tx(conn: sqlite3.Connection) -> str:
+def next_invoice_number():
     """
-    Returns a sequential bill number like 'BILL00001'.
-    Must be called inside an open transaction using the provided conn.
+    Returns sequential invoice number like 'INV00001'.
     """
-    cur = conn.cursor()
-    seq = _increment_counter_tx(cur, "bill_seq")
-    return f"BILL{seq:05d}"
-
-
-def next_invoice_number_tx(conn: sqlite3.Connection) -> str:
-    """
-    Returns a sequential invoice number like 'INV00001'.
-    Must be called inside an open transaction using the provided conn.
-    """
-    cur = conn.cursor()
-    seq = _increment_counter_tx(cur, "invoice_seq")
+    seq = _increment("invoice_seq")
     return f"INV{seq:05d}"
+
+
+def next_bill_number():
+    """
+    Returns sequential bill number like 'BILL00001'.
+    """
+    seq = _increment("bill_seq")
+    return f"BILL{seq:05d}"

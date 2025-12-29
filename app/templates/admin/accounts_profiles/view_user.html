@@ -1,5 +1,7 @@
 {% extends 'layout_admin.html' %}
 
+{% set current_tab = active_tab or 'packages' %}
+
 {# ---- Money formatting macro (place right here) ---- #}
 {% macro money(x) -%}{{ '%.2f'|format((x or 0)|float) }}{%- endmacro %}
 
@@ -32,26 +34,28 @@
              onclick="showAddress('home')" title="Home Address"></i>
         </div>
 
-        <!-- Sensitive Info button -->
+        <!-- Sensitive Info button (link to page) -->
         <button type="button" class="btn btn-outline-light btn-sm"
                 data-bs-toggle="modal" data-bs-target="#sensitiveInfoModal">
           <i class="bi bi-shield-lock me-1"></i> Sensitive Info
         </button>
+
+
       </div>
 
       <!-- Right: Account Actions -->
       <div class="d-flex gap-2">
         <!-- Change Password -->
-        <form action="{{ url_for('accounts_profiles.change_password', id=user.id) }}"
-              method="POST" class="m-0">
-          <button type="submit" class="btn btn-outline-light btn-sm">
-            <i class="bi bi-key"></i>
-          </button>
-        </form>
+        <a href="{{ url_for('accounts_profiles.change_password', id=user.id) }}"
+           class="btn btn-outline-light btn-sm"
+           title="Change Password">
+          <i class="bi bi-key"></i>
+        </a>
 
         <!-- Delete Account -->
         <form action="{{ url_for('accounts_profiles.delete_account', id=user.id) }}"
               method="POST" class="m-0">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit"
                   class="btn btn-outline-light btn-sm"
                   onclick="return confirm('Are you sure you want to delete this account?');">
@@ -59,11 +63,14 @@
           </button>
         </form>
 
-        <!-- Manage Account -->
-        <a href="{{ url_for('accounts_profiles.manage_account', id=user.id) }}"
-           class="btn btn-outline-light btn-sm">
+        <!-- Manage Account (open modal) -->
+        <button type="button"
+                class="btn btn-outline-light btn-sm"
+                data-bs-toggle="modal"
+                data-bs-target="#manageAccountModal">
           <i class="bi bi-pencil-square"></i>
-        </a>
+        </button>
+
       </div>
     </div>
 
@@ -138,9 +145,15 @@
 
         <!-- Wallet Icon at the bottom -->
         <div class="position-absolute" style="bottom:1rem; right:1rem;">
-          <button class="btn btn-purple btn-lg" 
-                  style="font-size:1.5rem; background-color:#6c757d; border:none; color:white; padding:0.75rem 1.25rem;">
-            <i class="bi bi-wallet2 me-2"></i> ${{ money(user.wallet_balance) }}
+          <button
+            type="button"
+            class="btn btn-purple btn-lg"
+            style="font-size:1.5rem; background-color:#6c757d; border:none; color:white; padding:0.75rem 1.25rem;"
+            data-bs-toggle="modal"
+            data-bs-target="#editWalletModal"
+          >
+            <i class="bi bi-wallet2 me-2"></i>
+            ${{ money(user.wallet_balance) }}
           </button>
         </div>
       </div>
@@ -150,59 +163,112 @@
     <div class="card-header bg-white p-0">
       <ul class="nav nav-tabs card-header-tabs px-3" id="profileTab" role="tablist">
         <li class="nav-item" role="presentation">
-          <button class="nav-link" id="prealerts-tab" data-bs-toggle="tab"
+          <button class="nav-link {% if current_tab == 'prealerts' %}active{% endif %}"
+                  id="prealerts-tab" data-bs-toggle="tab"
                   data-bs-target="#prealerts" type="button" role="tab">
             <i class="bi bi-box-seam me-1"></i> Pre-Alert Shipments
           </button>
         </li>
+
         <li class="nav-item" role="presentation">
-          <button class="nav-link active" id="packages-tab" data-bs-toggle="tab"
+          <button class="nav-link {% if current_tab == 'packages' %}active{% endif %}"
+                  id="packages-tab" data-bs-toggle="tab"
                   data-bs-target="#packages" type="button" role="tab">
             <i class="bi bi-box2 me-1"></i> Packages
           </button>
         </li>
+
         <li class="nav-item" role="presentation">
-          <button class="nav-link" id="payments-tab" data-bs-toggle="tab"
+          <button class="nav-link {% if current_tab == 'payments' %}active{% endif %}"
+                  id="payments-tab" data-bs-toggle="tab"
                   data-bs-target="#payments" type="button" role="tab">
             <i class="bi bi-credit-card"></i> Payments
           </button>
         </li>
+
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if active_tab == 'invoices' %}active{% endif %}" 
-                  id="invoices-tab" data-bs-toggle="tab" data-bs-target="#invoices" type="button" role="tab">
+          <button class="nav-link {% if current_tab == 'invoices' %}active{% endif %}"
+                  id="invoices-tab" data-bs-toggle="tab"
+                  data-bs-target="#invoices" type="button" role="tab">
             <i class="bi bi-receipt"></i> Invoices
           </button>
         </li>
+
         <li class="nav-item" role="presentation">
-          <button class="nav-link" id="messages-tab" data-bs-toggle="tab"
+          <button class="nav-link {% if current_tab == 'messages' %}active{% endif %}"
+                  id="messages-tab" data-bs-toggle="tab"
                   data-bs-target="#messages" type="button" role="tab">
             <i class="bi bi-envelope me-1"></i> Messages
           </button>
         </li>
+
         <li class="nav-item" role="presentation">
-          <button class="nav-link" id="schedule-delivery-tab" data-bs-toggle="tab"
+          <button class="nav-link {% if current_tab == 'schedule' %}active{% endif %}"
+                  id="schedule-delivery-tab" data-bs-toggle="tab"
                   data-bs-target="#schedule-delivery" type="button" role="tab">
             <i class="bi bi-truck"></i> Schedule Delivery
           </button>
         </li>
+
         <li class="nav-item" role="presentation">
-          <button class="nav-link" id="referrals-tab" data-bs-toggle="tab"
+          <button class="nav-link {% if current_tab == 'referrals' %}active{% endif %}"
+                  id="referrals-tab" data-bs-toggle="tab"
                   data-bs-target="#referrals" type="button" role="tab">
             <i class="bi bi-people me-1"></i> Referrals
           </button>
         </li>
       </ul>
+
     </div>
 
     <!-- Tab Content -->
     <div class="tab-content p-3" id="profileTabContent">
-
       <!-- Packages Tab (server-side pagination; no DataTables init here) -->
-      <div class="tab-pane fade show active" id="packages" role="tabpanel" aria-labelledby="packages-tab">
+      <div class="tab-pane fade {% if current_tab == 'packages' %}show active{% endif %}"
+           id="packages" role="tabpanel" aria-labelledby="packages-tab">
+
+        <!-- Header row + right actions -->
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="fw-bold" style="color:#4a148c;">
+            <i class="bi bi-box2 me-1"></i> Packages
+          </div>
+
+          <!-- Right-side actions -->
+          <div class="d-flex align-items-center gap-2">
+            <!-- Add Package (adjust route if you want) -->
+            <a class="btn btn-sm btn-outline-purple"
+               href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
+               title="Add Package">
+              <i class="bi bi-plus-square"></i>
+            </a>
+
+            <!-- Add Pricing -->
+            <button type="button"
+                    class="btn btn-sm btn-outline-purple"
+                    id="bulkPricingBtn"
+                    title="Add Pricing">
+              <i class="bi bi-cash-coin"></i>
+            </button>
+
+            <!-- Filter -->
+            <button type="button"
+                    class="btn btn-sm btn-outline-purple"
+                    data-bs-toggle="modal"
+                    data-bs-target="#packageFilterModal"
+                    title="Filter Packages">
+              <i class="bi bi-funnel"></i>
+            </button>
+          </div>
+        </div>
+
         <div class="table-responsive">
           <table id="packagesTable" class="table table-striped table-bordered">
+
             <thead class="table-dark">
               <tr>
+                <th class="text-center" style="width:38px;">
+                  <input type="checkbox" id="pkgSelectAll">
+                </th>
                 <th>House AWB & Status</th>
                 <th>Description</th>
                 <th>Tracking Number</th>
@@ -215,7 +281,34 @@
             <tbody>
               {% for pkg in packages %}
               <tr>
-                <td><strong>{{ pkg.house_awb or '-' }}</strong><br><small>Status: {{ pkg.status or '-' }}</small></td>
+                {% set st = (pkg.status or '')|lower %}
+                {% set bar_class =
+                    'status-overseas' if 'overseas' in st
+                    else 'status-ready' if ('ready' in st or 'pickup' in st or 'pick up' in st)
+                    else 'status-delivered' if ('delivered' in st or st == 'delivery' or 'out for delivery' in st)
+                    else 'status-unknown'
+                %}
+                <td class="text-center align-middle">
+                  <input type="checkbox"
+                         class="pkg-check"
+                         value="{{ pkg.id }}"
+                         data-weight="{{ pkg.weight or 0 }}"
+                         data-value="{{ (pkg.declared_value if pkg.declared_value is defined and pkg.declared_value is not none else (pkg.value or 0)) }}"
+                  >
+                </td>
+
+                <td class="pkg-cell">
+                  <div class="pkg-status-bar {{ bar_class }}"></div>
+
+                  <div>
+                    <strong>{{ pkg.house_awb or '-' }}</strong><br>
+                    <span class="badge pkg-status-badge {{ bar_class }}">
+                      {{ pkg.status or 'Unknown' }}
+                    </span>
+
+                  </div>
+                </td>
+
                 <td>{{ pkg.description or '-' }}</td>
                 <td>{{ pkg.tracking_number or '-' }}</td>
                 <td class="text-end">{{ pkg.weight }}</td>
@@ -225,7 +318,7 @@
               </tr>
               {% else %}
               <tr>
-                <td colspan="7" class="text-center text-muted py-4">No packages found.</td>
+                <td colspan="8" class="text-center text-muted py-4">No packages found.</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -242,7 +335,9 @@
             <!-- First -->
             <li class="page-item {% if pkg_page == 1 %}disabled{% endif %}">
               <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1) }}">
+                href="{{ url_for('accounts_profiles.view_user',
+                                 id=user_id, tab='packages', pkg_page=1,
+                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}">
                 &laquo;&laquo;
               </a>
             </li>
@@ -250,7 +345,10 @@
             <!-- Prev -->
             <li class="page-item {% if pkg_page == 1 %}disabled{% endif %}">
               <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=(pkg_page-1 if pkg_page>1 else 1)) }}">
+                href="{{ url_for('accounts_profiles.view_user',
+                                 id=user_id, tab='packages',
+                                 pkg_page=(pkg_page-1 if pkg_page>1 else 1),
+                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}">
                 &laquo;
               </a>
             </li>
@@ -258,7 +356,10 @@
             <!-- Next -->
             <li class="page-item {% if pkg_page == pkg_total_pages %}disabled{% endif %}">
               <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=(pkg_page+1 if pkg_page < pkg_total_pages else pkg_total_pages)) }}">
+                href="{{ url_for('accounts_profiles.view_user',
+                                 id=user_id, tab='packages',
+                                 pkg_page=(pkg_page+1 if pkg_page < pkg_total_pages else pkg_total_pages),
+                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}">
                 &raquo;
               </a>
             </li>
@@ -266,7 +367,10 @@
             <!-- Last -->
             <li class="page-item {% if pkg_page == pkg_total_pages %}disabled{% endif %}">
               <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=pkg_total_pages) }}">
+                href="{{ url_for('accounts_profiles.view_user',
+                                 id=user_id, tab='packages', pkg_page=pkg_total_pages,
+                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}"
+>
                 &raquo;&raquo;
               </a>
             </li>
@@ -275,7 +379,8 @@
       </div>
 
       <!-- Prealerts Tab -->
-      <div class="tab-pane fade" id="prealerts" role="tabpanel" aria-labelledby="prealerts-tab">
+      <div class="tab-pane fade {% if current_tab == 'prealerts' %}show active{% endif %}"
+           id="prealerts" role="tabpanel" aria-labelledby="prealerts-tab">
         <div class="table-responsive">
           <table id="prealertsTable" class="table table-striped table-bordered">
             <thead class="table-dark">
@@ -294,7 +399,14 @@
             <tbody>
               {% for p in prealerts %}
               <tr>
-                <td>{{ p.id }}</td>
+                <td>
+                  {% if p.prealert_number %}
+                    PA-{{ "%05d"|format(p.prealert_number) }}
+                  {% else %}
+                    {{ p.id }}
+                  {% endif %}
+                </td>
+
                 <td>{{ p.vendor_name }}</td>
                 <td>{{ p.courier_name }}</td>
                 <td>{{ p.tracking_number }}</td>
@@ -315,7 +427,9 @@
       </div>
 
       <!-- Invoices Tab -->
-      <div class="tab-pane fade {% if active_tab == 'invoices' %}show active{% endif %}" id="invoices" role="tabpanel">
+      <div class="tab-pane fade {% if current_tab == 'invoices' %}show active{% endif %}"
+           id="invoices" role="tabpanel" aria-labelledby="invoices-tab">
+
         <div class="mb-3">
           <strong>Total Owed:</strong>  ${{ money(total_owed) }} |
           <strong>Total Paid:</strong>  ${{ money(total_paid) }} |
@@ -329,32 +443,90 @@
               <tr>
                 <th>ID</th>
                 <th>Description</th>
-                <th>Amount</th>
-                <th>Due Date</th>
+                <th class="text-end">Amount Due</th>
+                <th class="text-end">Amount Paid</th>
+                <th class="text-end">Amount Owed</th>                
                 <th>Status</th>
                 <th>Action</th>
               </tr>
             </thead>
             <tbody>
-              {% for invoice in invoices %}
-              <tr data-invoice-id="{{ invoice[0] }}">
-                <td>{{ invoice[0] }}</td>
-                <td>{{ invoice[1] or 'No description' }}</td>
-                <td>${{ money(invoice[2]) }}</td>
-                <td>{{ invoice[3] }}</td>
+              {% for inv in invoices %}
+              {% set inv_status = (inv.status or 'unpaid')|lower %}
+              {# ---- Amount Due (robust fallback) ---- #}
+              {% set due =
+                  (inv.grand_total if inv.grand_total is defined and inv.grand_total is not none
+                   else (inv.amount_due if inv.amount_due is defined and inv.amount_due is not none
+                         else (inv.amount_display if inv.amount_display is defined and inv.amount_display is not none
+                               else 0)))
+              %}
+
+              {# ---- Amount Paid (robust fallback) ---- #}
+              {% set paid =
+                  (inv.amount_paid if inv.amount_paid is defined and inv.amount_paid is not none
+                   else (inv.total_paid if inv.total_paid is defined and inv.total_paid is not none
+                         else (inv.paid_total if inv.paid_total is defined and inv.paid_total is not none
+                               else 0)))
+              %}
+
+              {% set owed = (due|float - paid|float) %}
+              {% if owed < 0 %}{% set owed = 0 %}{% endif %}
+              <tr data-invoice-id="{{ inv.id }}">
                 <td>
-                  <span class="badge {% if invoice[4] == 'paid' %}bg-success{% else %}bg-danger{% endif %}">{{ invoice[4] }}</span>
+                  <button type="button"
+                          class="btn btn-sm btn-outline-purple"
+                          onclick="openInvoiceModal({{ inv.id }})"
+                          title="Open invoice">
+                    {{ inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)) }}
+                    <i class="bi bi-box-arrow-up-right ms-1"></i>
+                  </button>
                 </td>
+
+                <!-- Description (fallback if not present) -->
+                <td>
+                  {% if inv.description is defined and inv.description %}
+                    {{ inv.description }}
+                  {% else %}
+                    No description
+                  {% endif %}
+                </td>
+
+                <td class="text-end">${{ money(due) }}</td>
+                <td class="text-end">${{ money(paid) }}</td>
+                
+                <td class="text-end">
+                  <span class="fw-bold {% if owed > 0 %}text-danger{% else %}text-success{% endif %}">
+                    ${{ money(owed) }}
+                  </span>
+                </td>
+
+                <td>
+                  <span class="badge {% if inv_status == 'paid' or owed == 0 %}bg-success{% else %}bg-danger{% endif %}">
+                    {{ 'Paid' if (inv_status == 'paid' or owed == 0) else 'Unpaid' }}
+                  </span>
+                </td>
+
                 <td class="text-nowrap">
-                  <button type="button" class="btn btn-sm btn-outline-purple"
-                          onclick="loadInvoiceInline({{ invoice[0] }})" title="View inline">
+                  <button type="button"
+                          class="btn btn-sm btn-outline-purple"
+                          onclick="loadInvoiceInline({{ inv.id }})"
+                          title="View inline">
                     <i class="bi bi-file-earmark-text"></i>
                   </button>
-                  {% if invoice[4] != 'paid' %}
-                    <button class="btn btn-sm btn-success mark-paid-btn" data-invoice-id="{{ invoice[0] }}">
-                      Mark as Paid
+
+                  {% if owed > 0 %}
+                    <button class="btn btn-sm btn-success mark-paid-btn"
+                            data-invoice-id="{{ inv.id }}"
+                            data-amount-owed="{{ money(owed) }}">
+                      Add Payment
                     </button>
                   {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                  No invoices yet.
                 </td>
               </tr>
               {% endfor %}
@@ -365,7 +537,9 @@
       </div>
 
       <!-- Payments Tab -->
-      <div class="tab-pane fade" id="payments" role="tabpanel" aria-labelledby="payments-tab">
+      <div class="tab-pane fade {% if current_tab == 'payments' %}show active{% endif %}"
+           id="payments" role="tabpanel" aria-labelledby="payments-tab">
+
         <h5 class="mt-3">Payments</h5>
         <div class="table-responsive">
           <table id="paymentsTable" class="table table-striped table-bordered">
@@ -388,9 +562,14 @@
                 <td>${{ money(payment.amount) }}</td>
                 <td>{{ payment.authorized_by }}</td>
                 <td>
-                  {% if payment.invoice_path %}
-                    <a href="{{ url_for('static', filename=payment.invoice_path) }}" target="_blank"><i class="fas fa-file-invoice fa-lg"></i></a>
-                  {% else %}—{% endif %}
+                  {% if payment.invoice_number %}
+                    <a href="{{ url_for('admin.view_invoice', invoice_id=payment.invoice_id) }}"
+                       title="View Invoice {{ payment.invoice_number }}">
+                      {{ payment.invoice_number }}
+                    </a>
+                  {% else %}
+                    —
+                  {% endif %}
                 </td>
               </tr>
               {% endfor %}
@@ -400,7 +579,8 @@
       </div>
 
       <!-- Messages Tab -->
-      <div class="tab-pane fade" id="messages" role="tabpanel" aria-labelledby="messages-tab">
+      <div class="tab-pane fade {% if current_tab == 'messages' %}show active{% endif %}"
+           id="messages" role="tabpanel" aria-labelledby="messages-tab">
         <div class="table-responsive">
           <table id="messagesTable" class="table table-striped table-bordered">
             <thead class="table-dark">
@@ -415,7 +595,7 @@
               <tr>
                 <td>{{ msg.subject }}</td>
                 <td>{{ msg.body }}</td>
-                <td>{{ msg.date_sent }}</td>
+                <td>{{ msg.created_at }}</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -424,7 +604,9 @@
       </div>
 
       <!-- Schedule Delivery Tab -->
-      <div class="tab-pane fade" id="schedule-delivery" role="tabpanel" aria-labelledby="schedule-delivery-tab">
+      <div class="tab-pane fade {% if current_tab == 'schedule' %}show active{% endif %}"
+           id="schedule-delivery" role="tabpanel" aria-labelledby="schedule-delivery-tab">
+
         <div class="mb-3">
           <button class="btn btn-primary mb-3" id="adminAddDeliveryBtn">+ Add Delivery</button>
         </div>
@@ -455,8 +637,189 @@
       </div>
 
       <!-- Referrals Tab -->
-      <div class="tab-pane fade" id="referrals" role="tabpanel" aria-labelledby="referrals-tab">
+      <div class="tab-pane fade {% if current_tab == 'referrals' %}show active{% endif %}"
+           id="referrals" role="tabpanel" aria-labelledby="referrals-tab">
         <p>Referrals details go here.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manage Account Modal -->
+  <div class="modal fade" id="manageAccountModal" tabindex="-1" aria-labelledby="manageAccountLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+
+        <div class="modal-header" style="background-color:#4a148c; color:white;">
+          <h5 class="modal-title" id="manageAccountLabel">Manage Account: {{ user.full_name }}</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <form action="{{ url_for('accounts_profiles.manage_account', id=user.id) }}" method="POST">
+          <!-- 🔐 CSRF -->
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="modal-body">
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Full Name</label>
+                <input type="text" name="full_name" class="form-control" value="{{ user.full_name }}" required>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Email</label>
+                <input type="email" name="email" class="form-control" value="{{ user.email }}" required>
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Mobile</label>
+                <input type="text" name="mobile" class="form-control" value="{{ user.mobile }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Address</label>
+                <input type="text" name="address" class="form-control" value="{{ user.address }}">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Referral Code</label>
+                <input type="text" name="referral_code" class="form-control" value="{{ user.referral_code }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Authorized Person</label>
+                <input type="text" name="authorized_person" class="form-control" value="{{ user.authorized_person }}">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Branch</label>
+                <input type="text" name="branch" class="form-control" value="Main" readonly>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Status</label>
+                <select name="is_active" class="form-select">
+                  <option value="1" {% if user.is_active %}selected{% endif %}>Active</option>
+                  <option value="0" {% if not user.is_active %}selected{% endif %}>Inactive</option>
+                </select>
+              </div>
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <!-- Packages Filter Modal -->
+  <div class="modal fade" id="packageFilterModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+
+        <div class="modal-header" style="background-color:#4a148c; color:white;">
+          <h5 class="modal-title">
+            <i class="bi bi-funnel me-1"></i> Filter Packages
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <form method="GET" action="{{ url_for('accounts_profiles.view_user', id=user_id) }}">
+          <input type="hidden" name="tab" value="packages">
+          <input type="hidden" name="pkg_page" value="1">
+
+          <div class="modal-body">
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label">From Date</label>
+                <input type="date" name="pkg_from" class="form-control" value="{{ pkg_from or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">To Date</label>
+                <input type="date" name="pkg_to" class="form-control" value="{{ pkg_to or '' }}">
+              </div>
+            </div>
+
+            <div class="mt-2">
+              <label class="form-label">House AWB</label>
+              <input type="text" name="pkg_awb" class="form-control" value="{{ pkg_awb or '' }}"
+                     placeholder="e.g. HAWB123...">
+            </div>
+
+            <div class="mt-2">
+              <label class="form-label">Tracking Number</label>
+              <input type="text" name="pkg_tn" class="form-control" value="{{ pkg_tn or '' }}"
+                     placeholder="e.g. 1Z... / TBA...">
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <a class="btn btn-outline-secondary"
+               href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1) }}">
+              Clear
+            </a>
+            <button type="submit" class="btn" style="background-color:#4a148c; color:white;">
+              Apply Filters
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+     
+  <!-- 📄 Universal Invoice Preview Modal -->
+  <div class="modal fade" id="invoiceModal" tabindex="-1" aria-labelledby="invoiceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-light">
+          <h5 class="modal-title" id="invoiceModalLabel">
+            <i class="bi bi-receipt"></i> Invoice
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body" id="invoiceModalBody">
+          <p class="text-muted mb-0">Loading invoice…</p>
+        </div>
+      </div>
+    </div>
+  </div>
+ 
+  <!-- Sensitive Info Modal -->
+  <div class="modal fade" id="sensitiveInfoModal" tabindex="-1" aria-labelledby="sensitiveInfoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+
+        <div class="modal-header" style="background-color:#4a148c; color:white;">
+          <h5 class="modal-title" id="sensitiveInfoLabel">
+            <i class="bi bi-shield-lock me-1"></i> Sensitive Information
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            This information is sensitive. Handle and share securely.
+          </div>
+
+          <p><strong>Full Name:</strong> {{ user.full_name }}</p>
+          <p><strong>TRN:</strong> {{ user.trn or 'Not stored' }}</p>
+          <p><strong>Home Address:</strong> {{ user.address or 'Not set' }}</p>
+          <p><strong>Mobile:</strong> {{ user.mobile }}</p>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn" style="background-color:#4a148c; color:white;" data-bs-dismiss="modal">
+            Close
+          </button>
+        </div>
+
       </div>
     </div>
   </div>
@@ -498,30 +861,43 @@
   <div class="modal fade" id="editWalletModal" tabindex="-1" aria-labelledby="editWalletLabel" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content">
-        <form id="editWalletForm" method="POST">
-          <div class="modal-header">
-            <h5 class="modal-title" id="editWalletLabel">Edit Wallet Balance</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <form id="editWalletForm"
+              method="POST"
+              action="{{ url_for('accounts_profiles.update_wallet', id=user.id) }}">
+          <!-- 🔐 CSRF -->
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="modal-header" style="background-color:#4a148c; color:white;">
+            <h5 class="modal-title" id="editWalletLabel">
+              <i class="bi bi-wallet2 me-1"></i> Edit Wallet Balance
+            </h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
+
           <div class="modal-body">
             <div class="mb-3">
-              <label for="amount" class="form-label">Amount</label>
+              <label for="amount" class="form-label">Amount (JMD)</label>
               <input type="number" step="0.01" name="amount" id="amount" class="form-control" required>
-              <div class="form-text">Use a negative value to subtract</div>
+              <div class="form-text">Use a negative value to subtract from the wallet.</div>
             </div>
             <div class="mb-3">
               <label for="description" class="form-label">Description (optional)</label>
-              <input type="text" name="description" id="description" class="form-control">
+              <input type="text" name="description" id="description" class="form-control"
+                     placeholder="e.g. Adjustment for overcharge, manual top-up, promo, etc.">
             </div>
           </div>
+
           <div class="modal-footer">
-            <button type="submit" class="btn btn-primary">Update Wallet</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn" style="background-color:#4a148c; color:white;">
+              Update Wallet
+            </button>
           </div>
         </form>
       </div>
     </div>
   </div>
-
+      
   <!-- Mark Paid Modal -->
   <div class="modal fade" id="markPaidModal" tabindex="-1" aria-labelledby="markPaidLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -554,6 +930,70 @@
             <button type="submit" class="btn btn-primary">Confirm Payment</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Pricing Modal -->
+  <div class="modal fade" id="bulkPricingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+
+        <div class="modal-header" style="background-color:#4a148c; color:white;">
+          <h5 class="modal-title">
+            <i class="bi bi-cash-coin me-1"></i> Bulk Pricing for Selected Packages
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+
+          <div class="alert alert-light border">
+            <strong>Selected:</strong> <span id="bulkPricingCount">0</span> package(s)
+          </div>
+
+          <div class="row g-2">
+            <div class="col-md-4">
+              <label class="form-label">Category</label>
+              <select id="bulkPricingCategory" class="form-select">
+                {% for cat in categories %}
+                  <option value="{{ cat }}">{{ cat }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Override Value (USD) (optional)</label>
+              <input type="number" step="0.01" id="bulkOverrideValueUsd" class="form-control" placeholder="Leave blank to use each package value">
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label">Override Weight (lbs) (optional)</label>
+              <input type="number" step="0.01" id="bulkOverrideWeight" class="form-control" placeholder="Leave blank to use each package weight">
+            </div>
+          </div>
+
+          <hr class="my-3">
+
+          <div class="alert alert-light border mb-0">
+            <div class="d-flex justify-content-between">
+              <strong>Total Grand Total (JMD)</strong>
+              <strong id="bulkGrandTotal">—</strong>
+            </div>
+            <small class="text-muted">Calculate previews totals for all selected packages.</small>
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" id="bulkCalcBtn">
+            Calculate
+          </button>
+          <button type="button" class="btn btn-success" id="bulkApplyBtn" disabled>
+            Apply Pricing
+          </button>
+        </div>
+
       </div>
     </div>
   </div>
@@ -613,6 +1053,66 @@
   font-weight: 600;
 }
 .card-header .nav-tabs.card-header-tabs { margin-bottom: 0; }
+
+/* ---------- Buttons ---------- */
+.btn-outline-purple {
+  border: 1px solid #4a148c !important;
+  color: #4a148c !important;
+  background: transparent !important;
+}
+.btn-outline-purple:hover {
+  background: #4a148c !important;
+  color: #fff !important;
+}
+
+/* ---------- Packages status bar + badge ---------- */
+td.pkg-cell{
+  position: relative;
+  padding-left: 14px !important; /* room for bar */
+}
+td.pkg-cell .pkg-status-bar{
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  border-radius: 2px;
+}
+
+/* Bar colors (keep these) */
+td.pkg-cell .pkg-status-bar.status-overseas  { background-color: #dc3545 !important; }
+td.pkg-cell .pkg-status-bar.status-ready     { background-color: #ffc107 !important; }
+td.pkg-cell .pkg-status-bar.status-delivered { background-color: #198754 !important; }
+td.pkg-cell .pkg-status-bar.status-unknown   { background-color: #adb5bd !important; }
+
+/* Badge base */
+td.pkg-cell span.badge.pkg-status-badge{
+  display: inline-block !important;
+  padding: .2rem .5rem !important;
+  border-radius: .35rem !important;
+  font-size: .75rem !important;
+  font-weight: 700 !important;
+  background-color: #6c757d !important;  /* fallback */
+  color: #fff !important;
+}
+
+/* Badge colors (THIS is the real fix — forces background even if overridden elsewhere) */
+td.pkg-cell span.badge.pkg-status-badge.status-overseas{
+  background-color: #dc3545 !important;
+  color: #fff !important;
+}
+td.pkg-cell span.badge.pkg-status-badge.status-ready{
+  background-color: #ffc107 !important;
+  color: #212529 !important;
+}
+td.pkg-cell span.badge.pkg-status-badge.status-delivered{
+  background-color: #198754 !important;
+  color: #fff !important;
+}
+td.pkg-cell span.badge.pkg-status-badge.status-unknown{
+  background-color: #adb5bd !important;
+  color: #212529 !important;
+}
 </style>
 {% endblock %}
 
@@ -708,9 +1208,13 @@ $(document).ready(function () {
   $('.mark-paid-btn').click(function () {
     const invoiceId = $(this).data('invoice-id');
     $('#modalInvoiceId').val(invoiceId);
-    $('#payment_amount').val($(this).closest('tr').find('td:nth-child(3)').text().replace('$',''));
+
+    const owed = $(this).data('amount-owed');
+    $('#payment_amount').val(owed || 0);
+
     new bootstrap.Modal(document.getElementById('markPaidModal')).show();
   });
+
 
   $('#markPaidForm').submit(function (e) {
     e.preventDefault();
@@ -747,17 +1251,528 @@ $(document).ready(function () {
   });
 });
 
-// Inline invoice loader
+(function(){
+  const modalEl = document.getElementById('bulkPricingModal');
+  const modal = modalEl ? new bootstrap.Modal(modalEl) : null;
+
+  const btnOpen  = document.getElementById('bulkPricingBtn');
+  const btnCalc  = document.getElementById('bulkCalcBtn');
+  const btnApply = document.getElementById('bulkApplyBtn');
+
+  const selectAll = document.getElementById('pkgSelectAll');
+
+  let lastResults = null; // enriched results for APPLY
+
+  function getSelectedChecks(){
+    return Array.from(document.querySelectorAll('.pkg-check:checked'));
+  }
+
+  function nf(v){
+    const n = parseFloat(v || 0) || 0;
+    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function updateCount(){
+    const count = getSelectedChecks().length;
+    const el = document.getElementById('bulkPricingCount');
+    if (el) el.textContent = String(count);
+    return count;
+  }
+
+  function resetCalc(){
+    lastResults = null;
+    const gt = document.getElementById('bulkGrandTotal');
+    if (gt) gt.textContent = '—';
+    if (btnApply) btnApply.disabled = true;
+  }
+
+  // Select all
+  if (selectAll){
+    selectAll.addEventListener('change', function(){
+      const on = !!this.checked;
+      document.querySelectorAll('.pkg-check').forEach(cb => cb.checked = on);
+      updateCount();
+      resetCalc();
+    });
+  }
+
+  // Per-row checkbox changes
+  document.querySelectorAll('.pkg-check').forEach(cb => {
+    cb.addEventListener('change', () => {
+      updateCount();
+      resetCalc();
+      if (selectAll && !cb.checked) selectAll.checked = false;
+    });
+  });
+
+  // Open modal
+  if (btnOpen){
+    btnOpen.addEventListener('click', function(e){
+      e.preventDefault(); // IMPORTANT since you used <a>
+      const count = updateCount();
+      if (!count){
+        alert('Select at least one package first.');
+        return;
+      }
+      resetCalc();
+      modal.show();
+    });
+  }
+
+  // CALCULATE
+  if (btnCalc){
+    btnCalc.addEventListener('click', function(){
+      const selected = getSelectedChecks();
+      if (!selected.length){
+        alert('Select at least one package.');
+        return;
+      }
+
+      const category = document.getElementById('bulkPricingCategory').value;
+      const overrideValue  = document.getElementById('bulkOverrideValueUsd').value;
+      const overrideWeight = document.getElementById('bulkOverrideWeight').value;
+
+      // map pkg_id => base fields so APPLY always has invoice/weight/category
+      const rowById = {};
+
+      const rows = selected.map(cb => {
+        const pkgId = parseInt(cb.value, 10);
+
+        const w = (overrideWeight !== '' && overrideWeight != null)
+          ? overrideWeight
+          : cb.getAttribute('data-weight');
+
+        const v = (overrideValue !== '' && overrideValue != null)
+          ? overrideValue
+          : cb.getAttribute('data-value');
+
+        rowById[pkgId] = {
+          invoice: parseFloat(v || 0) || 0,
+          weight:  parseFloat(w || 0) || 0,
+          category
+        };
+
+        return { pkg_id: pkgId, invoice: v, weight: w, category };
+      });
+
+      fetch("{{ url_for('logistics.bulk_calc_outstanding') }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        },
+        body: JSON.stringify({ rows })
+      })
+      .then(r => r.json())
+      .then(data => {
+        const results = data.results || [];
+        if (!results.length) throw new Error('No results returned.');
+
+        // ✅ ENRICH results with invoice/weight/category from rowById
+        lastResults = results.map(r => {
+          const base = rowById[r.pkg_id] || { invoice: 0, weight: 0, category };
+          return {
+            ...r,
+            invoice: base.invoice,
+            weight: base.weight,
+            category: base.category
+          };
+        });
+
+        const total = lastResults.reduce((sum, r) => sum + (parseFloat(r.grand_total || 0) || 0), 0);
+        document.getElementById('bulkGrandTotal').textContent = 'JMD ' + nf(total);
+
+        btnApply.disabled = false;
+      })
+      .catch(err => {
+        alert(err.message || 'Unable to calculate.');
+        resetCalc();
+      });
+    });
+  }
+
+  // APPLY
+  if (btnApply){
+    btnApply.addEventListener('click', async function(){
+      if (!lastResults || !lastResults.length){
+        alert('Please calculate first.');
+        return;
+      }
+
+      btnApply.disabled = true;
+
+      try {
+        for (const r of lastResults){
+          const pkgId = r.pkg_id;
+          const b = r.breakdown || {};
+
+          const payload = {
+            category: r.category,
+
+            // ✅ now guaranteed
+            value:  parseFloat(r.invoice || 0) || 0,
+            weight: parseFloat(r.weight  || 0) || 0,
+
+            amount_due: parseFloat(r.grand_total || 0) || 0,
+
+            duty:  parseFloat(b.duty  || 0) || 0,
+            scf:   parseFloat(b.scf   || 0) || 0,
+            envl:  parseFloat(b.envl  || 0) || 0,
+            caf:   parseFloat(b.caf   || 0) || 0,
+            gct:   parseFloat(b.gct   || 0) || 0,
+            stamp: parseFloat(b.stamp || 0) || 0,
+
+            freight:       parseFloat(b.freight       || 0) || 0,
+            handling:      parseFloat(b.handling      || 0) || 0,
+            freight_total: parseFloat(b.freight_total || 0) || 0,
+            other_charges: parseFloat(b.other_charges || 0) || 0,
+
+            grand_total:   parseFloat(b.grand_total   || r.grand_total || 0) || 0,
+            customs_total: parseFloat(b.customs_total || 0) || 0
+          };
+
+          const url = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace('0', String(pkgId));
+
+          const res = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest"
+            },
+            body: JSON.stringify(payload)
+          });
+
+          const json = await res.json();
+          if (!json.ok){
+            throw new Error(json.error || `Failed saving pkg ${pkgId}`);
+          }
+        }
+
+        modal.hide();
+        window.location.reload();
+
+      } catch (e){
+        alert(e.message || 'Failed applying bulk pricing.');
+        btnApply.disabled = false;
+      }
+    });
+  }
+})();
+
+/* ================================
+   Inline invoice behaviour (POS)
+   ================================ */
+function initInlineInvoice(rootElement) {
+  // rootElement = container where the invoice snippet lives
+  const root = rootElement || document;
+
+  const payOverlay      = root.querySelector('#inlinePayOverlay');
+  const discountOverlay = root.querySelector('#inlineDiscountOverlay');
+  const bdOverlay       = root.querySelector('#inlineBreakdownOverlay');
+
+  const showOverlay = (el) => { if (el) el.classList.remove('d-none'); };
+  const hideOverlay = (el) => { if (el) el.classList.add('d-none'); };
+
+  // Always start closed
+  [payOverlay, discountOverlay, bdOverlay].forEach(el => el && el.classList.add('d-none'));
+
+  /* ---------- open / close buttons ---------- */
+
+  // Add Payment
+  root.querySelectorAll('.js-open-pay').forEach(btn => {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (!payOverlay) return;
+      showOverlay(payOverlay);
+      setupPaymentLogic();
+    });
+  });
+
+  // Discount
+  root.querySelectorAll('.js-open-discount').forEach(btn => {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (!discountOverlay) return;
+      showOverlay(discountOverlay);
+      setupDiscountLogic();
+    });
+  });
+
+  // Close X buttons on overlays
+  root.querySelectorAll('.fa-inline-close').forEach(btn => {
+    btn.addEventListener('click', function () {
+      const type = this.getAttribute('data-close');
+      if (type === 'pay')      hideOverlay(payOverlay);
+      if (type === 'discount') hideOverlay(discountOverlay);
+      if (type === 'bd')       hideOverlay(bdOverlay);
+    });
+  });
+
+  /* ---------- PAYMENT keypad logic ---------- */
+  function setupPaymentLogic() {
+    if (!payOverlay) return;
+
+    const display = payOverlay.querySelector('#payDisplayInline');
+    const hidden  = payOverlay.querySelector('#payAmountInputInline');
+    if (!display || !hidden) return;
+
+    let current = hidden.value && hidden.value !== '0' ? String(hidden.value) : '0';
+
+    function updateDisplay() {
+      let num = parseFloat(current || '0');
+      if (isNaN(num)) num = 0;
+      hidden.value = num.toFixed(2);
+      display.textContent =
+        'JMD ' + num.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+    }
+
+    function pushKey(key) {
+      if (key === '.') {
+        if (current.includes('.')) return;
+        current += '.';
+      } else if (key === '00') {
+        if (current === '0') return;
+        current += '00';
+      } else {
+        if (current === '0') current = key;
+        else current += key;
+      }
+      updateDisplay();
+    }
+
+    // keypad buttons
+    payOverlay.querySelectorAll('.payment-key-btn').forEach(btn => {
+      btn.onclick = function () {
+        pushKey(this.getAttribute('data-key'));
+      };
+    });
+
+    // quick amounts
+    payOverlay.querySelectorAll('.payment-quick-btn[data-quick]').forEach(btn => {
+      btn.onclick = function () {
+        current = String(this.getAttribute('data-quick') || '0');
+        updateDisplay();
+      };
+    });
+
+    // clear
+    const clearBtn = payOverlay.querySelector('#payClearBtnInline');
+    if (clearBtn) {
+      clearBtn.onclick = function () {
+        current = '0';
+        updateDisplay();
+      };
+    }
+
+    // payment method
+    const methodInput = payOverlay.querySelector('#payMethodInputInline');
+    const methodList  = payOverlay.querySelector('#paymentMethodListInline');
+    if (methodInput && methodList) {
+      methodList.querySelectorAll('.payment-method-btn').forEach(btn => {
+        btn.onclick = function () {
+          methodList.querySelectorAll('.payment-method-btn')
+                    .forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          methodInput.value = this.getAttribute('data-method') || 'Cash';
+        };
+      });
+    }
+
+    // ---------- NEW: "Authorised by" dropdown + other ----------
+    const authSelect = payOverlay.querySelector('#authBySelectInline');
+    const authInput  = payOverlay.querySelector('#authByInputInline');
+    const authHidden = payOverlay.querySelector('#authByHiddenInline');
+
+    if (authSelect && authHidden) {
+      // initialise from current select value
+      if (authSelect.value !== '__other__') {
+        authHidden.value = authSelect.value;
+      }
+
+      authSelect.addEventListener('change', function () {
+        if (this.value === '__other__') {
+          if (authInput) {
+            authInput.classList.remove('d-none');
+            authInput.value = '';
+            authInput.focus();
+          }
+          authHidden.value = '';
+        } else {
+          if (authInput) {
+            authInput.classList.add('d-none');
+          }
+          authHidden.value = this.value;
+        }
+      });
+
+      if (authInput) {
+        authInput.addEventListener('input', function () {
+          if (authSelect.value === '__other__') {
+            authHidden.value = this.value;
+          }
+        });
+      }
+    }
+    updateDisplay();
+  }
+
+  /* ---------- DISCOUNT tabs logic ---------- */
+  function setupDiscountLogic() {
+    if (!discountOverlay) return;
+
+    const form     = discountOverlay.querySelector('#inlineDiscountForm');
+    if (!form) return;
+
+    const balance  = parseFloat(form.getAttribute('data-balance') || '0') || 0;
+    const tabs     = discountOverlay.querySelector('#discountTabsInline');
+    const panePct  = discountOverlay.querySelector('#discountPercentPaneInline');
+    const paneAmt  = discountOverlay.querySelector('#discountAmountPaneInline');
+    const pctInput = discountOverlay.querySelector('#discountPercentInputInline');
+    const pctLbl   = discountOverlay.querySelector('#discountPercentAmountInline');
+    const amtInput = discountOverlay.querySelector('#discountAmountInputInline');
+    const hidden   = discountOverlay.querySelector('#discountHiddenAmountInline');
+
+    let mode = tabs?.querySelector('.discount-tab.active')?.getAttribute('data-mode') || 'percent';
+
+    function formatJMD(v) {
+      const n = parseFloat(v || '0') || 0;
+      return 'JMD ' + n.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    }
+
+    function recalc() {
+      if (!hidden) return;
+      if (mode === 'percent') {
+        const pct  = parseFloat(pctInput?.value || '0') || 0;
+        const disc = Math.max(0, balance * pct / 100);
+        hidden.value = disc.toFixed(2);
+        if (pctLbl) pctLbl.textContent = formatJMD(disc);
+      } else {
+        const v = parseFloat(amtInput?.value || '0') || 0;
+        hidden.value = v.toFixed(2);
+      }
+    }
+
+    if (tabs) {
+      tabs.querySelectorAll('.discount-tab').forEach(btn => {
+        btn.onclick = function () {
+          tabs.querySelectorAll('.discount-tab').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          mode = this.getAttribute('data-mode') || 'percent';
+          if (panePct && paneAmt) {
+            if (mode === 'percent') {
+              panePct.classList.remove('d-none');
+              paneAmt.classList.add('d-none');
+            } else {
+              panePct.classList.add('d-none');
+              paneAmt.classList.remove('d-none');
+            }
+          }
+          recalc();
+        };
+      });
+    }
+
+    if (pctInput) pctInput.oninput = recalc;
+    if (amtInput) amtInput.oninput = recalc;
+
+    recalc();
+  }
+
+  /* ---------- Lightning (charges breakdown) ---------- */
+  if (bdOverlay) {
+    const ids = [
+      'bd-duty-inline','bd-gct-inline','bd-freight-inline','bd-handling-inline',
+      'bd-scf-inline','bd-envl-inline','bd-caf-inline','bd-stamp-inline',
+      'bd-other-inline','bd-total-inline'
+    ];
+    const setField = (id, val) => {
+      const el = bdOverlay.querySelector('#' + id);
+      if (el) el.textContent = val;
+    };
+
+    root.querySelectorAll('.js-bd').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const pkgId = this.getAttribute('data-pkg');
+        if (!pkgId) return;
+
+        ids.forEach(id => setField(id, '…'));
+
+        fetch("{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace('0', pkgId))
+          .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+          .then(d => {
+            const nf = new Intl.NumberFormat();
+            setField('bd-duty-inline',     nf.format(d.duty || 0));
+            setField('bd-gct-inline',      nf.format(d.gct || 0));
+            setField('bd-freight-inline',  nf.format(d.freight || 0));
+            setField('bd-handling-inline', nf.format(d.handling || 0));
+            setField('bd-scf-inline',      nf.format(d.scf || 0));
+            setField('bd-envl-inline',     nf.format(d.envl || 0));
+            setField('bd-caf-inline',      nf.format(d.caf || 0));
+            setField('bd-stamp-inline',    nf.format(d.stamp || 0));
+            setField('bd-other-inline',    nf.format(d.other || 0));
+            setField('bd-total-inline',    nf.format(d.total_jmd || 0));
+          })
+          .catch(() => ids.forEach(id => setField(id, '—')));
+
+        showOverlay(bdOverlay);
+      });
+    });
+  }
+}
+
 function loadInvoiceInline(invoiceId){
-  const url = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1".replace('0', String(invoiceId));
+  const url = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1"
+                .replace('0', String(invoiceId));
+
   fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }})
     .then(r => { if(!r.ok) throw new Error('Failed to load invoice'); return r.text(); })
     .then(html => {
       const host = document.getElementById('invoiceInlineHost');
       host.innerHTML = html;
       host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      // 🔌 wire up Add Payment / Discount / Breakdown
+      initInlineInvoice(host);
     })
     .catch(() => alert('⚠️ Unable to load invoice inline.'));
 }
+
+
+// Load invoice into modal
+function openInvoiceModal(invoiceId) {
+  const modalEl  = document.getElementById("invoiceModal");
+  const modal    = new bootstrap.Modal(modalEl);
+  const bodyEl   = document.getElementById("invoiceModalBody");
+
+  bodyEl.innerHTML = "<p class='text-muted mb-0'>Loading invoice…</p>";
+
+  // Use Flask url_for so the path is always correct
+  const base = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1";
+  const url  = base.replace('0', String(invoiceId));
+
+  fetch(url, {
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+  })
+  .then(r => {
+      if (!r.ok) throw new Error("Failed");
+      return r.text();
+  })
+    .then(html => {
+      bodyEl.innerHTML = html;
+
+      // 🔌 wire invoice controls inside the modal
+      initInlineInvoice(modalEl);
+
+      modal.show();
+  })
+
+}
+
 </script>
 {% endblock %}

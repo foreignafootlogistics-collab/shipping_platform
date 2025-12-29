@@ -1,160 +1,126 @@
-import sqlite3
-DB_PATH = None  # legacy placeholder; Postgres uses SQLAlchemy
+# app/utils/counters.py  (SQLAlchemy version)
 
-def update_wallet(user_id, amount, description, conn=None):
-    """Add or subtract amount from user's wallet and log the transaction."""
-    close_conn = False
-    if conn is None:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        close_conn = True
-    try:
-        c = conn.cursor()
+from app.extensions import db
+from app.models import Wallet, WalletTransaction, PendingReferral, User, Package
+from datetime import datetime
+from sqlalchemy import func
 
-        c.execute("""
-            UPDATE users
-            SET wallet_balance = COALESCE(wallet_balance, 0) + ?
-            WHERE id = ?
-        """, (amount, user_id))
 
-        c.execute("""
-            INSERT INTO wallet_transactions (user_id, type, amount, description, created_at)
-            VALUES (?, ?, ?, ?, datetime('now'))
-        """, (
-            user_id,
-            "credit" if amount > 0 else "debit",
-            amount,
-            description
-        ))
+__all__ = [
+    "update_wallet",
+    "apply_referral_bonus",
+    "process_first_shipment_bonus",
+    "update_wallet_balance",
+]
 
-        if close_conn:
-            conn.commit()
 
-    except sqlite3.Error as e:
-        print(f"DB error in update_wallet: {e}")
-        if close_conn:
-            conn.rollback()
-        raise
-    finally:
-        if close_conn:
-            conn.close()
+def update_wallet(user_id, amount, description):
+    """
+    Add/subtract amount from user's wallet and insert a wallet transaction.
+    """
+
+    user = db.session.get(User, user_id)
+    if not user:
+        raise ValueError(f"User {user_id} not found")
+
+    # Adjust wallet balance safely
+    current_balance = user.wallet_balance or 0
+    user.wallet_balance = current_balance + float(amount)
+
+    # Insert transaction log
+    tx = WalletTransaction(
+        user_id=user_id,
+        amount=float(amount),
+        description=description,
+        type="credit" if amount > 0 else "debit",
+        created_at=datetime.utcnow()
+    )
+
+    db.session.add(tx)
+    db.session.commit()
 
 
 def apply_referral_bonus(new_user_id, referrer_code):
     """
-    Called during registration if user enters a referral code.
-    - Give the new user a $100 signup bonus immediately.
-    - Link new user to referrer by storing referrer_id.
-    - Insert a pending referral record to pay referrer $100 after first overseas shipment.
+    During registration:
+      - Link new user to referrer
+      - Give new user a $100 bonus
+      - Create PendingReferral for referrer
     """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        c = conn.cursor()
 
-        # Find referrer by referral code
-        c.execute("SELECT id FROM users WHERE referral_code = ?", (referrer_code,))
-        referrer = c.fetchone()
+    # Lookup referrer
+    referrer = User.query.filter_by(referral_code=referrer_code).first()
+    new_user = db.session.get(User, new_user_id)
 
-        if not referrer:
-            print("Invalid referral code.")
-            return  # No valid referrer, do nothing
+    if not new_user:
+        raise ValueError("New user does not exist")
 
-        referrer_id = referrer["id"]
+    if not referrer:
+        print("Invalid referral code")
+        return
 
-        # Update new user with referrer_id for tracking
-        c.execute("UPDATE users SET referrer_id = ? WHERE id = ?", (referrer_id, new_user_id))
+    # Link new user to referrer
+    new_user.referrer_id = referrer.id
 
-        # Give new user $100 signup bonus (separate from base signup bonus)
-        update_wallet(new_user_id, 100, "Signup bonus (Referral)", conn=conn)
+    # Give referral signup bonus
+    update_wallet(new_user_id, 100, "Signup bonus (Referral)")
 
-        # Insert pending referral to pay referrer after first overseas shipment
-        c.execute("""
-            INSERT INTO pending_referrals (referrer_id, referred_user_id, bonus_amount)
-            VALUES (?, ?, ?)
-        """, (referrer_id, new_user_id, 100))
+    # Create pending referral record (referrer gets paid after first overseas shipment)
+    pending = PendingReferral(
+        referrer_id=referrer.id,
+        referred_email=new_user.email,
+        accepted=False,
+        created_at=datetime.utcnow()
+    )
 
-        conn.commit()
-
-    except sqlite3.Error as e:
-        print(f"DB error in apply_referral_bonus: {e}")
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    db.session.add(pending)
+    db.session.commit()
 
 
 def process_first_shipment_bonus(user_id):
     """
-    Called when a package status is updated to 'overseas'.
-    - Check if this is the user's first overseas package.
-    - If so, credit $100 to the referrer (if any) and remove the pending referral record.
+    Called when a package becomes 'overseas':
+      - If this is first overseas package for that user,
+        reward referrer if there's a pending referral.
     """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    try:
-        c = conn.cursor()
 
-        # Count overseas packages for user
-        c.execute("""
-            SELECT COUNT(*) FROM packages
-            WHERE user_id = ? AND status = 'overseas'
-        """, (user_id,))
-        overseas_count = c.fetchone()[0]
+    overseas_count = (
+        Package.query
+        .filter(
+            Package.user_id == user_id,
+            func.lower(Package.status) == "overseas"
+        )
+        .count()
+    )
 
-        # Only process bonus if this is the first overseas package
-        if overseas_count == 1:
-            # Check if user was referred and has pending referral bonus
-            c.execute("""
-                SELECT referrer_id, bonus_amount
-                FROM pending_referrals
-                WHERE referred_user_id = ?
-            """, (user_id,))
-            pending = c.fetchone()
 
-            if pending:
-                referrer_id = pending["referrer_id"]
-                bonus_amount = pending["bonus_amount"]
+    # Only reward if first overseas package
+    if overseas_count != 1:
+        return
 
-                # Credit referrer wallet
-                update_wallet(referrer_id, bonus_amount, f"Referral bonus (first overseas shipment by user {user_id})", conn=conn)
+    # Check pending referral
+    pending = PendingReferral.query.filter_by(
+        referred_email=User.query.get(user_id).email,
+        accepted=False
+    ).first()
 
-                # Remove pending referral record to prevent duplicate bonuses
-                c.execute("DELETE FROM pending_referrals WHERE referred_user_id = ?", (user_id,))
+    if not pending:
+        return
 
-        conn.commit()
+    referrer_id = pending.referrer_id
 
-    except sqlite3.Error as e:
-        print(f"DB error in process_first_shipment_bonus: {e}")
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    # Pay referrer the $100 bonus
+    update_wallet(referrer_id, 100, f"Referral bonus: User {user_id} first overseas shipment")
+
+    # Mark referral as completed
+    pending.accepted = True
+
+    db.session.commit()
 
 
 def update_wallet_balance(user_id, amount, description):
     """
-    Update the user's wallet balance by adding the amount (positive or negative)
-    and log the transaction with the description.
+    Simple helper — same as update_wallet but kept for backwards compatibility.
     """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
 
-    # Update wallet balance (handle NULL wallet_balance as 0)
-    c.execute("""
-        UPDATE users
-        SET wallet_balance = COALESCE(wallet_balance, 0) + ?
-        WHERE id = ?
-    """, (amount, user_id))
-
-    # Insert wallet transaction record
-    trans_type = "credit" if amount > 0 else "debit"
-    c.execute("""
-        INSERT INTO wallet_transactions (user_id, type, amount, description, created_at)
-        VALUES (?, ?, ?, ?, datetime('now'))
-    """, (user_id, trans_type, amount, description))
-
-    conn.commit()
-    conn.close()
-
+    update_wallet(user_id, amount, description)

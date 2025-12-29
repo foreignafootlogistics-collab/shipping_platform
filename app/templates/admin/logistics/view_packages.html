@@ -7,77 +7,74 @@
 <div class="d-flex justify-content-between align-items-center mb-2">
   <h2 class="mb-0">📦 View Packages</h2>
 
-  <!-- Top actions (same as before) -->
-  <form method="POST" id="bulkActionForm" action="{{ url_for('logistics.packages_bulk_action') }}" class="m-0">
+  <!-- Top actions -->
+  <form method="POST"
+        id="bulkActionForm"
+        action="{{ url_for('logistics.packages_bulk_action') }}"
+        class="m-0">
     {{ bulk_form.hidden_tag() }}
     <input type="hidden" name="bulk_action" id="bulkActionHiddenAction" value="">
-    <div class="d-flex align-items-center border rounded shadow-sm overflow-hidden" style="border-color: #6f42c1;">
+
+    <div class="d-flex align-items-center action-toolbar shadow-sm">
+    
       <!-- Move to Shipment Log -->
-      <button type="submit"              
-              value="create_shipment"
-              class="btn btn-outline-light text-secondary px-3"
+      <button type="submit"
+              class="toolbar-btn"
               title="Move to Shipment Log"
               formaction="{{ url_for('logistics.create_shipment') }}"
               formmethod="POST">
-        <i class="fas fa-paper-plane"></i>
+        <i class="bi bi-send"></i>
       </button>
 
-      <div class="border-start border-secondary"></div>
-
-      <!-- Email selected packages -->
-      <button type="submit"              
-              value="email_packages"
-              class="btn btn-outline-light text-secondary px-3"
+      <!-- Email selected packages (Overseas notification) -->
+      <button type="submit"
+              class="toolbar-btn"
               title="Email selected package details"
               formaction="{{ url_for('logistics.email_selected_packages') }}"
               formmethod="POST">
-        <i class="fas fa-envelope"></i>
+        <i class="bi bi-envelope"></i>
       </button>
 
-      <div class="border-start border-secondary"></div>
-
-      <!-- Send Invoice Request -->
-      <button type="submit"              
-              value="invoice"
-              class="btn btn-outline-light text-secondary px-3"
-              title="Send Invoice Request"
-              formaction="{{ url_for('logistics.send_invoice_request') }}"
-              formmethod="POST">
-        <i class="fas fa-file-invoice"></i>
+      <!-- Send Invoice Request (stays on bulk_action route) -->
+      <button type="submit"
+              class="toolbar-btn"
+              name="action"
+              value="send_invoice_request"
+              title="Send Invoice Request">
+        <i class="bi bi-file-earmark-text"></i>
       </button>
 
-      <div class="border-start border-secondary"></div>
-
-      <!-- Bulk Assign to Customer -->
+      <!-- Bulk Assign to Customer (opens modal) -->
       <button type="button"
               id="openBulkAssignBtn"
-              class="btn btn-outline-light text-secondary px-3"
+              class="toolbar-btn"
               title="Assign selected package(s) to a customer"
               data-bs-toggle="modal"
               data-bs-target="#bulkAssignModal">
-        <i class="fas fa-user-check"></i>
+        <i class="bi bi-person-check"></i>
       </button>
+
       <!-- Mark EPC -->
       <button type="submit"
-              form="bulkActionForm"
               name="action"
               value="mark_epc"
-              class="btn btn-outline-warning ms-1"
+              class="toolbar-btn toolbar-btn-epc"
               title="Mark selected as EPC">
-        <i class="bi bi-flag-fill"></i>
+        <i class="bi bi-star-fill"></i>
       </button>
 
       <!-- Clear EPC -->
       <button type="submit"
-              form="bulkActionForm"
               name="action"
               value="clear_epc"
-              class="btn btn-outline-secondary ms-1"
+              class="toolbar-btn"
               title="Clear EPC flag">
-        <i class="bi bi-flag"></i>
+        <i class="bi bi-star"></i>
       </button>
+
     </div>
   </form>
+
 </div>
 
 {# ==== Summary just under the heading ==== #}
@@ -101,7 +98,7 @@
 
 {% if daily_totals and (date_from or date_to) %}
 <div class="card shadow-sm mb-3">
-  <div class="card-header bg-light">
+  <div class="card-header bg-dark">
     <strong>Per-day breakdown</strong>
   </div>
   <div class="card-body p-0">
@@ -212,10 +209,11 @@
     <label class="form-check-label d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
       <input type="checkbox"
              class="form-check-input"
-             name="show_unassigned"
+             id="filterUnassigned"
+             name="unassigned_only"
              value="1"
-             {% if request.args.get('show_unassigned') == '1' %}checked{% endif %}>
-      Show Unassigned Packages Only
+             {% if unassigned_only %}checked{% endif %}>
+      Unassigned Packages
     </label>
   </div>
   
@@ -226,7 +224,7 @@
            name="epc_only"
            value="1"
            {% if epc_only %}checked{% endif %}>
-    <label class="form-check-label" for="filterEpcOnly">Show EPC only</label>
+    <label class="form-check-label" for="filterEpcOnly">EPC </label>
     <small id="epcCount" class="text-muted ms-2" style="display:none;"></small>
   </div>
 
@@ -261,7 +259,7 @@
                             status=status_filter,
                             per_page=per_page,
                             page=page,
-                            show_unassigned=request.args.get('show_unassigned')) }}">
+                            unassigned_only='1' if unassigned_only else None) }}">
           <i class="fas fa-download me-1"></i> Download Packages
         </a>
 
@@ -393,8 +391,22 @@
 </div>
 
 
-<!-- 📄 Inline Invoice Preview will load here -->
-<div id="invoiceDisplay" class="mt-4"></div>
+<!-- 📄 Invoice Preview Modal -->
+<div class="modal fade" id="invoiceModal" tabindex="-1" aria-labelledby="invoiceModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-light">
+        <h5 class="modal-title" id="invoiceModalLabel">
+          <i class="fas fa-file-invoice-dollar me-1"></i> Invoice Preview
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="invoiceModalBody">
+        <p class="text-muted mb-0">Loading invoice…</p>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Pagination -->
 {% if total_pages > 1 %}
@@ -561,19 +573,7 @@
     document.getElementById("pricing_" + pkgId)?.classList.toggle("d-none");
   }
 
-  // Inline invoice preview (pro-forma view for a user)
-  function viewInvoice(userId) {
-    const base = "{{ url_for('admin.view_customer_invoice', user_id=0) }}"; // ends with '0'
-    const url  = base.replace(/0$/, String(userId));
-    fetch(url)
-      .then(r => r.text())
-      .then(html => {
-        document.getElementById('invoiceDisplay').innerHTML = html;
-        window.scrollTo({ top: document.getElementById('invoiceDisplay').offsetTop - 80, behavior: 'smooth' });
-      })
-      .catch(() => alert("Unable to load invoice."));
-  }
-
+  
   // Select All checkboxes
   document.getElementById('selectAll').addEventListener('change', function() {
     document.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = this.checked);
@@ -621,27 +621,333 @@
     form.submit();
   });
 
-  function viewInvoiceById(invoiceId){
-    const url = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1".replace('0', String(invoiceId));
-    fetch(url)
-      .then(r => r.text())
-      .then(html => {
-        document.getElementById('invoiceDisplay').innerHTML = html;
-        window.scrollTo({ top: document.getElementById('invoiceDisplay').offsetTop - 80, behavior: 'smooth' });
-      })
-      .catch(()=>alert("Unable to load invoice."));
+     // Helper: open invoice HTML in Bootstrap modal
+  function openInvoiceModalWithHtml(html) {
+    const bodyEl = document.getElementById('invoiceModalBody');
+    if (bodyEl) {
+      bodyEl.innerHTML = html;
+    }
+
+    const modalEl = document.getElementById('invoiceModal');
+    if (!modalEl) {
+      alert("Invoice modal not found in DOM.");
+      return;
+    }
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+
+    // Wire up Add Payment / Discount / Breakdown inside the newly loaded invoice
+    initInlineInvoice();
   }
 
-  function viewInvoiceByUser(userId){
-    const url = "{{ url_for('admin.view_customer_invoice', user_id=0) }}".replace('0', String(userId));
-    fetch(url)
-      .then(r=>r.text())
-      .then(html=>{
-        document.getElementById('invoiceDisplay').innerHTML = html;
-        window.scrollTo({ top: document.getElementById('invoiceDisplay').offsetTop - 80, behavior: 'smooth' });
-      })
-      .catch(()=>alert("Unable to load invoice."));
+    // Initialise inline invoice behaviour inside #invoiceModal
+  function initInlineInvoice() {
+    const modalRoot = document.getElementById('invoiceModal');
+    if (!modalRoot) return;
+
+    const payOverlay      = modalRoot.querySelector('#inlinePayOverlay');
+    const discountOverlay = modalRoot.querySelector('#inlineDiscountOverlay');
+    const bdOverlay       = modalRoot.querySelector('#inlineBreakdownOverlay');
+
+    // helper show/hide
+    const showOverlay = (el) => { if (el) el.classList.remove('d-none'); };
+    const hideOverlay = (el) => { if (el) el.classList.add('d-none'); };
+
+    // always start closed
+    [payOverlay, discountOverlay, bdOverlay].forEach(el => el && el.classList.add('d-none'));
+
+    /* ---------- open / close buttons ---------- */
+
+    // Add Payment
+    modalRoot.querySelectorAll('.js-open-pay').forEach(btn => {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!payOverlay) return;
+        showOverlay(payOverlay);
+        // ensure display shows current hidden value
+        setupPaymentLogic();
+      });
+    });
+
+    // Discount
+    modalRoot.querySelectorAll('.js-open-discount').forEach(btn => {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!discountOverlay) return;
+        showOverlay(discountOverlay);
+        setupDiscountLogic();  // recalc amounts
+      });
+    });
+
+    // Close X buttons on overlays
+    modalRoot.querySelectorAll('.fa-inline-close').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const type = this.getAttribute('data-close');
+        if (type === 'pay')      hideOverlay(payOverlay);
+        if (type === 'discount') hideOverlay(discountOverlay);
+        if (type === 'bd')       hideOverlay(bdOverlay);
+      });
+    });
+
+    /* ---------- PAYMENT keypad logic ---------- */
+    function setupPaymentLogic() {
+      if (!payOverlay) return;
+
+      const display = payOverlay.querySelector('#payDisplayInline');
+      const hidden  = payOverlay.querySelector('#payAmountInputInline');
+      if (!display || !hidden) return;
+
+      let current = hidden.value && hidden.value !== '0' ? String(hidden.value) : '0';
+
+      function updateDisplay() {
+        let num = parseFloat(current || '0');
+        if (isNaN(num)) num = 0;
+        hidden.value = num.toFixed(2);
+        display.textContent =
+          'JMD ' + num.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          });
+      }
+
+      function pushKey(key) {
+        if (key === '.') {
+          if (current.includes('.')) return;
+          current += '.';
+        } else if (key === '00') {
+          if (current === '0') return;
+          current += '00';
+        } else {
+          if (current === '0') current = key;
+          else current += key;
+        }
+        updateDisplay();
+      }
+
+      // keypad buttons
+      payOverlay.querySelectorAll('.payment-key-btn').forEach(btn => {
+        btn.onclick = function () {
+          pushKey(this.getAttribute('data-key'));
+        };
+      });
+
+      // quick amounts
+      payOverlay.querySelectorAll('.payment-quick-btn[data-quick]').forEach(btn => {
+        btn.onclick = function () {
+          current = String(this.getAttribute('data-quick') || '0');
+          updateDisplay();
+        };
+      });
+
+      // clear
+      const clearBtn = payOverlay.querySelector('#payClearBtnInline');
+      if (clearBtn) {
+        clearBtn.onclick = function () {
+          current = '0';
+          updateDisplay();
+        };
+      }
+
+      // payment method
+      const methodInput = payOverlay.querySelector('#payMethodInputInline');
+      const methodList  = payOverlay.querySelector('#paymentMethodListInline');
+      if (methodInput && methodList) {
+        methodList.querySelectorAll('.payment-method-btn').forEach(btn => {
+          btn.onclick = function () {
+            methodList.querySelectorAll('.payment-method-btn')
+                      .forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            methodInput.value = this.getAttribute('data-method') || 'Cash';
+          };
+        });
+      }
+      // ---------- NEW: "Authorised by" dropdown + other ----------
+      const authSelect = payOverlay.querySelector('#authBySelectInline');
+      const authInput  = payOverlay.querySelector('#authByInputInline');
+      const authHidden = payOverlay.querySelector('#authByHiddenInline');
+
+      if (authSelect && authHidden) {
+        // initialise from current select value
+        if (authSelect.value !== '__other__') {
+          authHidden.value = authSelect.value;
+        }
+
+        authSelect.addEventListener('change', function () {
+          if (this.value === '__other__') {
+            if (authInput) {
+              authInput.classList.remove('d-none');
+              authInput.value = '';
+              authInput.focus();
+            }
+            authHidden.value = '';
+          } else {
+            if (authInput) {
+              authInput.classList.add('d-none');
+            }
+            authHidden.value = this.value;
+          }
+        });
+
+        if (authInput) {
+          authInput.addEventListener('input', function () {
+            if (authSelect.value === '__other__') {
+              authHidden.value = this.value;
+            }
+          });
+        }
+      }
+      updateDisplay();
+    }
+
+    /* ---------- DISCOUNT tabs logic ---------- */
+    function setupDiscountLogic() {
+      if (!discountOverlay) return;
+
+      const form     = discountOverlay.querySelector('#inlineDiscountForm');
+      if (!form) return;
+
+      const balance  = parseFloat(form.getAttribute('data-balance') || '0') || 0;
+      const tabs     = discountOverlay.querySelector('#discountTabsInline');
+      const panePct  = discountOverlay.querySelector('#discountPercentPaneInline');
+      const paneAmt  = discountOverlay.querySelector('#discountAmountPaneInline');
+      const pctInput = discountOverlay.querySelector('#discountPercentInputInline');
+      const pctLbl   = discountOverlay.querySelector('#discountPercentAmountInline');
+      const amtInput = discountOverlay.querySelector('#discountAmountInputInline');
+      const hidden   = discountOverlay.querySelector('#discountHiddenAmountInline');
+
+      let mode = tabs?.querySelector('.discount-tab.active')?.getAttribute('data-mode') || 'percent';
+
+      function formatJMD(v) {
+        const n = parseFloat(v || '0') || 0;
+        return 'JMD ' + n.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+      }
+
+      function recalc() {
+        if (!hidden) return;
+        if (mode === 'percent') {
+          const pct  = parseFloat(pctInput?.value || '0') || 0;
+          const disc = Math.max(0, balance * pct / 100);
+          hidden.value = disc.toFixed(2);
+          if (pctLbl) pctLbl.textContent = formatJMD(disc);
+        } else {
+          const v = parseFloat(amtInput?.value || '0') || 0;
+          hidden.value = v.toFixed(2);
+        }
+      }
+
+      if (tabs) {
+        tabs.querySelectorAll('.discount-tab').forEach(btn => {
+          btn.onclick = function () {
+            tabs.querySelectorAll('.discount-tab').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            mode = this.getAttribute('data-mode') || 'percent';
+            if (panePct && paneAmt) {
+              if (mode === 'percent') {
+                panePct.classList.remove('d-none');
+                paneAmt.classList.add('d-none');
+              } else {
+                panePct.classList.add('d-none');
+                paneAmt.classList.remove('d-none');
+              }
+            }
+            recalc();
+          };
+        });
+      }
+
+      if (pctInput) pctInput.oninput = recalc;
+      if (amtInput) amtInput.oninput = recalc;
+
+      recalc();
+    }
+
+    /* ---------- Lightning (charges breakdown) ---------- */
+    if (bdOverlay) {
+      const ids = [
+        'bd-duty-inline','bd-gct-inline','bd-freight-inline','bd-handling-inline',
+        'bd-scf-inline','bd-envl-inline','bd-caf-inline','bd-stamp-inline',
+        'bd-other-inline','bd-total-inline'
+      ];
+      const setField = (id, val) => {
+        const el = bdOverlay.querySelector('#' + id);
+        if (el) el.textContent = val;
+      };
+
+      modalRoot.querySelectorAll('.js-bd').forEach(btn => {
+        btn.addEventListener('click', function () {
+          const pkgId = this.getAttribute('data-pkg');
+          if (!pkgId) return;
+
+          ids.forEach(id => setField(id, '…'));
+
+          fetch("{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace('0', pkgId))
+            .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+            .then(d => {
+              const nf = new Intl.NumberFormat();
+              setField('bd-duty-inline',     nf.format(d.duty || 0));
+              setField('bd-gct-inline',      nf.format(d.gct || 0));
+              setField('bd-freight-inline',  nf.format(d.freight || 0));
+              setField('bd-handling-inline', nf.format(d.handling || 0));
+              setField('bd-scf-inline',      nf.format(d.scf || 0));
+              setField('bd-envl-inline',     nf.format(d.envl || 0));
+              setField('bd-caf-inline',      nf.format(d.caf || 0));
+              setField('bd-stamp-inline',    nf.format(d.stamp || 0));
+              setField('bd-other-inline',    nf.format(d.other || 0));
+              setField('bd-total-inline',    nf.format(d.total_jmd || 0));
+            })
+            .catch(() => ids.forEach(id => setField(id, '—')));
+
+          showOverlay(bdOverlay);
+        });
+      });
+    }
   }
+
+
+  // View a specific existing invoice (using its invoice_id)
+  function viewInvoiceById(invoiceId) {
+    const url = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1"
+                  .replace('0', String(invoiceId));
+
+    fetch(url)
+      .then(r => {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.text();
+      })
+      .then(html => {
+        openInvoiceModalWithHtml(html);
+      })
+      .catch(err => {
+        console.error(err);
+        alert("Unable to load invoice.");
+      });
+  }
+
+  // View a customer's current uninvoiced packages as a pro-forma invoice
+  function viewInvoiceByUser(userId) {
+    const url = "{{ url_for('admin.view_customer_invoice', user_id=0) }}"
+                  .replace('0', String(userId));
+
+    fetch(url)
+      .then(r => {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.text();
+      })
+      .then(html => {
+        openInvoiceModalWithHtml(html);
+      })
+      .catch(err => {
+        console.error(err);
+        alert("Unable to load invoice.");
+      });
+  }
+
+
+  
 
   // Open bulk-assign only if at least one package is selected
   document.getElementById('openBulkAssignBtn')?.addEventListener('click', function (e) {
@@ -678,6 +984,23 @@
       if (count) count.textContent = `${selected.length} package(s) selected.`;
     });
   }
+
+
+document.addEventListener('DOMContentLoaded', function () {
+  const deleteBtn     = document.getElementById('deleteSelectedBtn');
+  const bulkForm      = document.getElementById('bulkActionForm');
+  const hiddenAction  = document.getElementById('bulkActionHiddenAction');
+
+  if (deleteBtn && bulkForm && hiddenAction) {
+    deleteBtn.addEventListener('click', function () {
+      // set the bulk_action used in packages_bulk_action()
+      hiddenAction.value = 'delete';
+      bulkForm.submit();
+    });
+  }
+});
+
+
 
   /* ============================
      EPC filter & count (clean)
@@ -793,6 +1116,61 @@
 }
 .border-purple { border-color: #4a148c !important; }
 .text-purple { color: #4a148c !important; }
+
+/* Compact pill-style toolbar */
+.action-toolbar {
+    border-radius: 999px;
+    background: #ffffff;
+    border: 1px solid #e0d4ff;
+    padding: 4px 6px;
+    gap: 2px;
+}
+
+/* Base button look */
+.action-toolbar .toolbar-btn {
+    border: none;
+    background: transparent;
+    padding: 6px 12px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease,
+                box-shadow 0.15s ease, transform 0.05s ease;
+    color: #4b4b4b;
+    font-size: 1.1rem;
+}
+
+/* Hover & focus */
+.action-toolbar .toolbar-btn:hover,
+.action-toolbar .toolbar-btn:focus-visible {
+    background-color: #f3e8ff;
+    color: #4a148c;
+    box-shadow: 0 0 0 1px rgba(106, 27, 154, 0.20);
+    outline: none;
+}
+
+/* Pressed */
+.action-toolbar .toolbar-btn:active {
+    transform: translateY(1px);
+}
+
+/* EPC highlight button (yellow-ish) */
+.action-toolbar .toolbar-btn-epc {
+    color: #b7791f;
+}
+
+.action-toolbar .toolbar-btn-epc:hover,
+.action-toolbar .toolbar-btn-epc:focus-visible {
+    background-color: #fff7e6;
+    color: #d97706;
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
+}
+
 </style>
+
+{% include 'admin/invoices/_proforma_modal_block.html' %}
 
 {% endblock %}

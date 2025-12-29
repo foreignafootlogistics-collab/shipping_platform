@@ -1,92 +1,236 @@
-<div class="invoice">
-  <div class="inv-head">
-    <div class="brand">
-      <img src="{{ logo_url }}" alt="Logo">
-      <div class="brand-meta">
-        <div class="brand-name">Foreign A Foot Logistics Limited</div>
-        <div>Cedar Grove PassageFort</div>
-        <div>Portmore, St. Catherine</div>
-        <div>1-876-210-4291</div>
-        <div><a href="mailto:foreignafootlogistics@gmail.com">foreignafootlogistics@gmail.com</a></div>
-      </div>
+{# admin/invoices/_invoice_core.html #}
+
+<style>
+  .proforma-wrapper{
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 0.9rem;
+    color:#111827;
+  }
+  .proforma-header{
+    display:flex;
+    gap:1.5rem;
+    align-items:flex-start;
+    margin-bottom:1rem;
+    border-bottom:1px solid #e5e7eb;
+    padding-bottom:0.75rem;
+  }
+  .proforma-logo{
+    flex:0 0 auto;
+  }
+  .proforma-logo img{
+    max-height:60px;
+    max-width:180px;
+    object-fit:contain;
+  }
+  .proforma-company{
+    flex:1 1 auto;
+  }
+  .proforma-company h2{
+    font-size:1.2rem;
+    margin:0 0 0.15rem 0;
+    font-weight:700;
+  }
+  .proforma-company small{
+    color:#4b5563;
+    display:block;
+    line-height:1.2;
+  }
+  .proforma-meta{
+    text-align:right;
+    font-size:0.85rem;
+  }
+  .proforma-meta .label{
+    color:#6b7280;
+  }
+  .proforma-meta .value{
+    font-weight:600;
+  }
+
+  .proforma-section-title{
+    font-size:0.9rem;
+    font-weight:600;
+    margin-top:0.75rem;
+    margin-bottom:0.25rem;
+    color:#4b5563;
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+  }
+
+  .proforma-table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:0.75rem;
+    font-size:0.8rem;
+  }
+  .proforma-table th,
+  .proforma-table td{
+    border:1px solid #d1d5db;
+    padding:0.35rem 0.4rem;
+    vertical-align:top;
+  }
+  .proforma-table thead th{
+    background:#111827;
+    color:#f9fafb;
+    font-weight:600;
+    text-align:left;
+  }
+  .proforma-table tbody tr:nth-child(even){
+    background:#f9fafb;
+  }
+
+  .proforma-small{
+    font-size:0.8rem;
+    color:#4b5563;
+  }
+  .text-right{ text-align:right; }
+  .text-center{ text-align:center; }
+  .fw-bold{ font-weight:600; }
+  .mt-1{ margin-top:0.25rem; }
+  .mt-2{ margin-top:0.5rem; }
+
+</style>
+
+<div class="proforma-wrapper">
+
+  <!-- HEADER -->
+  <div class="proforma-header">
+    <div class="proforma-logo">
+      {% if logo_url %}
+        <img src="{{ logo_url }}" alt="Logo">
+      {% endif %}
     </div>
-    <div class="inv-meta">
-      <div class="inv-title">PACKAGE PROFORMA INVOICE</div>
-      <div class="inv-number">{{ invoice.number }}</div>
-      <div>Branch: {{ invoice.branch or 'Main Branch' }}</div>
-      <div>Staff: {{ invoice.staff or 'FAFL ADMIN' }}</div>
-      <div class="inv-date">
-        {% if invoice.date.__class__.__name__ == 'str' %}
-          {{ invoice.date }}
-        {% else %}
-          {{ invoice.date.strftime('%b %d, %Y, %I:%M %p') }}
-        {% endif %}
+
+    <div class="proforma-company">
+      <h2>{{ (settings and settings.company_name) or "Foreign A Foot Logistics Limited" }}</h2>
+      <small>
+        {{ (settings and settings.company_address) or "Cedar Grove PassageFort<br>Portmore, St. Catherine" | safe }}
+      </small>
+      <small>
+        {{ (settings and settings.company_email) or "foreignafootlogistics@gmail.com" }}
+      </small>
+      {% if settings and settings.company_phone %}
+      <small>{{ settings.company_phone }}</small>
+      {% else %}
+      <small>1-876-210-4291</small>
+      {% endif %}
+      <div class="proforma-section-title mt-2">Package Proforma Invoice</div>
+    </div>
+
+    <div class="proforma-meta">
+      <div><span class="label">Invoice&nbsp;</span>
+        <span class="value">{{ invoice.number }}</span></div>
+      <div><span class="label">Branch&nbsp;</span>
+        <span class="value">{{ invoice.branch or "Main Branch" }}</span></div>
+      <div><span class="label">Staff&nbsp;</span>
+        <span class="value">{{ invoice.staff or "FAFL ADMIN" }}</span></div>
+      <div><span class="label">Date&nbsp;</span>
+        <span class="value">
+          {{ invoice.date.strftime("%b %d, %Y, %I:%M %p") if invoice.date else "" }}
+        </span></div>
+      <div class="mt-1">
+        <span class="label">Customer&nbsp;</span>
+        <span class="value">
+          [{{ invoice.customer_code }}] {{ invoice.customer_name }}
+        </span>
       </div>
     </div>
   </div>
 
-  <div class="row two-col">
-    <div class="col">
-      <div class="lbl">Customer</div>
-      <div class="val">[{{ invoice.customer_code }}] {{ invoice.customer_name }}</div>
-    </div>
-    <div class="col text-right">
-      <div class="lbl">Invoice</div>
-      <div class="val">{{ invoice.number }}</div>
-    </div>
-  </div>
-
-  <table class="inv-table">
+  <!-- TABLE -->
+  <table class="proforma-table">
     <thead>
       <tr>
-        <th>House AWB#</th>
-        <th>Information</th>
-        <th>Our Fees</th>
-        <th>Govt Fees</th>
-        <th class="text-right">Discount Due</th>
+        <th style="width:14%;">House AWB#</th>
+        <th style="width:30%;">Information</th>
+        <th style="width:26%;">Our Fees</th>
+        <th style="width:20%;">Govt Fees</th>
+        <th style="width:10%;">Discount Due</th>
       </tr>
     </thead>
     <tbody>
       {% for p in invoice.packages %}
       <tr>
-        <td>{{ p.house_awb }}</td>
-        <td class="small">
-          Weight: {{ p.weight }} lbs<br>
-          USD Value: ${{ '%.2f'|format(p.value or 0) }}<br>
-          {{ p.description or '' }}
+        <td>{{ p.house_awb or "—" }}</td>
+        <td>
+          Weight: {{ "%.1f"|format(p.weight or 0) }} lbs<br>
+          USD Value: ${{ "%.2f"|format(p.value or 0) }}<br>
+          {{ p.description }}
         </td>
-        <td class="small">
-          Freight: {{ (p.freight or 0)|jmd }}<br>
-          Storage: {{ (p.storage or 0)|jmd }}<br>
-          Other Charges: {{ (p.other_charges or 0)|jmd }}
+        <td>
+          Freight: JMD {{ "%.2f"|format(p.freight or 0) }}<br>
+          Handling: JMD {{ "%.2f"|format(p.handling or p.storage or 0) }}<br>
+          Other Charges: JMD {{ "%.2f"|format(p.other_charges or 0) }}
         </td>
-        <td class="small">
-          Duty: {{ (p.duty or 0)|jmd }}<br>
-          SCF: {{ (p.scf or 0)|jmd }}<br>
-          ENVL: {{ (p.envl or 0)|jmd }}<br>
-          CAF: {{ (p.caf or 0)|jmd }}<br>
-          GCT: {{ (p.gct or 0)|jmd }}          
+        <td>
+          Duty: JMD {{ "%.2f"|format(p.duty or 0) }}<br>
+          SCF: JMD {{ "%.2f"|format(p.scf or 0) }}<br>
+          ENVL: JMD {{ "%.2f"|format(p.envl or 0) }}<br>
+          CAF: JMD {{ "%.2f"|format(p.caf or 0) }}<br>
+          GCT: JMD {{ "%.2f"|format(p.gct or 0) }}
         </td>
-        <td class="text-right">{{ (p.discount_due or 0)|jmd }}</td>
+        <td class="text-right">
+          JMD {{ "%.2f"|format(p.discount_due or 0) }}
+        </td>
       </tr>
+      {% if loop.last %}
+      <tr>
+        <td colspan="5" class="proforma-small">
+          USD→JMD rate used: {{ USD_TO_JMD }}
+        </td>
+      </tr>
+      {% endif %}
       {% endfor %}
     </tbody>
   </table>
 
-  <div class="totals">
-    <div class="line"><span>Sub-Total</span><span>{{ (invoice.subtotal or 0)|jmd }}</span></div>
-    {% if invoice.discount_total %}
-      <div class="line"><span>Discounts</span><span class="text-success">-{{ (invoice.discount_total or 0)|jmd }}</span></div>
-    {% endif %}
-    <div class="line grand"><span>Total Due</span><span>{{ (invoice.total_due or invoice.total or 0)|jmd }}</span></div>
+  {# ---- totals helpers (use preview if available) ---- #}
+  {% set sub_total = (invoice.preview_subtotal if invoice.preview_subtotal is defined else invoice.subtotal or 0) | float %}
+  {% set discount_total = (invoice.preview_discount_total if invoice.preview_discount_total is defined else invoice.discount_total or 0) | float %}
+  {% set balance_due = (invoice.preview_total_due if invoice.preview_total_due is defined else invoice.total_due or 0) | float %}
+
+  {# total after discount (what customer should pay before payments) #}
+  {% set total_after_discount = sub_total - discount_total %}
+
+  {# payments = total_after_discount - balance_due #}
+  {% set payments_total = total_after_discount - balance_due %}
+  {% if payments_total < 0 %}{% set payments_total = 0 %}{% endif %}
+
+
+
+  <!-- TOTALS -->
+  <div class="mt-2 proforma-small" style="display:flex;justify-content:flex-end;">
+    <div style="min-width:260px;">
+      <div class="d-flex justify-content-between">
+        <span>Sub-Total:</span>
+        <span class="fw-bold">JMD {{ "%.2f"|format(sub_total) }}</span>
+      </div>
+
+      {% if discount_total > 0 %}
+      <div class="d-flex justify-content-between">
+        <span>Discount:</span>
+        <span class="fw-bold">- JMD {{ "%.2f"|format(discount_total) }}</span>
+      </div>
+      {% endif %}
+
+      <div class="d-flex justify-content-between">
+        <span>Total:</span>
+        <span class="fw-bold">JMD {{ "%.2f"|format(total_after_discount) }}</span>
+      </div>
+
+      <div class="d-flex justify-content-between">
+        <span>Payment:</span>
+        <span class="fw-bold">JMD {{ "%.2f"|format(payments_total) }}</span>
+      </div>
+
+      <div class="d-flex justify-content-between mt-1" style="border-top:1px solid #e5e7eb;padding-top:.35rem;">
+        <span class="fw-bold">Balance:</span>
+        <span class="fw-bold">JMD {{ "%.2f"|format(balance_due) }}</span>
+      </div>
+    </div>
   </div>
 
-  {% if invoice.notes %}
-  <div class="notes">
-    <div class="lbl">Notes</div>
-    <div class="val">{{ invoice.notes }}</div>
-  </div>
-  {% endif %}
 
-  <div class="footer">Thank you for shipping with Foreign A Foot Logistics.</div>
+  <div class="mt-2 proforma-small">
+    Thank you for shipping with {{ (settings and settings.company_name) or "Foreign A Foot Logistics" }}.
+  </div>
 </div>

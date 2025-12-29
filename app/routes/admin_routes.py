@@ -10,7 +10,9 @@ from email.message import EmailMessage
 from datetime import date, datetime, timedelta
 from calendar import monthrange
 from collections import OrderedDict
+from collections import defaultdict
 
+import bcrypt
 import openpyxl
 from weasyprint import HTML
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -37,18 +39,20 @@ from app.calculator import calculate_charges
 from app.calculator_data import CATEGORIES, USD_TO_JMD
 
 import sqlalchemy as sa
-from sqlalchemy import func, extract
+from sqlalchemy import func, extract, asc
 from app.extensions import db
 from app.models import (
-    User, Wallet, Message, ScheduledDelivery, WalletTransaction, Package, Invoice, Notification, Payment, RateBracket    
+    User, Wallet, Message, ScheduledDelivery, WalletTransaction, Package, Invoice, Notification, Payment, RateBracket, Discount, shipment_packages, Prealert, ShipmentLog    
 )
 from app.routes.admin_auth_routes import admin_required
+
 
 admin_bp = Blueprint(
     'admin', __name__,
     url_prefix='/admin',
     template_folder='templates/admin'
 )
+
 
 ALLOWED_EXTENSIONS = {'xlsx'}
 
@@ -148,97 +152,203 @@ def _last_n_months(n: int = 12):
             y -= 1
     return list(reversed(months))
 
+def _mark_invoice_packages_delivered(invoice_id: int):
+    # safest even if inv.packages relationship doesn’t exist
+    Package.query.filter_by(invoice_id=invoice_id).update(
+        {"status": "delivery"},
+        synchronize_session=False
+    )
+
+
 def _fetch_invoice_totals_pg(invoice_id: int):
-    """Compute totals using ORM instead of SQLite."""
+    """Compute invoice totals from Postgres using ORM.
+
+    Returns:
+        subtotal        -> base invoice amount before discounts (JMD)
+        discount_total  -> sum of discounts (JMD)
+        payments_total  -> sum of payments (JMD)
+        total_due       -> final balance (JMD)
+    """
     inv = Invoice.query.get(invoice_id)
     if not inv:
         return 0.0, 0.0, 0.0, 0.0
 
-    # subtotal = sum of package.amount_due (or fallback to invoice.subtotal/grand_total)
-    pkg_sum = db.session.scalar(
-        sa.select(func.coalesce(func.sum(Package.amount_due), 0.0)).where(Package.invoice_id == invoice_id)
-    ) or 0.0
-    subtotal = pkg_sum or float(getattr(inv, "subtotal", 0.0) or getattr(inv, "grand_total", 0.0) or 0.0)
+    # 1) Sum of all package.amount_due linked to this invoice
+    package_sum = (
+        db.session.query(func.coalesce(func.sum(Package.amount_due), 0.0))
+        .filter(Package.invoice_id == invoice_id)
+        .scalar()
+        or 0.0
+    )
 
-    discount_total = float(getattr(inv, "discount_total", 0.0) or 0.0)
+    # 2) Base subtotal (before discounts & payments)
+    #    Prefer invoice.grand_total if set, otherwise fall back to package_sum, then legacy fields.
+    subtotal = float(
+        inv.grand_total
+        or package_sum
+        or inv.amount
+        or inv.invoice_value
+        or 0.0
+    )
 
-    # Payments (if Payment model exists)
-    payments_total = 0.0
-    try:
-        from app.models import Payment
-        payments_total = db.session.scalar(
-            sa.select(func.coalesce(func.sum(Payment.amount), 0.0)).where(Payment.invoice_id == invoice_id)
-        ) or 0.0
-    except Exception:
-        payments_total = 0.0
+    # 3) Discounts (from Discount table)
+    discount_total = (
+        db.session.query(func.coalesce(func.sum(Discount.amount_jmd), 0.0))
+        .filter(Discount.invoice_id == invoice_id)
+        .scalar()
+        or 0.0
+    )
 
+    # 4) Payments (IMPORTANT: use amount_jmd)
+    payments_total = (
+        db.session.query(func.coalesce(func.sum(Payment.amount_jmd), 0.0))
+        .filter(Payment.invoice_id == invoice_id)
+        .scalar()
+        or 0.0
+    )
+
+    # 5) Final balance
     total_due = max(subtotal - discount_total - payments_total, 0.0)
+
     return float(subtotal), float(discount_total), float(payments_total), float(total_due)
+
+@admin_bp.route("/__routes")
+@admin_required()
+def admin_routes_dump():
+    from flask import current_app
+    lines = []
+    for r in sorted(current_app.url_map.iter_rules(), key=lambda x: str(x)):
+        if str(r.endpoint).startswith("admin."):
+            lines.append(f"{r.endpoint:30}  {r.methods}  {r.rule}")
+    return "<pre>" + "\n".join(lines) + "</pre>"
 
 
 @admin_bp.route('/register-admin', methods=['GET', 'POST'])
-@admin_required
+@admin_required(roles=['superadmin'])   # 🔒 only superadmin can create other admins
 def register_admin():
     form = AdminRegisterForm()
-    if form.validate_on_submit():
-        import bcrypt
-        full_name = form.full_name.data.strip()
-        email = form.email.data.strip()
-        password = form.password.data.strip()
 
-        # guard: existing email?
+    if form.validate_on_submit():
+        full_name = (form.full_name.data or "").strip()
+        email = (form.email.data or "").strip()
+        password = (form.password.data or "").strip()
+
+        # 🔹 role coming from the <select name="role"> in your HTML
+        #    e.g. "admin", "finance", "operations", "accounts_manager"
+        role = (request.form.get("role") or "admin").strip()
+
+        # 1) Guard: existing email
         if User.query.filter_by(email=email).first():
             flash("Email already exists", "danger")
             return render_template('admin/register_admin.html', form=form)
 
-        # first admin gets FAFL10000 (optional)
-        first_admin = not User.query.filter_by(role='admin').first()
-        registration_number = "FAFL10000" if first_admin else None
+        # 2) See if this is the very first admin-type user in the system
+        has_any_admin = User.query.filter(User.is_admin == True).first() is not None
 
-        hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode()
+        # Default flags
+        is_admin = True
+        is_superadmin = False
 
+        # If there are NO admins at all yet,
+        # force this one to become a superadmin owner account.
+        if not has_any_admin:
+            role = "superadmin"
+            is_superadmin = True
+
+        # 3) Optional registration number for first admin
+        registration_number = "FAFL10000" if not has_any_admin else None
+
+        # 4) Hash password with bcrypt (store as bytes in LargeBinary column)
+        hashed_pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+
+        # 5) Create the user
         u = User(
             full_name=full_name,
-            email=email,
-            password=hashed_pw,
-            role="admin",
-            created_at=datetime.utcnow(),
-            registration_number=registration_number
+            email=email,                     # e.g. "sade.buchanan@faflcourier.com"
+            password=hashed_pw,              # keep as bytes for LargeBinary
+            role=role,                       # from select
+            created_at=datetime.utcnow(),    # your column is String but SQLite will happily store this
+            registration_number=registration_number,
+            is_admin=is_admin,
+            is_superadmin=is_superadmin,
         )
-        # if your model has is_admin:
-        if hasattr(u, "is_admin"):
-            u.is_admin = True
 
         db.session.add(u)
         db.session.commit()
-        flash(f"Admin account for {full_name} created successfully!", "success")
+
+        flash(
+            f"Admin account for {full_name} created successfully "
+            f"({role}{' / SUPERADMIN' if is_superadmin else ''}).",
+            "success"
+        )
         return redirect(url_for('admin.dashboard'))
+
+    # GET or failed validation
     return render_template('admin/register_admin.html', form=form)
 
+@admin_bp.route('/manage-admins')
+@admin_required(roles=['superadmin'])
+def manage_admins():
+    """List all admin-type users so superadmin can edit them."""
+    admins = User.query.filter_by(is_admin=True).all()
+    return render_template('admin/manage_admins.html', admins=admins)
+
+@admin_bp.route('/admins/<int:user_id>/update-role', methods=['POST'])
+@admin_required(roles=['superadmin'])  # only superadmin can change roles
+def update_admin_role(user_id):
+    from app.extensions import db
+    from app.models import User
+
+    new_role = (request.form.get("role") or "").strip().lower()
+
+    admin = User.query.get_or_404(user_id)
+
+    # Update role field
+    admin.role = new_role
+
+    # Keep is_admin / is_superadmin flags in sync
+    if new_role == "superadmin":
+        admin.is_superadmin = True
+        admin.is_admin = True
+    elif new_role in ("admin", "finance", "operations", "accounts_manager"):
+        admin.is_superadmin = False
+        admin.is_admin = True
+    else:
+        # fallback – not really expected for this screen
+        admin.is_superadmin = False
+        admin.is_admin = False
+
+    db.session.commit()
+    flash("Admin role updated successfully.", "success")
+    return redirect(url_for('admin.manage_admins'))
+
+
+# ---------- Admin Dashboard ---------- 
 # ---------- Admin Dashboard ----------
-# Admin dashboard (Postgres version)
 @admin_bp.route('/dashboard')
-@admin_required
+@admin_required() 
 def dashboard():
-    
+    from app.forms import AdminCalculatorForm  # keep this import here
+
     admin_calculator_form = AdminCalculatorForm()
 
-    # ---- Cards ----
+    # ---- Top summary cards ----
     total_users = db.session.scalar(sa.select(func.count()).select_from(User)) or 0
     total_packages = db.session.scalar(sa.select(func.count()).select_from(Package)) or 0
     pending_invoices = db.session.scalar(
-        sa.select(func.count()).select_from(Invoice).where(
-            Invoice.status.in_(('pending', 'unpaid', 'issued'))
-        )
+        sa.select(func.count())
+        .select_from(Invoice)
+        .where(Invoice.status.in_(('pending', 'unpaid', 'issued')))
     ) or 0
 
-    # Optional date filters for scheduled deliveries (your template has a filter form)
+    # ---- Scheduled Deliveries (with optional date filters) ----
     start_date_str = request.args.get("start_date", "")
     end_date_str   = request.args.get("end_date", "")
 
-    deliveries_q = sa.select(ScheduledDelivery).order_by(ScheduledDelivery.scheduled_date.desc())
+    deliveries_q = sa.select(ScheduledDelivery).order_by(
+        ScheduledDelivery.scheduled_date.desc()
+    )
 
-    # Apply date filters if provided (assumes scheduled_date is a Date or DateTime)
     try:
         if start_date_str:
             sd = datetime.fromisoformat(start_date_str).date()
@@ -247,69 +357,122 @@ def dashboard():
             ed = datetime.fromisoformat(end_date_str).date()
             deliveries_q = deliveries_q.where(ScheduledDelivery.scheduled_date <= ed)
     except Exception:
-        # If parsing fails, we just ignore filters
+        # ignore bad date filters
         pass
 
     deliveries = db.session.execute(deliveries_q.limit(10)).scalars().all()
 
-    # ---- Charts: Monthly users & monthly packages (current year) ----
-    current_year = date.today().year
+    # ==============================
+    #  Helper: parse dates in Python
+    # ==============================
+    def _parse_any_dt(value):
+        """
+        Try to parse value into a datetime.
+        Handles datetime, date, or string in a few common formats.
+        Returns datetime or None.
+        """
+        if not value:
+            return None
+
+        if isinstance(value, datetime):
+            return value
+
+        if isinstance(value, date):
+            return datetime(value.year, value.month, value.day)
+
+        s = str(value).strip()
+        if not s:
+            return None
+
+        for fmt in (
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+            "%d/%m/%Y",
+            "%d-%m-%Y",
+            "%m/%d/%Y",
+        ):
+            try:
+                return datetime.strptime(s, fmt)
+            except ValueError:
+                continue
+
+        try:
+            return datetime.fromisoformat(s)
+        except Exception:
+            return None
+
+    # ==============================
+    #  Build monthly stats in Python
+    # ==============================
+    today = date.today()
+    current_year = today.year
+    current_month = today.month
+    window_start_90d = today - timedelta(days=90)
+
     month_map = {
         1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr',
         5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Aug',
         9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
     }
 
-    # Build zero-filled dicts 1..12
+    # Start with 0 for each month
     user_data_dict = {m: 0 for m in month_map.keys()}
     pkg_data_dict  = {m: 0 for m in month_map.keys()}
 
-    # Coalesce dates safely (cast to timestamp so Postgres COALESCE types match)
-    # Users: prefer date_registered, fallback created_at
-    user_coalesced_ts = func.coalesce(
-        sa.cast(User.date_registered, sa.DateTime()),
-        sa.cast(User.created_at,     sa.DateTime())
-    )
+    # ---------- Users: use date_registered first, fallback created_at ----------
+    users = User.query.all()
+    today_new_users = 0
 
-    # Packages: prefer date_received, fallback created_at
-    pkg_coalesced_ts = func.coalesce(
-        sa.cast(Package.date_received, sa.DateTime()),
-        sa.cast(Package.created_at,    sa.DateTime())
-    )
+    for u in users:
+        dt = _parse_any_dt(getattr(u, "date_registered", None)) \
+             or _parse_any_dt(getattr(u, "created_at", None))
+        if not dt:
+            continue
 
-    # --- Users per month (current year) ---
-    user_rows = db.session.execute(
-        sa.select(
-            extract('month', user_coalesced_ts).label('m'),
-            func.count(User.id).label('cnt'),
-        )
-        .where(extract('year', user_coalesced_ts) == current_year)
-        .group_by(sa.text('m'))
-        .order_by(sa.text('m'))
-    ).all()
+        d = dt.date()
 
-    for m_num, cnt in user_rows:
-        # m_num may come as Decimal/float; normalize to int 1..12
-        m = int(m_num)
-        if 1 <= m <= 12:
-            user_data_dict[m] = int(cnt or 0)
+        if d == today:
+            today_new_users += 1
 
-    # --- Packages per month (current year) ---
-    pkg_rows = db.session.execute(
-        sa.select(
-            extract('month', pkg_coalesced_ts).label('m'),
-            func.count(Package.id).label('cnt'),
-        )
-        .where(extract('year', pkg_coalesced_ts) == current_year)
-        .group_by(sa.text('m'))
-        .order_by(sa.text('m'))
-    ).all()
+        if dt.year == current_year and 1 <= dt.month <= 12:
+            user_data_dict[dt.month] += 1
 
-    for m_num, cnt in pkg_rows:
-        m = int(m_num)
-        if 1 <= m <= 12:
-            pkg_data_dict[m] = int(cnt or 0)
+    # ---------- Packages: use date_received first, fallback created_at ----------
+    packages = Package.query.all()
+    today_new_packages = 0
+    active_customer_ids_90d = set()
 
+    for p in packages:
+        dt = _parse_any_dt(getattr(p, "date_received", None)) \
+             or _parse_any_dt(getattr(p, "created_at", None))
+        if not dt:
+            continue
+
+        d = dt.date()
+
+        if d == today:
+            today_new_packages += 1
+
+        if dt.year == current_year and 1 <= dt.month <= 12:
+            pkg_data_dict[dt.month] += 1
+
+        if d >= window_start_90d and p.user_id:
+            active_customer_ids_90d.add(p.user_id)
+
+    # This month totals for the text beside charts
+    this_month_new_users = user_data_dict.get(current_month, 0)
+    this_month_new_packages = pkg_data_dict.get(current_month, 0)
+
+    # Active customers in last 90 days
+    active_customers_90d = len(active_customer_ids_90d)
+
+    # ---- normalize counts so template always gets integers ----
+    today_new_users         = int(today_new_users or 0)
+    today_new_packages      = int(today_new_packages or 0)
+    this_month_new_users    = int(this_month_new_users or 0)
+    this_month_new_packages = int(this_month_new_packages or 0)
+    active_customers_90d    = int(active_customers_90d or 0)
+    
     return render_template(
         'admin/admin_dashboard.html',
         total_users=total_users,
@@ -317,18 +480,26 @@ def dashboard():
         pending_invoices=pending_invoices,
         deliveries=deliveries,
 
-        # keep your original labels/data shape
+        # chart data
         user_labels=[month_map[m] for m in month_map],
         user_data=[user_data_dict[m] for m in month_map],
         pkg_labels=[month_map[m] for m in month_map],
         pkg_data=[pkg_data_dict[m] for m in month_map],
 
-        # pass filters back to template (your filter form binds to these)
+        # filters for scheduled deliveries
         start_date=start_date_str,
         end_date=end_date_str,
 
-        admin_calculator_form=admin_calculator_form
+        # live stats
+        today_new_users=today_new_users,
+        today_new_packages=today_new_packages,
+        this_month_new_users=this_month_new_users,
+        this_month_new_packages=this_month_new_packages,
+        active_customers_90d=active_customers_90d,
+
+        admin_calculator_form=admin_calculator_form,
     )
+
 @admin_bp.route('/rates')
 @admin_required
 def view_rates():
@@ -423,7 +594,7 @@ def edit_rate(rate_id):
         rb.rate = r
         db.session.commit()
         flash("Rate updated successfully.", "success")
-        return render_template('admin/rates/edit_rate.html', form=form, rate_id=rate_id)
+        return redirect(url_for('admin.view_rates'))
 
     return render_template('admin/rates/edit_rate.html', form=form, rate_id=rate_id)
 
@@ -513,14 +684,17 @@ def mark_notification_read(nid):
 @admin_required
 def generate_invoice(user_id):
     user = User.query.get_or_404(user_id)
-    packages = Package.query.filter_by(user_id=user.id, invoice_id=None)\
-                            .order_by(Package.created_at.asc()).all()
+    packages = (Package.query
+                .filter_by(user_id=user.id, invoice_id=None)
+                .order_by(Package.created_at.asc())
+                .all())
     if not packages:
         flash("No packages available to invoice.", "warning")
         return redirect(url_for('admin.dashboard'))
 
     if request.method != 'POST':
-        return render_template("admin/invoice_confirm.html", user=user, packages=packages)
+        return render_template("admin/invoice_confirm.html",
+                               user=user, packages=packages)
 
     # create invoice shell
     invoice_number = f"INV-{user.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
@@ -530,36 +704,84 @@ def generate_invoice(user_id):
         date_submitted=datetime.utcnow(),
         date_issued=datetime.utcnow(),
         status="unpaid",
-        amount_due=0
+        amount_due=0,
     )
     db.session.add(inv)
     db.session.flush()  # get inv.id
 
-    totals = dict(duty=0, scf=0, envl=0, caf=0, gct=0, stamp=0, freight=0, handling=0, grand_total=0)
+    totals = dict(
+        duty=0, scf=0, envl=0, caf=0, gct=0, stamp=0,
+        freight=0, handling=0, other_charges=0, grand_total=0,
+    )
     view_lines = []
+
     for p in packages:
         desc = p.description or "Miscellaneous"
         wt   = float(p.weight or 0)
         val  = float(getattr(p, "value", 0) or 0)
-        ch   = calculate_charges(desc, val, wt)
 
-        # link to invoice
-        p.amount_due = ch["grand_total"]
-        p.invoice_id = inv.id
+        # calculate full breakdown
+        ch = calculate_charges(desc, val, wt)
 
-        # aggregate
-        for k in totals:
-            totals[k] += float(ch.get(k, 0) or 0)
+        duty          = float(ch.get("duty", 0) or 0)
+        scf           = float(ch.get("scf", 0) or 0)
+        envl          = float(ch.get("envl", 0) or 0)
+        caf           = float(ch.get("caf", 0) or 0)
+        gct           = float(ch.get("gct", 0) or 0)
+        stamp         = float(ch.get("stamp", 0) or 0)
+        freight       = float(ch.get("freight", 0) or 0)
+        handling      = float(ch.get("handling", 0) or 0)
+        other_charges = float(ch.get("other_charges", 0) or 0)
+        grand_total   = float(ch.get("grand_total", 0) or 0)
+
+        # --- persist breakdown onto the Package row ---
+        p.category      = desc
+        p.value         = val
+        p.weight        = wt
+        p.duty          = duty
+        p.scf           = scf
+        p.envl          = envl
+        p.caf           = caf
+        p.gct           = gct
+        p.stamp         = stamp
+        p.customs_total = float(ch.get("customs_total", 0) or 0)
+
+        # map freight / handling to whichever columns exist
+        if hasattr(p, "freight_fee"):
+            p.freight_fee = freight
+        else:
+            p.freight = freight
+
+        if hasattr(p, "storage_fee"):
+            p.storage_fee = handling
+        else:
+            p.handling = handling
+
+        p.other_charges = other_charges
+        p.amount_due    = grand_total      # what we already relied on
+        p.invoice_id    = inv.id
+
+        # aggregate invoice totals
+        totals["duty"]          += duty
+        totals["scf"]           += scf
+        totals["envl"]          += envl
+        totals["caf"]           += caf
+        totals["gct"]           += gct
+        totals["stamp"]         += stamp
+        totals["freight"]       += freight
+        totals["handling"]      += handling
+        totals["other_charges"] += other_charges
+        totals["grand_total"]   += grand_total
 
         view_lines.append({
             "house_awb":  p.house_awb,
             "description": desc,
             "weight":      wt,
             "value_usd":   val,
-            **ch
+            **ch,
         })
 
-    # finalize invoice
+    # finalize invoice from totals
     inv.total_duty     = totals["duty"]
     inv.total_scf      = totals["scf"]
     inv.total_envl     = totals["envl"]
@@ -570,36 +792,38 @@ def generate_invoice(user_id):
     inv.total_handling = totals["handling"]
     inv.grand_total    = totals["grand_total"]
     inv.amount_due     = totals["grand_total"]
-    inv.subtotal       = totals["grand_total"]  # optional
+    inv.subtotal       = totals["grand_total"]
 
     db.session.commit()
 
     invoice_dict = {
-        "id": inv.id,
-        "number": inv.invoice_number,
-        "date": inv.date_submitted,
+        "id":           inv.id,
+        "user_id":      user.id,
+        "number":       inv.invoice_number,
+        "date":         inv.date_submitted,
         "customer_code": getattr(user, "registration_number", ""),
         "customer_name": getattr(user, "full_name", ""),
-        "subtotal": totals["grand_total"],
-        "total_due": totals["grand_total"],
+        "subtotal":     totals["grand_total"],
+        "total_due":    totals["grand_total"],
         "packages": [{
-            "house_awb": x["house_awb"],
-            "description": x["description"],
-            "weight": x["weight"],
-            "value": x["value_usd"],
-            "freight": x.get("freight", 0),
-            "storage": x.get("handling", 0),
-            "duty": x.get("duty", 0),
-            "scf": x.get("scf", 0),
-            "envl": x.get("envl", 0),
-            "caf": x.get("caf", 0),
-            "gct": x.get("gct", 0),
-            "other_charges": x.get("other_charges", 0),
-            "discount_due": x.get("discount_due", 0),
-        } for x in view_lines]
+            "house_awb":      x["house_awb"],
+            "description":    x["description"],
+            "weight":         x["weight"],
+            "value":          x["value_usd"],
+            "freight":        x.get("freight", 0),
+            "storage":        x.get("handling", 0),
+            "duty":           x.get("duty", 0),
+            "scf":            x.get("scf", 0),
+            "envl":           x.get("envl", 0),
+            "caf":            x.get("caf", 0),
+            "gct":            x.get("gct", 0),
+            "other_charges":  x.get("other_charges", 0),
+            "discount_due":   x.get("discount_due", 0),
+        } for x in view_lines],
     }
     flash(f"Invoice {invoice_number} generated successfully!", "success")
     return render_template("admin/invoice_view.html", invoice=invoice_dict)
+
 
 @admin_bp.route("/invoice/create/<int:package_id>", methods=["GET", "POST"])
 @admin_required
@@ -677,7 +901,125 @@ def invoice_create(package_id):
         result=calc
     )
 
+@admin_bp.route('/invoices/user/<int:user_id>', methods=['GET'], endpoint='view_customer_invoice')
+@admin_required
+def view_customer_invoice(user_id):
+    # 1) Fetch the user via SQLAlchemy
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "danger")
+        return redirect(url_for('admin.dashboard'))
 
+    # 2) Fetch this user's packages that are NOT yet attached to an invoice
+    #    (pro-forma style view)
+    pkgs = (
+        Package.query
+        .filter(
+            Package.user_id == user.id,
+            Package.invoice_id.is_(None)
+        )
+        .order_by(
+            asc(getattr(Package, "date_received", Package.created_at))
+        )
+        .all()
+    )
+
+    # If you want to show an empty invoice when there are no packages,
+    # you can keep going; or you could redirect/flash instead.
+    items = []
+    totals = dict(
+        duty=0, scf=0, envl=0, caf=0, gct=0,
+        stamp=0, freight=0, handling=0, other_charges=0,
+        grand_total=0
+    )
+
+    for p in pkgs:
+        desc = p.description or "Miscellaneous"
+        wt   = float(p.weight or 0)
+        val  = float(p.value or 0)
+
+        # Use the charges already stored on the package (no recalculation)
+        duty          = float(getattr(p, "duty", 0) or 0)
+        scf           = float(getattr(p, "scf", 0) or 0)
+        envl          = float(getattr(p, "envl", 0) or 0)
+        caf           = float(getattr(p, "caf", 0) or 0)
+        gct           = float(getattr(p, "gct", 0) or 0)
+        stamp         = float(getattr(p, "stamp", 0) or 0)
+        freight       = float(getattr(p, "freight", 0) or 0)
+        handling      = float(getattr(p, "handling", 0) or 0)
+        other_charges = float(getattr(p, "other_charges", 0) or 0)
+        grand_total   = float(
+            getattr(p, "grand_total", None)
+            or getattr(p, "amount_due", 0)
+            or 0
+        )
+
+        items.append({
+            "id": p.id,
+            "house_awb": p.house_awb,
+            "description": desc,
+            "weight": wt,
+            "value_usd": val,
+            "freight": freight,
+            "storage": getattr(p, "storage", 0) or 0,
+            "duty": duty,
+            "scf": scf,
+            "envl": envl,
+            "caf": caf,
+            "gct": gct,
+            "other_charges": other_charges,
+            "discount_due": getattr(p, "discount_due", 0) or 0,
+        })
+
+        # accumulate totals
+        totals["duty"]          += duty
+        totals["scf"]           += scf
+        totals["envl"]          += envl
+        totals["caf"]           += caf
+        totals["gct"]           += gct
+        totals["stamp"]         += stamp
+        totals["freight"]       += freight
+        totals["handling"]      += handling
+        totals["other_charges"] += other_charges
+        totals["grand_total"]   += grand_total
+
+    invoice_dict = {
+        "id": None,
+        "number": f"PROFORMA-{user.id}",
+        "date": datetime.utcnow(),
+        "customer_code": getattr(user, "registration_number", ""),
+        "customer_name": getattr(user, "full_name", ""),
+        # If you later want subtotal vs fees, you can split grand_total here;
+        # for now we just treat everything as one total.
+        "subtotal": float(inv.grand_total or totals["grand_total"] or 0),
+        "total_due": float(inv.amount_due or 0),
+        "packages": [
+            {
+                "id": i["id"],
+                "house_awb": i["house_awb"],
+                "description": i["description"],
+                "weight": i["weight"],
+                "value": i["value_usd"],
+                "freight": i["freight"],
+                "storage": i["storage"],
+                "duty": i["duty"],
+                "scf": i["scf"],
+                "envl": i["envl"],
+                "caf": i["caf"],
+                "gct": i["gct"],
+                "other_charges": i["other_charges"],
+                "discount_due": i["discount_due"],
+            }
+            for i in items
+        ],
+    }
+
+    return render_template(
+        "admin/invoices/_invoice_inline.html",
+        invoice=invoice_dict,
+        USD_TO_JMD=USD_TO_JMD,
+        proforma_user_id=user.id,
+    )
 
 @admin_bp.route('/invoice/mark_paid', methods=['POST'])
 @admin_required
@@ -754,56 +1096,7 @@ def generate_pdf_invoice(user_id):
     resp.headers['Content-Disposition'] = f'inline; filename=invoice_{rn}.pdf'
     return resp
 
-@admin_bp.route('/proforma-invoice/<int:user_id>')
-@admin_required
-def proforma_invoice(user_id):
-    user = User.query.get_or_404(user_id)
-    pkgs = Package.query.filter_by(user_id=user_id, invoice_id=None).order_by(Package.created_at.asc()).all()
 
-    items = []
-    totals = dict(duty=0, scf=0, envl=0, caf=0, gct=0, stamp=0, freight=0, handling=0, grand_total=0)
-    for p in pkgs:
-        desc = p.description or "Miscellaneous"
-        wt   = float(p.weight or 0)
-        val  = float(getattr(p, "value", 0) or 0)
-        ch   = calculate_charges(desc, val, wt)
-
-        items.append({
-            "house_awb": p.house_awb,
-            "description": desc,
-            "weight": wt,
-            "value_usd": val,
-            **ch
-        })
-        for k in totals:
-            totals[k] += float(ch.get(k, 0) or 0)
-
-    invoice_dict = {
-        "id": None,
-        "number": f"PROFORMA-{user.id}",
-        "date": datetime.utcnow(),
-        "customer_code": getattr(user, "registration_number", ""),
-        "customer_name": getattr(user, "full_name", ""),
-        "subtotal": totals["grand_total"],
-        "total_due": totals["grand_total"],
-        "packages": [{
-            "house_awb": i["house_awb"],
-            "description": i["description"],
-            "weight": i["weight"],
-            "value": i["value_usd"],
-            "freight": i.get("freight", 0),
-            "storage": i.get("storage", 0),
-            "duty": i.get("duty", 0),
-            "scf": i.get("scf", 0),
-            "envl": i.get("envl", 0),
-            "caf": i.get("caf", 0),
-            "gct": i.get("gct", 0),
-            "other_charges": i.get("other_charges", 0),
-            "discount_due": i.get("discount_due", 0),
-        } for i in items]
-    }
-    return render_template("admin/invoices/_invoice_inline.html",
-                           invoice=invoice_dict, USD_TO_JMD=USD_TO_JMD)
 
 @admin_bp.route('/invoice/new-item')
 @admin_required
@@ -885,41 +1178,122 @@ def view_invoice(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
     user = inv.user if hasattr(inv, "user") else None
 
+    # packages for the table (LIVE calc like proforma: ceil weight)
     packages = []
-    for p in Package.query.filter_by(invoice_id=invoice_id).all():
+    rows = Package.query.filter_by(invoice_id=invoice_id).order_by(Package.created_at.asc()).all()
+
+    for p in rows:
+        desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
+
+        wt_raw = float(getattr(p, "weight", 0) or 0)
+        wt = int(math.ceil(wt_raw))  # ✅ round up like proforma
+
+        val = float(
+            getattr(p, "value", None)
+            or getattr(p, "value_usd", None)
+            or getattr(p, "invoice_value", None)
+            or 0
+        )
+
+        ch = calculate_charges(desc, val, wt)
+        due = float(ch.get("grand_total", 0) or 0)
+
         packages.append({
             "id": p.id,
             "house_awb": p.house_awb,
-            "description": p.description,
+            "description": desc,
             "merchant": getattr(p, "merchant", None),
-            "weight": float(p.weight or 0),
-            "value_usd": float(getattr(p, "value", 0) or 0),
-            "amount_due": float(getattr(p, "amount_due", 0) or 0),
+            "weight": wt,          # show rounded weight
+            "value_usd": val,
+            "amount_due": due,     # ✅ matches proforma
         })
+
+
+    preview_subtotal = sum(float(x.get("amount_due", 0) or 0) for x in packages)
 
     subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(invoice_id)
 
+    preview_payments_total = float(payments_total or 0.0)
+    preview_discount_total = float(discount_total or 0.0)
+
+    preview_balance_due = max(
+        float(preview_subtotal or 0)
+        - float(discount_total or 0)
+        - float(payments_total or 0),
+        0.0
+    )
+        
+    
+
+    # Make a dict that still feels like the ORM object in Jinja
     invoice_dict = {
         "id": inv.id,
-        "number": inv.invoice_number,
-        "date": inv.date_submitted or inv.created_at or datetime.utcnow(),
+        "user_id": inv.user_id,
+        "user": user,                         # so invoice.user.* works
+        "invoice_number": inv.invoice_number, # so invoice.invoice_number works
+        "grand_total": float(inv.grand_total or subtotal or 0),
+        "date_issued": (
+            inv.date_issued
+            or inv.date_submitted
+            or inv.created_at
+            or datetime.utcnow()
+        ),
         "customer_code": getattr(user, "registration_number", "") if user else "",
         "customer_name": getattr(user, "full_name", "") if user else "",
         "subtotal": subtotal,
         "discount_total": discount_total,
         "payments_total": payments_total,
         "total_due": total_due,
-        "packages": packages,
         "description": getattr(inv, "description", "") or "",
+        "amount_due": float(getattr(inv, "amount_due", total_due) or 0.0),
+        "packages": packages,
+        "preview_subtotal": float(preview_subtotal),
+        "preview_discount_total": float(discount_total or 0),
+        "preview_payments_total": float(payments_total or 0),
+        "preview_total_due": float(preview_balance_due),
+
     }
 
+    # ---------- authorised signers ----------
+    authorized_signers: list[str] = []
+    try:
+        from app.models import Settings, User
+        settings = Settings.query.get(1)
+        if settings and getattr(settings, "authorized_signers", None):
+            authorized_signers = [
+                s.strip() for s in settings.authorized_signers.split(",") if s.strip()
+            ]
+    except Exception:
+        authorized_signers = []
+
+    if not authorized_signers:
+        try:
+            from app.models import User
+            authorized_signers = [
+                (u.full_name or u.email)
+                for u in User.query.filter_by(is_admin=True)
+                                  .order_by(User.full_name.asc())
+                                  .all()
+            ]
+        except Exception:
+            authorized_signers = []
+
+    if not authorized_signers:
+        authorized_signers = [getattr(current_user, "full_name", "Admin")]
+
     is_inline = (
-        request.headers.get('X-Requested-With') == 'XMLHttpRequest' or
-        request.args.get('inline') == '1'
+        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        or request.args.get('inline') == '1'
     )
     tpl = "admin/invoices/_invoice_inline.html" if is_inline else "admin/invoice_view.html"
-    return render_template(tpl, invoice=invoice_dict, USD_TO_JMD=USD_TO_JMD)
-    
+
+    return render_template(
+        tpl,
+        invoice=invoice_dict,
+        USD_TO_JMD=USD_TO_JMD,
+        authorized_signers=authorized_signers,
+    )
+  
 
 # ---------- BREAKDOWN (Lightning icon) ----------
 @admin_bp.route("/invoice/breakdown/<int:package_id>")
@@ -945,47 +1319,278 @@ def invoice_breakdown(package_id):
     }
     return jsonify(payload)
 
+
 @admin_bp.route("/invoice/add-payment/<int:invoice_id>", methods=["POST"])
 @admin_required
 def add_payment(invoice_id):
-    amount        = float(request.form.get("amount_jmd", 0))
-    payment_type  = request.form.get("method", "Cash")
-    authorized_by = request.form.get("authorized_by", "Admin")
+    inv = Invoice.query.get_or_404(invoice_id)
+
+    # Read form fields
+    try:
+        amount = float(request.form.get("amount_jmd", 0) or 0)
+    except Exception:
+        amount = 0
+
+    method        = (request.form.get("method") or "Cash").strip()
+    authorized_by = (request.form.get("authorized_by") or "").strip()
+    reference     = (request.form.get("reference") or "").strip()
+    extra_notes   = (request.form.get("notes") or "").strip()
+
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
     if amount <= 0:
-        flash("Payment amount must be greater than 0.", "warning")
+        msg = "Payment amount must be greater than 0."
+        if is_ajax:
+            return jsonify({"ok": False, "error": msg}), 400
+        flash(msg, "warning")
         return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
 
-    inv = Invoice.query.get_or_404(invoice_id)
-    p = Payment(
-        bill_number=f'BILL-{inv.id}-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}',
-        payment_date=datetime.utcnow(),
-        payment_type=payment_type,
-        amount=amount,
-        authorized_by=authorized_by,
-        invoice_id=inv.id,
-        invoice_path=None
-    )
+    # Build notes safely
+    notes_parts = []
+    if extra_notes:
+        notes_parts.append(extra_notes)
+    if authorized_by:
+        notes_parts.append(f"Authorised by: {authorized_by}")
+    notes = "\n".join(notes_parts) if notes_parts else None
+
+    # ✅ Build kwargs depending on your Payment columns
+    payment_kwargs = {
+        "invoice_id": inv.id,
+        "user_id": inv.user_id,
+    }
+
+    # amount field name
+    if hasattr(Payment, "amount_jmd"):
+        payment_kwargs["amount_jmd"] = amount
+    else:
+        payment_kwargs["amount"] = amount
+
+    # method field name
+    if hasattr(Payment, "method"):
+        payment_kwargs["method"] = method
+    else:
+        payment_kwargs["payment_type"] = method
+
+    # optional fields if they exist
+    if hasattr(Payment, "reference"):
+        payment_kwargs["reference"] = reference or None
+
+    if hasattr(Payment, "notes"):
+        payment_kwargs["notes"] = notes
+
+    if hasattr(Payment, "authorized_by"):
+        payment_kwargs["authorized_by"] = authorized_by or "Admin"
+
+    if hasattr(Payment, "payment_date"):
+        payment_kwargs["payment_date"] = datetime.utcnow()
+
+    if hasattr(Payment, "bill_number"):
+        payment_kwargs["bill_number"] = f"BILL-{inv.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+    p = Payment(**payment_kwargs)
     db.session.add(p)
+    db.session.flush()
+
+    # ✅ Sum payments using the correct column
+    pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
+    paid_sum = (
+        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
+        .filter(Payment.invoice_id == inv.id)
+        .scalar()
+        or 0.0
+    )
+
+    base_total = float(inv.grand_total or inv.amount or inv.subtotal or 0)
+    new_due = max(base_total - float(paid_sum), 0.0)
+    inv.amount_due = new_due
+
+    previous_status = inv.status
+
+    if new_due <= 0:
+        inv.status = "paid"
+        if hasattr(inv, "date_paid"):
+            inv.date_paid = datetime.utcnow()
+
+        if previous_status != "paid":
+            _mark_invoice_packages_delivered(inv.id)
+
+    elif 0 < new_due < base_total:
+        inv.status = "partial"
+    else:
+        inv.status = "unpaid"
+
     db.session.commit()
-    flash("Payment recorded.", "success")
-    return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
+
+    if is_ajax:
+        return jsonify({
+            "ok": True,
+            "invoice_id": inv.id,
+            "status": inv.status,
+            "paid_sum": float(paid_sum),
+            "amount_due": float(inv.amount_due),
+        })
+
+    flash(f"Payment of {amount:,.2f} JMD recorded for {inv.invoice_number}.", "success")
+    return redirect(url_for("admin.view_invoice", invoice_id=inv.id))
+
 
 
 @admin_bp.route("/invoice/add-discount/<int:invoice_id>", methods=["POST"])
 @admin_required
 def add_discount(invoice_id):
-    amount = float(request.form.get("amount_jmd", 0))
+    inv = Invoice.query.get_or_404(invoice_id)
+    previous_status = inv.status
+
+    amount = float(request.form.get("amount_jmd", 0) or 0)
     if amount <= 0:
         flash("Discount amount must be greater than 0.", "warning")
         return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
 
-    inv = Invoice.query.get_or_404(invoice_id)
-    cur = float(getattr(inv, "discount_total", 0) or 0)
-    inv.discount_total = cur + amount
-    db.session.commit()
+    # First apply discount to base total
+    base_total_before = float(inv.grand_total or inv.amount or 0)
+    base_total_after  = max(base_total_before - amount, 0.0)
 
+    inv.grand_total = base_total_after
+    inv.amount      = base_total_after  # keep legacy in sync
+
+    # Now recompute amount_due based on new base total & existing payments
+    paid_sum = (
+        db.session.query(func.coalesce(func.sum(Payment.amount_jmd), 0.0))
+        .filter(Payment.invoice_id == inv.id)
+        .scalar()
+        or 0.0
+    )
+
+    new_due = max(base_total_after - paid_sum, 0.0)
+    inv.amount_due = new_due
+
+    # Status
+    if new_due <= 0:
+        inv.status    = "paid"
+        inv.date_paid = datetime.utcnow()
+
+        if previous_status != "paid":
+            _mark_invoice_packages_delivered(inv.id)
+            for pkg in inv.packages:
+                pkg.status = "delivery" 
+    elif 0 < new_due < base_total_after:
+        inv.status = "partial"
+    else:
+        inv.status = "unpaid"
+
+    db.session.commit()
     flash("Discount added.", "success")
     return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
+
+
+@admin_bp.route(
+    "/proforma-invoice-modal/<int:invoice_id>",
+    methods=["GET"],
+    endpoint="proforma_invoice_modal",
+)
+@admin_required
+def proforma_invoice_modal(invoice_id):
+    inv = Invoice.query.get_or_404(invoice_id)
+    user = inv.user
+
+    pkgs = (Package.query
+            .filter_by(invoice_id=invoice_id)
+            .order_by(Package.created_at.asc())
+            .all())
+
+    # Settings (logo + rates)
+    from app.models import Settings
+    settings = Settings.query.get(1)
+
+    effective_usd_to_jmd = (getattr(settings, "usd_to_jmd", None) or USD_TO_JMD)
+
+    # ---- logo url (robust) ----
+    if settings and getattr(settings, "logo_path", None):
+        logo_url = url_for("static", filename=settings.logo_path)
+    else:
+        logo_url = url_for("static", filename="logo.png")
+
+    items = []
+    subtotal = 0.0
+
+    for p in pkgs:
+        desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
+        wt_raw = float(p.weight or 0)
+        wt = math.ceil(wt_raw)
+        val  = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
+
+        # ✅ Calculate charges live (same as lightning breakdown)
+        ch = calculate_charges(desc, val, wt)
+
+        freight   = float(ch.get("freight", 0) or 0)
+        handling  = float(ch.get("handling", 0) or 0)
+        duty      = float(ch.get("duty", 0) or 0)
+        gct       = float(ch.get("gct", 0) or 0)
+        scf       = float(ch.get("scf", 0) or 0)
+        envl      = float(ch.get("envl", 0) or 0)
+        caf       = float(ch.get("caf", 0) or 0)
+        stamp     = float(ch.get("stamp", 0) or 0)
+        other     = float(ch.get("other_charges", 0) or 0)
+        total_jmd = float(ch.get("grand_total", 0) or 0)
+
+        subtotal += total_jmd
+
+        items.append({
+            "house_awb": p.house_awb,
+            "description": desc,
+            "weight": wt,
+            "value": val,
+            "freight": freight,
+            "handling": handling,
+            "storage": handling,          # optional alias
+            "duty": duty,
+            "gct": gct,
+            "scf": scf,
+            "envl": envl,
+            "caf": caf,
+            "stamp": stamp,
+            "other_charges": other,
+            "discount_due": 0.0,
+        })
+
+    # ✅ Keep the LIVE subtotal you calculated above (do NOT overwrite it)
+    live_subtotal = float(subtotal or 0.0)
+
+    # Pull discounts/payments from DB (ignore DB subtotal)
+    _db_subtotal, discount_total, payments_total, _db_total_due = _fetch_invoice_totals_pg(invoice_id)
+
+    # ✅ Compute balance due using LIVE subtotal
+    balance_due = max(live_subtotal - float(discount_total or 0) - float(payments_total or 0), 0.0)
+
+
+
+    invoice_dict = {
+        "id": inv.id,
+        "number": inv.invoice_number or f"PROFORMA-{inv.id}",
+        "date": inv.date_issued or inv.date_submitted or datetime.utcnow(),
+        "customer_code": getattr(user, "registration_number", "") or "",
+        "customer_name": getattr(user, "full_name", "") or "",
+        "branch": "Main Branch",
+        "staff": getattr(current_user, "full_name", "FAFL ADMIN"),
+
+        "subtotal": live_subtotal,
+        "discount_total": float(discount_total or 0.0),
+        "payments_total": float(payments_total or 0.0),
+        "total_due": balance_due,
+        "notes": getattr(inv, "description", "") or "",
+        "packages": items,
+    }
+
+
+    return render_template(
+        "admin/invoices/_invoice_core.html",
+        invoice=invoice_dict,
+        settings=settings,
+        USD_TO_JMD=effective_usd_to_jmd,
+        logo_url=logo_url,
+    )
+
+
 
 @admin_bp.route("/invoice/save/<int:invoice_id>", methods=["POST"])
 @admin_required
@@ -1020,6 +1625,7 @@ def invoice_inline(invoice_id):
 
     invoice_dict = {
         "id": inv.id,
+        "user_id": inv.user_id,
         "number": inv.invoice_number,
         "date": inv.date_submitted or inv.created_at or datetime.utcnow(),
         "customer_code": getattr(user, "registration_number", "") if user else "",
@@ -1034,6 +1640,55 @@ def invoice_inline(invoice_id):
     return render_template("admin/invoices/_invoice_inline.html",
                            invoice=invoice_dict, USD_TO_JMD=USD_TO_JMD)
 
+@admin_bp.route("/invoice/<int:invoice_id>/email-proforma", methods=["POST"])
+@login_required
+@admin_required
+def email_proforma_invoice(invoice_id):
+    inv = Invoice.query.get_or_404(invoice_id)
+
+    # Customer email
+    customer_email = None
+    if inv.user and getattr(inv.user, "email", None):
+        customer_email = inv.user.email
+    else:
+        customer_email = getattr(inv, "customer_email", None)
+
+    if not customer_email:
+        return jsonify(ok=False, error="Customer email not found for this invoice."), 400
+
+    # Render the proforma HTML (the same content you show in the modal)
+    html = render_template(
+        "admin/invoices/_invoice_core.html",
+        invoice=inv,
+        USD_TO_JMD=current_app.config.get("USD_TO_JMD", 0),
+        is_proforma=True
+    )
+
+    # Send email (HTML body)
+    subject = f"Proforma Invoice {inv.invoice_number or f'INV{inv.id:05d}'} - Foreign A Foot Logistics"
+
+    host = current_app.config.get("SMTP_HOST")
+    port = int(current_app.config.get("SMTP_PORT", 587))
+    user = current_app.config.get("SMTP_USER")
+    pwd  = current_app.config.get("SMTP_PASS")
+    from_email = current_app.config.get("SMTP_FROM") or user
+
+    if not host or not user or not pwd or not from_email:
+        return jsonify(ok=False, error="SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASS)."), 500
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = from_email
+    msg["To"] = customer_email
+    msg.set_content("Please view this email in HTML mode.")
+    msg.add_alternative(html, subtype="html")
+
+    with smtplib.SMTP(host, port) as s:
+        s.starttls()
+        s.login(user, pwd)
+        s.send_message(msg)
+
+    return jsonify(ok=True, sent_to=customer_email)
 
 @admin_bp.route("/invoice/receipt/<int:invoice_id>")
 @admin_required

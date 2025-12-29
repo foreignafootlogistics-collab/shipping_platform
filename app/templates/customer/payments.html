@@ -22,26 +22,27 @@
                         {% for p in payments %}
                         <tr>
                             <td>
-                                {% if p["invoice_path"] %}
-                                    <a href="{{ url_for('static', filename=p['invoice_path']) }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                        <i class="fas fa-file-pdf"></i> View
+                                {% if p.invoice_id %}
+                                    <a href="{{ url_for('customer.view_invoice_customer', invoice_id=p.invoice_id) }}"
+                                       class="btn btn-sm btn-outline-primary" target="_blank">
+                                        <i class="fas fa-file-invoice"></i> View
                                     </a>
                                 {% else %}
                                     <span class="text-muted">No invoice</span>
                                 {% endif %}
                             </td>
-                            <td>{{ p["bill_number"] }}</td>
-                            <td>{{ p["payment_date"] }}</td>
+                            <td>{{ p.invoice_number }}</td>
+                            <td>{{ p.payment_date }}</td>
                             <td>
-                                {% if p["payment_type"] == 'Credit Card' %}
+                                {% if p.payment_type == 'Credit Card' %}
                                     <span class="badge bg-primary">Credit Card</span>
-                                {% elif p["payment_type"] == 'Cash' %}
+                                {% elif p.payment_type == 'Cash' %}
                                     <span class="badge bg-success">Cash</span>
                                 {% else %}
-                                    <span class="badge bg-secondary">{{ p["payment_type"] }}</span>
+                                    <span class="badge bg-secondary">{{ p.payment_type }}</span>
                                 {% endif %}
                             </td>
-                            <td>${{ '%.2f'|format(p["amount"]) }}</td>
+                            <td>${{ '%.2f'|format(p.amount) }}</td>
                         </tr>
                         {% endfor %}
                     {% else %}

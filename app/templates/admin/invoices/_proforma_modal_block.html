@@ -1,0 +1,150 @@
+{# admin/invoices/_proforma_modal_block.html #}
+
+<!-- =============== PROFORMA INVOICE MODAL =============== -->
+<div class="modal fade" id="proformaInvoiceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Proforma Invoice</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body" id="proformaInvoiceBody">
+        <!-- _invoice_core.html will be injected here via fetch() -->
+      </div>
+
+      <div class="modal-footer">
+        <button type="button"
+                class="btn btn-outline-secondary"
+                onclick="printProformaFromModal()">
+          <i class="bi bi-printer"></i> Print
+        </button>
+
+        <button type="button"
+                class="btn btn-outline-primary"
+                id="proformaEmailBtn"
+                onclick="emailProformaFromModal()">
+          <i class="bi bi-envelope"></i> Email
+        </button>
+
+        <button type="button"
+                class="btn btn-light"
+                data-bs-dismiss="modal">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/**
+ * Opens the Proforma Invoice modal and injects HTML from the backend route:
+ * admin.proforma_invoice_modal
+ */
+function openProformaInvoice(invoiceId) {
+  if (!invoiceId) {
+    alert("Missing invoice id for proforma invoice.");
+    return;
+  }
+
+  // Store invoiceId globally so the Email button can use it later
+  window.__proformaInvoiceId = invoiceId;
+
+  const url = "{{ url_for('admin.proforma_invoice_modal', invoice_id=0) }}"
+                .replace("0", String(invoiceId));
+
+  fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+    .then(r => {
+      if (!r.ok) throw new Error("Failed to load proforma invoice");
+      return r.text();
+    })
+    .then(html => {
+      const body = document.getElementById("proformaInvoiceBody");
+      if (!body) return;
+      body.innerHTML = html;
+
+      const modalEl = document.getElementById("proformaInvoiceModal");
+      const m = new bootstrap.Modal(modalEl);
+      m.show();
+    })
+    .catch(err => {
+      console.error(err);
+      alert("Could not load proforma invoice.");
+    });
+}
+
+/**
+ * Print what is currently inside the modal body.
+ */
+function printProformaFromModal() {
+  const body = document.getElementById("proformaInvoiceBody");
+  if (!body) return;
+
+  const printWindow = window.open("", "_blank");
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Proforma Invoice</title>
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/invoice.css') }}">
+      </head>
+      <body>${body.innerHTML}</body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.focus();
+  printWindow.print();
+}
+
+/**
+ * Email the proforma invoice via backend route:
+ * admin.email_proforma_invoice
+ */
+async function emailProformaFromModal() {
+  try {
+    const invoiceId = window.__proformaInvoiceId;
+    if (!invoiceId) throw new Error("Missing invoice id.");
+
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
+    if (!csrf) throw new Error("Missing CSRF token. Add meta tag in layout_admin.html.");
+
+    const btn = document.getElementById("proformaEmailBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Sending...`;
+    }
+
+    const url = "{{ url_for('admin.email_proforma_invoice', invoice_id=0) }}"
+      .replace("0", String(invoiceId));
+
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": csrf
+      }
+    });
+
+    const text = await resp.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch (_) {}
+
+    if (!resp.ok || data.ok !== true) {
+      throw new Error(data.error || "Failed to send email.");
+    }
+
+    alert("Proforma invoice sent to: " + (data.sent_to || "customer"));
+
+  } catch (err) {
+    console.error(err);
+    alert(err.message || "Could not email proforma invoice.");
+  } finally {
+    const btn = document.getElementById("proformaEmailBtn");
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="bi bi-envelope"></i> Email`;
+    }
+  }
+}
+</script>

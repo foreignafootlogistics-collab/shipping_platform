@@ -1,28 +1,25 @@
+/* base bar */
 .status-progress {
     display: flex;
     align-items: center;
     width: 80px;
     height: 6px;
-    background-color: #ccc;
-    border-radius: 5px;
+    background-color: #e9ecef;  /* light grey track */
+    border-radius: 999px;
     overflow: hidden;
     margin-top: 5px;
 }
 
+/* the coloured fill */
 .status-progress .fill {
     height: 100%;
+    width: 0;
+    background-color: #6c757d;   /* default grey */
     transition: width 0.3s ease;
 }
 
-.status-progress.red .fill { background-color: #dc3545; }
-.status-progress.blue .fill { background-color: #0d6efd; }
-.status-progress.green .fill { background-color: #198754; }
-
-.status-label {
-    font-size: 0.8rem;
-    font-weight: 500;
-    margin-top: 3px;
-}
-.status-label.red { color: #dc3545; }
-.status-label.blue { color: #0d6efd; }
-.status-label.green { color: #198754; }
+/* match progress_color from the template */
+.status-progress.danger .fill  { background-color: #dc3545; }  /* Overseas */
+.status-progress.primary .fill { background-color: #0d6efd; }  /* Ready for Pick Up */
+.status-progress.success .fill { background-color: #198754; }  /* Delivered */
+.status-progress.warning .fill { background-color: #ffc107; }  /* Unassigned */

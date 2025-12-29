@@ -1,228 +1,643 @@
-<!-- templates/admin/invoices/_invoice_inline.html -->
-{% set inv_no = invoice.number or ('INV' ~ '%05d'|format(invoice.id)) %}
+{# templates/admin/invoices/_invoice_inline.html #}
+
+{# Simple money formatter #}
+{% macro money(x) -%}{{ '%.2f'|format((x or 0)|float) }}{%- endmacro %}
+
+{# Invoice number helper: supports both invoice.number and invoice.invoice_number #}
+{% set base_no = (invoice.invoice_number if invoice.invoice_number is defined and invoice.invoice_number
+                  else invoice.number if invoice.number is defined and invoice.number
+                  else None) %}
+
+{% set inv_no = base_no or ('INV' ~ '%05d'|format(invoice.id)) %}
+
+{# Date helper: supports invoice.date_issued or invoice.date #}
+{% set inv_date = invoice.date_issued if invoice.date_issued is defined and invoice.date_issued
+                  else invoice.date if invoice.date is defined
+                  else None %}
+
+{# Totals helpers with safe fallbacks #}
+{% set pkg_amt  = invoice.package_total  if invoice.package_total  is not none
+                  else invoice.grand_total if invoice.grand_total is defined and invoice.grand_total is not none
+                  else 0 %}
+{% set subtotal = invoice.subtotal if invoice.subtotal is not none
+                  else pkg_amt %}
+{% set balance  = invoice.total_due if invoice.total_due is not none
+                  else invoice.amount_due if invoice.amount_due is defined and invoice.amount_due is not none
+                  else 0 %}
+
 <style>
   .text-purple{color:#4a148c!important}
   .bg-purple{background:#4a148c!important;color:#fff!important}
   .btn-outline-purple{border:1px solid #4a148c;color:#4a148c}
   .btn-outline-purple:hover{background:#4a148c;color:#fff}
   .panel{border:1px solid #e5e5e5;border-radius:.5rem}
-  .icon-left{width:36px;height:36px;border:1px solid #bfb3da;border-radius:.5rem;display:flex;align-items:center;justify-content:center}
+  .icon-left{
+    width:32px;height:32px;border:1px solid #bfb3da;border-radius:.5rem;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
   .icon-left i{color:#6c757d}
-  .toolbar .btn{border-radius:0}
-  .table td,.table th{vertical-align:middle}
+  .inline-toolbar .btn{border-radius:0}
+  .inline-panel{max-width:960px;margin:0 auto}
+  .inline-table td,.inline-table th{vertical-align:middle}
+
+  /* ===== Generic overlay for inline “modals” ===== */
+  .fa-inline-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(15,23,42,.55);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:1065;
+  }
+  .fa-inline-dialog{
+    background:#fff;
+    border-radius:.75rem;
+    box-shadow:0 18px 45px rgba(15,23,42,.25);
+    max-width:720px;
+    width:100%;
+    margin:0 1rem;
+  }
+  .fa-inline-dialog-header{
+    padding:.75rem 1.25rem;
+    border-bottom:1px solid #e5e7eb;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .fa-inline-dialog-body{
+    padding:1rem 1.25rem 1.25rem;
+  }
+  .fa-inline-dialog-footer{
+    padding:.75rem 1.25rem 1rem;
+    border-top:1px solid #e5e7eb;
+    text-align:right;
+  }
+  .fa-inline-close{
+    border:none;
+    background:transparent;
+    font-size:1.25rem;
+    line-height:1;
+    cursor:pointer;
+  }
+
+  /* ===== PAYMENT (POS style) ===== */
+  .payment-layout{
+    display:flex;
+    flex-wrap:wrap;
+    gap:1.25rem;
+  }
+  .payment-left{flex:1 1 260px;}
+  .payment-right{flex:1 1 220px;}
+
+  .payment-display{
+    border-radius:.5rem;
+    border:1px solid #e0d4ff;
+    background:#f9f5ff;
+    padding:.75rem 1rem;
+    font-size:1.3rem;
+    font-weight:600;
+    color:#4a148c;
+    text-align:right;
+    margin-bottom:.75rem;
+  }
+  .payment-keypad{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:.3rem;
+    margin-bottom:.35rem;
+  }
+  .payment-key-btn{
+    border:1px solid #e0e0e0;
+    border-radius:.35rem;
+    padding:.45rem 0;
+    font-size:1.05rem;
+    background:#fff;
+    cursor:pointer;
+    transition:background-color .1s,transform .05s,box-shadow .1s;
+  }
+  .payment-key-btn:hover{
+    background:#f3e8ff;
+    box-shadow:0 0 0 1px rgba(106,27,154,.15);
+  }
+  .payment-key-btn:active{transform:translateY(1px);}
+
+  .payment-quick-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:.35rem;
+    margin-top:.25rem;
+  }
+  .payment-quick-btn{
+    flex:1 1 80px;
+    border-radius:999px;
+    border:1px solid #e0d4ff;
+    background:#fdfbff;
+    padding:.3rem .55rem;
+    font-size:.8rem;
+    white-space:nowrap;
+    cursor:pointer;
+  }
+  .payment-quick-btn:hover{
+    background:#f3e8ff;
+    border-color:#4a148c;
+  }
+  .payment-clear-btn{
+    border-color:#fecaca;
+    color:#b91c1c;
+    background:#fff1f2;
+  }
+  .payment-clear-btn:hover{background:#fee2e2;}
+
+  .payment-method-list{
+    display:flex;
+    flex-direction:column;
+    gap:.3rem;
+  }
+  .payment-method-btn{
+    border-radius:.35rem;
+    border:1px solid #e0e0e0;
+    padding:.35rem .6rem;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    cursor:pointer;
+    background:#fff;
+    font-size:.85rem;
+  }
+  .payment-method-btn span{
+    display:flex;
+    align-items:center;
+    gap:.4rem;
+  }
+  .payment-method-btn.active{
+    border-color:#4a148c;
+    background:#f3e8ff;
+    color:#4a148c;
+    box-shadow:0 0 0 1px rgba(106,27,154,.25);
+  }
+  .payment-method-btn i{opacity:.8;}
+
+  /* ===== DISCOUNT (tabs) ===== */
+  .discount-tabs{
+    display:flex;
+    border-radius:.5rem;
+    overflow:hidden;
+    margin-bottom:.75rem;
+    border:1px solid #e0e0e0;
+  }
+  .discount-tab{
+    flex:1 1 0;
+    border:none;
+    padding:.5rem 0;
+    background:#f9fafb;
+    font-weight:500;
+    font-size:.9rem;
+    cursor:pointer;
+  }
+  .discount-tab.active{
+    background:#4a148c;
+    color:#fff;
+  }
+  .discount-tab:not(.active){color:#4b5563;}
+  .discount-help{font-size:.8rem;}
+
+  .pill-btn{
+    border-radius:999px;
+    padding:.2rem .65rem;
+    font-size:.8rem;
+  }
 </style>
 
-<div class="panel p-3 mb-3">
-  <div class="d-flex justify-content-between align-items-start">
-    <div>
-      <div class="h4 mb-0">{{ inv_no or "—" }}</div>
-      <div class="text-muted">Invoice</div>
-      <small class="text-muted">
-        {% if invoice.date %}{{ invoice.date.strftime('%d.%m.%Y') }}{% endif %}
-      </small>
-    </div>
-    <div class="text-end">
-      <div>Package Amt: <span class="fw-semibold">JMD {{ "%.2f"|format(invoice.subtotal or 0) }}</span></div>
-      <div>Sub-Total: <span class="fw-semibold">JMD {{ "%.2f"|format(invoice.subtotal or 0) }}</span></div>
-      <div class="fs-5">Total Due: <span class="fw-bold">JMD {{ "%.2f"|format(invoice.total_due or 0) }}</span></div>
+<div class="inline-panel">
+
+  <!-- Header -->
+  <div class="panel p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-start">
+      <div>
+        {% set inv_no = invoice.invoice_number or ('INV' ~ '%05d'|format(invoice.id)) %}
+        <div class="h5 mb-0">{{ inv_no }}</div>
+        <div class="text-muted">Invoice</div>
+        <small class="text-muted">
+          {% if invoice.date_issued %}
+            {{ invoice.date_issued.strftime('%d.%m.%Y') }}
+          {% endif %}
+        </small>
+      </div>
+      <div class="text-end">
+        <div>Package Amt:
+          <span class="fw-semibold">
+            JMD {{ "%.2f"|format(invoice.preview_subtotal or 0) }}
+          </span>
+        </div>
+        <div>Sub-Total:
+          <span class="fw-semibold">
+            JMD {{ "%.2f"|format(invoice.preview_subtotal or 0) }}
+          </span>
+        </div>
+        <div class="fs-6 mt-1">
+          Total Due:
+          <span class="fw-bold text-danger">
+            JMD {{ "%.2f"|format(invoice.preview_total_due or 0) }}
+          </span>
+        </div>
+      </div>
     </div>
   </div>
-</div>
+  <!-- Customer + actions -->
+  <div class="panel p-3 mb-3">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <div class="fw-semibold mb-1">
+          {{ invoice.customer_code or '' }} {{ invoice.customer_name or '' }}
+        </div>
+        <div class="small text-muted">Branch: Main Branch</div>
+      </div>
 
-<div class="panel p-3 mb-3">
-  <div class="d-flex justify-content-between align-items-center">
-    <div>
-      <div class="h5 mb-1">{{ invoice.customer_code }} {{ invoice.customer_name }}</div>
-      <div class="small text-muted">Branch: Main Branch</div>
-    </div>
-    <div class="d-flex align-items-center gap-2">
-      <button class="btn btn-outline-purple" data-bs-toggle="modal" data-bs-target="#addPaymentModal" title="Add Payment">
-        <i class="bi bi-cash-coin"></i>
-      </button>
-      <button class="btn btn-outline-purple" data-bs-toggle="modal" data-bs-target="#addDiscountModal" title="Add Discount">
-        <i class="bi bi-percent"></i>
-      </button>
-      <div class="toolbar d-inline-flex border rounded ms-2">
+      <div class="d-flex align-items-center gap-2">
+        <button type="button"
+                class="btn btn-outline-purple pill-btn js-open-pay">
+          <i class="bi bi-cash-coin"></i> Add Payment
+        </button>
+        <button type="button"
+                class="btn btn-outline-purple pill-btn js-open-discount">
+          <i class="bi bi-percent"></i> Discount
+        </button>
         {% if invoice.id %}
-        <a class="btn btn-light" href="{{ url_for('admin.invoice_receipt', invoice_id=invoice.id) }}" title="Receipt (PDF)">
-          <i class="bi bi-receipt"></i>
-        </a>
+        <div class="inline-toolbar d-inline-flex border rounded ms-1">
+          <button type="button"
+                  class="btn btn-light btn-sm"
+                  title="View Proforma Invoice"
+                  onclick="openProformaInvoice({{ invoice.id or 0 }})">       
+            <i class="bi bi-receipt"></i>
+          </button>
+        </div>
         {% endif %}
       </div>
     </div>
+
+    <div class="row mt-3">
+      <div class="col-md-7">
+        <label class="form-label small text-muted">Description/Notes</label>
+        <form method="POST"
+              action="{{ url_for('admin.save_invoice_notes', invoice_id=invoice.id or 0) }}">
+          <textarea name="notes"
+                    class="form-control"
+                    rows="2"
+                    placeholder="Notes...">{{ invoice.description or "" }}</textarea>
+          <button class="btn btn-sm btn-outline-purple mt-2">
+            <i class="bi bi-save"></i> Save
+          </button>
+        </form>
+      </div>
+      <div class="col-md-5 text-end mt-3 mt-md-0">
+        <div class="small text-muted">Balance</div>
+        <div class="h5 text-danger mb-0">
+          JMD {{ "%.2f"|format(invoice.preview_total_due or 0) }}
+        </div>
+      </div>
+    </div>
   </div>
 
-  <div class="row mt-3">
-    <div class="col-md-6">
-      <label class="form-label small text-muted">Description/Notes</label>
-      <form method="POST" action="{{ url_for('admin.save_invoice_notes', invoice_id=invoice.id or 0) }}">
-        <textarea name="notes" class="form-control" rows="3" placeholder="Notes...">{{ invoice.description or "" }}</textarea>
-        <button class="btn btn-sm btn-outline-purple mt-2">
-          <i class="bi bi-save"></i> Save
-        </button>
-      </form>
-    </div>
-    <div class="col-md-6 text-end">
-      <div class="h5 text-danger mb-3">Balance&nbsp;&nbsp;<span class="fw-bold">JMD {{ "%.2f"|format(invoice.total_due or 0) }}</span></div>
-    </div>
-  </div>
-</div>
-
-<div class="panel p-0">
-  <div class="table-responsive">
-    <table class="table table-sm mb-0">
-      <thead class="table-light">
-        <tr>
-          <th style="width:60px;"></th>
-          <th style="width:36px;"><input type="checkbox"></th>
-          <th>House AWB#</th>
-          <th>Description</th>
-          <th class="text-end">LBS</th>
-          <th class="text-end">Value (USD)</th>
-          <th class="text-end">Due (JMD)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for p in invoice.packages %}
-        <tr>
-          <td>
-            {% if p.id %}
-              <div class="icon-left" role="button"
+  <!-- Items -->
+  <div class="panel p-0">
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 inline-table">
+        <thead class="table-light">
+          <tr>
+            <th style="width:40px;"></th>
+            <th style="width:30px;"><input type="checkbox"></th>
+            <th>House AWB#</th>
+            <th>Description</th>
+            <th class="text-end">LBS</th>
+            <th class="text-end">Value (USD)</th>
+            <th class="text-end">Due (JMD)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in invoice.packages %}
+          <tr>
+            <td>
+              {% if p.id %}
+              <div class="icon-left js-bd"
                    data-pkg="{{ p.id }}"
-                   data-bs-toggle="modal"
-                   data-bs-target="#breakdownModal"
-                   title="Charges breakdown"
-                   style="cursor:pointer">
+                   title="Charges breakdown">
                 <i class="bi bi-lightning-charge"></i>
               </div>
-            {% else %}
-              <div class="icon-left" title="No package id" style="opacity:.45; cursor:not-allowed;">
-                <i class="bi bi-lightning-charge"></i>
-              </div>
-            {% endif %}
-          </td>
-          <td><input type="checkbox"></td>
-          <td>{{ p.house_awb or "—" }}</td>
-          <td>{{ p.description or "—" }}</td>
-          <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
-          <td class="text-end">${{ "%.2f"|format(p.value_usd or 0) }}</td>
-          <td class="text-end">JMD {{ "%.2f"|format(p.amount_due or 0) }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="text-center text-muted py-4">No items.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+              {% endif %}
+            </td>
+            <td><input type="checkbox"></td>
+            <td>{{ p.house_awb or "—" }}</td>
+            <td>{{ p.description or "—" }}</td>
+            <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
+            <td class="text-end">${{ "%.2f"|format(p.value_usd or 0) }}</td>
+            <td class="text-end">JMD {{ "%.2f"|format(p.amount_due or 0) }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">No items.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 
-<!-- Modals -->
-<div class="modal fade" id="addPaymentModal" tabindex="-1">
-  <div class="modal-dialog">
-    <form class="modal-content" method="POST" action="{{ url_for('admin.add_payment', invoice_id=invoice.id or 0) }}">
-      <div class="modal-header">
-        <h5 class="modal-title">Add Payment — {{ inv_no }}</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-2">
-          <label class="form-label">Amount (JMD)</label>
-          <input type="number" step="0.01" name="amount_jmd" class="form-control" required>
+{# ========= INLINE OVERLAYS ========= #}
+
+{# Add Payment overlay #}
+<div class="fa-inline-overlay d-none" id="inlinePayOverlay">
+  <form class="fa-inline-dialog"
+        method="POST"
+        action="{{ url_for('admin.add_payment', invoice_id=invoice.id or 0) }}"
+        id="inlinePayForm"
+        data-invoice-id="{{ invoice.id or 0 }}">
+    <!-- 🔐 CSRF token -->
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="fa-inline-dialog-header">
+      <h6 class="mb-0">
+        Add Payment — {{ inv_no }}
+      </h6>
+      <button type="button" class="fa-inline-close" data-close="pay">&times;</button>
+    </div>
+
+    <div class="fa-inline-dialog-body">
+      <div class="payment-layout">
+        <div class="payment-left">
+          <div class="payment-display" id="payDisplayInline">JMD 0.00</div>
+          <input type="hidden" name="amount_jmd" id="payAmountInputInline" value="0">
+
+          <div class="payment-keypad">
+            <button type="button" class="payment-key-btn" data-key="7">7</button>
+            <button type="button" class="payment-key-btn" data-key="8">8</button>
+            <button type="button" class="payment-key-btn" data-key="9">9</button>
+
+            <button type="button" class="payment-key-btn" data-key="4">4</button>
+            <button type="button" class="payment-key-btn" data-key="5">5</button>
+            <button type="button" class="payment-key-btn" data-key="6">6</button>
+
+            <button type="button" class="payment-key-btn" data-key="1">1</button>
+            <button type="button" class="payment-key-btn" data-key="2">2</button>
+            <button type="button" class="payment-key-btn" data-key="3">3</button>
+
+            <button type="button" class="payment-key-btn" data-key="0">0</button>
+            <button type="button" class="payment-key-btn" data-key="00">00</button>
+            <button type="button" class="payment-key-btn" data-key=".">.</button>
+          </div>
+
+          <div class="payment-quick-row">
+            <button type="button" class="payment-quick-btn" data-quick="550">JMD 550</button>
+            <button type="button" class="payment-quick-btn" data-quick="1000">JMD 1,000</button>
+            <button type="button" class="payment-quick-btn" data-quick="5000">JMD 5,000</button>            
+          </div>
+
+          <div class="payment-quick-row">
+            <button type="button"
+                    class="payment-quick-btn"
+                    data-quick="{{ '%.2f'|format(invoice.preview_total_due or 0) }}">
+              Outstanding<br>
+              <small>JMD {{ '%.2f'|format(invoice.preview_total_due or 0) }}</small>
+            </button>
+
+            <button type="button"
+                    class="payment-quick-btn payment-clear-btn"
+                    id="payClearBtnInline">
+              Clear
+            </button>
+          </div>
         </div>
-        <div class="mb-2">
-          <label class="form-label">Method</label>
-          <select name="method" class="form-select">
-            <option>Cash</option><option>Card</option><option>Bank</option><option>Wallet</option>
-          </select>
-        </div>
-        <div class="mb-2">
-          <label class="form-label">Authorized By</label>
-          <input name="authorized_by" class="form-control" placeholder="Admin name">
+
+        <div class="payment-right">
+          <div class="mb-2">
+            <label class="form-label small text-muted d-block mb-1">Method</label>
+            <div class="payment-method-list" id="paymentMethodListInline">
+              <button type="button"
+                      class="payment-method-btn active"
+                      data-method="Cash">
+                <span><i class="bi bi-cash-coin"></i> Cash</span>
+                <i class="bi bi-check2"></i>
+              </button>
+              <button type="button"
+                      class="payment-method-btn"
+                      data-method="Card">
+                <span><i class="bi bi-credit-card-2-front"></i> Card</span>
+                <i class="bi bi-check2"></i>
+              </button>
+              <button type="button"
+                      class="payment-method-btn"
+                      data-method="Bank">
+                <span><i class="bi bi-bank"></i> Bank Transfer</span>
+                <i class="bi bi-check2"></i>
+              </button>
+              <button type="button"
+                      class="payment-method-btn"
+                      data-method="Wallet">
+                <span><i class="bi bi-wallet2"></i> Wallet</span>
+                <i class="bi bi-check2"></i>
+              </button>
+            </div>
+            <input type="hidden" name="method" id="payMethodInputInline" value="Cash">
+          </div>
+
+          <div class="mt-3">
+            <div class="mb-2">
+              <label class="form-label small">Reference</label>
+              <input name="reference"
+                     class="form-control form-control-sm"
+                     placeholder="POS/Bank ref #">
+            </div>
+            <div class="mb-2">
+              <label class="form-label small">Authorized By</label>
+              <select id="authBySelectInline"
+                      class="form-select form-select-sm mb-1">
+                {% for name in authorized_signers %}
+                  <option value="{{ name }}">{{ name }}</option>
+                {% endfor %}
+                <option value="__other__">Other (type manually)</option>
+              </select>
+
+              {# text field only shown when "Other" is selected #}
+              <input type="text"
+                     id="authByInputInline"
+                     class="form-control form-control-sm mt-1 d-none"
+                     placeholder="Enter name">
+
+              {# hidden field actually posted to the server #}
+              <input type="hidden"
+                     name="authorized_by"
+                     id="authByHiddenInline"
+                     value="{{ authorized_signers[0] if authorized_signers else 'Admin' }}">
+            </div>
+            <small class="text-muted">
+              Current balance:
+              JMD {{ "%.2f"|format(invoice.preview_total_due or 0) }}
+            </small>
+          </div>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline-purple"><i class="bi bi-cash-coin"></i> Add Payment</button>
-      </div>
-    </form>
-  </div>
+    </div>
+
+    <div class="fa-inline-dialog-footer">
+      <button class="btn btn-outline-purple">
+        <i class="bi bi-cash-coin"></i> Add Payment
+      </button>
+    </div>
+  </form>
 </div>
 
-<div class="modal fade" id="addDiscountModal" tabindex="-1">
-  <div class="modal-dialog">
-    <form class="modal-content" method="POST" action="{{ url_for('admin.add_discount', invoice_id=invoice.id or 0) }}">
-      <div class="modal-header">
-        <h5 class="modal-title">Add Discount — {{ inv_no }}</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+{# Add Discount overlay #}
+<div class="fa-inline-overlay d-none" id="inlineDiscountOverlay">
+  <form class="fa-inline-dialog"
+        method="POST"
+        action="{{ url_for('admin.add_discount', invoice_id=invoice.id or 0) }}"
+        id="inlineDiscountForm"
+        data-balance="{{ invoice.preview_total_due or 0 }}">
+    <!-- 🔐 CSRF token -->
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="fa-inline-dialog-header">
+      <h6 class="mb-0">Add Discount — {{ inv_no }}</h6>
+      <button type="button" class="fa-inline-close" data-close="discount">&times;</button>
+    </div>
+
+    <div class="fa-inline-dialog-body">
+      <div class="discount-tabs" id="discountTabsInline">
+        <button type="button"
+                class="discount-tab active"
+                data-mode="percent">
+          <i class="bi bi-percent"></i> Percent
+        </button>
+        <button type="button"
+                class="discount-tab"
+                data-mode="amount">
+          <i class="bi bi-hash"></i> Amount
+        </button>
       </div>
-      <div class="modal-body">
-        <div class="mb-2">
-          <label class="form-label">Amount (JMD)</label>
-          <input type="number" step="0.01" name="amount_jmd" class="form-control" required>
+
+      <div id="discountPercentPaneInline">
+        <label class="form-label">Discount Percent</label>
+        <input type="number"
+               class="form-control"
+               id="discountPercentInputInline"
+               min="0" max="100" step="0.01"
+               value="0">
+        <div class="discount-help text-muted mt-1">
+          Applies to balance
+          (JMD {{ "%.2f"|format(invoice.preview_total_due or 0) }}).<br>
+          Discount amount:
+          <span class="fw-semibold" id="discountPercentAmountInline">JMD 0.00</span>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline-purple"><i class="bi bi-percent"></i> Add Discount</button>
+
+      <div id="discountAmountPaneInline" class="d-none">
+        <label class="form-label">Discount Amount (JMD)</label>
+        <input type="number"
+               class="form-control"
+               id="discountAmountInputInline"
+               step="0.01"
+               value="0">
+        <div class="discount-help text-muted mt-1">
+          Enter the flat amount to reduce from the balance.
+        </div>
       </div>
-    </form>
-  </div>
+
+      <input type="hidden" name="amount_jmd" id="discountHiddenAmountInline" value="0">
+    </div>
+
+    <div class="fa-inline-dialog-footer">
+      <button class="btn btn-outline-purple">
+        <i class="bi bi-percent"></i> Add Discount
+      </button>
+    </div>
+  </form>
 </div>
 
-<div class="modal fade" id="breakdownModal" tabindex="-1">
-  <div class="modal-dialog modal-md">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Charges Breakdown</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0">
-            <tbody>
-              <tr><th>Duty</th>     <td class="text-end" id="bd-duty">—</td></tr>
-              <tr><th>GCT</th>      <td class="text-end" id="bd-gct">—</td></tr>
-              <tr><th>Freight</th>  <td class="text-end" id="bd-freight">—</td></tr>
-              <tr><th>Handling</th> <td class="text-end" id="bd-handling">—</td></tr>
-              <tr><th>SCF</th>      <td class="text-end" id="bd-scf">—</td></tr>
-              <tr><th>ENVL</th>     <td class="text-end" id="bd-envl">—</td></tr>
-              <tr><th>CAF</th>      <td class="text-end" id="bd-caf">—</td></tr>
-              <tr><th>Stamp</th>    <td class="text-end" id="bd-stamp">—</td></tr>
-              <tr><th>Other</th>    <td class="text-end" id="bd-other">—</td></tr>
-              <tr class="table-light"><th>Total</th><td class="text-end fw-bold" id="bd-total">—</td></tr>
-            </tbody>
-          </table>
-          <small class="text-muted">USD→JMD rate: {{ USD_TO_JMD }}</small>
-        </div>
+{# Breakdown overlay (simple) #}
+<div class="fa-inline-overlay d-none" id="inlineBreakdownOverlay">
+  <div class="fa-inline-dialog" style="max-width:460px;">
+    <div class="fa-inline-dialog-header">
+      <h6 class="mb-0">Charges Breakdown</h6>
+      <button type="button" class="fa-inline-close" data-close="bd">&times;</button>
+    </div>
+    <div class="fa-inline-dialog-body">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr><th>Duty</th>     <td class="text-end" id="bd-duty-inline">—</td></tr>
+            <tr><th>GCT</th>      <td class="text-end" id="bd-gct-inline">—</td></tr>
+            <tr><th>Freight</th>  <td class="text-end" id="bd-freight-inline">—</td></tr>
+            <tr><th>Handling</th> <td class="text-end" id="bd-handling-inline">—</td></tr>
+            <tr><th>SCF</th>      <td class="text-end" id="bd-scf-inline">—</td></tr>
+            <tr><th>ENVL</th>     <td class="text-end" id="bd-envl-inline">—</td></tr>
+            <tr><th>CAF</th>      <td class="text-end" id="bd-caf-inline">—</td></tr>
+            <tr><th>Stamp</th>    <td class="text-end" id="bd-stamp-inline">—</td></tr>
+            <tr><th>Other</th>    <td class="text-end" id="bd-other-inline">—</td></tr>
+            <tr class="table-light">
+              <th>Total</th>
+              <td class="text-end fw-bold" id="bd-total-inline">—</td>
+            </tr>
+          </tbody>
+        </table>
+        <small class="text-muted">USD→JMD rate: {{ USD_TO_JMD }}</small>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".icon-left");
-  if (!btn) return;
+document.addEventListener("submit", async function (e) {
+  const form = e.target;
+  if (!form) return;
 
-  const pkgId = btn.getAttribute("data-pkg");
-  if (!pkgId || pkgId === "null" || pkgId === "undefined") return;
+  // ✅ Match both payment forms + any future payment form by URL
+  const isPayForm =
+    form.id === "addPaymentForm" ||
+    form.id === "inlinePayForm" ||
+    (form.action && form.action.includes("/invoice/add-payment/"));
 
-  const ids = ["bd-duty","bd-gct","bd-freight","bd-handling","bd-scf","bd-envl","bd-caf","bd-stamp","bd-other","bd-total"];
-  ids.forEach(id => document.getElementById(id).textContent = "…");
+  if (!isPayForm) return;
 
-  fetch(`{{ url_for('admin.invoice_breakdown', package_id=0) }}`.replace('0', pkgId))
-    .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-    .then(d => {
-      const nf = new Intl.NumberFormat();
-      document.getElementById("bd-duty").textContent     = nf.format(d.duty || 0);
-      document.getElementById("bd-gct").textContent      = nf.format(d.gct || 0);
-      document.getElementById("bd-freight").textContent  = nf.format(d.freight || 0);
-      document.getElementById("bd-handling").textContent = nf.format(d.handling || 0);
-      document.getElementById("bd-scf").textContent      = nf.format(d.scf || 0);
-      document.getElementById("bd-envl").textContent     = nf.format(d.envl || 0);
-      document.getElementById("bd-caf").textContent      = nf.format(d.caf || 0);
-      document.getElementById("bd-stamp").textContent    = nf.format(d.stamp || 0);
-      document.getElementById("bd-other").textContent    = nf.format(d.other || 0);
-      document.getElementById("bd-total").textContent    = nf.format(d.total_jmd || 0);
-    })
-    .catch(() => ids.forEach(id => document.getElementById(id).textContent = "—"));
-});
+  e.preventDefault(); // ✅ stop full page navigation
+
+  try {
+    const fd = new FormData(form);
+
+    const resp = await fetch(form.action, {
+      method: "POST",
+      body: fd,
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+    });
+
+    const text = await resp.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch (_) {}
+
+    if (!resp.ok || data.ok !== true) {
+      console.error("Payment response:", text);
+      throw new Error(data.error || "Payment not saved.");
+    }
+
+    // ✅ Close whichever UI is open
+    // 1) bootstrap modal
+    const bsModalEl = document.getElementById("addPaymentModal");
+    if (bsModalEl && window.bootstrap) {
+      const modal = bootstrap.Modal.getInstance(bsModalEl);
+      if (modal) modal.hide();
+    }
+
+    // 2) inline overlay
+    const inlineOverlay = document.getElementById("inlinePayOverlay");
+    if (inlineOverlay) inlineOverlay.classList.add("d-none");
+
+    // ✅ refresh totals
+    window.location.reload();
+
+  } catch (err) {
+    console.error(err);
+    alert(err.message || "Could not add payment.");
+  }
+}, true);
 </script>
+

@@ -1,39 +1,43 @@
 {# partials/status_tracker.html #}
 
-{% set s = (status or '') %}
+{% set s = (status or '')|trim %}
+{% set s_lc = s|lower %}
 
-{# default fallback #}
+{# Defaults #}
 {% set progress_width = 0 %}
 {% set progress_color = 'secondary' %}
 
-{% if s == 'Overseas' %}
-    {% set progress_width = 33 %}
-    {% set progress_color = 'danger' %}
-{% elif s == 'Ready for Pick Up' %}
-    {% set progress_width = 66 %}
-    {% set progress_color = 'primary' %}
-{% elif s == 'Delivered' %}
-    {% set progress_width = 100 %}
-    {% set progress_color = 'success' %}
-{% elif s == 'Unassigned' %}
-    {# stays 0% #}
-    {% set progress_width = 0 %}
-    {% set progress_color = 'warning' %}
+{# Normalize status rules #}
+{% if s_lc == 'overseas' %}
+  {% set progress_width = 33 %}
+  {% set progress_color = 'danger' %}
+
+{# “Ready” bucket: covers ready, ready for pickup, ready for pick up #}
+{% elif 'ready' in s_lc or 'pick up' in s_lc or 'pickup' in s_lc %}
+  {% set progress_width = 66 %}
+  {% set progress_color = 'primary' %}
+
+{# “Delivered” bucket: covers delivered, delivery, out for delivery, delivering #}
+{% elif 'deliver' in s_lc or s_lc in ['delivery', 'delivered', 'out for delivery'] %}
+  {% set progress_width = 100 %}
+  {% set progress_color = 'success' %}
+
+{% elif s_lc == 'unassigned' %}
+  {% set progress_width = 0 %}
+  {% set progress_color = 'warning' %}
 {% endif %}
 
-<!-- Status Badge -->
-<span class="badge 
-    {% if s == 'Overseas' %}bg-danger
-    {% elif s == 'Ready for Pick Up' %}bg-primary
-    {% elif s == 'Delivered' %}bg-success
-    {% elif s == 'Unassigned' %}bg-warning text-dark
-    {% else %}bg-secondary{% endif %}">
-    {{ s }}
+{# Status Badge #}
+<span class="badge
+  {% if progress_color == 'danger' %}bg-danger
+  {% elif progress_color == 'primary' %}bg-primary
+  {% elif progress_color == 'success' %}bg-success
+  {% elif progress_color == 'warning' %}bg-warning text-dark
+  {% else %}bg-secondary{% endif %}">
+  {{ s if s else 'Unknown' }}
 </span>
 
-<!-- Progress Bar -->
+{# Progress Bar #}
 <div class="status-progress mt-1 {{ progress_color }}">
-    <div class="fill" style="width: {{ progress_width }}%;"></div>
+  <div class="fill" style="width: {{ progress_width }}%;"></div>
 </div>
-
-

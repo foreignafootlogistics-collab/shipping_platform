@@ -160,152 +160,33 @@ Foreign A Foot Logistics Team
 # ==========================================================
 #  PACKAGE UPLOAD EMAIL (status summary)
 # ==========================================================
-def send_package_upload_email(recipient_email, first_name, packages):
-    rows = ""
-    for p in packages:
-        style = "color:#000;"
-        note = ""
-        status = (p.get('status') or '').lower()
-        if status == "overseas":
-            style = "color:#d97706; font-weight:bold;"
-            note = "<br><small>⚠️ Please upload a proper invoice to avoid customs delays.</small>"
-        elif status == "ready for pick up":
-            style = "color:#16a34a; font-weight:bold;"
-            note = "<br><small>✅ Your package is ready for pick up.</small>"
-        rows += f"""
-        <tr>
-            <td style="border:1px solid #ddd; padding:8px;">{p.get('description','-')}</td>
-            <td style="border:1px solid #ddd; padding:8px;">{p.get('tracking_number','-')}</td>
-            <td style="border:1px solid #ddd; padding:8px;">{p.get('house_awb','N/A')}</td>
-            <td style="border:1px solid #ddd; padding:8px;">{p.get('weight',0)} lbs</td>
-            <td style="border:1px solid #ddd; padding:8px; {style}">{p.get('status','-')}{note}</td>
-        </tr>
-        """
-    plain_body = "You have new package updates. Please log in to view."
-    html_body = f"""
-<html>
-<body style="font-family: Arial, sans-serif; background:#f9f9f9; padding:20px;">
-    <div style="max-width:600px; margin:auto; background:#fff; padding:20px; border-radius:8px;">
-        <h2>Hello {first_name},</h2>
-        <p>Here are your latest package updates:</p>
-        <table style="width:100%; border-collapse: collapse;">
-            <tr style="background:#5c3d91; color:#fff;">
-                <th>Description</th><th>Tracking #</th><th>House AWB</th><th>Weight</th><th>Status</th>
-            </tr>
-            {rows}
-        </table>
-    </div>
-</body>
-</html>
-"""
-    return send_email(recipient_email, "📦 New Package Notification - Foreign A Foot Logistics", plain_body, html_body)
-
-# ==========================================================
-#  INVOICE EMAIL
-# ==========================================================
-def send_invoice_email(to_email, full_name, invoice_number, amount_due, due_date, invoice_link):
-    plain_body = f"""
-Dear {full_name},
-
-Here is your invoice:
-
-Invoice #: {invoice_number}
-Amount Due: ${amount_due} JMD
-Due Date: {due_date}
-
-You can view/download your invoice here:
-{invoice_link}
-"""
-    html_body = f"""
-<html>
-<body>
-    <p>Dear {full_name},</p>
-    <p>Here is your invoice:</p>
-    <p><b>Invoice #:</b> {invoice_number}</p>
-    <p><b>Amount Due:</b> ${amount_due} JMD</p>
-    <p><b>Due Date:</b> {due_date}</p>
-    <p><a href="{invoice_link}" style="background:#5c3d91;color:#fff;padding:10px 20px;text-decoration:none;">View Invoice</a></p>
-</body>
-</html>
-"""
-    return send_email(to_email, f"📄 Invoice #{invoice_number} - Foreign A Foot Logistics", plain_body, html_body)
-
-# ==========================================================
-#  NEW MESSAGE EMAIL (bugfix: use plain_body kwarg)
-# ==========================================================
-def send_new_message_email(user_email, user_name, message_subject, message_body):
-    subject = f"New Message: {message_subject}"
-    body = (
-        f"Hello {user_name},\n\n"
-        f"You have received a new message:\n\n"
-        f"{message_body}\n\n"
-        f"Please log in to your account to reply or view details."
-    )
-    return send_email(to_email=user_email, subject=subject, plain_body=body)
-
-# ==========================================================
-#  REFERRAL EMAIL (use current_app safely; Flask-Mail if available)
-# ==========================================================
-def send_referral_email(to_email, referral_code, referrer_name):
-    base_url = (current_app.config.get("BASE_URL") if current_app else "https://www.foreignafoot.com").rstrip("/")
-    sender = (current_app.config.get("MAIL_DEFAULT_SENDER") if current_app else EMAIL_ADDRESS)
-
-    subject = "You've been invited to join Foreign A Foot Logistics!"
-    body = f"""
-Hi there,
-
-Your friend {referrer_name} has invited you to join Foreign A Foot Logistics!
-
-Use their referral code during registration to get a $100 signup bonus.
-
-Your referral code: {referral_code}
-
-Register here: {base_url}/register?ref={referral_code}
-
-Thanks,
-Foreign A Foot Logistics Team
-"""
-
-    # Prefer Flask-Mail if configured, otherwise fallback to SMTP
-    if _HAS_FLASK_MAIL and current_app:
-        try:
-            msg = Message(subject, sender=sender, recipients=[to_email])
-            msg.body = body
-            mail.send(msg)
-            return True
-        except Exception:
-            pass  # fallback to SMTP below
-
-    return send_email(to_email=to_email, subject=subject, plain_body=body)
-
-# ==========================================================
-#  OVERSEAS PACKAGE RECEIVED (NEW for bulk action)
-#  Includes: House AWB, Rounded-up Weight, Tracking #, Description
-#  Subject: Foreign A Foot Logistics Limited received a new package overseas for FAFL #<reg_number>
-# ==========================================================
-from math import ceil
-
 try:
     from app.config import LOGO_URL
 except ImportError:
     LOGO_URL = "https://www.foreignafoot.com/app/static/logo.png"  # fallback
 
+
 def send_overseas_received_email(to_email, full_name, reg_number, packages):
     """
     Sends an email when Foreign A Foot Logistics Limited receives a new package overseas.
-    Includes: House AWB, Rounded-up Weight, Tracking #, Description, and Status.
+    Includes: House AWB, Rounded-up Weight, Tracking #, Description, Status
+    AND a button/link for the customer to upload their invoice.
     """
 
     subject = f"Foreign A Foot Logistics Limited received a new package overseas for FAFL #{reg_number}"
 
-    # Build table rows
+    # URL where customer can upload invoices (adjust path if needed)
+    base_url = DASHBOARD_URL.rstrip("/")  # e.g. https://www.foreignafoot.com
+    upload_url = f"{base_url}/customer/packages"   # customer package page
+
+    # Build table rows (HTML)
     rows_html = []
     for p in packages:
         house = getattr(p, "house_awb", None) if not isinstance(p, dict) else p.get("house_awb")
-        weight = getattr(p, "weight", 0) if not isinstance(p, dict) else p.get("weight", 0)
+        weight = getattr(p, "weight", 0)        if not isinstance(p, dict) else p.get("weight", 0)
         tracking = getattr(p, "tracking_number", None) if not isinstance(p, dict) else p.get("tracking_number")
-        desc = getattr(p, "description", None) if not isinstance(p, dict) else p.get("description")
-        status = getattr(p, "status", None) if not isinstance(p, dict) else p.get("status")
+        desc = getattr(p, "description", None)  if not isinstance(p, dict) else p.get("description")
+        status = getattr(p, "status", None)     if not isinstance(p, dict) else p.get("status")
         rounded = ceil(weight or 0)
 
         rows_html.append(f"""
@@ -331,19 +212,24 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
 
     for p in packages:
         house = getattr(p, "house_awb", None) if not isinstance(p, dict) else p.get("house_awb")
-        weight = getattr(p, "weight", 0) if not isinstance(p, dict) else p.get("weight", 0)
+        weight = getattr(p, "weight", 0)        if not isinstance(p, dict) else p.get("weight", 0)
         tracking = getattr(p, "tracking_number", None) if not isinstance(p, dict) else p.get("tracking_number")
-        desc = getattr(p, "description", None) if not isinstance(p, dict) else p.get("description")
-        status = getattr(p, "status", None) if not isinstance(p, dict) else p.get("status")
+        desc = getattr(p, "description", None)  if not isinstance(p, dict) else p.get("description")
+        status = getattr(p, "status", None)     if not isinstance(p, dict) else p.get("status")
         plain_lines.append(
-            f"- House AWB: {house or '-'}, Rounded Weight (lbs): {ceil(weight or 0)}, "
-            f"Tracking #: {tracking or '-'}, Description: {desc or '-'}, Status: {status or 'Overseas'}"
+            f"- House AWB: {house or '-'}, "
+            f"Rounded Weight (lbs): {ceil(weight or 0)}, "
+            f"Tracking #: {tracking or '-'}, "
+            f"Description: {desc or '-'}, "
+            f"Status: {status or 'Overseas'}"
         )
 
     plain_lines += [
         "",
-        "Please note that Customs requires a proper invoice for all packages.",
-        "To avoid any delays, kindly upload or send your invoice as soon as possible.",
+        "Customs requires a proper invoice for all packages.",
+        "To avoid delays, please upload or send your invoice as soon as possible.",
+        "",
+        f"Upload your invoice here: {upload_url}",
         "",
         "Thank you for choosing Foreign A Foot Logistics Limited — your trusted logistics partner!",
         "",
@@ -352,12 +238,12 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
         "📍 Cedar Grove PassageFort Portmore",
         "🌐 www.foreignafoot.com",
         "✉️ foreignafootlogistics@gmail.com",
-        "☎️ (876) 123-4567",
+        "☎️ (876) 210-4291",
     ]
     plain_body = "\n".join(plain_lines)
 
     # -------------------------------
-    # HTML version
+    # HTML version (with button)
     # -------------------------------
     html_body = f"""
     <html>
@@ -365,7 +251,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
       <div style="max-width:700px;margin:0 auto;padding:16px;">
         <img src="{LOGO_URL}" alt="Foreign A Foot Logistics" style="max-width:180px; margin-bottom:16px;">
         <p>Hello {full_name},</p>
-        <p>Great news- we’ve received a new package overseas for you. Package Details:</p>
+        <p>Great news – we’ve received a new package overseas for you. Package details:</p>
 
         <table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; margin:16px 0;">
           <thead>
@@ -383,20 +269,32 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
         </table>
 
         <p style="margin-top:20px; color:#333;">
-          Please note that Customs requires a proper invoice for all packages.<br>
-          To avoid any delays, kindly upload or send your invoice as soon as possible.
+          Customs requires a proper invoice for all packages.<br>
+          To avoid any delays, please upload or send your invoice as soon as possible.
         </p>
 
-        <p style="margin-top:24px; font-weight:500;">
-          Thank you for choosing Foreign A Foot Logistics Limited — your trusted logistics partner!
+        <!-- 🔗 Upload invoice button -->
+        <p style="margin-top:18px;">
+          <a href="{upload_url}"
+             style="display:inline-block; padding:10px 22px; background:#4a148c; color:#ffffff;
+                    text-decoration:none; border-radius:6px; font-weight:600;">
+            Upload / Add Your Invoice
+          </a>
+        </p>
+        <p style="font-size:13px; color:#555; margin-top:6px;">
+          Or visit
+          <a href="{upload_url}" style="color:#4a148c; text-decoration:none;">{upload_url}</a>
+          and locate this package by tracking number.
         </p>
 
         <hr style="margin:28px 0; border:none; border-top:1px solid #ddd;">
         <footer style="font-size:14px; color:#555;">
           <p style="margin:4px 0;">Warm regards,<br><strong>The Foreign A Foot Logistics Team</strong></p>
           <p style="margin:4px 0;">📍 Cedar Grove PassageFort Portmore</p>
-          <p style="margin:4px 0;">🌐 <a href="https://www.foreignafoot.com" style="color:#4a148c;text-decoration:none;">www.foreignafoot.com</a></p>
-          <p style="margin:4px 0;">✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c;text-decoration:none;">foreignafootlogistics@gmail.com</a>
+          <p style="margin:4px 0;">🌐 <a href="https://www.foreignafoot.com"
+                style="color:#4a148c;text-decoration:none;">www.foreignafoot.com</a></p>
+          <p style="margin:4px 0;">✉️ <a href="mailto:foreignafootlogistics@gmail.com"
+                style="color:#4a148c;text-decoration:none;">foreignafootlogistics@gmail.com</a></p>
           <p style="margin:4px 0;">☎️ (876) 210-4291</p>
         </footer>
       </div>
@@ -404,8 +302,229 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
     </html>
     """
 
-    from app.utils.email_utils import send_email  # internal import to avoid circulars
+    # ✅ use the send_email helper defined at the top of this file
     return send_email(to_email, subject, plain_body, html_body)
+
+# ==========================================================
+#  INVOICE EMAIL
+# ==========================================================
+def send_invoice_email(to_email, full_name, invoice_number, amount_due, invoice_link):
+    """
+    Sends a clean, branded FAFL invoice email without due date.
+    """
+
+    # -------- Plain text fallback --------
+    plain_body = f"""
+Hello {full_name},
+
+Your invoice from Foreign A Foot Logistics Limited is now available.
+
+Invoice Number: {invoice_number}
+Amount Due: JMD {amount_due:,.2f}
+
+You may view or download your invoice here:
+{invoice_link}
+
+Thank you for shipping with us!
+Foreign A Foot Logistics Limited
+(876) 210-4291
+"""
+
+    # -------- HTML version --------
+    html_body = f"""
+<html>
+  <body style="font-family: Inter, Arial, sans-serif; background:#f8f8fc; padding:0; margin:0;">
+
+    <div style="max-width:640px; margin:20px auto; background:#ffffff; 
+                border-radius:12px; padding:30px; box-shadow:0 4px 20px rgba(0,0,0,0.06);">
+
+      <!-- Logo -->
+      <div style="text-align:center; margin-bottom:20px;">
+        <img src="{LOGO_URL}" alt="FAFL Logo" style="max-width:180px;">
+      </div>
+
+      <!-- Header -->
+      <h2 style="text-align:center; color:#4a148c; margin-top:0;">
+        Your Invoice is Ready
+      </h2>
+
+      <p style="color:#444; font-size:15px;">
+        Hello <strong>{full_name}</strong>,<br><br>
+        Your invoice from <strong>Foreign A Foot Logistics Limited</strong> has been generated and is now available.
+        You may review the details below and click the button to view or download the full invoice.
+      </p>
+
+      <!-- Invoice Summary -->
+      <div style="
+        border:1px solid #e5e0f0; 
+        border-radius:10px; 
+        padding:18px 22px; 
+        background:#faf7ff; 
+        margin:25px 0;
+      ">
+        <p style="margin:8px 0; font-size:15px;">
+          <strong style="color:#4a148c;">Invoice Number:</strong><br>
+          {invoice_number}
+        </p>
+
+        <p style="margin:8px 0; font-size:15px;">
+          <strong style="color:#4a148c;">Amount Due:</strong><br>
+          <span style="font-size:22px; font-weight:700; color:#4a148c;">
+            JMD {amount_due:,.2f}
+          </span>
+        </p>
+      </div>
+
+      <!-- Button -->
+      <div style="text-align:center; margin:25px 0 10px;">
+        <a href="{invoice_link}"
+           style="background:#4a148c; color:#ffffff; padding:14px 28px;
+                  text-decoration:none; border-radius:6px; font-weight:600;
+                  display:inline-block; font-size:16px;">
+          View Invoice
+        </a>
+      </div>
+
+      <p style="color:#666; font-size:14px; margin-top:20px; text-align:center;">
+        Please contact us if you have any questions about this invoice.
+      </p>
+
+      <hr style="border:none; border-top:1px solid #e4e4e4; margin:30px 0;">
+
+      <!-- Footer -->
+      <div style="text-align:center; color:#777; font-size:13px;">
+        <p style="margin:4px 0;"><strong>Foreign A Foot Logistics Limited</strong></p>
+        <p style="margin:4px 0;">Cedar Grove, Passage Fort, Portmore</p>
+        <p style="margin:4px 0;">
+          ✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c; text-decoration:none;">
+                foreignafootlogistics@gmail.com
+              </a>
+        </p>
+        <p style="margin:4px 0;">☎️ (876) 210-4291</p>
+      </div>
+
+    </div>
+
+  </body>
+</html>
+"""
+
+    return send_email(
+        to_email=to_email,
+        subject=f"📄 Your Invoice #{invoice_number} is Ready",
+        plain_body=plain_body,
+        html_body=html_body,
+    )
+
+# ==========================================================
+#  NEW MESSAGE EMAIL (bugfix: use plain_body kwarg)
+# ==========================================================
+def send_new_message_email(user_email, user_name, message_subject, message_body):
+    subject = f"New Message: {message_subject}"
+    body = (
+        f"Hello {user_name},\n\n"
+        f"You have received a new message:\n\n"
+        f"{message_body}\n\n"
+        f"Please log in to your account to reply or view details."
+    )
+    return send_email(to_email=user_email, subject=subject, plain_body=body)
+
+# ==========================================================
+#  REFERRAL EMAIL (use current_app safely; Flask-Mail if available)
+# ==========================================================
+def send_referral_email(to_email: str, referral_code: str, referrer_name: str) -> bool:
+    """
+    Sends a nice branded referral invite email.
+
+    Uses the core send_email() SMTP helper so it works with your Gmail
+    app password config.
+    """
+    base_url = (
+        current_app.config.get("BASE_URL")
+        if current_app else "https://www.foreignafoot.com"
+    ).rstrip("/")
+
+    register_link = f"{base_url}/register?ref={referral_code}"
+
+    subject = "You've been invited to join Foreign A Foot Logistics!"
+
+    # -------- Plain text (fallback) ----------
+    plain_body = f"""
+Hi there,
+
+Your friend {referrer_name} has invited you to join Foreign A Foot Logistics!
+
+Use their referral code during registration to get a $100 signup bonus.
+
+Referral code: {referral_code}
+
+Sign up here:
+{register_link}
+
+Thanks,
+Foreign A Foot Logistics Team
+"""
+
+    # -------- HTML version ----------
+    html_body = f"""
+<html>
+  <body style="font-family: Inter, Arial, sans-serif; background:#f4f4f7; margin:0; padding:0;">
+    <div style="max-width:640px; margin:0 auto; padding:24px;">
+      <div style="background:#ffffff; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.05);">
+
+        <h2 style="margin-top:0; color:#4a148c;">
+          {referrer_name} invited you to Foreign A Foot Logistics 🚚✈️
+        </h2>
+
+        <p style="color:#333333; line-height:1.6;">
+          Your friend <strong>{referrer_name}</strong> wants you to start shipping smarter with
+          <strong>Foreign A Foot Logistics</strong>.
+        </p>
+
+        <p style="color:#333333; line-height:1.6;">
+          Use their referral code at signup and you'll receive a
+          <strong>$100 bonus credit</strong> on your account.
+        </p>
+
+        <div style="margin:20px 0; padding:16px; border-radius:10px; background:#f5f2ff; text-align:center;">
+          <div style="font-size:0.9rem; text-transform:uppercase; letter-spacing:0.08em; color:#6b21a8;">
+            Your Referral Code
+          </div>
+          <div style="font-size:1.8rem; font-weight:700; margin-top:6px; color:#4a148c;">
+            {referral_code}
+          </div>
+        </div>
+
+        <div style="text-align:center; margin-bottom:24px;">
+          <a href="{register_link}"
+             style="display:inline-block; padding:12px 26px; background:#6f42c1; color:#ffffff;
+                    text-decoration:none; border-radius:999px; font-weight:600;">
+            Sign Up & Claim Your $100
+          </a>
+        </div>
+
+        <p style="font-size:0.9rem; color:#555; line-height:1.5;">
+          Just enter the code above when creating your account.
+        </p>
+
+        <hr style="border:none; border-top:1px solid #e5e5e5; margin:24px 0;">
+
+        <p style="font-size:0.8rem; color:#777;">
+          Foreign A Foot Logistics Limited<br>
+          Cedar Grove Passage Fort, Portmore<br>
+          <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c; text-decoration:none;">
+            foreignafootlogistics@gmail.com
+          </a> · (876) 210-4291
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
+"""
+
+    # Use your SMTP helper (works with Gmail app password)
+    return send_email(to_email=to_email, subject=subject, plain_body=plain_body, html_body=html_body)
+
 
 # --- Ready for Pick Up (no attachments) -------------------
 def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict]) -> bool:

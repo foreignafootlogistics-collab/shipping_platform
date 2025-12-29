@@ -30,11 +30,37 @@ class RegisterForm(FlaskForm):
    
 
 class AdminRegisterForm(FlaskForm):
-    full_name = StringField('Full Name', validators=[DataRequired()])
-    email = StringField('Email', validators=[DataRequired(), Email()])
-    password = PasswordField('Password', validators=[DataRequired(), EqualTo('confirm', message='Passwords must match')])
-    confirm = PasswordField('Confirm Password', validators=[DataRequired()])
-    submit = SubmitField('Create Admin')
+    full_name = StringField(
+        "Full Name",
+        validators=[DataRequired(), Length(min=3, max=120)]
+    )
+    email = StringField(
+        "Email",
+        validators=[DataRequired(), Email(), Length(max=255)]
+    )
+    password = PasswordField(
+        "Password",
+        validators=[DataRequired(), Length(min=6)]
+    )
+    confirm = PasswordField(
+        "Confirm Password",
+        validators=[DataRequired(), EqualTo("password", message="Passwords must match.")]
+    )
+
+    # 🔹 New: role selector
+    role = SelectField(
+        "Admin Role",
+        choices=[
+            ("admin", "General Admin"),
+            ("finance", "Finance"),
+            ("operations", "Operations"),
+            ("accounts_manager", "Accounts & Profiles"),
+        ],
+        validators=[DataRequired()],
+        default="admin",
+    )
+
+    submit = SubmitField("Create Admin")
 
 
 class ScheduledDeliveryForm(FlaskForm):
@@ -239,21 +265,50 @@ class InvoiceFinalizeForm(FlaskForm):
 
 
 class PaymentForm(FlaskForm):
-    amount = DecimalField("Amount (JMD)", validators=[DataRequired(), NumberRange(min=1)])
-    payment_type = RadioField(
+    invoice_id = HiddenField("Invoice ID", validators=[DataRequired()])
+    user_id = HiddenField("User ID")
+
+    # Main amount – your DB field is amount_jmd
+    amount_jmd = DecimalField(
+        "Amount (JMD)",
+        places=2,
+        validators=[
+            DataRequired(message="Please enter the payment amount."),
+            NumberRange(min=0.01, message="Amount must be greater than 0."),
+        ],
+    )
+
+    # This maps directly to Payment.method
+    method = SelectField(
         "Payment Method",
         choices=[
-            ("Bank Transfer", "Bank Transfer"),
             ("Cash", "Cash"),
-            ("Check / Cheque", "Check / Cheque"),
-            ("Credit Card", "Credit Card"),
-            ("Debit Card", "Debit Card"),
-            ("Gift Card", "Gift Card"),
-            ("Other", "Other"),
+            ("Card", "Card"),
+            ("Bank", "Bank Transfer / Deposit"),
+            ("Wallet", "Wallet"),
         ],
+        default="Cash",
         validators=[DataRequired()],
     )
-    submit = SubmitField("Confirm Payment")
+
+    # We *collect* who authorised it; we’ll store it in notes for now
+    authorized_by = SelectField(
+        "Authorised By",
+        choices=[],          # populate in the view from your staff/admin list
+        validators=[Optional()],
+    )
+
+    reference = StringField(
+        "Reference / Receipt #",
+        validators=[Optional(), Length(max=100)],
+    )
+
+    notes = TextAreaField(
+        "Notes",
+        validators=[Optional(), Length(max=255)],
+    )
+
+    submit = SubmitField("Add Payment")
 
 class ExpenseForm(FlaskForm):
     amount = DecimalField('Amount', places=2, validators=[DataRequired()])
@@ -321,3 +376,7 @@ class AdminCalculatorForm(FlaskForm):
     invoice_usd = DecimalField("Item Value (USD)", validators=[DataRequired(), NumberRange(min=0.01)])
     weight = DecimalField("Weight (lbs)", validators=[DataRequired(), NumberRange(min=1)])
     submit = SubmitField("Calculate")
+
+class ReferralForm(FlaskForm):
+    friend_email = StringField("Friend's Email", validators=[DataRequired(), Email()])
+    submit = SubmitField("Send Invite")

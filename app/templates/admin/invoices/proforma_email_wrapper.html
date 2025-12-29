@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+  <body style="font-family: Arial, sans-serif; background:#f6f7fb; padding:20px;">
+    <div style="max-width:900px; margin:0 auto; background:#ffffff; border-radius:10px; padding:18px; border:1px solid #eee;">
+      <h2 style="margin:0 0 6px 0; color:#4a148c;">Foreign A Foot Logistics</h2>
+      <p style="margin:0 0 14px 0; color:#444;">
+        Hello {{ invoice.user.full_name if invoice.user else (invoice.customer_name or "Customer") }},
+        <br>
+        Please find your <b>Proforma Invoice</b> attached. You may also view details below.
+      </p>
+
+      <div style="border-top:1px solid #eee; margin:14px 0;"></div>
+
+      <!-- Embedded HTML preview (optional) -->
+      <div>
+        {{ inner_html | safe }}
+      </div>
+
+      <div style="border-top:1px solid #eee; margin:14px 0;"></div>
+
+      <p style="margin:0; color:#777; font-size:12px;">
+        If you have any questions, reply to this email or contact support.
+      </p>
+    </div>
+  </body>
+</html>

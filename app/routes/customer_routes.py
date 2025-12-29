@@ -14,17 +14,22 @@ from werkzeug.utils import secure_filename
 import bcrypt
 import sqlalchemy as sa
 
-# Forms / utils
+from app.forms import ReferralForm  
 from app.forms import (
     LoginForm, PersonalInfoForm, AddressForm, PasswordChangeForm,
     PreAlertForm, PackageUpdateForm, SendMessageForm, CalculatorForm
 )
 from app.utils import email_utils
+from app.utils.email_utils import send_referral_email
+from app.utils.referrals import ensure_user_referral_code
 from app.utils.helpers import customer_required
 from app.utils.invoice_utils import generate_invoice
 from app.calculator_data import categories
 from app import allowed_file, mail
 from app.extensions import db
+from app.calculator import calculate_charges
+from app.calculator_data import CATEGORIES, USD_TO_JMD
+
 
 # Models — NO Bill model; alias Message to avoid clash with Flask-Mail's Message
 from app.models import (
@@ -32,9 +37,10 @@ from app.models import (
     AuthorizedPickup, ScheduledDelivery,
     Notification,
     Message as DBMessage,  # 👈 avoid name clash with Flask-Mail
-    Wallet, WalletTransaction, Payment
+    Wallet, WalletTransaction, Payment, Settings,
+    Prealert,
 )
-
+from sqlalchemy import func
 # Email class from Flask-Mail (alias to avoid clash)
 from flask_mail import Message as MailMessage
 
@@ -75,18 +81,8 @@ def generate_prealert_number() -> int:
 # -----------------------------
 @customer_bp.route('/login', methods=['GET', 'POST'])
 def customer_login():
-    form = LoginForm()
-    if form.validate_on_submit():
-        email = form.email.data.strip()
-        password_bytes = form.password.data.encode('utf-8')
-
-        user = User.query.filter_by(email=email).first()
-        if user and bcrypt.checkpw(password_bytes, user.password.encode() if isinstance(user.password, str) else user.password):
-            login_user(user)
-            flash('Logged in successfully!', 'success')
-            return redirect(url_for('customer.customer_dashboard'))
-        flash('Invalid credentials', 'danger')
-    return render_template('auth/login.html', form=form)
+    # Always use the main auth.login route
+    return redirect(url_for('auth.login'))
 
 
 @customer_bp.route('/logout')
@@ -105,15 +101,30 @@ def logout():
 def customer_dashboard():
     user = current_user
 
-    # Static US address (keep your format)
+    # Load global settings row (id=1)
+    settings = db.session.get(Settings, 1)
+
+    # Graceful defaults if settings row or fields are missing
+    us_street       = getattr(settings, "us_street", None)       or "3200 NW 112th Avenue"
+    us_suite_prefix = getattr(settings, "us_suite_prefix", None) or "KCDA-FAFL# "
+    us_city         = getattr(settings, "us_city", None)         or "Doral"
+    us_state        = getattr(settings, "us_state", None)        or "Florida"
+    us_zip          = getattr(settings, "us_zip", None)          or "33172"
+
+    # Build the address dict used by the template
     us_address = {
         "recipient": user.full_name,
-        "address_line1": "4652 N Hiatus Rd",
-        "address_line2": f"{user.registration_number} A" if getattr(user, "registration_number", None) else "",
-        "city": "Sunrise",
-        "state": "Florida",
-        "zip": "33351",
+        "address_line1": us_street,
+        "address_line2": (
+            f"{us_suite_prefix}{user.registration_number}"
+            if getattr(user, "registration_number", None)
+            else us_suite_prefix
+        ),
+        "city": us_city,
+        "state": us_state,
+        "zip": us_zip,
     }
+
 
     # Package counts
     overseas_packages = db.session.scalar(
@@ -376,12 +387,27 @@ def view_bills():
 @customer_bp.route('/payments')
 @customer_required
 def view_payments():
-    payments = (Payment.query
-                .filter_by(user_id=current_user.id)
-                .order_by(Payment.payment_date.desc())
-                .all())
-    return render_template('customer/payments.html', payments=payments)
+    # Get all payments for this user, newest first
+    raw_payments = (
+        Payment.query
+        .filter_by(user_id=current_user.id)
+        .order_by(Payment.created_at.desc())
+        .all()
+    )
 
+    payments = []
+    for p in raw_payments:
+        inv = p.invoice  # via relationship
+
+        payments.append({
+            "invoice_id":    inv.id if inv else None,
+            "invoice_number": getattr(inv, "invoice_number", "N/A") if inv else "N/A",
+            "payment_date":  p.created_at.strftime("%Y-%m-%d %H:%M") if p.created_at else "",
+            "payment_type":  p.method or "Unknown",
+            "amount":        float(p.amount_jmd or 0),
+        })
+
+    return render_template('customer/payments.html', payments=payments)
 
 @customer_bp.route('/submit-invoice', methods=['GET', 'POST'])
 @login_required
@@ -801,35 +827,41 @@ def schedule_delivery_add():
 # -----------------------------
 # Referrals
 # -----------------------------
-def send_referral_email(friend_email: str, referral_code: str, full_name: str):
-    msg = MailMessage(
-        subject="You're invited to FOREIGN A FOOT LOGISTICS",
-        sender=("Foreign A Foot Logistics", "foreignafootlogistics@gmail.com"),
-        recipients=[friend_email]
-    )
-    msg.body = f"{full_name} invited you! Use referral code {referral_code} when you sign up."
-    mail.send(msg)
-
 
 @customer_bp.route('/referrals', methods=['GET', 'POST'])
 @login_required
 def referrals():
     user = current_user
-    referral_code = getattr(user, "referral_code", None)
-    full_name = user.full_name
+    full_name = user.full_name or user.email  # fallback
 
-    if request.method == 'POST':
-        friend_email = (request.form.get('friend_email') or '').strip()
+    # ✅ Make sure this user actually has a referral code
+    referral_code = ensure_user_referral_code(user)
+
+    form = ReferralForm()
+
+    if form.validate_on_submit():
+        friend_email = form.friend_email.data.strip()
+
         if not friend_email or not EMAIL_REGEX.match(friend_email):
             flash("Please enter a valid email address.", "warning")
+        elif not referral_code:
+            # This shouldn't happen because of ensure_user_referral_code,
+            # but just in case.
+            flash("Your referral code is not set yet. Please try again later.", "danger")
         else:
-            try:
-                send_referral_email(friend_email, referral_code, full_name)
+            # Our send_referral_email now returns True/False instead of raising
+            ok = send_referral_email(friend_email, referral_code, full_name)
+            if ok:
                 flash(f"Referral email sent to {friend_email}.", "success")
-            except Exception as e:
+            else:
                 flash("Failed to send referral email. Please try again later.", "danger")
 
-    return render_template('customer/referrals.html', referral_code=referral_code, full_name=full_name)
+    return render_template(
+        'customer/referrals.html',
+        referral_code=referral_code,
+        full_name=full_name,
+        form=form,
+    )
 
 
 # -----------------------------

@@ -1,17 +1,82 @@
 {% extends 'layout_admin.html' %}
-{% block title %}Invoice {{ invoice.number or ('INV' ~ '%05d'|format(invoice.id)) }}{% endblock %}
+{% block title %}Invoice {{ invoice.invoice_number or ('INV' ~ '%05d'|format(invoice.id)) }}{% endblock %}
 
 {% block content %}
+
 <style>
   .text-purple{color:#4a148c!important}
   .bg-purple{background:#4a148c!important;color:#fff!important}
   .btn-outline-purple{border:1px solid #4a148c;color:#4a148c}
   .btn-outline-purple:hover{background:#4a148c;color:#fff}
   .panel{border:1px solid #e5e5e5;border-radius:.5rem}
-  .icon-left{width:36px;height:36px;border:1px solid #bfb3da;border-radius:.5rem;display:flex;align-items:center;justify-content:center}
+  .icon-left{
+    width:36px;height:36px;border:1px solid #bfb3da;border-radius:.5rem;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
   .icon-left i{color:#6c757d}
   .toolbar .btn{border-radius:0}
   .table td,.table th{vertical-align:middle}
+
+  /* ====== PAYMENT MODAL (POS STYLE) ====== */
+  .payment-layout{display:flex;flex-wrap:wrap;gap:1.5rem}
+  .payment-left{flex:1 1 260px}
+  .payment-right{flex:1 1 220px}
+
+  .payment-display{
+    border-radius:.5rem;border:1px solid #e0d4ff;background:#f9f5ff;
+    padding:.75rem 1rem;font-size:1.4rem;font-weight:600;color:#4a148c;
+    text-align:right;margin-bottom:.75rem;
+  }
+  .payment-keypad{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0,1fr));
+    gap:.35rem;margin-bottom:.5rem;
+  }
+  .payment-key-btn{
+    border:1px solid #e0e0e0;border-radius:.35rem;padding:.5rem 0;
+    font-size:1.1rem;background:#fff;cursor:pointer;
+    transition:background-color .1s, transform .05s, box-shadow .1s;
+  }
+  .payment-key-btn:hover{background:#f3e8ff;box-shadow:0 0 0 1px rgba(106,27,154,.15)}
+  .payment-key-btn:active{transform:translateY(1px)}
+
+  .payment-quick-row{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}
+  .payment-quick-btn{
+    flex:1 1 80px;border-radius:999px;border:1px solid #e0d4ff;
+    background:#fdfbff;padding:.35rem .5rem;font-size:.85rem;
+    white-space:nowrap;cursor:pointer;
+  }
+  .payment-quick-btn:hover{background:#f3e8ff;border-color:#4a148c}
+
+  .payment-clear-btn{border-color:#fecaca;color:#b91c1c;background:#fff1f2}
+  .payment-clear-btn:hover{background:#fee2e2}
+
+  .payment-method-list{display:flex;flex-direction:column;gap:.35rem}
+  .payment-method-btn{
+    border-radius:.35rem;border:1px solid #e0e0e0;padding:.35rem .6rem;
+    display:flex;align-items:center;justify-content:space-between;
+    cursor:pointer;background:#fff;font-size:.9rem;
+  }
+  .payment-method-btn span{display:flex;align-items:center;gap:.4rem}
+  .payment-method-btn.active{
+    border-color:#4a148c;background:#f3e8ff;color:#4a148c;
+    box-shadow:0 0 0 1px rgba(106,27,154,.25);
+  }
+  .payment-method-btn i{opacity:.75}
+  .payment-meta small{font-size:.75rem}
+
+  /* ====== DISCOUNT MODAL ====== */
+  .discount-tabs{
+    display:flex;border-radius:.5rem;overflow:hidden;margin-bottom:.75rem;
+    border:1px solid #e0e0e0;
+  }
+  .discount-tab{
+    flex:1 1 0;border:none;padding:.45rem 0;background:#f9fafb;
+    font-weight:500;font-size:.9rem;cursor:pointer;
+  }
+  .discount-tab.active{background:#4a148c;color:#fff}
+  .discount-tab:not(.active){color:#4b5563}
+  .discount-help{font-size:.8rem}
 </style>
 
 <div class="container mt-3">
@@ -21,17 +86,24 @@
     <div class="d-flex justify-content-between align-items-start">
       <div>
         <div class="h4 mb-0">
-          {{ invoice.number or ('INV' ~ '%05d'|format(invoice.id)) }}
+          {{ invoice.invoice_number or ('INV' ~ '%05d'|format(invoice.id)) }}
         </div>
         <div class="text-muted">Invoice</div>
         <small class="text-muted">
-          {{ invoice.date.strftime('%d.%m.%Y') if invoice.date else '' }}
+          {{ invoice.date_issued.strftime('%d.%m.%Y') if invoice.date_issued else '' }}
         </small>
       </div>
       <div class="text-end">
-        <div>Package Amt: <span class="fw-semibold">JMD {{ "%.2f"|format(invoice.subtotal or 0) }}</span></div>
-        <div>Sub-Total: <span class="fw-semibold">JMD {{ "%.2f"|format(invoice.subtotal or 0) }}</span></div>
-        <div class="fs-5">Total Due: <span class="fw-bold">JMD {{ "%.2f"|format(invoice.total_due or 0) }}</span></div>
+        <div>Package Amt:
+          <span class="fw-semibold">JMD {{ "%.2f"|format(invoice.grand_total or 0) }}</span>
+        </div>
+        <div>Sub-Total:
+          <span class="fw-semibold">JMD {{ "%.2f"|format(invoice.grand_total or 0) }}</span>
+        </div>
+        <div class="fs-5">
+          Total Due:
+          <span class="fw-bold text-danger">JMD {{ "%.2f"|format(invoice.amount_due or 0) }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -40,17 +112,45 @@
   <div class="panel p-3 mb-3">
     <div class="d-flex justify-content-between align-items-center">
       <div>
-        <div class="h5 mb-1">{{ invoice.customer_code }} {{ invoice.customer_name }}</div>
+        <div class="h5 mb-1">
+          {{ invoice.user.registration_number if invoice.user else invoice.customer_code }}
+          {{ invoice.user.full_name if invoice.user else invoice.customer_name }}
+        </div>
         <div class="small text-muted">Branch: Main Branch</div>
         <div class="small text-success fw-bold">JMD 0.00 Credit Available</div>
       </div>
       <div class="d-flex align-items-center gap-2">
-        <button class="btn btn-outline-purple" data-bs-toggle="modal" data-bs-target="#addPaymentModal" title="Add Payment">
+
+        <button class="btn btn-outline-purple"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#addPaymentModal"
+                title="Add Payment">
           <i class="bi bi-cash-coin"></i>
         </button>
-        <button class="btn btn-outline-purple" data-bs-toggle="modal" data-bs-target="#addDiscountModal" title="Add Discount">
+
+        <button class="btn btn-outline-purple"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#addDiscountModal"
+                title="Add Discount">
           <i class="bi bi-percent"></i>
         </button>
+
+        <div class="toolbar d-inline-flex border rounded ms-2">
+          <a class="btn btn-light"
+             href="{{ url_for('admin.view_invoice', invoice_id=invoice.id) }}"
+             title="Refresh">
+            <i class="bi bi-arrow-repeat"></i>
+          </a>
+
+          <button type="button"
+                  class="btn btn-outline-secondary btn-sm"
+                  title="View Proforma Invoice"
+                  onclick="(window.openProformaInvoice ? openProformaInvoice({{ invoice.id }}) : console.warn('openProformaInvoice not found'))">
+            <i class="bi bi-receipt"></i>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -58,23 +158,21 @@
       <div class="col-md-6">
         <label class="form-label small text-muted">Description/Notes</label>
         <form method="POST" action="{{ url_for('admin.save_invoice_notes', invoice_id=invoice.id) }}">
-          <textarea name="notes" class="form-control" rows="3" placeholder="Notes...">{{ invoice.description or "" }}</textarea>
-          <button class="btn btn-sm btn-outline-purple mt-2">
+          <textarea name="notes"
+                    class="form-control"
+                    rows="3"
+                    placeholder="Notes...">{{ invoice.description or "" }}</textarea>
+          <button type="submit" class="btn btn-sm btn-outline-purple mt-2">
             <i class="bi bi-save"></i> Save
           </button>
         </form>
       </div>
       <div class="col-md-6 text-end">
         <div class="h5 text-danger mb-3">
-          Balance&nbsp;&nbsp;<span class="fw-bold">JMD {{ "%.2f"|format(invoice.total_due or 0) }}</span>
-        </div>
-        <div class="toolbar d-inline-flex border rounded">
-          <a class="btn btn-light" href="{{ url_for('admin.view_invoice', invoice_id=invoice.id) }}" title="Refresh">
-            <i class="bi bi-arrow-repeat"></i>
-          </a>
-          <a class="btn btn-light" href="{{ url_for('admin.invoice_receipt', invoice_id=invoice.id) }}" title="Receipt (PDF)">
-            <i class="bi bi-receipt"></i>
-          </a>
+          Balance&nbsp;&nbsp;
+          <span class="fw-bold">
+            JMD {{ "%.2f"|format(invoice.amount_due or 0) }}
+          </span>
         </div>
       </div>
     </div>
@@ -100,7 +198,7 @@
         {% for p in invoice.packages %}
           <tr>
             <td>
-              <div class="icon-left" role="button"
+              <div class="icon-left"
                    data-pkg="{{ p.id }}"
                    data-bs-toggle="modal"
                    data-bs-target="#breakdownModal"
@@ -126,68 +224,165 @@
 
 </div>
 
-<!-- Add Payment Modal -->
-<div class="modal fade" id="addPaymentModal" tabindex="-1">
-  <div class="modal-dialog">
-    <form class="modal-content" method="POST" action="{{ url_for('admin.add_payment', invoice_id=invoice.id) }}">
+<!-- =================== ADD PAYMENT MODAL =================== -->
+<div class="modal fade" id="addPaymentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <form class="modal-content" method="POST"
+          action="{{ url_for('admin.add_payment', invoice_id=invoice.id) }}"
+          id="addPaymentForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
       <div class="modal-header">
-        <h5 class="modal-title">Add Payment — {{ invoice.number or ('INV' ~ '%05d'|format(invoice.id)) }}</h5>
+        <h5 class="modal-title">Add Payment — {{ invoice.invoice_number or ('INV' ~ '%05d'|format(invoice.id)) }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
+
       <div class="modal-body">
-        <div class="mb-2">
-          <label class="form-label">Amount (JMD)</label>
-          <input type="number" step="0.01" name="amount_jmd" class="form-control" required>
-        </div>
-        <div class="mb-2">
-          <label class="form-label">Method</label>
-          <select name="method" class="form-select">
-            <option>Cash</option>
-            <option>Card</option>
-            <option>Bank</option>
-            <option>Wallet</option>
-          </select>
-        </div>
-        <div class="mb-2">
-          <label class="form-label">Reference</label>
-          <input name="reference" class="form-control" placeholder="POS/Bank ref #">
-        </div>
-        <div class="mb-2">
-          <label class="form-label">Authorized By</label>
-          <input name="authorized_by" class="form-control" placeholder="Admin name">
+        <div class="payment-layout">
+
+          <!-- LEFT -->
+          <div class="payment-left">
+            <div class="payment-display" id="payDisplay">JMD 0.00</div>
+            <input type="hidden" name="amount_jmd" id="payAmountInput" value="0">
+
+            <div class="payment-keypad">
+              <button type="button" class="payment-key-btn" data-key="7">7</button>
+              <button type="button" class="payment-key-btn" data-key="8">8</button>
+              <button type="button" class="payment-key-btn" data-key="9">9</button>
+              <button type="button" class="payment-key-btn" data-key="4">4</button>
+              <button type="button" class="payment-key-btn" data-key="5">5</button>
+              <button type="button" class="payment-key-btn" data-key="6">6</button>
+              <button type="button" class="payment-key-btn" data-key="1">1</button>
+              <button type="button" class="payment-key-btn" data-key="2">2</button>
+              <button type="button" class="payment-key-btn" data-key="3">3</button>
+              <button type="button" class="payment-key-btn" data-key="0">0</button>
+              <button type="button" class="payment-key-btn" data-key="00">00</button>
+              <button type="button" class="payment-key-btn" data-key=".">.</button>
+            </div>
+
+            <div class="payment-quick-row mt-1">
+              <button type="button" class="payment-quick-btn" data-quick="550">JMD 550</button>
+              <button type="button" class="payment-quick-btn" data-quick="1000">JMD 1,000</button>
+              <button type="button" class="payment-quick-btn" data-quick="5000">JMD 5,000</button>
+              <button type="button" class="payment-quick-btn" data-quick="10000">JMD 10,000</button>
+            </div>
+
+            <div class="payment-quick-row">
+              <button type="button"
+                      class="payment-quick-btn payment-clear-btn"
+                      id="payClearBtn">
+                Clear
+              </button>
+            </div>
+          </div>
+
+          <!-- RIGHT -->
+          <div class="payment-right">
+            <div class="mb-2">
+              <label class="form-label small text-muted d-block mb-1">Method</label>
+
+              <div class="payment-method-list" id="paymentMethodList">
+                <button type="button" class="payment-method-btn active" data-method="Cash">
+                  <span><i class="bi bi-cash-coin"></i> Cash</span><i class="bi bi-check2"></i>
+                </button>
+                <button type="button" class="payment-method-btn" data-method="Card">
+                  <span><i class="bi bi-credit-card-2-front"></i> Card</span><i class="bi bi-check2"></i>
+                </button>
+                <button type="button" class="payment-method-btn" data-method="Bank">
+                  <span><i class="bi bi-bank"></i> Bank Transfer</span><i class="bi bi-check2"></i>
+                </button>
+                <button type="button" class="payment-method-btn" data-method="Wallet">
+                  <span><i class="bi bi-wallet2"></i> Wallet</span><i class="bi bi-check2"></i>
+                </button>
+              </div>
+
+              <input type="hidden" name="method" id="payMethodInput" value="Cash">
+            </div>
+
+            <div class="payment-meta mt-3">
+              <div class="mb-2">
+                <label class="form-label small">Reference</label>
+                <input name="reference" class="form-control form-control-sm" placeholder="POS/Bank ref #">
+              </div>
+              <div class="mb-2">
+                <label class="form-label small">Authorized By</label>
+                <input name="authorized_by" class="form-control form-control-sm" placeholder="Admin name">
+              </div>
+              <small class="text-muted">
+                Current balance: JMD {{ "%.2f"|format(invoice.amount_due or 0) }}
+              </small>
+            </div>
+
+          </div>
         </div>
       </div>
+
       <div class="modal-footer">
-        <button class="btn btn-outline-purple"><i class="bi bi-cash-coin"></i> Add Payment</button>
+        <button type="submit" class="btn btn-outline-purple">
+          <i class="bi bi-cash-coin"></i> Add Payment
+        </button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- Add Discount Modal -->
-<div class="modal fade" id="addDiscountModal" tabindex="-1">
-  <div class="modal-dialog">
-    <form class="modal-content" method="POST" action="{{ url_for('admin.add_discount', invoice_id=invoice.id) }}">
+<!-- =================== ADD DISCOUNT MODAL =================== -->
+<div class="modal fade" id="addDiscountModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <form class="modal-content" method="POST"
+          action="{{ url_for('admin.add_discount', invoice_id=invoice.id) }}"
+          id="discountForm"
+          data-balance="{{ invoice.amount_due or 0 }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
       <div class="modal-header">
-        <h5 class="modal-title">Add Discount — {{ invoice.number or ('INV' ~ '%05d'|format(invoice.id)) }}</h5>
+        <h5 class="modal-title">Add Discount — {{ invoice.invoice_number or ('INV' ~ '%05d'|format(invoice.id)) }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
+
       <div class="modal-body">
-        <div class="mb-2">
-          <label class="form-label">Amount (JMD)</label>
-          <input type="number" step="0.01" name="amount_jmd" class="form-control" required>
+        <div class="discount-tabs" id="discountTabs">
+          <button type="button" class="discount-tab active" data-mode="percent">
+            <i class="bi bi-percent"></i> Percent
+          </button>
+          <button type="button" class="discount-tab" data-mode="amount">
+            <i class="bi bi-hash"></i> Amount
+          </button>
         </div>
+
+        <div id="discountPercentPane">
+          <label class="form-label">Discount Percent</label>
+          <input type="number" class="form-control" id="discountPercentInput"
+                 min="0" max="100" step="0.01" value="0">
+          <div class="discount-help text-muted mt-1">
+            Applies to current balance (JMD {{ "%.2f"|format(invoice.amount_due or 0) }}).<br>
+            Discount amount: <span class="fw-semibold" id="discountPercentAmount">JMD 0.00</span>
+          </div>
+        </div>
+
+        <div id="discountAmountPane" class="d-none">
+          <label class="form-label">Discount Amount (JMD)</label>
+          <input type="number" class="form-control" id="discountAmountInput" step="0.01" value="0">
+          <div class="discount-help text-muted mt-1">
+            Enter flat amount to reduce from the balance.
+          </div>
+        </div>
+
+        <input type="hidden" name="amount_jmd" id="discountHiddenAmount" value="0">
       </div>
+
       <div class="modal-footer">
-        <button class="btn btn-outline-purple"><i class="bi bi-percent"></i> Add Discount</button>
+        <button type="submit" class="btn btn-outline-purple">
+          <i class="bi bi-percent"></i> Add Discount
+        </button>
       </div>
     </form>
   </div>
 </div>
 
-<!-- Breakdown Modal -->
-<div class="modal fade" id="breakdownModal" tabindex="-1">
-  <div class="modal-dialog modal-md">
+<!-- =================== BREAKDOWN MODAL =================== -->
+<div class="modal fade" id="breakdownModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Charges Breakdown</h5>
@@ -217,29 +412,250 @@
 </div>
 
 <script>
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".icon-left");
-  if(!btn) return;
-  const pkgId = btn.getAttribute("data-pkg");
-  fetch(`{{ url_for('admin.invoice_breakdown', package_id=0) }}`.replace('0', pkgId))
-    .then(r => r.json())
-    .then(d => {
-      const nf = new Intl.NumberFormat();
-      document.getElementById("bd-duty").textContent     = nf.format(d.duty || 0);
-      document.getElementById("bd-gct").textContent      = nf.format(d.gct || 0);
-      document.getElementById("bd-freight").textContent  = nf.format(d.freight || 0);
-      document.getElementById("bd-handling").textContent = nf.format(d.handling || 0);
-      document.getElementById("bd-scf").textContent      = nf.format(d.scf || 0);
-      document.getElementById("bd-envl").textContent     = nf.format(d.envl || 0);
-      document.getElementById("bd-caf").textContent      = nf.format(d.caf || 0);
-      document.getElementById("bd-stamp").textContent    = nf.format(d.stamp || 0);
-      document.getElementById("bd-other").textContent    = nf.format(d.other || 0);
-      document.getElementById("bd-total").textContent    = nf.format(d.total_jmd || 0);
-    })
-    .catch(() => {
-      ["bd-duty","bd-gct","bd-freight","bd-handling","bd-scf","bd-envl","bd-caf","bd-stamp","bd-other","bd-total"]
-        .forEach(id => document.getElementById(id).textContent = "—");
+document.addEventListener("DOMContentLoaded", function () {
+
+  // ==========================
+  // PAYMENT: keypad + method
+  // ==========================
+  (function () {
+    const display = document.getElementById("payDisplay");
+    const hidden  = document.getElementById("payAmountInput");
+    if (!display || !hidden) return;
+
+    let current = "0";
+
+    function updateDisplay() {
+      let num = parseFloat(current || "0");
+      if (isNaN(num)) num = 0;
+      hidden.value = num.toFixed(2);
+      display.textContent = "JMD " + num.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+
+    function pushKey(key) {
+      if (key === ".") {
+        if (current.includes(".")) return;
+        current += ".";
+      } else if (key === "00") {
+        if (current === "0") return;
+        current += "00";
+      } else {
+        if (current === "0") current = key;
+        else current += key;
+      }
+      updateDisplay();
+    }
+
+    document.querySelectorAll(".payment-key-btn").forEach(btn => {
+      btn.addEventListener("click", () => pushKey(btn.getAttribute("data-key")));
     });
+
+    document.querySelectorAll(".payment-quick-btn[data-quick]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        current = String(btn.getAttribute("data-quick") || "0");
+        updateDisplay();
+      });
+    });
+
+    const clearBtn = document.getElementById("payClearBtn");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", () => {
+        current = "0";
+        updateDisplay();
+      });
+    }
+
+    // Method selection
+    const methodInput = document.getElementById("payMethodInput");
+    const methodList  = document.getElementById("paymentMethodList");
+    if (methodInput && methodList) {
+      methodList.querySelectorAll(".payment-method-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          methodList.querySelectorAll(".payment-method-btn").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          methodInput.value = btn.getAttribute("data-method") || "Cash";
+        });
+      });
+    }
+
+    // Reset on modal open
+    const payModalEl = document.getElementById("addPaymentModal");
+    if (payModalEl) {
+      payModalEl.addEventListener("show.bs.modal", () => {
+        current = "0";
+        updateDisplay();
+        if (methodInput) methodInput.value = "Cash";
+        if (methodList) {
+          methodList.querySelectorAll(".payment-method-btn").forEach(b => b.classList.remove("active"));
+          const first = methodList.querySelector('.payment-method-btn[data-method="Cash"]');
+          if (first) first.classList.add("active");
+        }
+      });
+    }
+
+    updateDisplay();
+  })();
+
+
+  // ==========================
+  // DISCOUNT: percent/amount
+  // ==========================
+  (function () {
+    const form = document.getElementById("discountForm");
+    if (!form) return;
+
+    const balance = parseFloat(form.getAttribute("data-balance") || "0") || 0;
+    const tabs    = document.getElementById("discountTabs");
+    const panePct = document.getElementById("discountPercentPane");
+    const paneAmt = document.getElementById("discountAmountPane");
+    const pctInput= document.getElementById("discountPercentInput");
+    const pctLbl  = document.getElementById("discountPercentAmount");
+    const amtInput= document.getElementById("discountAmountInput");
+    const hidden  = document.getElementById("discountHiddenAmount");
+
+    let mode = "percent";
+
+    function formatJMD(v) {
+      const n = parseFloat(v || "0") || 0;
+      return "JMD " + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+
+    function recalc() {
+      if (mode === "percent") {
+        const pct = parseFloat(pctInput.value || "0") || 0;
+        const discAmt = Math.max(0, balance * pct / 100);
+        hidden.value = discAmt.toFixed(2);
+        if (pctLbl) pctLbl.textContent = formatJMD(discAmt);
+      } else {
+        const v = parseFloat(amtInput.value || "0") || 0;
+        hidden.value = v.toFixed(2);
+      }
+    }
+
+    if (tabs) {
+      tabs.querySelectorAll(".discount-tab").forEach(btn => {
+        btn.addEventListener("click", () => {
+          tabs.querySelectorAll(".discount-tab").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+          mode = btn.getAttribute("data-mode") || "percent";
+          if (mode === "percent") {
+            panePct.classList.remove("d-none");
+            paneAmt.classList.add("d-none");
+          } else {
+            panePct.classList.add("d-none");
+            paneAmt.classList.remove("d-none");
+          }
+          recalc();
+        });
+      });
+    }
+
+    if (pctInput) pctInput.addEventListener("input", recalc);
+    if (amtInput) amtInput.addEventListener("input", recalc);
+
+    const discModalEl = document.getElementById("addDiscountModal");
+    if (discModalEl) {
+      discModalEl.addEventListener("show.bs.modal", () => {
+        mode = "percent";
+        if (pctInput) pctInput.value = "0";
+        if (amtInput) amtInput.value = "0";
+        if (tabs) {
+          tabs.querySelectorAll(".discount-tab").forEach(b => b.classList.remove("active"));
+          const pctTab = tabs.querySelector('.discount-tab[data-mode="percent"]');
+          if (pctTab) pctTab.classList.add("active");
+        }
+        panePct.classList.remove("d-none");
+        paneAmt.classList.add("d-none");
+        recalc();
+      });
+    }
+
+    recalc();
+  })();
+
+
+  // ==========================
+  // BREAKDOWN: lightning click
+  // ==========================
+  document.addEventListener("click", function (e) {
+    const btn = e.target.closest(".icon-left");
+    if (!btn) return;
+
+    const pkgId = btn.getAttribute("data-pkg");
+    if (!pkgId) return;
+
+    const ids = ["bd-duty","bd-gct","bd-freight","bd-handling","bd-scf","bd-envl","bd-caf","bd-stamp","bd-other","bd-total"];
+    ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = "…"; });
+
+    fetch("{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace("0", pkgId))
+      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+      .then(d => {
+        const nf = new Intl.NumberFormat();
+        document.getElementById("bd-duty").textContent     = nf.format(d.duty || 0);
+        document.getElementById("bd-gct").textContent      = nf.format(d.gct || 0);
+        document.getElementById("bd-freight").textContent  = nf.format(d.freight || 0);
+        document.getElementById("bd-handling").textContent = nf.format(d.handling || 0);
+        document.getElementById("bd-scf").textContent      = nf.format(d.scf || 0);
+        document.getElementById("bd-envl").textContent     = nf.format(d.envl || 0);
+        document.getElementById("bd-caf").textContent      = nf.format(d.caf || 0);
+        document.getElementById("bd-stamp").textContent    = nf.format(d.stamp || 0);
+        document.getElementById("bd-other").textContent    = nf.format(d.other || 0);
+        document.getElementById("bd-total").textContent    = nf.format(d.total_jmd || 0);
+      })
+      .catch(() => ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = "—"; }));
+  });
+
+
+  // ==========================
+  // PAYMENT: AJAX submit (only payment form)
+  // ==========================
+  (function () {
+    const form = document.getElementById("addPaymentForm");
+    if (!form) return;
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+
+      try {
+        const fd = new FormData(form);
+
+        const resp = await fetch(form.action, {
+          method: "POST",
+          body: fd,
+          headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
+
+        const text = await resp.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch (_) {}
+
+        // Accept either ok:true or success:true
+        const success = (data && (data.ok === true || data.success === true));
+
+        if (!resp.ok || !success) {
+          console.error("Payment response:", text);
+          throw new Error((data && data.error) ? data.error : "Payment not saved.");
+        }
+
+        // close modal
+        const bsModalEl = document.getElementById("addPaymentModal");
+        if (bsModalEl && window.bootstrap) {
+          const modal = bootstrap.Modal.getInstance(bsModalEl);
+          if (modal) modal.hide();
+        }
+
+        // refresh totals
+        window.location.reload();
+
+      } catch (err) {
+        console.error(err);
+        alert(err.message || "Could not add payment.");
+      }
+    });
+  })();
+
 });
 </script>
+
+{% include 'admin/invoices/_proforma_modal_block.html' %}
+
 {% endblock %}

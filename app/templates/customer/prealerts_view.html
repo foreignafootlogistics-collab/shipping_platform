@@ -42,21 +42,66 @@
           {% if prealerts %}
             {% for p in prealerts %}
             <tr>
-              <td>{{ p[0] }}</td>
-              <td>{{ p[1] }}</td>
-              <td>{{ p[2] }}</td>
-              <td>{{ p[3] }}</td>
-              <td>{{ p[4] if p[4] else 'N/A' }}</td>
-              <td>{{ p[5] }}</td>
-              <td>${{ "%.2f"|format(p[6]) }}</td>
+              <!-- Pre-Alert # -->
               <td>
-                {% if p[7] %}
-                  <a href="{{ url_for('static', filename='invoices/' ~ p[7]) }}" target="_blank">View</a>
+                {% if p.prealert_number %}
+                  PA-{{ "%05d"|format(p.prealert_number) }}
+                {% else %}
+                  {{ p.id }}
+                {% endif %}
+              </td>
+
+
+              <!-- Vendor -->
+              <td>{{ p.vendor_name or 'N/A' }}</td>
+
+              <!-- Courier -->
+              <td>{{ p.courier_name or 'N/A' }}</td>
+
+              <!-- Tracking # -->
+              <td>{{ p.tracking_number or 'N/A' }}</td>
+
+              <!-- Purchase Date -->
+              <td>
+                {% if p.purchase_date %}
+                  {{ p.purchase_date }}
+                  {# or, if it's a datetime and you want formatting:
+                     {{ p.purchase_date.strftime("%Y-%m-%d") }} #}
                 {% else %}
                   N/A
                 {% endif %}
               </td>
-              <td>{{ p[8] if p[8] else 'N/A' }}</td>
+
+              <!-- Contents -->
+              <td>{{ p.package_contents or 'N/A' }}</td>
+
+              <!-- Value (USD) -->
+              <td>
+                ${{ "%.2f"|format(p.item_value_usd or 0) }}
+              </td>
+
+              <!-- Invoice -->
+              <td>
+                {% if p.invoice_filename %}
+                  <a href="{{ url_for('static', filename='uploads/invoices/' ~ p.invoice_filename) }}"
+                     target="_blank">
+                    View
+                  </a>
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+
+              <!-- Submitted On -->
+              <td>
+                {% if p.created_at %}
+                  {{ p.created_at }}
+                  {# or format if needed:
+                     {{ p.created_at.strftime("%Y-%m-%d %H:%M") }} #}
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           {% else %}

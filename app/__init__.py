@@ -60,6 +60,18 @@ def _ensure_first_admin():
 def create_app():
     app = Flask(__name__)
 
+def _safe_ctx(fn):
+    def wrapper():
+        try:
+            rv = fn()
+            return rv if isinstance(rv, dict) else {}
+        except Exception as e:
+            app.logger.exception(f"[CTX_PROCESSOR_FAIL] {fn.__name__}: {e}")
+            return {}
+    wrapper.__name__ = fn.__name__
+    return wrapper
+
+
     # Folders
     os.makedirs(app.instance_path, exist_ok=True)
     os.makedirs("static/invoices", exist_ok=True)
@@ -116,10 +128,12 @@ def create_app():
 
     # Template context
     @app.context_processor
+    @_safe_ctx
     def inject_current_year():
         return {'current_year': datetime.now().year}
 
     @app.context_processor
+    @_safe_ctx
     def inject_unread_notifications_count():
         from flask_login import current_user
         try:
@@ -133,6 +147,7 @@ def create_app():
         return dict(unread_notifications_count=count)
 
     @app.context_processor
+    @_safe_ctx
     def inject_categories():
         try:
             from .models import Category
@@ -142,6 +157,7 @@ def create_app():
         return dict(categories=categories)
 
     @app.context_processor
+    @_safe_ctx
     def inject_calculator_form():
         try:
             return {
@@ -157,6 +173,7 @@ def create_app():
 
 
     @app.context_processor
+    @_safe_ctx
     def inject_settings():
         try:
             from .models import Settings
@@ -165,6 +182,7 @@ def create_app():
             return {'settings': None}
 
     @app.context_processor
+    @_safe_ctx
     def inject_now():
         return {"now": datetime.utcnow}
 

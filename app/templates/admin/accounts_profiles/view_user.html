@@ -513,10 +513,37 @@
                 </td>
 
                 <td>
-                  <span class="badge {% if inv_status == 'paid' or owed == 0 %}bg-success{% else %}bg-danger{% endif %}">
-                    {{ 'Paid' if (inv_status == 'paid' or owed == 0) else 'Unpaid' }}
-                  </span>
-                </td>               
+                  <div class="d-flex flex-column gap-1">
+                    <!-- Status badge -->
+                    <span class="badge {% if inv_status == 'paid' or owed == 0 %}bg-success{% else %}bg-danger{% endif %}">
+                      {{ 'Paid' if (inv_status == 'paid' or owed == 0) else 'Unpaid' }}
+                    </span>
+
+                    <!-- Date line -->
+                    {% if inv_status == 'paid' or owed == 0 %}
+                      {% if inv.date_paid is defined and inv.date_paid %}
+                        <small class="text-muted">
+                          Paid on {{ inv.date_paid.strftime('%Y-%m-%d') }}
+                        </small>
+                      {% elif inv.updated_at is defined and inv.updated_at %}
+                        <small class="text-muted">
+                          Paid on {{ inv.updated_at.strftime('%Y-%m-%d') }}
+                        </small>
+                      {% endif %}
+                    {% else %}
+                      {% if inv.date_issued is defined and inv.date_issued %}
+                        <small class="text-muted">
+                          Received {{ inv.date_issued.strftime('%Y-%m-%d') }}
+                        </small>
+                      {% elif inv.created_at is defined and inv.created_at %}
+                        <small class="text-muted">
+                          Received {{ inv.created_at.strftime('%Y-%m-%d') }}
+                        </small>
+                      {% endif %}
+                    {% endif %}
+                  </div>
+                </td>
+               
               </tr>              
               {% endfor %}
             </tbody>

@@ -629,6 +629,7 @@ def logistics_dashboard():
                     weight=weight_actual,
                     tracking_number=tracking_number,
                     date_received=date_received,
+                    received_date=date_received,
                     description=description,
                     value=value,
                     amount_due=0,
@@ -1262,9 +1263,16 @@ def packages_bulk_action():
             flash(f"Deleted {len(pkgs)} package(s).", "success")
 
         elif action == "mark_received":
+            now = datetime.utcnow()
             for p in pkgs:
                 p.status = "Received"
-            db.session.commit()
+
+                # ✅ stamp date if missing
+                if not getattr(p, "received_date", None):
+                    p.received_date = now
+                if not getattr(p, "date_received", None):
+                    p.date_received = p.received_date
+            db.session.commit()            
             flash(f"Marked {len(pkgs)} package(s) as Received.", "success")
 
         elif action == "export_pdf":
@@ -1704,8 +1712,15 @@ def bulk_shipment_action(shipment_id):
 
     elif action == "ready":
         pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
+        now = datetime.utcnow()
         for p in pkgs:
             p.status = "Ready for Pick Up"
+
+            # ✅ ensure date exists for invoice display
+            if not getattr(p, "received_date", None):
+                p.received_date = now
+            if not getattr(p, "date_received", None):
+                p.date_received = p.received_date
         db.session.commit()
         flash(f"{len(package_ids)} package(s) marked Ready for Pick Up.", "success")
         return redirect(url_for(

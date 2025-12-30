@@ -699,11 +699,15 @@ def generate_invoice(user_id):
 
     # create invoice shell
     invoice_number = f"INV-{user.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+    now = datetime.utcnow()
+
     inv = Invoice(
         user_id=user.id,
         invoice_number=invoice_number,
-        date_submitted=datetime.utcnow(),
-        date_issued=datetime.utcnow(),
+        date_submitted=now,   # ✅ use same timestamp
+        date_issued=now,      # ✅ header date will now show
+        created_at=now,
         status="unpaid",
         amount_due=0,
     )
@@ -1120,7 +1124,19 @@ def generate_bulk_invoice():
 
     created = 0
     for uid in user_ids:
-        inv = Invoice(user_id=int(uid), date_submitted=datetime.utcnow(), status='Pending')
+        now = datetime.utcnow()
+
+        inv = Invoice(
+            user_id=int(uid),
+            invoice_number=_generate_invoice_number() if ' _generate_invoice_number' in globals() else f"INV-{now.strftime('%Y%m%d%H%M%S')}",
+            status="pending",                 # keep consistent lowercase if you want
+            date_submitted=now,
+            date_issued=now,                  # ✅ THIS FIXES THE HEADER DATE
+            created_at=now,                   # ✅ if your model expects it
+            amount=0,
+            grand_total=0,
+            amount_due=0,
+        )
         db.session.add(inv)
         created += 1
     db.session.commit()

@@ -229,8 +229,17 @@
 
         <!-- Header row + right actions -->
         <div class="d-flex justify-content-between align-items-center mb-2">
-          <div class="fw-bold" style="color:#4a148c;">
-            <i class="bi bi-box2 me-1"></i> Packages
+          <div class="d-flex align-items-center gap-2">
+            <label class="small text-muted mb-0">Rows</label>
+
+            <select id="pkgPerPageSelect" class="form-select form-select-sm" style="width:auto;"
+                    onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1, pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}&pkg_per_page=' + this.value;">
+
+              {% set current_pp = pkg_per_page|default(10) %}
+              {% for n in [10,25,50,100,500,1000] %}
+                <option value="{{ n }}" {% if current_pp|int == n %}selected{% endif %}>{{ n }}</option>
+              {% endfor %}
+            </select>
           </div>
 
           <!-- Right-side actions -->
@@ -245,12 +254,13 @@
             </button>
 
 
-            <!-- Add Pricing -->
+            <!-- Bulk Delete -->
             <button type="button"
                     class="btn btn-sm btn-outline-purple"
-                    id="bulkPricingBtn"
-                    title="Add Pricing">
-              <i class="bi bi-cash-coin"></i>
+                    id="bulkDeleteBtn"
+                    disabled
+                    title="Delete selected packages">
+              <i class="bi bi-trash"></i>
             </button>
 
             <!-- Filter -->
@@ -340,6 +350,7 @@
               <a class="page-link"
                 href="{{ url_for('accounts_profiles.view_user',
                                  id=user_id, tab='packages', pkg_page=1,
+                                 pkg_per_page=pkg_per_page,
                                  pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}">
                 &laquo;&laquo;
               </a>
@@ -351,6 +362,7 @@
                 href="{{ url_for('accounts_profiles.view_user',
                                  id=user_id, tab='packages',
                                  pkg_page=(pkg_page-1 if pkg_page>1 else 1),
+                                 pkg_per_page=pkg_per_page,
                                  pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}">
                 &laquo;
               </a>
@@ -362,6 +374,7 @@
                 href="{{ url_for('accounts_profiles.view_user',
                                  id=user_id, tab='packages',
                                  pkg_page=(pkg_page+1 if pkg_page < pkg_total_pages else pkg_total_pages),
+                                 pkg_per_page=pkg_per_page,
                                  pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}">
                 &raquo;
               </a>
@@ -372,6 +385,7 @@
               <a class="page-link"
                 href="{{ url_for('accounts_profiles.view_user',
                                  id=user_id, tab='packages', pkg_page=pkg_total_pages,
+                                 pkg_per_page=pkg_per_page,
                                  pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}"
 >
                 &raquo;&raquo;

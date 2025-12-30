@@ -646,7 +646,10 @@ def view_user(id):
 
     # Packages (paginated + filters)
     pkg_page = request.args.get("pkg_page", 1, type=int)
-    pkg_per_page = 10
+    pkg_per_page = request.args.get("pkg_per_page", 10, type=int)
+    if pkg_per_page not in (10, 25, 50, 100, 500, 1000):
+        pkg_per_page = 10
+
 
     # --- filters coming from the modal (we'll build the modal next step) ---
     pkg_from = (request.args.get("pkg_from") or "").strip()

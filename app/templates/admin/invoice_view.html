@@ -189,6 +189,7 @@
             <th>House AWB#</th>
             <th>Description</th>
             <th>Merchant</th>
+            <th>Date</th>
             <th class="text-end">LBS</th>
             <th class="text-end">Value (USD)</th>
             <th class="text-end">Due (JMD)</th>
@@ -205,17 +206,26 @@
                    title="Charges breakdown">
                 <i class="bi bi-lightning-charge"></i>
               </div>
-            </td>
+            </td>           
             <td><input type="checkbox"></td>
             <td>{{ p.house_awb or "—" }}</td>
             <td>{{ p.description or "—" }}</td>
             <td>{{ p.merchant or "—" }}</td>
+            {% set recv = p.received_date or p.date_received %}
+            <td>
+              {% if recv %}
+                {{ recv.strftime('%d.%m.%Y') }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
             <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
-            <td class="text-end">${{ "%.2f"|format(p.value_usd or 0) }}</td>
+            <td class="text-end">${{ "%.2f"|format(p.declared_value or p.value or 0) }}
+</td>
             <td class="text-end">JMD {{ "%.2f"|format(p.amount_due or 0) }}</td>
           </tr>
         {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-4">No items.</td></tr>
+          <tr><td colspan="9" class="text-center text-muted py-4">No items.</td></tr>
         {% endfor %}
         </tbody>
       </table>

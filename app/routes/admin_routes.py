@@ -1506,10 +1506,11 @@ def proforma_invoice_modal(invoice_id):
     effective_usd_to_jmd = (getattr(settings, "usd_to_jmd", None) or USD_TO_JMD)
 
     # ---- logo url (robust) ----
-    if settings and getattr(settings, "logo_path", None):
-        logo_url = url_for("static", filename=settings.logo_path)
-    else:
-        logo_url = url_for("static", filename="logo.png")
+    logo_url = url_for(
+        "static",
+        filename=(settings.logo_path if settings and settings.logo_path else "logo.png"),
+        _external=True
+    )
 
     items = []
     subtotal = 0.0
@@ -1671,11 +1672,12 @@ def email_proforma_invoice(invoice_id):
 
     effective_usd_to_jmd = (getattr(settings, "usd_to_jmd", None) or USD_TO_JMD)
 
-    # logo url
-    if settings and getattr(settings, "logo_path", None):
-        logo_url = url_for("static", filename=settings.logo_path)
-    else:
-        logo_url = url_for("static", filename="logo.png")
+    logo_url = url_for(
+        "static",
+        filename=(settings.logo_path if settings and settings.logo_path else "logo.png"),
+        _external=True
+    )
+
 
     items = []
     subtotal = 0.0
@@ -1753,9 +1755,26 @@ def email_proforma_invoice(invoice_id):
     msg["Subject"] = subject
     msg["From"] = from_email
     msg["To"] = customer_email
-    msg.set_content("Please view this email in HTML mode.")
-
+    # Email body (keep HTML for preview inside email)
+    msg.set_content("Attached is your Proforma Invoice (PDF).")
     msg.add_alternative(html, subtype="html")
+
+    # --- Generate PDF from the same HTML ---
+    pdf_bytes = HTML(
+        string=html,
+        base_url=request.url_root  # IMPORTANT so logo/static paths resolve
+    ).write_pdf()
+
+    filename = f"Proforma_{inv.invoice_number or f'INV{inv.id:05d}'}.pdf"
+
+    # Attach PDF
+    msg.add_attachment(
+        pdf_bytes,
+        maintype="application",
+        subtype="pdf",
+        filename=filename
+    )
+
 
     try:
         with smtplib.SMTP(host, port) as s:

@@ -1,6 +1,7 @@
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    session, flash, make_response, jsonify, send_file, abort
+    session, flash, make_response, jsonify, send_file, abort, 
+    current_app
 )
 from flask_login import login_required, current_user, login_user, logout_user
 from werkzeug.utils import secure_filename
@@ -1657,12 +1658,84 @@ def email_proforma_invoice(invoice_id):
         return jsonify(ok=False, error="Customer email not found for this invoice."), 400
 
     # Render the proforma HTML (the same content you show in the modal)
+    # Build the same proforma payload as the modal
+    user_obj = inv.user
+
+    pkgs = (Package.query
+            .filter_by(invoice_id=invoice_id)
+            .order_by(Package.created_at.asc())
+            .all())
+
+    from app.models import Settings
+    settings = Settings.query.get(1)
+
+    effective_usd_to_jmd = (getattr(settings, "usd_to_jmd", None) or USD_TO_JMD)
+
+    # logo url
+    if settings and getattr(settings, "logo_path", None):
+        logo_url = url_for("static", filename=settings.logo_path)
+else:
+        logo_url = url_for("static", filename="logo.png")
+
+    items = []
+    subtotal = 0.0
+
+    for p in pkgs:
+        desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
+        wt_raw = float(getattr(p, "weight", 0) or 0)
+        wt = math.ceil(wt_raw)
+        val = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
+
+        ch = calculate_charges(desc, val, wt)
+
+        subtotal += float(ch.get("grand_total", 0) or 0)
+
+        items.append({
+            "house_awb": p.house_awb,
+            "description": desc,
+            "weight": wt,
+            "value": val,
+            "freight": float(ch.get("freight", 0) or 0),
+            "handling": float(ch.get("handling", 0) or 0),
+            "storage": float(ch.get("handling", 0) or 0),
+            "duty": float(ch.get("duty", 0) or 0),
+            "gct": float(ch.get("gct", 0) or 0),
+            "scf": float(ch.get("scf", 0) or 0),
+            "envl": float(ch.get("envl", 0) or 0),
+            "caf": float(ch.get("caf", 0) or 0),
+            "stamp": float(ch.get("stamp", 0) or 0),
+            "other_charges": float(ch.get("other_charges", 0) or 0),
+            "discount_due": 0.0,
+        })
+
+    live_subtotal = float(subtotal or 0.0)
+    _db_subtotal, discount_total, payments_total, _db_total_due = _fetch_invoice_totals_pg(invoice_id)
+    balance_due = max(live_subtotal - float(discount_total or 0) - float(payments_total or 0), 0.0)
+
+    invoice_dict = {
+        "id": inv.id,
+        "number": inv.invoice_number or f"PROFORMA-{inv.id}",
+        "date": inv.date_issued or inv.date_submitted or datetime.utcnow(),
+        "customer_code": getattr(user_obj, "registration_number", "") if user_obj else "",
+        "customer_name": getattr(user_obj, "full_name", "") if user_obj else "",
+        "branch": "Main Branch",
+        "staff": getattr(current_user, "full_name", "FAFL ADMIN"),
+        "subtotal": live_subtotal,
+        "discount_total": float(discount_total or 0.0),
+        "payments_total": float(payments_total or 0.0),
+        "total_due": balance_due,
+        "notes": getattr(inv, "description", "") or "",
+        "packages": items,
+    }
+
     html = render_template(
         "admin/invoices/_invoice_core.html",
-        invoice=inv,
-        USD_TO_JMD=current_app.config.get("USD_TO_JMD", 0),
-        is_proforma=True
+        invoice=invoice_dict,
+        settings=settings,
+        USD_TO_JMD=effective_usd_to_jmd,
+        logo_url=logo_url,
     )
+
 
     # Send email (HTML body)
     subject = f"Proforma Invoice {inv.invoice_number or f'INV{inv.id:05d}'} - Foreign A Foot Logistics"
@@ -1682,13 +1755,14 @@ def email_proforma_invoice(invoice_id):
     msg["To"] = customer_email
     msg.set_content("Please view this email in HTML mode.")
     msg.add_alternative(html, subtype="html")
-
+try:
     with smtplib.SMTP(host, port) as s:
         s.starttls()
         s.login(user, pwd)
         s.send_message(msg)
-
-    return jsonify(ok=True, sent_to=customer_email)
+except Exception as e:
+    current_app.logger.exception("Proforma email failed for invoice %s", invoice_id)
+    return jsonify(ok=False, error=f"Failed to send email: {str(e)}"), 500
 
 @admin_bp.route("/invoice/receipt/<int:invoice_id>")
 @admin_required

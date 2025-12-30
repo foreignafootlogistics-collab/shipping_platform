@@ -1754,15 +1754,18 @@ def email_proforma_invoice(invoice_id):
     msg["From"] = from_email
     msg["To"] = customer_email
     msg.set_content("Please view this email in HTML mode.")
+
     msg.add_alternative(html, subtype="html")
-try:
-    with smtplib.SMTP(host, port) as s:
-        s.starttls()
-        s.login(user, pwd)
-        s.send_message(msg)
-except Exception as e:
-    current_app.logger.exception("Proforma email failed for invoice %s", invoice_id)
-    return jsonify(ok=False, error=f"Failed to send email: {str(e)}"), 500
+
+    try:
+        with smtplib.SMTP(host, port) as s:
+            s.starttls()
+            s.login(user, pwd)
+            s.send_message(msg)
+    except Exception as e:
+        current_app.logger.exception("Proforma email failed for invoice %s", invoice_id)
+        return jsonify(ok=False, error=f"Failed to send email: {str(e)}"), 500
+    return jsonify(ok=True, sent_to=customer_email)
 
 @admin_bp.route("/invoice/receipt/<int:invoice_id>")
 @admin_required

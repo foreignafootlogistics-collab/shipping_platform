@@ -794,10 +794,10 @@
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
 
-        <form id="addSinglePackageForm">
+        <form id="addSinglePackageForm"
+              method="POST"
               action="{{ url_for('accounts_profiles.create_single_package_for_user', id=user_id) }}">
-              method="POST">
-          <!-- user id for route -->
+
           <input type="hidden" name="user_id" value="{{ user_id }}">
           <!-- CSRF (works with Flask-WTF CSRFProtect if enabled) -->
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

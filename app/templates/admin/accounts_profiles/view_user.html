@@ -795,6 +795,8 @@
         </div>
 
         <form id="addSinglePackageForm">
+              action="{{ url_for('accounts_profiles.create_single_package_for_user', id=user_id) }}">
+              method="POST">
           <!-- user id for route -->
           <input type="hidden" name="user_id" value="{{ user_id }}">
           <!-- CSRF (works with Flask-WTF CSRFProtect if enabled) -->
@@ -1035,70 +1037,7 @@
     </div>
   </div>
 
-  <!-- Bulk Pricing Modal -->
-  <div class="modal fade" id="bulkPricingModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-      <div class="modal-content">
-
-        <div class="modal-header" style="background-color:#4a148c; color:white;">
-          <h5 class="modal-title">
-            <i class="bi bi-cash-coin me-1"></i> Bulk Pricing for Selected Packages
-          </h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-
-        <div class="modal-body">
-
-          <div class="alert alert-light border">
-            <strong>Selected:</strong> <span id="bulkPricingCount">0</span> package(s)
-          </div>
-
-          <div class="row g-2">
-            <div class="col-md-4">
-              <label class="form-label">Category</label>
-              <select id="bulkPricingCategory" class="form-select">
-                {% for cat in categories %}
-                  <option value="{{ cat }}">{{ cat }}</option>
-                {% endfor %}
-              </select>
-            </div>
-
-            <div class="col-md-4">
-              <label class="form-label">Override Value (USD) (optional)</label>
-              <input type="number" step="0.01" id="bulkOverrideValueUsd" class="form-control" placeholder="Leave blank to use each package value">
-            </div>
-
-            <div class="col-md-4">
-              <label class="form-label">Override Weight (lbs) (optional)</label>
-              <input type="number" step="0.01" id="bulkOverrideWeight" class="form-control" placeholder="Leave blank to use each package weight">
-            </div>
-          </div>
-
-          <hr class="my-3">
-
-          <div class="alert alert-light border mb-0">
-            <div class="d-flex justify-content-between">
-              <strong>Total Grand Total (JMD)</strong>
-              <strong id="bulkGrandTotal">—</strong>
-            </div>
-            <small class="text-muted">Calculate previews totals for all selected packages.</small>
-          </div>
-
-        </div>
-
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" id="bulkCalcBtn">
-            Calculate
-          </button>
-          <button type="button" class="btn btn-success" id="bulkApplyBtn" disabled>
-            Apply Pricing
-          </button>
-        </div>
-
-      </div>
-    </div>
-  </div>
-
+  
   <!-- Quick Add Delivery Modal -->
   <div class="modal fade" id="adminAddDeliveryModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -1376,213 +1315,59 @@ $(document).ready(function () {
   });
 });
 
-(function(){
-  const modalEl = document.getElementById('bulkPricingModal');
-  const modal = modalEl ? new bootstrap.Modal(modalEl) : null;
-
-  const btnOpen  = document.getElementById('bulkPricingBtn');
-  const btnCalc  = document.getElementById('bulkCalcBtn');
-  const btnApply = document.getElementById('bulkApplyBtn');
-
+(function () {
   const selectAll = document.getElementById('pkgSelectAll');
+  const deleteBtn = document.getElementById('bulkDeleteBtn');
 
-  let lastResults = null; // enriched results for APPLY
-
-  function getSelectedChecks(){
-    return Array.from(document.querySelectorAll('.pkg-check:checked'));
+  function selectedIds() {
+    return Array.from(document.querySelectorAll('.pkg-check:checked'))
+      .map(cb => parseInt(cb.value, 10))
+      .filter(n => !isNaN(n));
   }
 
-  function nf(v){
-    const n = parseFloat(v || 0) || 0;
-    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function refreshDeleteBtn() {
+    const count = selectedIds().length;
+    if (deleteBtn) deleteBtn.disabled = count === 0;
   }
 
-  function updateCount(){
-    const count = getSelectedChecks().length;
-    const el = document.getElementById('bulkPricingCount');
-    if (el) el.textContent = String(count);
-    return count;
-  }
-
-  function resetCalc(){
-    lastResults = null;
-    const gt = document.getElementById('bulkGrandTotal');
-    if (gt) gt.textContent = '—';
-    if (btnApply) btnApply.disabled = true;
-  }
-
-  // Select all
-  if (selectAll){
-    selectAll.addEventListener('change', function(){
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
       const on = !!this.checked;
       document.querySelectorAll('.pkg-check').forEach(cb => cb.checked = on);
-      updateCount();
-      resetCalc();
+      refreshDeleteBtn();
     });
   }
 
-  // Per-row checkbox changes
   document.querySelectorAll('.pkg-check').forEach(cb => {
-    cb.addEventListener('change', () => {
-      updateCount();
-      resetCalc();
-      if (selectAll && !cb.checked) selectAll.checked = false;
+    cb.addEventListener('change', function () {
+      if (selectAll && !this.checked) selectAll.checked = false;
+      refreshDeleteBtn();
     });
   });
 
-  // Open modal
-  if (btnOpen){
-    btnOpen.addEventListener('click', function(e){
-      e.preventDefault(); // IMPORTANT since you used <a>
-      const count = updateCount();
-      if (!count){
-        alert('Select at least one package first.');
-        return;
-      }
-      resetCalc();
-      modal.show();
-    });
-  }
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', async function () {
+      const ids = selectedIds();
+      if (!ids.length) return;
 
-  // CALCULATE
-  if (btnCalc){
-    btnCalc.addEventListener('click', function(){
-      const selected = getSelectedChecks();
-      if (!selected.length){
-        alert('Select at least one package.');
-        return;
-      }
+      if (!confirm(`Delete ${ids.length} selected package(s)? This cannot be undone.`)) return;
 
-      const category = document.getElementById('bulkPricingCategory').value;
-      const overrideValue  = document.getElementById('bulkOverrideValueUsd').value;
-      const overrideWeight = document.getElementById('bulkOverrideWeight').value;
-
-      // map pkg_id => base fields so APPLY always has invoice/weight/category
-      const rowById = {};
-
-      const rows = selected.map(cb => {
-        const pkgId = parseInt(cb.value, 10);
-
-        const w = (overrideWeight !== '' && overrideWeight != null)
-          ? overrideWeight
-          : cb.getAttribute('data-weight');
-
-        const v = (overrideValue !== '' && overrideValue != null)
-          ? overrideValue
-          : cb.getAttribute('data-value');
-
-        rowById[pkgId] = {
-          invoice: parseFloat(v || 0) || 0,
-          weight:  parseFloat(w || 0) || 0,
-          category
-        };
-
-        return { pkg_id: pkgId, invoice: v, weight: w, category };
-      });
-
-      fetch("{{ url_for('logistics.bulk_calc_outstanding') }}", {
+      const res = await fetch("{{ url_for('accounts_profiles.bulk_delete_user_packages', id=user_id) }}", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest"
-        },
-        body: JSON.stringify({ rows })
-      })
-      .then(r => r.json())
-      .then(data => {
-        const results = data.results || [];
-        if (!results.length) throw new Error('No results returned.');
-
-        // ✅ ENRICH results with invoice/weight/category from rowById
-        lastResults = results.map(r => {
-          const base = rowById[r.pkg_id] || { invoice: 0, weight: 0, category };
-          return {
-            ...r,
-            invoice: base.invoice,
-            weight: base.weight,
-            category: base.category
-          };
-        });
-
-        const total = lastResults.reduce((sum, r) => sum + (parseFloat(r.grand_total || 0) || 0), 0);
-        document.getElementById('bulkGrandTotal').textContent = 'JMD ' + nf(total);
-
-        btnApply.disabled = false;
-      })
-      .catch(err => {
-        alert(err.message || 'Unable to calculate.');
-        resetCalc();
+        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        body: JSON.stringify({ package_ids: ids })
       });
+
+      const data = await res.json();
+      if (!data.success) return alert(data.error || "Delete failed");
+
+      window.location.reload();
     });
   }
 
-  // APPLY
-  if (btnApply){
-    btnApply.addEventListener('click', async function(){
-      if (!lastResults || !lastResults.length){
-        alert('Please calculate first.');
-        return;
-      }
-
-      btnApply.disabled = true;
-
-      try {
-        for (const r of lastResults){
-          const pkgId = r.pkg_id;
-          const b = r.breakdown || {};
-
-          const payload = {
-            category: r.category,
-
-            // ✅ now guaranteed
-            value:  parseFloat(r.invoice || 0) || 0,
-            weight: parseFloat(r.weight  || 0) || 0,
-
-            amount_due: parseFloat(r.grand_total || 0) || 0,
-
-            duty:  parseFloat(b.duty  || 0) || 0,
-            scf:   parseFloat(b.scf   || 0) || 0,
-            envl:  parseFloat(b.envl  || 0) || 0,
-            caf:   parseFloat(b.caf   || 0) || 0,
-            gct:   parseFloat(b.gct   || 0) || 0,
-            stamp: parseFloat(b.stamp || 0) || 0,
-
-            freight:       parseFloat(b.freight       || 0) || 0,
-            handling:      parseFloat(b.handling      || 0) || 0,
-            freight_total: parseFloat(b.freight_total || 0) || 0,
-            other_charges: parseFloat(b.other_charges || 0) || 0,
-
-            grand_total:   parseFloat(b.grand_total   || r.grand_total || 0) || 0,
-            customs_total: parseFloat(b.customs_total || 0) || 0
-          };
-
-          const url = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace('0', String(pkgId));
-
-          const res = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Requested-With": "XMLHttpRequest"
-            },
-            body: JSON.stringify(payload)
-          });
-
-          const json = await res.json();
-          if (!json.ok){
-            throw new Error(json.error || `Failed saving pkg ${pkgId}`);
-          }
-        }
-
-        modal.hide();
-        window.location.reload();
-
-      } catch (e){
-        alert(e.message || 'Failed applying bulk pricing.');
-        btnApply.disabled = false;
-      }
-    });
-  }
+  refreshDeleteBtn();
 })();
+
 
 /* ================================
    Inline invoice behaviour (POS)

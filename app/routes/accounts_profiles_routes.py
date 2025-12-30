@@ -950,6 +950,34 @@ def create_single_package_for_user(id):
         }
     })
 
+@accounts_bp.route("/users/<int:id>/packages/bulk-delete", methods=["POST"])
+@admin_required
+def bulk_delete_user_packages(id):
+    user = db.session.get(User, id)
+    if not user:
+        return jsonify({"success": False, "error": "User not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    ids = data.get("package_ids") or []
+
+    # normalize + validate
+    try:
+        ids = [int(x) for x in ids]
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid package ids"}), 400
+
+    if not ids:
+        return jsonify({"success": False, "error": "No packages selected"}), 400
+
+    # only delete packages that belong to this user
+    q = Package.query.filter(Package.user_id == user.id, Package.id.in_(ids))
+    deleted_count = q.count()
+
+    q.delete(synchronize_session=False)
+    db.session.commit()
+
+    return jsonify({"success": True, "deleted": deleted_count})
+
 
 # -------------------------
 # Change Password

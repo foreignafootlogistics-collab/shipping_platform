@@ -15,6 +15,8 @@ from collections import defaultdict
 
 import bcrypt
 import openpyxl
+import base64
+from pathlib import Path
 from weasyprint import HTML
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.pagesizes import letter
@@ -1646,6 +1648,15 @@ def invoice_inline(invoice_id):
 @login_required
 @admin_required
 def email_proforma_invoice(invoice_id):
+    import math
+    import smtplib
+    from email.message import EmailMessage
+    from datetime import datetime
+    from flask import request, jsonify, url_for, current_app
+    from app.models import Invoice, Package, Settings
+    from app.calculator import calculate_charges
+    from app.calculator_data import USD_TO_JMD
+
     inv = Invoice.query.get_or_404(invoice_id)
 
     # -----------------------------
@@ -1661,7 +1672,7 @@ def email_proforma_invoice(invoice_id):
         return jsonify(ok=False, error="Customer email not found for this invoice."), 400
 
     # -----------------------------
-    # 2) Build the SAME proforma payload as the modal
+    # 2) Build proforma payload
     # -----------------------------
     user_obj = inv.user
 
@@ -1672,17 +1683,25 @@ def email_proforma_invoice(invoice_id):
         .all()
     )
 
-    from app.models import Settings
     settings = Settings.query.get(1)
-
     effective_usd_to_jmd = (getattr(settings, "usd_to_jmd", None) or USD_TO_JMD)
 
-    # External URL so email clients can load it
-    logo_url = url_for(
+    # Email logo (external URL so email clients can load it)
+    logo_url_email = url_for(
         "static",
         filename=(settings.logo_path if settings and settings.logo_path else "logo.png"),
         _external=True
     )
+
+    # PDF logo (embed as base64 for WeasyPrint reliability)
+    logo_rel = settings.logo_path if settings and settings.logo_path else "logo.png"
+    logo_file = Path(current_app.root_path) / "static" / logo_rel
+
+    logo_url_pdf = logo_url_email  # fallback
+    if logo_file.exists():
+        ext = logo_file.suffix.lower().replace(".", "") or "png"
+        b64 = base64.b64encode(logo_file.read_bytes()).decode("utf-8")
+        logo_url_pdf = f"data:image/{ext};base64,{b64}"
 
     items = []
     subtotal = 0.0
@@ -1739,24 +1758,23 @@ def email_proforma_invoice(invoice_id):
     }
 
     # -----------------------------
-    # 3) Render HTML used for PDF generation
+    # 3) Render PDF HTML (embedded logo)
     # -----------------------------
-    html = render_template(
+    html_pdf = render_template(
         "admin/invoices/_invoice_core.html",
         invoice=invoice_dict,
         settings=settings,
         USD_TO_JMD=effective_usd_to_jmd,
-        logo_url=logo_url,
+        logo_url=logo_url_pdf,
     )
 
     # -----------------------------
-    # 4) Generate PDF from same HTML
-    #    base_url is IMPORTANT so CSS/images resolve in WeasyPrint
+    # 4) Generate PDF
     # -----------------------------
     try:
         pdf_bytes = HTML(
-            string=html,
-            base_url=request.url_root  # e.g. https://app-faflcourier.onrender.com/
+            string=html_pdf,
+            base_url=request.url_root
         ).write_pdf()
     except Exception as e:
         current_app.logger.exception("PDF generation failed for invoice %s", invoice_id)
@@ -1765,22 +1783,21 @@ def email_proforma_invoice(invoice_id):
     filename = f"Proforma_{invoice_number}.pdf"
 
     # -----------------------------
-    # 5) Email subject + SMTP config
+    # 5) SMTP config
     # -----------------------------
     subject = f"Proforma Invoice {invoice_number} - Foreign A Foot Logistics"
 
     host = current_app.config.get("SMTP_HOST")
     port = int(current_app.config.get("SMTP_PORT", 587))
-    user = current_app.config.get("SMTP_USER")
+    smtp_user = current_app.config.get("SMTP_USER")
     pwd  = current_app.config.get("SMTP_PASS")
-    from_email = current_app.config.get("SMTP_FROM") or user
+    from_email = current_app.config.get("SMTP_FROM") or smtp_user
 
-    if not host or not user or not pwd or not from_email:
+    if not host or not smtp_user or not pwd or not from_email:
         return jsonify(ok=False, error="SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASS)."), 500
 
     # -----------------------------
-    # 6) Email body (SHORT) + attach PDF
-    #    (This avoids duplicating the whole invoice in the email body)
+    # 6) Email body (short) + attach PDF
     # -----------------------------
     full_name = invoice_dict.get("customer_name") or "Customer"
 
@@ -1813,7 +1830,6 @@ def email_proforma_invoice(invoice_id):
     msg.set_content(plain_body)
     msg.add_alternative(html_body, subtype="html")
 
-    # Attach PDF
     msg.add_attachment(
         pdf_bytes,
         maintype="application",
@@ -1827,13 +1843,14 @@ def email_proforma_invoice(invoice_id):
     try:
         with smtplib.SMTP(host, port) as s:
             s.starttls()
-            s.login(user, pwd)
+            s.login(smtp_user, pwd)
             s.send_message(msg)
     except Exception as e:
         current_app.logger.exception("Proforma email failed for invoice %s", invoice_id)
         return jsonify(ok=False, error=f"Failed to send email: {str(e)}"), 500
 
     return jsonify(ok=True, sent_to=customer_email, filename=filename)
+
 
 
 @admin_bp.route("/invoice/receipt/<int:invoice_id>")

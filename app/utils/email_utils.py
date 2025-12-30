@@ -3,6 +3,7 @@ import smtplib
 from math import ceil
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 from flask import current_app
 from app.config import LOGO_URL
 from math import ceil
@@ -20,30 +21,43 @@ except Exception:
 # ==========================================================
 #  EMAIL CONFIG (use environment variables in production)
 # ==========================================================
-EMAIL_ADDRESS = os.getenv("FAF_EMAIL", "foreignafootlogistics@gmail.com")
-EMAIL_PASSWORD = os.getenv("FAF_EMAIL_PASSWORD", "psudlguoqqkoiapu")
 LOGO_URL = os.getenv("FAF_LOGO_URL", "https://yourdomain.com/static/faf_logo.png")  # update
 DASHBOARD_URL = os.getenv("FAF_DASHBOARD_URL", "https://www.foreignafoot.com")
 
 # ==========================================================
 #  CORE EMAIL FUNCTION (SMTP - Gmail)
 # ==========================================================
-def send_email(to_email: str, subject: str, plain_body: str, html_body: str | None = None) -> bool:
+def send_email(
+    to_email: str,
+    subject: str,
+    plain_body: str,
+    html_body: str | None = None,
+    attachments: list[tuple[bytes, str, str]] | None = None,
+) -> bool:
     """
-    Send an email via Gmail SMTP with optional HTML content.
-    Always includes a plaintext fallback for deliverability.
+    attachments: list of (file_bytes, filename, mimetype)
+      e.g. [(pdf_bytes, "Proforma_INV-001.pdf", "application/pdf")]
     """
-    msg = MIMEMultipart("alternative")
+    msg = MIMEMultipart("mixed")  # mixed because we may attach files
     msg["From"] = EMAIL_ADDRESS
     msg["To"] = to_email
     msg["Subject"] = subject
 
-    # Plain text (required)
-    msg.attach(MIMEText(plain_body, "plain"))
-
-    # HTML (optional)
+    # Email body container
+    body = MIMEMultipart("alternative")
+    body.attach(MIMEText(plain_body, "plain"))
     if html_body:
-        msg.attach(MIMEText(html_body, "html"))
+        body.attach(MIMEText(html_body, "html"))
+
+    msg.attach(body)
+
+    # Attachments
+    if attachments:
+        for file_bytes, filename, mimetype in attachments:
+            maintype, subtype = (mimetype.split("/", 1) + ["octet-stream"])[:2]
+            part = MIMEApplication(file_bytes, _subtype=subtype)
+            part.add_header("Content-Disposition", "attachment", filename=filename)
+            msg.attach(part)
 
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:

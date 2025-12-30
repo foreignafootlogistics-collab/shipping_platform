@@ -147,7 +147,7 @@
           <button type="button"
                   class="btn btn-outline-secondary btn-sm"
                   title="View Proforma Invoice"
-                  onclick="(window.openProformaInvoice ? openProformaInvoice({{ invoice.id }}) : console.warn('openProformaInvoice not found'))">
+                  onclick="openProformaInvoice({{ invoice.id }})">
             <i class="bi bi-receipt"></i>
           </button>
         </div>

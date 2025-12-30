@@ -178,19 +178,21 @@
           </button>
         </li>
 
-        <li class="nav-item" role="presentation">
-          <button class="nav-link {% if current_tab == 'payments' %}active{% endif %}"
-                  id="payments-tab" data-bs-toggle="tab"
-                  data-bs-target="#payments" type="button" role="tab">
-            <i class="bi bi-credit-card"></i> Payments
-          </button>
-        </li>
+        
 
         <li class="nav-item" role="presentation">
           <button class="nav-link {% if current_tab == 'invoices' %}active{% endif %}"
                   id="invoices-tab" data-bs-toggle="tab"
                   data-bs-target="#invoices" type="button" role="tab">
             <i class="bi bi-receipt"></i> Invoices
+          </button>
+        </li>
+
+        <li class="nav-item" role="presentation">
+          <button class="nav-link {% if current_tab == 'payments' %}active{% endif %}"
+                  id="payments-tab" data-bs-toggle="tab"
+                  data-bs-target="#payments" type="button" role="tab">
+            <i class="bi bi-credit-card"></i> Payments
           </button>
         </li>
 
@@ -463,31 +465,23 @@
                 <th class="text-end">Amount Due</th>
                 <th class="text-end">Amount Paid</th>
                 <th class="text-end">Amount Owed</th>                
-                <th>Status</th>
-                <th>Action</th>
+                <th>Status</th>                
               </tr>
             </thead>
             <tbody>
-              {% for inv in invoices %}
+              {% for inv, paid_sum in invoices_rows %}
               {% set inv_status = (inv.status or 'unpaid')|lower %}
               {# ---- Amount Due (robust fallback) ---- #}
               {% set due =
                   (inv.grand_total if inv.grand_total is defined and inv.grand_total is not none
                    else (inv.amount_due if inv.amount_due is defined and inv.amount_due is not none
-                         else (inv.amount_display if inv.amount_display is defined and inv.amount_display is not none
-                               else 0)))
+                         else 0))
               %}
 
-              {# ---- Amount Paid (robust fallback) ---- #}
-              {% set paid =
-                  (inv.amount_paid if inv.amount_paid is defined and inv.amount_paid is not none
-                   else (inv.total_paid if inv.total_paid is defined and inv.total_paid is not none
-                         else (inv.paid_total if inv.paid_total is defined and inv.paid_total is not none
-                               else 0)))
-              %}
-
+              {% set paid = paid_sum|float %}
               {% set owed = (due|float - paid|float) %}
               {% if owed < 0 %}{% set owed = 0 %}{% endif %}
+
               <tr data-invoice-id="{{ inv.id }}">
                 <td>
                   <button type="button"
@@ -521,24 +515,7 @@
                   <span class="badge {% if inv_status == 'paid' or owed == 0 %}bg-success{% else %}bg-danger{% endif %}">
                     {{ 'Paid' if (inv_status == 'paid' or owed == 0) else 'Unpaid' }}
                   </span>
-                </td>
-
-                <td class="text-nowrap">
-                  <button type="button"
-                          class="btn btn-sm btn-outline-purple"
-                          onclick="loadInvoiceInline({{ inv.id }})"
-                          title="View inline">
-                    <i class="bi bi-file-earmark-text"></i>
-                  </button>
-
-                  {% if owed > 0 %}
-                    <button class="btn btn-sm btn-success mark-paid-btn"
-                            data-invoice-id="{{ inv.id }}"
-                            data-amount-owed="{{ money(owed) }}">
-                      Add Payment
-                    </button>
-                  {% endif %}
-                </td>
+                </td>               
               </tr>              
               {% endfor %}
             </tbody>

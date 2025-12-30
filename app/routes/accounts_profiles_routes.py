@@ -755,12 +755,12 @@ def view_user(id):
     pkg_show_to   = min(pkg_page * pkg_per_page, total_pkgs)
 
        # ---------------- Invoices for this user ----------------
-    invoices = []
+    invoices_rows = []
     total_owed = 0.0
     total_paid = 0.0
 
     try:
-        inv_query = Invoice.query
+        inv_base = db.session.query(Invoice)
 
         # Match by whatever fields your Invoice model actually has
         conds = []
@@ -772,25 +772,27 @@ def view_user(id):
             conds.append(Invoice.customer_code == (user.registration_number or ""))
 
         if conds:
-            inv_query = inv_query.filter(or_(*conds))
+            inv_base = inv_base.filter(or_(*conds))
 
-        # Load full objects so Jinja can use inv.id / inv.invoice_number, etc.
-        invoices = (
-            inv_query
+        pay_amount_col = getattr(Payment, "amount_jmd", getattr(Payment, "amount"))
+        paid_sum_col = func.coalesce(func.sum(pay_amount_col), 0.0).label("paid_sum")
+
+
+
+        invoices_rows = (
+            db.session.query(Invoice, paid_sum_col)
+            .select_from(Invoice)
+            .outerjoin(Payment, Payment.invoice_id == Invoice.id)
+            .filter(*inv_base._where_criteria)  # keep your same invoice filters
+            .group_by(Invoice.id)
             .order_by(
-                # try to pick the best date field available
-                getattr(
-                    Invoice,
-                    "date",
-                    getattr(Invoice, "date_submitted", Invoice.id)
-                ).desc()
+                getattr(Invoice, "date", getattr(Invoice, "date_submitted", Invoice.id)).desc()
             )
             .all()
         )
 
-        # Totals (use grand_total / amount_due if present, otherwise fall back to total)
-        def _inv_amount(inv):
-            for attr in ("amount_due", "grand_total", "total"):
+        def _inv_due(inv):
+            for attr in ("grand_total", "amount_due", "total"):
                 if hasattr(inv, attr) and getattr(inv, attr) is not None:
                     try:
                         return float(getattr(inv, attr))
@@ -798,26 +800,18 @@ def view_user(id):
                         pass
             return 0.0
 
-        total_owed = sum(
-            _inv_amount(inv)
-            for inv in invoices
-            if (inv.status or "").lower() != "paid"
-        )
-
-        total_paid = float(
-            db.session.query(func.coalesce(func.sum(Payment.amount_jmd), 0.0))
-            .filter(Payment.user_id == id)
-            .scalar() or 0.0
-        )
+        # ✅ totals based on money, not status
+        total_owed = sum(max(_inv_due(inv) - float(paid_sum or 0), 0.0) for inv, paid_sum in invoices_rows)
+        total_paid = sum(float(paid_sum or 0) for _, paid_sum in invoices_rows)
 
     except Exception as e:
         current_app.logger.exception("Error loading invoices for user %s: %s", id, e)
         db.session.rollback()
-        invoices = []
+        invoices_rows = []
         total_owed = 0.0
         total_paid = 0.0
 
-    balance = total_owed
+    balance = max(total_owed, 0.0)
 
 
     # Payments (alias fields to keep your template happy)
@@ -865,7 +859,7 @@ def view_user(id):
         user_id=id,
         prealerts=prealerts,
         packages=packages,
-        invoices=invoices,
+        invoices_rows=invoices_rows,
         payments=payments,
         total_owed=total_owed,
         total_paid=total_paid,
@@ -877,6 +871,7 @@ def view_user(id):
         home_address=home_address,
         active_tab=active_tab,
         pkg_page=pkg_page,
+        pkg_per_page=pkg_per_page,
         pkg_total_pages=pkg_total_pages,
         pkg_show_from=pkg_show_from,
         pkg_show_to=pkg_show_to,

@@ -98,6 +98,13 @@ def create_app():
         BASE_URL=os.getenv('BASE_URL', 'http://localhost:5000'),
     )
 
+    # --- SMTP config for smtplib routes (proforma email) ---
+    app.config["SMTP_HOST"] = os.getenv("SMTP_HOST")
+    app.config["SMTP_PORT"] = os.getenv("SMTP_PORT", "587")
+    app.config["SMTP_USER"] = os.getenv("SMTP_USER")
+    app.config["SMTP_PASS"] = os.getenv("SMTP_PASS")
+    app.config["SMTP_FROM"] = os.getenv("SMTP_FROM")
+
     # Production cookie security (Render / HTTPS)
     if os.getenv("FLASK_ENV") == "production" or os.getenv("RENDER") == "true":
         app.config.update(

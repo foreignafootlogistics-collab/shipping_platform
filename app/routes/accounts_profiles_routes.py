@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app
+    Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app, jsonify
 )
 import os
 import uuid
@@ -884,6 +884,69 @@ def view_user(id):
         pkg_tn=pkg_tn,
         categories=categories,
     )
+
+
+@accounts_bp.route("/users/<int:id>/packages/create", methods=["POST"])
+@admin_required
+def create_single_package_for_user(id):
+    user = db.session.get(User, id)
+    if not user:
+        return jsonify({"ok": False, "error": "User not found"}), 404
+
+    # helpers
+    def to_float(v):
+        try:
+            return float(v)
+        except Exception:
+            return 0.0
+
+    def to_date(v):
+        v = (v or "").strip()
+        if not v:
+            return None
+        try:
+            return datetime.strptime(v, "%Y-%m-%d").date()
+        except Exception:
+            return None
+
+    house_awb       = (request.form.get("house_awb") or "").strip()
+    description     = (request.form.get("description") or "").strip()
+    tracking_number = (request.form.get("tracking_number") or "").strip()
+    status          = (request.form.get("status") or "Overseas").strip()
+
+    weight         = to_float(request.form.get("weight"))
+    declared_value = to_float(request.form.get("declared_value"))
+    date_received  = to_date(request.form.get("date_received"))
+
+    pkg = Package(
+        user_id=user.id,
+        house_awb=house_awb or None,
+        description=description or None,
+        tracking_number=tracking_number or None,
+        status=status or None,
+        weight=weight,
+        declared_value=declared_value,
+        date_received=date_received,
+    )
+
+    db.session.add(pkg)
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "pkg": {
+            "id": pkg.id,
+            "house_awb": pkg.house_awb or "",
+            "status": pkg.status or "Overseas",
+            "description": pkg.description or "",
+            "tracking_number": pkg.tracking_number or "",
+            "weight": float(pkg.weight or 0),
+            "date_received": (pkg.date_received.strftime("%Y-%m-%d") if getattr(pkg, "date_received", None) else ""),
+            "declared_value": float(getattr(pkg, "declared_value", 0) or 0),
+            "amount_due": float(getattr(pkg, "amount_due", 0) or 0),
+        }
+    })
+
 
 # -------------------------
 # Change Password

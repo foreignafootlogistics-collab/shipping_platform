@@ -236,11 +236,14 @@
           <!-- Right-side actions -->
           <div class="d-flex align-items-center gap-2">
             <!-- Add Package (adjust route if you want) -->
-            <a class="btn btn-sm btn-outline-purple"
-               href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
-               title="Add Package">
+            <button type="button"
+                    class="btn btn-sm btn-outline-purple"
+                    data-bs-toggle="modal"
+                    data-bs-target="#addSinglePackageModal"
+                    title="Add Package">
               <i class="bi bi-plus-square"></i>
-            </a>
+            </button>
+
 
             <!-- Add Pricing -->
             <button type="button"
@@ -765,7 +768,97 @@
       </div>
     </div>
   </div>
-     
+  <!-- ✅ Add Single Package Modal (Admin -> View User) -->
+  <div class="modal fade" id="addSinglePackageModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+
+        <div class="modal-header" style="background-color:#4a148c; color:white;">
+          <h5 class="modal-title">
+            <i class="bi bi-plus-square me-1"></i> Add Package for {{ user.full_name }}
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <form id="addSinglePackageForm">
+          <!-- user id for route -->
+          <input type="hidden" name="user_id" value="{{ user_id }}">
+          <!-- CSRF (works with Flask-WTF CSRFProtect if enabled) -->
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="modal-body">
+            <div class="row g-2">
+              <div class="col-md-4">
+                <label class="form-label">House AWB</label>
+                <input type="text" name="house_awb" class="form-control" placeholder="e.g. HAWB123" required>
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">Tracking Number</label>
+                <input type="text" name="tracking_number" class="form-control" placeholder="e.g. 1Z... / TBA...">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <select name="status" class="form-select">
+                  <option value="Overseas">Overseas</option>
+                  <option value="Ready for Pickup">Ready for Pickup</option>
+                  <option value="Delivered">Delivered</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="row g-2 mt-2">
+              <div class="col-md-6">
+                <label class="form-label">Description</label>
+                <input type="text" name="description" class="form-control" placeholder="What is inside?">
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label">Weight (lbs)</label>
+                <input type="number" step="0.01" name="weight" class="form-control" placeholder="e.g. 3.5" required>
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label">Date Received</label>
+                <input type="date" name="date_received" class="form-control">
+              </div>
+            </div>
+
+            <div class="row g-2 mt-2">
+              <div class="col-md-4">
+                <label class="form-label">Declared Value (USD)</label>
+                <input type="number" step="0.01" name="declared_value" class="form-control" placeholder="e.g. 120.00">
+              </div>
+
+              <div class="col-md-8">
+                <label class="form-label">Invoice File Name (optional)</label>
+                <input type="text" name="invoice_file" class="form-control" placeholder="leave blank if none">
+                <div class="form-text">Optional: only if your Package model uses invoice_file.</div>
+              </div>
+            </div>
+
+            <div class="alert alert-light border mt-3 mb-0">
+              <small class="text-muted">
+                After saving, we will refresh this page so the new package shows immediately in the Packages tab
+                and also appears under Logistics.
+              </small>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-success">
+              <i class="bi bi-check2-circle me-1"></i> Save Package
+            </button>
+          </div>
+
+        </form>
+
+      </div>
+    </div>
+  </div>
+   
   <!-- 📄 Universal Invoice Preview Modal -->
   <div class="modal fade" id="invoiceModal" tabindex="-1" aria-labelledby="invoiceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -1791,6 +1884,64 @@ function openInvoiceModal(invoiceId) {
   })
 
 }
+
+// ✅ Add Single Package via AJAX (no page reload)
+document.getElementById('addSinglePackageForm')
+  .addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    const form = this;
+    const formData = new FormData(form);
+
+    fetch(form.getAttribute('action'), {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (!data.success) {
+        alert(data.error || 'Failed to add package');
+        return;
+      }
+
+      // ✅ Insert new package row at top of table
+      const tbody = document.querySelector('#packagesTable tbody');
+
+      const row = `
+        <tr>
+          <td class="text-center">
+            <input type="checkbox" class="pkg-check" value="${data.pkg.id}">
+          </td>
+          <td class="pkg-cell">
+            <div class="pkg-status-bar status-overseas"></div>
+            <strong>${data.pkg.house_awb || '-'}</strong><br>
+            <span class="badge pkg-status-badge status-overseas">
+              ${data.pkg.status}
+            </span>
+          </td>
+          <td>${data.pkg.description || '-'}</td>
+          <td>${data.pkg.tracking_number || '-'}</td>
+          <td class="text-end">${data.pkg.weight}</td>
+          <td>${data.pkg.date_received || '—'}</td>
+          <td class="text-end">$${parseFloat(data.pkg.declared_value).toFixed(2)}</td>
+          <td class="text-end">$${parseFloat(data.pkg.amount_due).toFixed(2)}</td>
+        </tr>
+      `;
+
+      tbody.insertAdjacentHTML('afterbegin', row);
+
+      // ✅ Close modal & reset
+      bootstrap.Modal.getInstance(
+        document.getElementById('addSinglePackageModal')
+      ).hide();
+
+      form.reset();
+    })
+    .catch(() => alert('Server error adding package'));
+});
 
 </script>
 {% endblock %}

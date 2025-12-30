@@ -1315,58 +1315,74 @@ $(document).ready(function () {
   });
 });
 
-(function () {
-  const selectAll = document.getElementById('pkgSelectAll');
-  const deleteBtn = document.getElementById('bulkDeleteBtn');
+document.addEventListener("DOMContentLoaded", () => {
+  const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+  const selectAll = document.getElementById("pkgSelectAll");
 
-  function selectedIds() {
-    return Array.from(document.querySelectorAll('.pkg-check:checked'))
+  function selectedIds(){
+    return Array.from(document.querySelectorAll(".pkg-check:checked"))
       .map(cb => parseInt(cb.value, 10))
       .filter(n => !isNaN(n));
   }
 
-  function refreshDeleteBtn() {
-    const count = selectedIds().length;
-    if (deleteBtn) deleteBtn.disabled = count === 0;
+  function toggleBulkBtn(){
+    if (!bulkDeleteBtn) return;
+    bulkDeleteBtn.disabled = selectedIds().length === 0;
   }
 
-  if (selectAll) {
-    selectAll.addEventListener('change', function () {
-      const on = !!this.checked;
-      document.querySelectorAll('.pkg-check').forEach(cb => cb.checked = on);
-      refreshDeleteBtn();
+  // Select all
+  if (selectAll){
+    selectAll.addEventListener("change", () => {
+      document.querySelectorAll(".pkg-check").forEach(cb => cb.checked = selectAll.checked);
+      toggleBulkBtn();
     });
   }
 
-  document.querySelectorAll('.pkg-check').forEach(cb => {
-    cb.addEventListener('change', function () {
-      if (selectAll && !this.checked) selectAll.checked = false;
-      refreshDeleteBtn();
+  // Per checkbox
+  document.querySelectorAll(".pkg-check").forEach(cb => {
+    cb.addEventListener("change", () => {
+      if (selectAll && !cb.checked) selectAll.checked = false;
+      toggleBulkBtn();
     });
   });
 
-  if (deleteBtn) {
-    deleteBtn.addEventListener('click', async function () {
+  // Click bulk delete
+  if (bulkDeleteBtn){
+    bulkDeleteBtn.addEventListener("click", async () => {
       const ids = selectedIds();
       if (!ids.length) return;
 
-      if (!confirm(`Delete ${ids.length} selected package(s)? This cannot be undone.`)) return;
+      if (!confirm(`Delete ${ids.length} selected package(s)?`)) return;
 
-      const res = await fetch("{{ url_for('accounts_profiles.bulk_delete_user_packages', id=user_id) }}", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        body: JSON.stringify({ package_ids: ids })
-      });
+      const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+
+      const res = await fetch(
+        "{{ url_for('accounts_profiles.bulk_delete_user_packages', id=user_id) }}",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+            "X-CSRFToken": csrf
+          },
+          body: JSON.stringify({ package_ids: ids })
+        }
+      );
 
       const data = await res.json();
-      if (!data.success) return alert(data.error || "Delete failed");
+
+      if (!data.success) {
+        alert(data.error || "Delete failed");
+        return;
+      }
 
       window.location.reload();
     });
   }
 
-  refreshDeleteBtn();
-})();
+  toggleBulkBtn();
+});
+
 
 
 /* ================================

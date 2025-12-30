@@ -760,7 +760,7 @@ def view_user(id):
     total_paid = 0.0
 
     try:
-        inv_base = db.session.query(Invoice)
+        inv_query = Invoice.query
 
         # Match by whatever fields your Invoice model actually has
         conds = []
@@ -772,22 +772,22 @@ def view_user(id):
             conds.append(Invoice.customer_code == (user.registration_number or ""))
 
         if conds:
-            inv_base = inv_base.filter(or_(*conds))
+            inv_query = inv_query.filter(or_(*conds))
 
-        pay_amount_col = getattr(Payment, "amount_jmd", getattr(Payment, "amount"))
+        pay_amount_col = getattr(Payment, "amount_jmd", None) or getattr(Payment, "amount", None)
+        if pay_amount_col is None:
+        raise RuntimeError("Payment model has no amount_jmd/amount column")
+
         paid_sum_col = func.coalesce(func.sum(pay_amount_col), 0.0).label("paid_sum")
 
 
 
         invoices_rows = (
             db.session.query(Invoice, paid_sum_col)
-            .select_from(Invoice)
             .outerjoin(Payment, Payment.invoice_id == Invoice.id)
-            .filter(*inv_base._where_criteria)  # keep your same invoice filters
+            .filter(*inv_query._where_criteria)
             .group_by(Invoice.id)
-            .order_by(
-                getattr(Invoice, "date", getattr(Invoice, "date_submitted", Invoice.id)).desc()
-            )
+            .order_by(getattr(Invoice, "date", getattr(Invoice, "date_submitted", Invoice.id)).desc())
             .all()
         )
 

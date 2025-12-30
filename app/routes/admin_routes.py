@@ -1674,7 +1674,7 @@ def email_proforma_invoice(invoice_id):
     # logo url
     if settings and getattr(settings, "logo_path", None):
         logo_url = url_for("static", filename=settings.logo_path)
-else:
+    else:
         logo_url = url_for("static", filename="logo.png")
 
     items = []

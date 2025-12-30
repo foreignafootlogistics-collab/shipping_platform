@@ -775,8 +775,9 @@ def view_user(id):
             inv_query = inv_query.filter(or_(*conds))
 
         pay_amount_col = getattr(Payment, "amount_jmd", None) or getattr(Payment, "amount", None)
+
         if pay_amount_col is None:
-        raise RuntimeError("Payment model has no amount_jmd/amount column")
+            raise RuntimeError("Payment model has no amount_jmd/amount column")
 
         paid_sum_col = func.coalesce(func.sum(pay_amount_col), 0.0).label("paid_sum")
 

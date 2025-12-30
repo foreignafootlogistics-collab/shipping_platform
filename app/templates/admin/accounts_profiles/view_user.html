@@ -1020,33 +1020,51 @@
 
 {% block styles %}
 <style>
-/* ---------- Tabs: Base ---------- */
+/* ================================
+   Tabs: White background, black text
+   Purple hover & active
+   ================================ */
+
 .card-header .nav-tabs {
-  border-bottom: 0 !important;
-  margin-bottom: -1px;
+  border-bottom: 1px solid #dee2e6;
+  margin-bottom: 0;
   padding-left: 1rem;
   padding-right: 1rem;
 }
+
+/* Base tab */
 .card-header .nav-tabs .nav-link {
   font-family: 'Poppins', sans-serif;
-  color: #fff !important;
-  background-color: #4a148c !important;
-  border: 1px solid transparent !important;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #dee2e6 !important;
+  border-bottom: none !important;
   border-radius: 0.25rem 0.25rem 0 0;
-  transition: background-color 0.2s;
+  margin-right: 4px;
+  font-weight: 500;
+  transition: all 0.2s ease-in-out;
 }
+
+/* Hover */
 .card-header .nav-tabs .nav-link:hover {
-  background-color: #6a1b9a !important;
-  color: #fff !important;
+  background-color: #f5f0fa !important;
+  color: #4a148c !important;
+  border-color: #4a148c #4a148c #dee2e6 !important;
 }
+
+/* Active */
 .card-header .nav-tabs .nav-link.active,
 .card-header .nav-tabs .nav-item.show .nav-link {
-  color: #fff !important;
-  background-color: #4a148c !important;
-  border-color: #4a148c #4a148c #fff !important;
+  background-color: #ffffff !important;
+  color: #4a148c !important;
   font-weight: 600;
+  border-color: #4a148c #4a148c #ffffff !important;
 }
-.card-header .nav-tabs.card-header-tabs { margin-bottom: 0; }
+
+/* Icons inherit text color */
+.card-header .nav-tabs .nav-link i {
+  color: inherit;
+}
 
 /* ---------- Buttons ---------- */
 .btn-outline-purple {

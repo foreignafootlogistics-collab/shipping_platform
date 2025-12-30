@@ -318,7 +318,8 @@
                   <div>
                     <strong>{{ pkg.house_awb or '-' }}</strong><br>
                     <span class="badge pkg-status-badge {{ bar_class }}">
-                      {{ pkg.status or 'Unknown' }}
+                      {{ 'Delivered' if (pkg.status or '')|lower == 'delivery' else (pkg.status or 'Unknown') }}
+
                     </span>
 
                   </div>

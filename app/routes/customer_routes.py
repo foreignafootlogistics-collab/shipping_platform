@@ -845,7 +845,7 @@ def schedule_delivery_add():
     except Exception as e:
         db.session.rollback()
         current_app.logger.exception("schedule_delivery_add failed")
-        return jsonify({"success": False, "message": str(e)}), 400
+        return jsonify({"success": False, "message": f"{type(e).__name__}: str(e)}), 400
 
 # -----------------------------
 # Referrals

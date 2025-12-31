@@ -3,107 +3,256 @@
 {% block title %}Scheduled Deliveries{% endblock %}
 
 {% block content %}
+<style>
+  /* ====== FAFL Scheduled Deliveries polish ====== */
+  .sd-card{
+    border:0;
+    border-radius:16px;
+    overflow:hidden;
+    box-shadow: 0 10px 25px rgba(17,24,39,.08);
+  }
+  .sd-header{
+    background: #4a148c;
+    color:#fff;
+    padding: 16px 18px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+  .sd-header h4{
+    margin:0;
+    font-weight:700;
+    letter-spacing:.2px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .sd-header .sub{
+    opacity:.9;
+    font-size:.9rem;
+    margin-top:2px;
+  }
+
+  .sd-filters{
+    background:#fff;
+    padding: 14px 18px;
+    border-bottom:1px solid #eef2f7;
+  }
+  .sd-filters .form-label{
+    font-size:.82rem;
+    color:#6b7280;
+    margin-bottom:4px;
+  }
+  .sd-filters .form-control{
+    border-radius:10px;
+  }
+  .btn-purple{
+    background:#4a148c;
+    border-color:#4a148c;
+    color:#fff;
+    border-radius:10px;
+  }
+  .btn-purple:hover{ filter:brightness(.95); color:#fff; }
+  .btn-soft{
+    border-radius:10px;
+  }
+
+  .sd-table-wrap{ padding: 16px 18px 18px 18px; background:#fff; }
+  table.dataTable thead th{
+    background:#111827 !important;
+    color:#fff !important;
+    border-bottom:0 !important;
+    font-weight:600;
+  }
+  table.dataTable tbody td{
+    vertical-align:middle;
+  }
+  .sd-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 10px;
+    border-radius:999px;
+    font-size:.82rem;
+    font-weight:600;
+    border:1px solid transparent;
+    white-space:nowrap;
+  }
+  .dot{ width:8px; height:8px; border-radius:999px; display:inline-block; }
+  .pill-scheduled{
+    background:#eef2ff; color:#3730a3; border-color:#c7d2fe;
+  }
+  .pill-scheduled .dot{ background:#3730a3; }
+  .pill-out{
+    background:#fff7ed; color:#9a3412; border-color:#fed7aa;
+  }
+  .pill-out .dot{ background:#f97316; }
+  .pill-delivered{
+    background:#ecfdf5; color:#065f46; border-color:#a7f3d0;
+  }
+  .pill-delivered .dot{ background:#10b981; }
+  .pill-cancelled{
+    background:#fef2f2; color:#991b1b; border-color:#fecaca;
+  }
+  .pill-cancelled .dot{ background:#ef4444; }
+
+  .sd-actions .btn{
+    border-radius:10px;
+    padding:6px 10px;
+    font-weight:600;
+  }
+  .sd-actions .btn + .btn{ margin-left:6px; }
+
+  /* make the datatable search look nicer */
+  .dataTables_filter input{
+    border-radius:10px !important;
+    border:1px solid #e5e7eb !important;
+    padding:.35rem .6rem !important;
+  }
+  .dataTables_length select{
+    border-radius:10px !important;
+    border:1px solid #e5e7eb !important;
+    padding:.25rem .5rem !important;
+  }
+</style>
+
 <div class="container mt-4">
-  <h2>📦 All Scheduled Deliveries</h2>
 
-  <!-- Filter form -->
-  <form class="row g-3 mb-3" method="get">
-    <div class="col-auto">
-      <input type="date" name="start_date" class="form-control" value="{{ start_date or '' }}">
+  <div class="sd-card">
+
+    <!-- Top header -->
+    <div class="sd-header">
+      <div>
+        <h4>
+          <span style="font-size:1.1rem;">📦</span>
+          All Scheduled Deliveries
+        </h4>
+        <div class="sub">Manage delivery requests, update status, and export reports.</div>
+      </div>
+
+      <div class="d-flex gap-2">
+        <a class="btn btn-light btn-soft"
+           href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+          Reset
+        </a>
+        <a href="{{ url_for('logistics.scheduled_deliveries_pdf', start_date=start_date, end_date=end_date) }}"
+           class="btn btn-dark btn-soft">
+          Download PDF
+        </a>
+      </div>
     </div>
-    <div class="col-auto">
-      <input type="date" name="end_date" class="form-control" value="{{ end_date or '' }}">
+
+    <!-- Filters -->
+    <div class="sd-filters">
+      <form class="row g-3 align-items-end" method="get">
+        <div class="col-12 col-md-4 col-lg-3">
+          <label class="form-label">Start date</label>
+          <input type="date" name="start_date" class="form-control" value="{{ start_date or '' }}">
+        </div>
+        <div class="col-12 col-md-4 col-lg-3">
+          <label class="form-label">End date</label>
+          <input type="date" name="end_date" class="form-control" value="{{ end_date or '' }}">
+        </div>
+        <div class="col-12 col-md-4 col-lg-3 d-flex gap-2">
+          <button type="submit" class="btn btn-purple w-100">
+            Filter
+          </button>
+          <a class="btn btn-outline-secondary w-100 btn-soft"
+             href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+            Clear
+          </a>
+        </div>
+      </form>
     </div>
-    <div class="col-auto">
-      <button type="submit" class="btn btn-primary">Filter</button>
+
+    <!-- Table -->
+    <div class="sd-table-wrap">
+      <div class="table-responsive">
+        <table class="table table-striped table-bordered align-middle" id="allScheduledDeliveriesTable">
+          <thead>
+            <tr>
+              <th style="min-width:110px;">Date</th>
+              <th style="min-width:80px;">Time</th>
+              <th style="min-width:130px;">Location</th>
+              <th style="min-width:140px;">Directions</th>
+              <th style="min-width:110px;">Mobile #</th>
+              <th style="min-width:170px;">Person Receiving</th>
+              <th style="min-width:130px;">Status</th>
+              <th style="min-width:160px;">Customer</th>
+              <th style="min-width:210px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in deliveries %}
+            {% set status = (d.status or "Scheduled") %}
+            <tr>
+              <td>{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}</td>
+              <td>{{ d.scheduled_time or "" }}</td>
+              <td>{{ d.location or "" }}</td>
+              <td>{{ d.direction or "" }}</td>
+              <td>{{ d.mobile_number or "" }}</td>
+              <td>{{ d.person_receiving or "" }}</td>
+
+              <td>
+                {% if status == "Scheduled" %}
+                  <span class="sd-pill pill-scheduled"><span class="dot"></span>Scheduled</span>
+                {% elif status == "Out for Delivery" %}
+                  <span class="sd-pill pill-out"><span class="dot"></span>Out for Delivery</span>
+                {% elif status == "Delivered" %}
+                  <span class="sd-pill pill-delivered"><span class="dot"></span>Delivered</span>
+                {% elif status == "Cancelled" %}
+                  <span class="sd-pill pill-cancelled"><span class="dot"></span>Cancelled</span>
+                {% else %}
+                  <span class="sd-pill pill-scheduled"><span class="dot"></span>{{ status }}</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {{ d.user.full_name or d.user.email if d.user else "N/A" }}
+              </td>
+
+              <td class="sd-actions">
+                {% if status == "Scheduled" %}
+                  <form method="post"
+                        action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Out for Delivery') }}"
+                        style="display:inline;">
+                    <button class="btn btn-warning btn-sm">Out for Delivery</button>
+                  </form>
+
+                  <form method="post"
+                        action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Cancelled') }}"
+                        style="display:inline;"
+                        onsubmit="return confirm('Cancel this delivery?');">
+                    <button class="btn btn-outline-danger btn-sm">Cancel</button>
+                  </form>
+
+                {% elif status == "Out for Delivery" %}
+                  <form method="post"
+                        action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Delivered') }}"
+                        style="display:inline;"
+                        onsubmit="return confirm('Mark as Delivered?');">
+                    <button class="btn btn-success btn-sm">Delivered</button>
+                  </form>
+
+                  <form method="post"
+                        action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Cancelled') }}"
+                        style="display:inline;"
+                        onsubmit="return confirm('Cancel this delivery?');">
+                    <button class="btn btn-outline-danger btn-sm">Cancel</button>
+                  </form>
+
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-    <div class="col-auto">
-      <a href="{{ url_for('logistics.scheduled_deliveries_pdf', start_date=start_date, end_date=end_date) }}"
-         class="btn btn-secondary">Download PDF</a>
-    </div>
-  </form>
 
-  <!-- Table -->
-  <div class="table-responsive">
-    <table class="table table-striped table-bordered align-middle" id="allScheduledDeliveriesTable">
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Time</th>
-          <th>Location</th>
-          <th>Directions</th>
-          <th>Mobile #</th>
-          <th>Person Receiving</th>
-          <th>Status</th>
-          <th>Customer</th>
-          <th style="width:180px;">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for delivery in deliveries %}
-        <tr>
-          <td>{{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "" }}</td>
-          <td>{{ delivery.scheduled_time or "" }}</td>
-          <td>{{ delivery.location or "" }}</td>
-          <td>{{ delivery.direction or "" }}</td>
-          <td>{{ delivery.mobile_number or "" }}</td>
-          <td>{{ delivery.person_receiving or "" }}</td>
-
-          {# ✅ show real status #}
-          <td>
-            {% set s = delivery.status or "Scheduled" %}
-            {% if s == "Scheduled" %}
-              <span class="badge bg-primary">Scheduled</span>
-            {% elif s == "Out for Delivery" %}
-              <span class="badge bg-warning text-dark">Out for Delivery</span>
-            {% elif s == "Delivered" %}
-              <span class="badge bg-success">Delivered</span>
-            {% elif s == "Cancelled" %}
-              <span class="badge bg-danger">Cancelled</span>
-            {% else %}
-              <span class="badge bg-secondary">{{ s }}</span>
-            {% endif %}
-          </td>
-
-          <td>
-            {% if delivery.user %}
-              {{ delivery.user.full_name or delivery.user.email }}
-            {% else %}
-              N/A
-            {% endif %}
-          </td>
-
-          {# ✅ Admin actions (requires routes below) #}
-          <td>
-            {% set s = delivery.status or "Scheduled" %}
-
-            <div class="d-flex gap-2 flex-wrap">
-              {% if s == "Scheduled" %}
-                <form method="post" action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Out for Delivery') }}">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button class="btn btn-sm btn-warning">Out for Delivery</button>
-                </form>
-
-                <form method="post" action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Cancelled') }}">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button class="btn btn-sm btn-outline-danger">Cancel</button>
-                </form>
-
-              {% elif s == "Out for Delivery" %}
-                <form method="post" action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Delivered') }}">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button class="btn btn-sm btn-success">Delivered</button>
-                </form>
-
-              {% else %}
-                <span class="text-muted">—</span>
-              {% endif %}
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
   </div>
 </div>
 {% endblock %}
@@ -113,10 +262,12 @@
 $(document).ready(function () {
   $('#allScheduledDeliveriesTable').DataTable({
     order: [[0, 'desc']],
-    pageLength: 25
+    pageLength: 25,
+    responsive: true
   });
 });
 </script>
 {% endblock %}
+
 
 

@@ -63,43 +63,80 @@
 </div>
 
 <script>
-document.getElementById("scheduleDeliveryBtn").addEventListener("click", function() {
-  document.getElementById("scheduleDeliveryForm").style.display = "block";
-  this.style.display = "none";
-});
-document.getElementById("cancelScheduleDelivery").addEventListener("click", function() {
-  document.getElementById("scheduleDeliveryForm").style.display = "none";
-  document.getElementById("scheduleDeliveryBtn").style.display = "inline-block";
-});
-document.getElementById("saveScheduleDelivery").addEventListener("click", function() {
-  const date = document.getElementById("deliveryDate").value;
-  const time = document.getElementById("deliveryTime").value;
-  const location = document.getElementById("deliveryLocation").value;
-  const directions = document.getElementById("deliveryDirections").value;
-  const mobile = document.getElementById("deliveryMobile").value;
-  const person_receiving = document.getElementById("deliveryPerson").value;
+const btnShow   = document.getElementById("scheduleDeliveryBtn");
+const formWrap  = document.getElementById("scheduleDeliveryForm");
+const btnSave   = document.getElementById("saveScheduleDelivery");
+const btnCancel = document.getElementById("cancelScheduleDelivery");
+const msgDiv    = document.getElementById("resultMessage"); // ✅ make sure this exists in your HTML
 
-  fetch("{{ url_for('customer.schedule_delivery_add') }}", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ date, time, location, directions, mobile, person_receiving })
-  })
-  .then(res => res.json())
-  .then(data => {
-    if (data.status === "success") {
-      const table = document.querySelector("#scheduledDeliveriesList tbody");
-      const row = `<tr>
-        <td>${data.delivery.date}</td>
-        <td>${data.delivery.time}</td>
-        <td>${data.delivery.location}</td>
-        <td>${data.delivery.person_receiving}</td>
-        <td>${data.delivery.status}</td>
-      </tr>`;
-      table.insertAdjacentHTML("beforeend", row);
-      document.getElementById("scheduleDeliveryForm").style.display = "none";
-      document.getElementById("scheduleDeliveryBtn").style.display = "inline-block";
+function showMsg(html, type="danger") {
+  if (!msgDiv) return;
+  msgDiv.innerHTML = html ? `<div class="alert alert-${type}">${html}</div>` : "";
+}
+
+btnShow.addEventListener("click", function () {
+  showMsg("");
+  formWrap.style.display = "block";
+  btnShow.style.display = "none";
+});
+
+btnCancel.addEventListener("click", function () {
+  showMsg("");
+  formWrap.style.display = "none";
+  btnShow.style.display = "inline-block";
+});
+
+btnSave.addEventListener("click", async function () {
+  showMsg("");
+
+  // ✅ match your backend keys exactly
+  const schedule_date    = document.getElementById("deliveryDate").value;
+  const schedule_time    = document.getElementById("deliveryTime").value;
+  const location         = (document.getElementById("deliveryLocation").value || "").trim();
+  const direction        = (document.getElementById("deliveryDirections").value || "").trim();
+  const mobile_number    = (document.getElementById("deliveryMobile").value || "").trim();
+  const person_receiving = (document.getElementById("deliveryPerson").value || "").trim();
+
+  if (!schedule_date || !schedule_time || !location) {
+    showMsg("Missing required fields: date, time, and location.", "warning");
+    return;
+  }
+
+  try {
+    const res = await fetch("{{ url_for('customer.schedule_delivery_add') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        schedule_date,
+        schedule_time,
+        location,
+        direction,
+        mobile_number,
+        person_receiving
+      })
+    });
+
+    // ✅ ALWAYS read raw response first (so you see real errors)
+    const raw = await res.text();
+    let data = {};
+    try { data = JSON.parse(raw); } catch (e) {}
+
+    if (!res.ok) {
+      showMsg(data.message || raw || `HTTP ${res.status}`, "danger");
+      return;
     }
-  });
+
+    if (!data.success) {
+      showMsg(data.message || "Failed to schedule delivery.", "danger");
+      return;
+    }
+
+    // ✅ simplest: reload so the table updates from DB
+    window.location.reload();
+
+  } catch (err) {
+    showMsg("Network error. Please try again.", "danger");
+  }
 });
 </script>
 {% endblock %}

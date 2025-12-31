@@ -2402,6 +2402,80 @@ def scheduled_delivery_detail(delivery_id):
     )
 
 
+@logistics_bp.route("/scheduled-deliveries/<int:delivery_id>", methods=["GET"])
+@admin_required(roles=["operations"])
+def scheduled_delivery_view(delivery_id):
+    d = ScheduledDelivery.query.get_or_404(delivery_id)
+
+    # Packages already linked to this delivery
+    assigned_packages = (Package.query
+        .filter(Package.scheduled_delivery_id == d.id)
+        .order_by(Package.created_at.desc())
+        .all()
+    )
+
+    # Eligible packages to assign:
+    # - belong to same user
+    # - NOT already assigned
+    # - optional filter by status
+    eligible_packages = (Package.query
+        .filter(
+            Package.user_id == d.user_id,
+            Package.scheduled_delivery_id.is_(None),
+            Package.status.in_(["Ready", "Ready for Delivery", "At Warehouse", "Delivered Pending"])
+        )
+        .order_by(Package.created_at.desc())
+        .all()
+    )
+
+    return render_template(
+        "admin/logistics/scheduled_delivery_view.html",
+        delivery=d,
+        assigned_packages=assigned_packages,
+        eligible_packages=eligible_packages
+    )
+
+
+@logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/assign", methods=["POST"])
+@admin_required(roles=["operations"])
+def scheduled_delivery_assign_packages(delivery_id):
+    d = ScheduledDelivery.query.get_or_404(delivery_id)
+
+    package_ids = request.form.getlist("package_ids")
+    if not package_ids:
+        flash("Select at least one package to assign.", "warning")
+        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id))
+
+    # Only allow packages that belong to this customer
+    packages = (Package.query
+        .filter(Package.id.in_(package_ids), Package.user_id == d.user_id)
+        .all()
+    )
+
+    for p in packages:
+        p.scheduled_delivery_id = d.id
+
+    db.session.commit()
+    flash(f"Assigned {len(packages)} package(s) to this delivery.", "success")
+    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id))
+
+
+@logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/unassign/<int:package_id>", methods=["POST"])
+@admin_required(roles=["operations"])
+def scheduled_delivery_unassign_package(delivery_id, package_id):
+    d = ScheduledDelivery.query.get_or_404(delivery_id)
+
+    p = Package.query.get_or_404(package_id)
+    if p.scheduled_delivery_id != d.id:
+        flash("That package is not linked to this delivery.", "warning")
+        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id))
+
+    p.scheduled_delivery_id = None
+    db.session.commit()
+    flash("Package unassigned from delivery.", "success")
+    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id))
+
+
 @logistics_bp.route('/shipmentlog/create-shipment', methods=['GET'])
 @admin_required
 def prepare_create_shipment():

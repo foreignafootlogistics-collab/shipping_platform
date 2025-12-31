@@ -103,6 +103,90 @@
         </div>
       </div>
 
+      <div class="card shadow-sm mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Linked Packages</h5>
+          <span class="text-muted small">
+            {{ delivery.user.full_name if delivery.user else "" }}
+          </span>
+        </div>
+
+        <div class="card-body">
+
+          <!-- Assign packages -->
+          <form method="post" action="{{ url_for('logistics.scheduled_delivery_assign_packages', delivery_id=delivery.id) }}">
+            <div class="row g-2 align-items-end">
+              <div class="col-12 col-lg-9">
+                <label class="form-label small text-muted">Assign packages to this delivery</label>
+                <select class="form-select" name="package_ids" multiple size="8">
+                  {% for p in eligible_packages %}
+                    <option value="{{ p.id }}">
+                      {{ p.tracking_number or 'No Tracking' }} |
+                      {{ p.description or '' }} |
+                      {{ p.weight or 0 }} lb |
+                      Status: {{ p.status or '' }}
+                    </option>
+                  {% endfor %}
+                </select>
+                <small class="text-muted d-block mt-1">
+                  Tip: hold Ctrl (Windows) / Cmd (Mac) to select multiple.
+                </small>
+              </div>
+
+              <div class="col-12 col-lg-3">
+                <button class="btn btn-purple w-100">
+                  Assign Selected
+                </button>
+              </div>
+            </div>
+          </form>
+
+          <hr class="my-4">
+
+          <!-- Already linked -->
+          <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle">
+              <thead class="table-dark">
+                <tr>
+                  <th>Tracking #</th>
+                  <th>Description</th>
+                  <th>Weight</th>
+                  <th>Status</th>
+                  <th style="width:140px;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for p in assigned_packages %}
+                <tr>
+                  <td>{{ p.tracking_number or '' }}</td>
+                  <td>{{ p.description or '' }}</td>
+                  <td>{{ p.weight or 0 }}</td>
+                  <td>{{ p.status or '' }}</td>
+                  <td>
+                    <form method="post"
+                          action="{{ url_for('logistics.scheduled_delivery_unassign_package', delivery_id=delivery.id, package_id=p.id) }}"
+                          onsubmit="return confirm('Unassign this package from delivery?');">
+                      <button class="btn btn-outline-danger btn-sm w-100">Unassign</button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+
+                {% if assigned_packages|length == 0 %}
+                <tr>
+                  <td colspan="5" class="text-center text-muted py-4">
+                    No packages linked yet.
+                  </td>
+                </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+
+
       <!-- Nice “next actions” card -->
       <div class="card shadow-sm border-0 mt-3">
         <div class="card-body">
@@ -114,61 +198,7 @@
           </ul>
         </div>
       </div>
-    </div>
-
-    <!-- Right: Linked Packages -->
-    <div class="col-lg-7">
-      <div class="card shadow-sm border-0">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-          <h6 class="mb-0"><i class="fas fa-boxes me-2 text-muted"></i>Linked Packages</h6>
-          <span class="badge bg-dark">
-            {{ linked_packages|length }}
-          </span>
-        </div>
-
-        <div class="card-body table-responsive">
-          {% if linked_packages and linked_packages|length > 0 %}
-            <table class="table table-sm table-striped align-middle">
-              <thead class="table-dark">
-                <tr>
-                  <th>Tracking</th>
-                  <th>Description</th>
-                  <th class="text-end">Weight</th>
-                  <th>Status</th>
-                  <th class="text-end">Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for p in linked_packages %}
-                <tr>
-                  <td class="fw-semibold">{{ p.tracking_number or p.house_awb or "—" }}</td>
-                  <td>{{ p.description or "—" }}</td>
-                  <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
-                  <td>
-                    <span class="badge bg-secondary">{{ p.status or "—" }}</span>
-                  </td>
-                  <td class="text-end small text-muted">
-                    {{ p.created_at.strftime("%Y-%m-%d") if p.created_at else "—" }}
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          {% else %}
-            <div class="text-center py-5">
-              <div class="mb-2">
-                <i class="fas fa-link fa-2x text-muted"></i>
-              </div>
-              <h6 class="mb-1">No packages linked yet</h6>
-              <div class="text-muted small">
-                Next we’ll add an “Assign Packages” section so operations can attach packages to this delivery.
-              </div>
-            </div>
-          {% endif %}
-        </div>
-      </div>
-
-    </div>
+    </div>    
   </div>
 
 </div>

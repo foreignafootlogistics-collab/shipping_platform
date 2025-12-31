@@ -2436,6 +2436,10 @@ def scheduled_delivery_view(delivery_id):
     )
 
 
+from flask import request, redirect, url_for, flash
+from app.extensions import db
+from app.models import ScheduledDelivery, Package
+
 @logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/assign-packages", methods=["POST"])
 @admin_required(roles=["operations"])
 def scheduled_delivery_assign_packages(delivery_id):
@@ -2446,7 +2450,7 @@ def scheduled_delivery_assign_packages(delivery_id):
         flash("Please select at least one package to assign.", "warning")
         return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
 
-    # Only allow assigning packages that belong to the same customer
+    # Only allow packages for the same customer + selected IDs
     packages = (Package.query
                 .filter(Package.id.in_(package_ids))
                 .filter(Package.user_id == delivery.user_id)
@@ -2457,17 +2461,26 @@ def scheduled_delivery_assign_packages(delivery_id):
         return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
 
     assigned_count = 0
+    skipped_count = 0
+
     for p in packages:
-        # Optional safety: prevent re-assigning packages already assigned elsewhere
+        # If already assigned to another delivery, skip it (safety)
         if p.scheduled_delivery_id and p.scheduled_delivery_id != delivery.id:
+            skipped_count += 1
             continue
 
         p.scheduled_delivery_id = delivery.id
         assigned_count += 1
 
     db.session.commit()
-    flash(f"Assigned {assigned_count} package(s) to this delivery.", "success")
+
+    if skipped_count:
+        flash(f"Assigned {assigned_count} package(s). Skipped {skipped_count} already linked elsewhere.", "info")
+    else:
+        flash(f"Assigned {assigned_count} package(s) to this delivery.", "success")
+
     return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+
 
 
 

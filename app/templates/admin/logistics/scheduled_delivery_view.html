@@ -166,6 +166,7 @@
                   <td>
                     <form method="post"
                           action="{{ url_for('logistics.scheduled_delivery_unassign_package', delivery_id=delivery.id, package_id=p.id) }}"
+                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                           onsubmit="return confirm('Unassign this package from delivery?');">
                       <button class="btn btn-outline-danger btn-sm w-100">Unassign</button>
                     </form>

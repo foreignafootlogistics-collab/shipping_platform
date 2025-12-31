@@ -2242,6 +2242,31 @@ def view_scheduled_deliveries():
                            start_date=start_date,
                            end_date=end_date)
 
+@logistics_bp.route("/scheduled-delivery/<int:delivery_id>", methods=["GET"])
+@admin_required(roles=['operations'])
+def view_scheduled_delivery(delivery_id):
+    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
+
+    linked_packages = (Package.query
+        .filter(Package.scheduled_delivery_id == delivery.id)
+        .order_by(Package.created_at.desc())
+        .all()
+    )
+
+    available_packages = (Package.query
+        .filter(Package.scheduled_delivery_id.is_(None))
+        .order_by(Package.created_at.desc())
+        .limit(200)
+        .all()
+    )
+
+    return render_template(
+        "admin/logistics/scheduled_delivery_view.html",
+        delivery=delivery,
+        linked_packages=linked_packages,
+        available_packages=available_packages
+    )
+
 @logistics_bp.route('/scheduled_deliveries/pdf')
 @admin_required(roles=['operations'])
 def scheduled_deliveries_pdf():
@@ -2322,6 +2347,45 @@ def scheduled_delivery_set_status(delivery_id, status):
 
     flash(f"Delivery #{d.id} updated to '{status}'", "success")
     return redirect(url_for("logistics.view_scheduled_deliveries"))
+
+@logistics_bp.route("/scheduled-delivery/<int:delivery_id>/attach-package", methods=["POST"])
+@admin_required(roles=['operations'])
+def attach_package_to_delivery(delivery_id):
+    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
+
+    package_id = request.form.get("package_id")
+    if not package_id:
+        flash("No package selected.", "warning")
+        return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
+
+    pkg = Package.query.get_or_404(int(package_id))
+
+    # OPTIONAL: basic guardrails
+    # if pkg.status not in ("Ready", "Arrived", "In Warehouse"):
+    #     flash("Only ready/arrived packages can be scheduled.", "warning")
+    #     return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
+
+    pkg.scheduled_delivery_id = delivery.id
+    db.session.commit()
+
+    flash(f"Package {pkg.tracking_number or pkg.house_awb or pkg.id} linked to delivery.", "success")
+    return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
+
+@logistics_bp.route("/scheduled-delivery/<int:delivery_id>/remove-package/<int:package_id>", methods=["POST"])
+@admin_required(roles=['operations'])
+def remove_package_from_delivery(delivery_id, package_id):
+    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
+    pkg = Package.query.get_or_404(package_id)
+
+    if pkg.scheduled_delivery_id != delivery.id:
+        flash("That package is not linked to this delivery.", "warning")
+        return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
+
+    pkg.scheduled_delivery_id = None
+    db.session.commit()
+
+    flash("Package removed from scheduled delivery.", "success")
+    return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
 
 @logistics_bp.route('/shipmentlog/create-shipment', methods=['GET'])
 @admin_required

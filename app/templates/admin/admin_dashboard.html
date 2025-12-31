@@ -153,6 +153,7 @@
             <th>Person Receiving</th>
             <th>Mobile</th>
             <th>Status</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -165,7 +166,12 @@
             <td>{{ delivery.person_receiving or "" }}</td>
             <td>{{ delivery.mobile_number or "" }}</td>
             <td>{{ delivery.status or "Scheduled" }}</td>
-
+            <td>
+              <a class="btn btn-sm btn-outline-primary"
+                 href="{{ url_for('logistics.view_scheduled_delivery', delivery_id=delivery.id) }}">
+                View / Link Packages
+              </a>
+            </td>
           </tr>
           {% endfor %}
         </tbody>

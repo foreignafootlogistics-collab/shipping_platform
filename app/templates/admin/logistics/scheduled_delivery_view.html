@@ -1,0 +1,112 @@
+{% extends "layout_admin.html" %}
+{% block title %}Scheduled Delivery{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h3 class="mb-0">Scheduled Delivery</h3>
+      <small class="text-muted">
+        {{ delivery.scheduled_date }} @ {{ delivery.scheduled_time }} — {{ delivery.status }}
+      </small>
+    </div>
+    <a href="{{ url_for('logistics.view_scheduled_deliveries') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="bi bi-arrow-left"></i> Back
+    </a>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>Delivery Details</strong>
+      <span class="badge bg-primary">{{ delivery.user.full_name }}</span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div><strong>Location:</strong> {{ delivery.location }}</div>
+          <div><strong>Directions:</strong> {{ delivery.direction or '-' }}</div>
+        </div>
+        <div class="col-md-6">
+          <div><strong>Receiving:</strong> {{ delivery.person_receiving or '-' }}</div>
+          <div><strong>Mobile:</strong> {{ delivery.mobile_number or '-' }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Attach package -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header">
+      <strong>Link a Package</strong>
+    </div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('logistics.attach_package_to_delivery', delivery_id=delivery.id) }}" class="row g-2">
+        <div class="col-md-9">
+          <select name="package_id" class="form-select" required>
+            <option value="">-- Select a package (unassigned) --</option>
+            {% for p in available_packages %}
+              <option value="{{ p.id }}">
+                {{ p.tracking_number or p.house_awb or ('PKG-' ~ p.id) }}
+                — {{ p.user.full_name if p.user else '' }}
+                — {{ (p.weight or 0) }} lb
+                — {{ p.status }}
+              </option>
+            {% endfor %}
+          </select>
+          <small class="text-muted">Only packages not already scheduled show here.</small>
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-primary w-100" type="submit">
+            <i class="bi bi-link-45deg"></i> Link Package
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Linked packages table -->
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>Linked Packages ({{ linked_packages|length }})</strong>
+    </div>
+    <div class="card-body table-responsive">
+      <table class="table table-bordered table-striped align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Tracking / AWB</th>
+            <th>Customer</th>
+            <th>Weight</th>
+            <th>Status</th>
+            <th style="width:120px;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in linked_packages %}
+          <tr>
+            <td>{{ p.tracking_number or p.house_awb or ('PKG-' ~ p.id) }}</td>
+            <td>{{ p.user.full_name if p.user else '-' }}</td>
+            <td>{{ (p.weight or 0) }}</td>
+            <td>{{ p.status }}</td>
+            <td>
+              <form method="POST"
+                    action="{{ url_for('logistics.remove_package_from_delivery', delivery_id=delivery.id, package_id=p.id) }}"
+                    onsubmit="return confirm('Remove this package from the delivery?');">
+                <button class="btn btn-sm btn-outline-danger w-100" type="submit">
+                  <i class="bi bi-x-circle"></i> Remove
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="text-center text-muted">No packages linked yet.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

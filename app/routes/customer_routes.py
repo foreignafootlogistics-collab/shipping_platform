@@ -802,13 +802,16 @@ def schedule_delivery_overview():
     return render_template('customer/schedule_delivery_overview.html', deliveries=deliveries)
 
 
+from datetime import datetime
+
 @customer_bp.route('/schedule-delivery/add', methods=['POST'])
 @login_required
 def schedule_delivery_add():
     data = request.get_json(silent=True) or {}
 
-    schedule_date = data.get("schedule_date")
-    schedule_time = data.get("schedule_time")
+    # Accept both keys (so you don't break anything later)
+    schedule_date = data.get("schedule_date") or data.get("date")
+    schedule_time = data.get("schedule_time") or data.get("time")
     location      = (data.get("location") or "").strip()
 
     if not schedule_date or not schedule_time or not location:
@@ -818,22 +821,27 @@ def schedule_delivery_add():
         }), 400
 
     try:
+        # ✅ Convert "HH:MM" string -> time object for SQLAlchemy Time column
+        time_obj = datetime.strptime(schedule_time, "%H:%M").time()
+
         new_delivery = ScheduledDelivery(
             user_id=current_user.id,
-            scheduled_date=datetime.strptime(schedule_date, '%Y-%m-%d').date(),
-            scheduled_time=schedule_time,  # store "HH:MM" as string (matches model)
+            scheduled_date=datetime.strptime(schedule_date, "%Y-%m-%d").date(),
+            scheduled_time=time_obj,  # ✅ FIXED
+
             location=location,
-            direction=(data.get('direction') or '').strip(),
-            mobile_number=(data.get('mobile_number') or '').strip(),
-            person_receiving=(data.get('person_receiving') or '').strip(),
+
+            # optional fields (handle multiple possible names)
+            direction=(data.get("direction") or data.get("directions") or "").strip(),
+            mobile_number=(data.get("mobile_number") or data.get("mobile") or "").strip(),
+            person_receiving=(data.get("person_receiving") or "").strip(),
         )
+
         db.session.add(new_delivery)
         db.session.commit()
 
-        return jsonify({
-            "success": True,
-            "message": "Schedule added successfully",
-        })
+        return jsonify({"success": True, "message": "Schedule added successfully"}), 200
+
     except Exception as e:
         db.session.rollback()
         current_app.logger.exception("schedule_delivery_add failed")

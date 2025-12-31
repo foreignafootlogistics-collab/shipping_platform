@@ -89,8 +89,9 @@
           {{ invoice.invoice_number or ('INV' ~ '%05d'|format(invoice.id)) }}
         </div>
         <div class="text-muted">Invoice</div>
+        {% set inv_dt = invoice.date_issued or invoice.created_at or invoice.date_submitted %}
         <small class="text-muted">
-          {{ invoice.date_issued.strftime('%d.%m.%Y') if invoice.date_issued else '' }}
+          {{ inv_dt.strftime('%d.%m.%Y') if inv_dt else '—' }}
         </small>
       </div>
       <div class="text-end">

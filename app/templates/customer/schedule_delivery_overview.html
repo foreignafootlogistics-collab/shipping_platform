@@ -1,14 +1,13 @@
 {% extends 'layout_customer.html' %}
 {% block title %}Schedule Delivery{% endblock %}
+
 {% block content %}
 <div class="container mt-4">
   <h2>Schedule Delivery</h2>
-  <p>Arrange to have your packages delivered at a date and time convenient for you. Choose a location, provide directions, and confirm the recipient’s details.</p>
+  <p>Arrange to have your packages delivered at a date and time convenient for you.</p>
 
-  <!-- Show form button -->
   <button id="scheduleDeliveryBtn" class="btn btn-dashboard mb-3">📅 Schedule Delivery</button>
 
-  <!-- Inline form table -->
   <div id="scheduleDeliveryForm" style="display:none;">
     <table class="table table-bordered">
       <thead>
@@ -23,20 +22,24 @@
       </thead>
       <tbody>
         <tr>
-          <td><input type="date" id="deliveryDate" class="form-control"></td>
-          <td><input type="time" id="deliveryTime" class="form-control"></td>
-          <td><input type="text" id="deliveryLocation" class="form-control" placeholder="Delivery Location"></td>
+          <td><input type="date" id="deliveryDate" class="form-control" required></td>
+          <td><input type="time" id="deliveryTime" class="form-control" required></td>
+          <td><input type="text" id="deliveryLocation" class="form-control" placeholder="Delivery Location" required></td>
           <td><input type="text" id="deliveryDirections" class="form-control" placeholder="Directions"></td>
           <td><input type="text" id="deliveryMobile" class="form-control" placeholder="Mobile #"></td>
           <td><input type="text" id="deliveryPerson" class="form-control" placeholder="Person Receiving"></td>
         </tr>
       </tbody>
     </table>
-    <button type="button" class="btn btn-success" id="saveScheduleDelivery">Save</button>
-    <button type="button" class="btn btn-danger" id="cancelScheduleDelivery">Cancel</button>
 
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-success" id="saveScheduleDelivery">Save</button>
+      <button type="button" class="btn btn-danger" id="cancelScheduleDelivery">Cancel</button>
+    </div>
 
-  <!-- Existing scheduled deliveries -->
+    <div id="scheduleDeliveryMsg" class="alert alert-danger mt-3" style="display:none;"></div>
+  </div>  {# ✅ IMPORTANT: closed properly #}
+
   <h4 class="mt-5">Upcoming Scheduled Deliveries</h4>
   <table class="table table-striped" id="scheduledDeliveriesList">
     <thead>
@@ -51,11 +54,11 @@
     <tbody>
       {% for delivery in deliveries %}
       <tr>
-        <td>{{ delivery.date }}</td>
-        <td>{{ delivery.time }}</td>
-        <td>{{ delivery.location }}</td>
-        <td>{{ delivery.person_receiving }}</td>
-        <td>{{ delivery.status }}</td>
+        <td>{{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "" }}</td>
+        <td>{{ delivery.scheduled_time or "" }}</td>
+        <td>{{ delivery.location or "" }}</td>
+        <td>{{ delivery.person_receiving or "" }}</td>
+        <td>Scheduled</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -70,14 +73,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnCancel = document.getElementById("cancelScheduleDelivery");
   const msgEl     = document.getElementById("scheduleDeliveryMsg");
 
-  // If any IDs are wrong, stop and show a clear error in console
-  if (!btnShow || !formWrap || !btnSave || !btnCancel) {
-    console.error("Schedule Delivery JS: Missing element IDs. Check scheduleDeliveryBtn, scheduleDeliveryForm, saveScheduleDelivery, cancelScheduleDelivery.");
-    return;
-  }
-
-  function showMsg(text) {
-    if (!msgEl) return;
+  function showMsg(text){
     msgEl.textContent = text || "";
     msgEl.style.display = text ? "block" : "none";
   }
@@ -97,19 +93,18 @@ document.addEventListener("DOMContentLoaded", () => {
   btnSave.addEventListener("click", async () => {
     showMsg("");
 
-    const schedule_date = (document.getElementById("deliveryDate")?.value || "").trim();
-    const schedule_time = (document.getElementById("deliveryTime")?.value || "").trim();
-    const location      = (document.getElementById("deliveryLocation")?.value || "").trim();
-    const direction     = (document.getElementById("deliveryDirections")?.value || "").trim();
-    const mobile_number = (document.getElementById("deliveryMobile")?.value || "").trim();
-    const person_receiving = (document.getElementById("deliveryPerson")?.value || "").trim();
+    const schedule_date = document.getElementById("deliveryDate").value;
+    const schedule_time = document.getElementById("deliveryTime").value; // HH:MM
+    const location      = (document.getElementById("deliveryLocation").value || "").trim();
+    const direction     = (document.getElementById("deliveryDirections").value || "").trim();
+    const mobile_number = (document.getElementById("deliveryMobile").value || "").trim();
+    const person_receiving = (document.getElementById("deliveryPerson").value || "").trim();
 
     if (!schedule_date || !schedule_time || !location) {
-      showMsg("Please enter Schedule Date, Time, and Location.");
+      showMsg("Please enter Date, Time, and Location.");
       return;
     }
 
-    // disable while sending so you can tell it clicked
     btnSave.disabled = true;
     btnSave.textContent = "Saving...";
 
@@ -130,15 +125,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success) {
-        showMsg(data.message || "Failed to schedule delivery.");
+        showMsg(data.message || `Failed (${res.status})`);
         return;
       }
 
-      // simplest + reliable: reload so table updates
       window.location.reload();
 
-    } catch (err) {
-      console.error("Schedule Delivery Save error:", err);
+    } catch (e) {
+      console.error(e);
       showMsg("Network error. Please try again.");
     } finally {
       btnSave.disabled = false;
@@ -147,5 +141,5 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 </script>
-
 {% endblock %}
+

@@ -2279,7 +2279,7 @@ def scheduled_deliveries_pdf():
     return send_file(buffer, as_attachment=True, download_name="scheduled_deliveries.pdf", mimetype='application/pdf')
 
 @logistics_bp.route('/scheduled_deliveries/add', methods=['GET', 'POST'])
-@admin_required
+@admin_required(roles=['operations'])
 def add_scheduled_delivery():
     form = ScheduledDeliveryForm()
 
@@ -2307,6 +2307,21 @@ def add_scheduled_delivery():
         form=form,
         users=users
     )
+
+@logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/set-status/<status>", methods=["POST"])
+@admin_required(roles=['operations'])
+def scheduled_delivery_set_status(delivery_id, status):
+    allowed = {"Scheduled", "Out for Delivery", "Delivered", "Cancelled"}
+    if status not in allowed:
+        flash("Invalid status", "danger")
+        return redirect(url_for("logistics.view_scheduled_deliveries"))
+
+    d = ScheduledDelivery.query.get_or_404(delivery_id)
+    d.status = status
+    db.session.commit()
+
+    flash(f"Delivery #{d.id} updated to '{status}'", "success")
+    return redirect(url_for("logistics.view_scheduled_deliveries"))
 
 @logistics_bp.route('/shipmentlog/create-shipment', methods=['GET'])
 @admin_required

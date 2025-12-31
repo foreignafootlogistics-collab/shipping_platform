@@ -264,6 +264,8 @@ class ScheduledDelivery(db.Model):
     person_receiving = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    status = db.Column(db.String(30), nullable=False, default="Scheduled", index=True)
+
 
     user = db.relationship('User', back_populates='scheduled_deliveries')
 

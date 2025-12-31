@@ -60,7 +60,16 @@
         <td>{{ delivery.scheduled_time or "" }}</td>
         <td>{{ delivery.location or "" }}</td>
         <td>{{ delivery.person_receiving or "" }}</td>
-        <td>Scheduled</td>
+        <td>
+          {% if (delivery.status or "Scheduled") in ["Scheduled", "Out for Delivery"] %}
+            <button class="btn btn-sm btn-danger"
+                    onclick="cancelDelivery({{ delivery.id }})">
+              Cancel
+            </button>
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -150,6 +159,27 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
+
+async function cancelDelivery(deliveryId){
+  if (!confirm("Cancel this scheduled delivery?")) return;
+
+  try {
+    const res = await fetch(`/customer/schedule-delivery/${deliveryId}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.success) {
+      alert(data.message || "Failed to cancel.");
+      return;
+    }
+    window.location.reload();
+  } catch (e) {
+    alert("Network error.");
+  }
+}
+
 </script>
 {% endblock %}
 

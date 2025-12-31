@@ -880,6 +880,19 @@ def schedule_delivery_add():
         current_app.logger.exception("schedule_delivery_add failed")
         return jsonify({"success": False, "message": f"{type(e).__name__}: {str(e)}"}), 500
 
+@customer_bp.route('/schedule-delivery/<int:delivery_id>/cancel', methods=['POST'])
+@login_required
+def schedule_delivery_cancel(delivery_id):
+    d = ScheduledDelivery.query.filter_by(id=delivery_id, user_id=current_user.id).first_or_404()
+
+    # only allow cancel if not already delivered
+    if (d.status or "").lower() == "delivered":
+        return jsonify({"success": False, "message": "This delivery is already delivered."}), 400
+
+    d.status = "Cancelled"
+    db.session.commit()
+    return jsonify({"success": True, "message": "Delivery cancelled."}), 200
+
 
 
 # -----------------------------

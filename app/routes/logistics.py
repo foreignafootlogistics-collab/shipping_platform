@@ -2436,28 +2436,39 @@ def scheduled_delivery_view(delivery_id):
     )
 
 
-@logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/assign", methods=["POST"])
+@logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/assign-packages", methods=["POST"])
 @admin_required(roles=["operations"])
 def scheduled_delivery_assign_packages(delivery_id):
-    d = ScheduledDelivery.query.get_or_404(delivery_id)
+    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
 
     package_ids = request.form.getlist("package_ids")
     if not package_ids:
-        flash("Select at least one package to assign.", "warning")
-        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id))
+        flash("Please select at least one package to assign.", "warning")
+        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
 
-    # Only allow packages that belong to this customer
+    # Only allow assigning packages that belong to the same customer
     packages = (Package.query
-        .filter(Package.id.in_(package_ids), Package.user_id == d.user_id)
-        .all()
-    )
+                .filter(Package.id.in_(package_ids))
+                .filter(Package.user_id == delivery.user_id)
+                .all())
 
+    if not packages:
+        flash("No valid packages selected for this customer.", "danger")
+        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+
+    assigned_count = 0
     for p in packages:
-        p.scheduled_delivery_id = d.id
+        # Optional safety: prevent re-assigning packages already assigned elsewhere
+        if p.scheduled_delivery_id and p.scheduled_delivery_id != delivery.id:
+            continue
+
+        p.scheduled_delivery_id = delivery.id
+        assigned_count += 1
 
     db.session.commit()
-    flash(f"Assigned {len(packages)} package(s) to this delivery.", "success")
-    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id))
+    flash(f"Assigned {assigned_count} package(s) to this delivery.", "success")
+    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+
 
 
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/unassign/<int:package_id>", methods=["POST"])

@@ -32,9 +32,9 @@
         </tr>
       </tbody>
     </table>
-    <button class="btn btn-success" id="saveScheduleDelivery">Save</button>
+    <button type="button" class="btn btn-success" id="saveScheduleDelivery">Save</button>
     <button type="button" class="btn btn-danger" id="cancelScheduleDelivery">Cancel</button>
-  </div>
+
 
   <!-- Existing scheduled deliveries -->
   <h4 class="mt-5">Upcoming Scheduled Deliveries</h4>
@@ -63,80 +63,89 @@
 </div>
 
 <script>
-const btnShow   = document.getElementById("scheduleDeliveryBtn");
-const formWrap  = document.getElementById("scheduleDeliveryForm");
-const btnSave   = document.getElementById("saveScheduleDelivery");
-const btnCancel = document.getElementById("cancelScheduleDelivery");
-const msgDiv    = document.getElementById("resultMessage"); // ✅ make sure this exists in your HTML
+document.addEventListener("DOMContentLoaded", () => {
+  const btnShow   = document.getElementById("scheduleDeliveryBtn");
+  const formWrap  = document.getElementById("scheduleDeliveryForm");
+  const btnSave   = document.getElementById("saveScheduleDelivery");
+  const btnCancel = document.getElementById("cancelScheduleDelivery");
+  const msgEl     = document.getElementById("scheduleDeliveryMsg");
 
-function showMsg(html, type="danger") {
-  if (!msgDiv) return;
-  msgDiv.innerHTML = html ? `<div class="alert alert-${type}">${html}</div>` : "";
-}
-
-btnShow.addEventListener("click", function () {
-  showMsg("");
-  formWrap.style.display = "block";
-  btnShow.style.display = "none";
-});
-
-btnCancel.addEventListener("click", function () {
-  showMsg("");
-  formWrap.style.display = "none";
-  btnShow.style.display = "inline-block";
-});
-
-btnSave.addEventListener("click", async function () {
-  showMsg("");
-
-  // ✅ match your backend keys exactly
-  const schedule_date    = document.getElementById("deliveryDate").value;
-  const schedule_time    = document.getElementById("deliveryTime").value;
-  const location         = (document.getElementById("deliveryLocation").value || "").trim();
-  const direction        = (document.getElementById("deliveryDirections").value || "").trim();
-  const mobile_number    = (document.getElementById("deliveryMobile").value || "").trim();
-  const person_receiving = (document.getElementById("deliveryPerson").value || "").trim();
-
-  if (!schedule_date || !schedule_time || !location) {
-    showMsg("Missing required fields: date, time, and location.", "warning");
+  // If any IDs are wrong, stop and show a clear error in console
+  if (!btnShow || !formWrap || !btnSave || !btnCancel) {
+    console.error("Schedule Delivery JS: Missing element IDs. Check scheduleDeliveryBtn, scheduleDeliveryForm, saveScheduleDelivery, cancelScheduleDelivery.");
     return;
   }
 
-  try {
-    const res = await fetch("{{ url_for('customer.schedule_delivery_add') }}", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        schedule_date,
-        schedule_time,
-        location,
-        direction,
-        mobile_number,
-        person_receiving
-      })
-    });
-
-    // ✅ ALWAYS read raw response first (so you see real errors)
-    const raw = await res.text();
-    let data = {};
-    try { data = JSON.parse(raw); } catch (e) {}
-
-    if (!res.ok) {
-      showMsg(data.message || raw || `HTTP ${res.status}`, "danger");
-      return;
-    }
-
-    if (!data.success) {
-      showMsg(data.message || "Failed to schedule delivery.", "danger");
-      return;
-    }
-
-    // ✅ simplest: reload so the table updates from DB
-    window.location.reload();
-
-  } catch (err) {
-    showMsg("Network error. Please try again.", "danger");
+  function showMsg(text) {
+    if (!msgEl) return;
+    msgEl.textContent = text || "";
+    msgEl.style.display = text ? "block" : "none";
   }
+
+  btnShow.addEventListener("click", () => {
+    showMsg("");
+    formWrap.style.display = "block";
+    btnShow.style.display = "none";
+  });
+
+  btnCancel.addEventListener("click", () => {
+    showMsg("");
+    formWrap.style.display = "none";
+    btnShow.style.display = "inline-block";
+  });
+
+  btnSave.addEventListener("click", async () => {
+    showMsg("");
+
+    const schedule_date = (document.getElementById("deliveryDate")?.value || "").trim();
+    const schedule_time = (document.getElementById("deliveryTime")?.value || "").trim();
+    const location      = (document.getElementById("deliveryLocation")?.value || "").trim();
+    const direction     = (document.getElementById("deliveryDirections")?.value || "").trim();
+    const mobile_number = (document.getElementById("deliveryMobile")?.value || "").trim();
+    const person_receiving = (document.getElementById("deliveryPerson")?.value || "").trim();
+
+    if (!schedule_date || !schedule_time || !location) {
+      showMsg("Please enter Schedule Date, Time, and Location.");
+      return;
+    }
+
+    // disable while sending so you can tell it clicked
+    btnSave.disabled = true;
+    btnSave.textContent = "Saving...";
+
+    try {
+      const res = await fetch("{{ url_for('customer.schedule_delivery_add') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          schedule_date,
+          schedule_time,
+          location,
+          direction,
+          mobile_number,
+          person_receiving
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.success) {
+        showMsg(data.message || "Failed to schedule delivery.");
+        return;
+      }
+
+      // simplest + reliable: reload so table updates
+      window.location.reload();
+
+    } catch (err) {
+      console.error("Schedule Delivery Save error:", err);
+      showMsg("Network error. Please try again.");
+    } finally {
+      btnSave.disabled = false;
+      btnSave.textContent = "Save";
+    }
+  });
 });
 </script>
+
 {% endblock %}

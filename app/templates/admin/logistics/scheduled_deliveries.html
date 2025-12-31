@@ -213,6 +213,13 @@
               </td>
 
               <td class="sd-actions">
+
+                <!-- ✅ ALWAYS show the View button -->
+                <a class="btn btn-sm btn-outline-primary"
+                   href="{{ url_for('logistics.scheduled_delivery_detail', delivery_id=d.id) }}">
+                  View
+                </a>
+
                 {% if status == "Scheduled" %}
                   <form method="post"
                         action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Out for Delivery') }}"
@@ -246,6 +253,7 @@
                   <span class="text-muted">—</span>
                 {% endif %}
               </td>
+
             </tr>
             {% endfor %}
           </tbody>

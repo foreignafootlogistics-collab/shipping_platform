@@ -2387,6 +2387,21 @@ def remove_package_from_delivery(delivery_id, package_id):
     flash("Package removed from scheduled delivery.", "success")
     return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
 
+@logistics_bp.route("/scheduled_deliveries/<int:delivery_id>")
+@admin_required(roles=["operations"])
+def scheduled_delivery_detail(delivery_id):
+    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
+
+    # (Step 3 we’ll populate these properly)
+    linked_packages = delivery.packages.order_by(Package.created_at.desc()).all()
+
+    return render_template(
+        "admin/logistics/scheduled_delivery_view.html",
+        delivery=delivery,
+        linked_packages=linked_packages
+    )
+
+
 @logistics_bp.route('/shipmentlog/create-shipment', methods=['GET'])
 @admin_required
 def prepare_create_shipment():

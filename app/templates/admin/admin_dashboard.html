@@ -158,13 +158,14 @@
         <tbody>
           {% for delivery in deliveries %}
           <tr>
-            <td>{{ delivery.scheduled_date }}</td>
-            <td>{{ delivery.scheduled_time }}</td>
-            <td>{{ delivery.user.full_name }}</td>
-            <td>{{ delivery.location }}</td>
-            <td>{{ delivery.person_receiving }}</td>
-            <td>{{ delivery.mobile_number }}</td>
-            <td>{{ delivery.status or 'Scheduled' }}</td>
+            <td>{{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "" }}</td>
+            <td>{{ delivery.scheduled_time or "" }}</td>
+            <td>{{ delivery.user.full_name if delivery.user else "N/A" }}</td>
+            <td>{{ delivery.location or "" }}</td>
+            <td>{{ delivery.person_receiving or "" }}</td>
+            <td>{{ delivery.mobile_number or "" }}</td>
+            <td>{{ delivery.status or "Scheduled" }}</td>
+
           </tr>
           {% endfor %}
         </tbody>

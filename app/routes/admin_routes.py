@@ -348,6 +348,7 @@ def dashboard():
 
     deliveries_q = sa.select(ScheduledDelivery).order_by(
         ScheduledDelivery.scheduled_date.desc()
+        ScheduledDelivery.id.desc()
     )
 
     try:

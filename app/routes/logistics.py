@@ -2225,7 +2225,7 @@ def set_invoice_status(invoice_id):
 # Scheduled Deliveries
 # --------------------------------------------------------------------------------------
 @logistics_bp.route('/scheduled_deliveries', methods=['GET', 'POST'])
-@admin_required
+@admin_required(roles=['operations'])
 def view_scheduled_deliveries():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
@@ -2243,7 +2243,7 @@ def view_scheduled_deliveries():
                            end_date=end_date)
 
 @logistics_bp.route('/scheduled_deliveries/pdf')
-@admin_required
+@admin_required(roles=['operations'])
 def scheduled_deliveries_pdf():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
@@ -2282,19 +2282,31 @@ def scheduled_deliveries_pdf():
 @admin_required
 def add_scheduled_delivery():
     form = ScheduledDeliveryForm()
+
+    # Needed for the user dropdown
+    users = User.query.order_by(User.full_name.asc()).all()
+
     if form.validate_on_submit():
         new_delivery = ScheduledDelivery(
             user_id=form.user_id.data,
             scheduled_date=form.date.data,
             scheduled_time=form.time.data,
             location=form.location.data,
+            direction=form.direction.data,
+            mobile_number=form.mobile_number.data,
             person_receiving=form.person_receiving.data,
         )
         db.session.add(new_delivery)
         db.session.commit()
+
         flash("Scheduled delivery added successfully.", "success")
         return redirect(url_for('logistics.view_scheduled_deliveries'))
-    return render_template('admin/logistics/add_scheduled_delivery.html', form=form)
+
+    return render_template(
+        'admin/logistics/add_scheduled_delivery.html',
+        form=form,
+        users=users
+    )
 
 @logistics_bp.route('/shipmentlog/create-shipment', methods=['GET'])
 @admin_required

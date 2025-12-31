@@ -805,24 +805,39 @@ def schedule_delivery_overview():
 @customer_bp.route('/schedule-delivery/add', methods=['POST'])
 @login_required
 def schedule_delivery_add():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
+
+    schedule_date = data.get("schedule_date")
+    schedule_time = data.get("schedule_time")
+    location      = (data.get("location") or "").strip()
+
+    if not schedule_date or not schedule_time or not location:
+        return jsonify({
+            "success": False,
+            "message": "Missing required fields: schedule_date, schedule_time, location"
+        }), 400
+
     try:
         new_delivery = ScheduledDelivery(
             user_id=current_user.id,
-            scheduled_date=datetime.strptime(data['schedule_date'], '%Y-%m-%d').date(),
-            scheduled_time=datetime.strptime(data['schedule_time'], '%H:%M').time(),
-            location=data['location'],
-            direction=data.get('direction', ''),
-            mobile_number=data.get('mobile_number', ''),
-            person_receiving=data.get('person_receiving', '')
+            scheduled_date=datetime.strptime(schedule_date, '%Y-%m-%d').date(),
+            scheduled_time=schedule_time,  # store "HH:MM" as string (matches model)
+            location=location,
+            direction=(data.get('direction') or '').strip(),
+            mobile_number=(data.get('mobile_number') or '').strip(),
+            person_receiving=(data.get('person_receiving') or '').strip(),
         )
         db.session.add(new_delivery)
         db.session.commit()
-        return jsonify({'success': True, 'message': 'Schedule added successfully'})
+
+        return jsonify({
+            "success": True,
+            "message": "Schedule added successfully",
+        })
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 400
-
+        current_app.logger.exception("schedule_delivery_add failed")
+        return jsonify({"success": False, "message": str(e)}), 400
 
 # -----------------------------
 # Referrals

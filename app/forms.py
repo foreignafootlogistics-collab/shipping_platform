@@ -64,18 +64,44 @@ class AdminRegisterForm(FlaskForm):
 
 
 class ScheduledDeliveryForm(FlaskForm):
-    # Which packages are being scheduled (IDs as comma-separated string or handle in your route)
-    package_ids = HiddenField(validators=[Optional()])
+    user_id = SelectField(
+        "Customer",
+        coerce=int,
+        validators=[DataRequired()]
+    )
 
-    # Delivery details
-    date = DateField("Delivery Date", validators=[DataRequired(message="Select a date")])
-    time = TimeField("Delivery Time", validators=[Optional()])  # or DataRequired if mandatory
-    location = StringField("Delivery Location", validators=[DataRequired(), Length(max=255)])
-    contact_name = StringField("Contact Name", validators=[Optional(), Length(max=120)])
-    contact_phone = StringField("Contact Phone", validators=[Optional(), Length(max=40)])
-    notes = TextAreaField("Notes", validators=[Optional(), Length(max=1000)])
+    date = DateField(
+        "Delivery Date",
+        validators=[DataRequired(message="Select a delivery date")]
+    )
 
-    submit = SubmitField("Schedule Delivery")
+    time = StringField(
+        "Delivery Time",
+        validators=[DataRequired(message="Enter a delivery time")]
+    )
+
+    location = StringField(
+        "Delivery Location",
+        validators=[DataRequired(), Length(max=255)]
+    )
+
+    direction = StringField(
+        "Directions",
+        validators=[Optional(), Length(max=255)]
+    )
+
+    mobile_number = StringField(
+        "Mobile Number",
+        validators=[Optional(), Length(max=50)]
+    )
+
+    person_receiving = StringField(
+        "Person Receiving",
+        validators=[Optional(), Length(max=255)]
+    )
+
+    submit = SubmitField("Add Scheduled Delivery")
+
 
 
 class ChangePasswordForm(FlaskForm):

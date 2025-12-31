@@ -9,10 +9,10 @@
   <!-- Filter form -->
   <form class="row g-3 mb-3" method="get">
     <div class="col-auto">
-      <input type="date" name="start_date" class="form-control" placeholder="From" value="{{ start_date }}">
+      <input type="date" name="start_date" class="form-control" value="{{ start_date or '' }}">
     </div>
     <div class="col-auto">
-      <input type="date" name="end_date" class="form-control" placeholder="To" value="{{ end_date }}">
+      <input type="date" name="end_date" class="form-control" value="{{ end_date or '' }}">
     </div>
     <div class="col-auto">
       <button type="submit" class="btn btn-primary">Filter</button>
@@ -31,6 +31,8 @@
           <th>Date</th>
           <th>Time</th>
           <th>Location</th>
+          <th>Directions</th>
+          <th>Mobile #</th>
           <th>Person Receiving</th>
           <th>Status</th>
           <th>Customer</th>
@@ -39,12 +41,14 @@
       <tbody>
         {% for delivery in deliveries %}
         <tr>
-          <td>{{ delivery.date }}</td>
-          <td>{{ delivery.time }}</td>
-          <td>{{ delivery.location }}</td>
-          <td>{{ delivery.person_receiving }}</td>
-          <td>{{ delivery.status }}</td>
-          <td>{{ delivery.user.full_name }}</td>
+          <td>{{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "" }}</td>
+          <td>{{ delivery.scheduled_time or "" }}</td>
+          <td>{{ delivery.location or "" }}</td>
+          <td>{{ delivery.direction or "" }}</td>
+          <td>{{ delivery.mobile_number or "" }}</td>
+          <td>{{ delivery.person_receiving or "" }}</td>
+          <td>Scheduled</td>
+          <td>{{ delivery.user.full_name or delivery.user.email if delivery.user else "N/A" }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -57,9 +61,10 @@
 <script>
 $(document).ready(function () {
   $('#allScheduledDeliveriesTable').DataTable({
-    order: [[0, 'desc']], // default recent first
+    order: [[0, 'desc']],
     pageLength: 25
   });
 });
 </script>
 {% endblock %}
+

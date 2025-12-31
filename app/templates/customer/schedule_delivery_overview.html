@@ -9,6 +9,8 @@
   <button id="scheduleDeliveryBtn" class="btn btn-dashboard mb-3">📅 Schedule Delivery</button>
 
   <div id="scheduleDeliveryForm" style="display:none;">
+  <input type="hidden" id="csrf_token" value="{{ csrf_token() }}">
+
     <table class="table table-bordered">
       <thead>
         <tr>
@@ -102,6 +104,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const mobile_number = (document.getElementById("deliveryMobile").value || "").trim();
     const person_receiving = (document.getElementById("deliveryPerson").value || "").trim();
 
+    const csrfToken = document.getElementById("csrf_token").value;
+
     if (!schedule_date || !schedule_time || !location) {
       showMsg("Please enter Schedule Date, Time, and Location.");
       return;
@@ -113,7 +117,10 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const res = await fetch("{{ url_for('customer.schedule_delivery_add') }}", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken 
+        },
         body: JSON.stringify({
           schedule_date,
           schedule_time,

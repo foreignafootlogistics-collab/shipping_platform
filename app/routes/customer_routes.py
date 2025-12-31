@@ -807,44 +807,73 @@ def schedule_delivery_overview():
 def schedule_delivery_add():
     data = request.get_json(silent=True) or {}
 
-    schedule_date = (data.get("schedule_date") or "").strip()
-    schedule_time = (data.get("schedule_time") or "").strip()
+    schedule_date = (data.get("schedule_date") or data.get("date") or "").strip()
+    schedule_time = (data.get("schedule_time") or data.get("time") or "").strip()
     location      = (data.get("location") or "").strip()
+
+    # DEBUG: log what actually came in
+    current_app.logger.info(f"[schedule_delivery_add] payload keys={list(data.keys())} date={schedule_date} time={schedule_time} location={location}")
 
     if not schedule_date or not schedule_time or not location:
         return jsonify({
             "success": False,
             "message": "Missing required fields: schedule_date, schedule_time, location",
-            "received_keys": list(data.keys())
+            "received_keys": list(data.keys()),
+            "received": {
+                "schedule_date": schedule_date,
+                "schedule_time": schedule_time,
+                "location": location,
+            }
         }), 400
 
-    # parse date
-    try:
-        d = datetime.strptime(schedule_date, "%Y-%m-%d").date()
-    except Exception:
-        return jsonify({"success": False, "message": "Invalid date format. Use YYYY-MM-DD."}), 400
+    # ---- Parse date (YYYY-MM-DD or MM/DD/YYYY) ----
+    d = None
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            d = datetime.strptime(schedule_date, fmt).date()
+            break
+        except Exception:
+            pass
+    if not d:
+        return jsonify({"success": False, "message": f"Invalid date format: {schedule_date}"}), 400
 
-    # validate time format (but store string)
-    try:
-        datetime.strptime(schedule_time, "%H:%M")
-    except Exception:
-        return jsonify({"success": False, "message": "Invalid time format. Use HH:MM (24hr)."}), 400
+    # ---- Normalize time to a STRING your model expects ----
+    # Accept "HH:MM" or "HH:MM AM/PM"
+    t_str = None
+    for fmt in ("%H:%M", "%I:%M %p"):
+        try:
+            t_obj = datetime.strptime(schedule_time, fmt).time()
+            t_str = t_obj.strftime("%H:%M")   # store as "14:30"
+            break
+        except Exception:
+            pass
+    if not t_str:
+        return jsonify({"success": False, "message": f"Invalid time format: {schedule_time}"}), 400
 
     try:
         new_delivery = ScheduledDelivery(
             user_id=current_user.id,
             scheduled_date=d,
-            scheduled_time=schedule_time,  # ✅ STRING (matches your model)
+            scheduled_time=t_str,  # ✅ string
             location=location,
-            direction=(data.get("direction") or "").strip(),
-            mobile_number=(data.get("mobile_number") or "").strip(),
+            direction=(data.get("direction") or data.get("directions") or "").strip(),
+            mobile_number=(data.get("mobile_number") or data.get("mobile") or "").strip(),
             person_receiving=(data.get("person_receiving") or "").strip(),
         )
-
         db.session.add(new_delivery)
         db.session.commit()
 
-        return jsonify({"success": True, "message": "Scheduled successfully"}), 200
+        return jsonify({
+            "success": True,
+            "message": "Scheduled successfully",
+            "delivery": {
+                "id": new_delivery.id,
+                "scheduled_date": new_delivery.scheduled_date.isoformat(),
+                "scheduled_time": new_delivery.scheduled_time,
+                "location": new_delivery.location,
+                "person_receiving": new_delivery.person_receiving or "",
+            }
+        }), 200
 
     except Exception as e:
         db.session.rollback()

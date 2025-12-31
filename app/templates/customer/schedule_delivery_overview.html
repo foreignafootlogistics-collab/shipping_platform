@@ -73,7 +73,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnCancel = document.getElementById("cancelScheduleDelivery");
   const msgEl     = document.getElementById("scheduleDeliveryMsg");
 
-  function showMsg(text){
+  function showMsg(text) {
+    if (!msgEl) return;
     msgEl.textContent = text || "";
     msgEl.style.display = text ? "block" : "none";
   }
@@ -90,18 +91,19 @@ document.addEventListener("DOMContentLoaded", () => {
     btnShow.style.display = "inline-block";
   });
 
-  btnSave.addEventListener("click", async () => {
+  btnSave.addEventListener("click", async (e) => {
+    e.preventDefault();
     showMsg("");
 
-    const schedule_date = document.getElementById("deliveryDate").value;
-    const schedule_time = document.getElementById("deliveryTime").value; // HH:MM
+    const schedule_date = (document.getElementById("deliveryDate").value || "").trim();
+    const schedule_time = (document.getElementById("deliveryTime").value || "").trim(); // usually "HH:MM"
     const location      = (document.getElementById("deliveryLocation").value || "").trim();
     const direction     = (document.getElementById("deliveryDirections").value || "").trim();
     const mobile_number = (document.getElementById("deliveryMobile").value || "").trim();
     const person_receiving = (document.getElementById("deliveryPerson").value || "").trim();
 
     if (!schedule_date || !schedule_time || !location) {
-      showMsg("Please enter Date, Time, and Location.");
+      showMsg("Please enter Schedule Date, Time, and Location.");
       return;
     }
 
@@ -126,13 +128,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (!res.ok || !data.success) {
         showMsg(data.message || `Failed (${res.status})`);
+        console.log("Schedule delivery error payload:", data);
         return;
       }
 
       window.location.reload();
 
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error("Schedule Delivery Save error:", err);
       showMsg("Network error. Please try again.");
     } finally {
       btnSave.disabled = false;

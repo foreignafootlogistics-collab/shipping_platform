@@ -809,9 +809,8 @@ from datetime import datetime
 def schedule_delivery_add():
     data = request.get_json(silent=True) or {}
 
-    # Accept both keys (so you don't break anything later)
-    schedule_date = data.get("schedule_date") or data.get("date")
-    schedule_time = data.get("schedule_time") or data.get("time")
+    schedule_date = (data.get("schedule_date") or "").strip()
+    schedule_time = (data.get("schedule_time") or "").strip()  # "HH:MM"
     location      = (data.get("location") or "").strip()
 
     if not schedule_date or not schedule_time or not location:
@@ -821,34 +820,64 @@ def schedule_delivery_add():
         }), 400
 
     try:
-        # ✅ Convert "HH:MM" string -> time object for SQLAlchemy Time column
-        time_obj = datetime.strptime(schedule_time, "%H:%M").time()
+        # Parse date
+        d = datetime.strptime(schedule_date, "%Y-%m-%d").date()
+
+        # Parse time (supports TIME column OR string column)
+        t_obj = None
+        try:
+            t_obj = datetime.strptime(schedule_time, "%H:%M").time()
+        except Exception:
+            t_obj = None
 
         new_delivery = ScheduledDelivery(
             user_id=current_user.id,
-            scheduled_date=datetime.strptime(schedule_date, "%Y-%m-%d").date(),
-            scheduled_time=time_obj,  # ✅ FIXED
-
+            scheduled_date=d,
             location=location,
-
-            # optional fields (handle multiple possible names)
-            direction=(data.get("direction") or data.get("directions") or "").strip(),
-            mobile_number=(data.get("mobile_number") or data.get("mobile") or "").strip(),
-            person_receiving=(data.get("person_receiving") or "").strip(),
+            person_receiving=(data.get('person_receiving') or '').strip(),
         )
+
+        # scheduled_time: set as time() if possible, else store string
+        if hasattr(ScheduledDelivery, "scheduled_time"):
+            # If your DB column is TIME, this works. If it's a string, it also usually works.
+            setattr(new_delivery, "scheduled_time", t_obj or schedule_time)
+
+        # directions field (your DB might be: directions OR direction OR notes)
+        directions_val = (data.get('direction') or data.get('directions') or '').strip()
+        if directions_val:
+            if hasattr(ScheduledDelivery, "directions"):
+                setattr(new_delivery, "directions", directions_val)
+            elif hasattr(ScheduledDelivery, "direction"):
+                setattr(new_delivery, "direction", directions_val)
+            elif hasattr(ScheduledDelivery, "notes"):
+                setattr(new_delivery, "notes", directions_val)
+
+        # mobile field (your DB might be: mobile_number OR mobile OR contact_phone)
+        mobile_val = (data.get('mobile_number') or data.get('mobile') or data.get('contact_phone') or '').strip()
+        if mobile_val:
+            if hasattr(ScheduledDelivery, "mobile_number"):
+                setattr(new_delivery, "mobile_number", mobile_val)
+            elif hasattr(ScheduledDelivery, "mobile"):
+                setattr(new_delivery, "mobile", mobile_val)
+            elif hasattr(ScheduledDelivery, "contact_phone"):
+                setattr(new_delivery, "contact_phone", mobile_val)
 
         db.session.add(new_delivery)
         db.session.commit()
 
-        return jsonify({"success": True, "message": "Schedule added successfully"}), 200
+        return jsonify({
+            "success": True,
+            "message": "Schedule added successfully",
+        }), 200
 
     except Exception as e:
         db.session.rollback()
         current_app.logger.exception("schedule_delivery_add failed")
+        # IMPORTANT: return JSON ALWAYS, so frontend can show the real error
         return jsonify({
             "success": False,
             "message": f"{type(e).__name__}: {str(e)}"
-        }), 400
+        }), 500
 
 
 # -----------------------------

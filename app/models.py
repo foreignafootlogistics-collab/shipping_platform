@@ -175,6 +175,13 @@ class Package(db.Model):
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True, index=True)
     invoice_file = db.Column(db.String)
 
+    scheduled_delivery_id = db.Column(
+        db.Integer,
+        db.ForeignKey("scheduled_deliveries.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
     # Finance
     amount_due = db.Column(db.Float, default=0)
 
@@ -186,12 +193,19 @@ class Package(db.Model):
     user = db.relationship('User', back_populates='packages')
     invoice = db.relationship('Invoice', back_populates='packages')
 
+    scheduled_delivery = db.relationship(
+        "ScheduledDelivery",
+        back_populates="packages"
+    )
+
     # Shipment many-to-many
     shipments = db.relationship(
         'ShipmentLog',
         secondary='shipment_packages',
         back_populates='packages'
     )
+
+    
 
     def __repr__(self):
         return f"<Package {self.tracking_number} User {self.user_id}>"
@@ -220,7 +234,6 @@ shipment_packages = db.Table(
     db.Column('package_id', db.Integer, db.ForeignKey('packages.id'))
 )
 
-Package.shipments = db.relationship('ShipmentLog', secondary=shipment_packages, back_populates='packages')
 
 
 class Prealert(db.Model):
@@ -264,11 +277,17 @@ class ScheduledDelivery(db.Model):
     person_receiving = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    status = db.Column(db.String(30), nullable=False, default="Scheduled", index=True)
 
+    status = db.Column(db.String(30), nullable=False, default="Scheduled", index=True)
 
     user = db.relationship('User', back_populates='scheduled_deliveries')
 
+    packages = db.relationship(
+        "Package",
+        back_populates="scheduled_delivery",
+        lazy="dynamic",
+        passive_deletes=True
+    )
 
 class AuthorizedPickup(db.Model):
     __tablename__ = 'authorized_pickups'

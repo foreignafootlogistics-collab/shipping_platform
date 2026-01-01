@@ -6,11 +6,11 @@ from datetime import datetime, date
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    current_app, flash, jsonify
+    current_app, flash, jsonify, send_from_directory, abort
 )
 from flask_login import login_required, current_user, login_user, logout_user
 from werkzeug.utils import secure_filename
-
+import mimetypes
 import bcrypt
 import sqlalchemy as sa
 
@@ -47,12 +47,17 @@ from sqlalchemy.orm import selectinload
 
 customer_bp = Blueprint('customer', __name__, template_folder='templates/customer')
 
-# Upload folders
-PROFILE_UPLOAD_FOLDER = os.path.join('static', 'profile_pics')
-INVOICE_UPLOAD_FOLDER = os.path.join('static', 'invoices')
-ALLOWED_INVOICE_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png'}
-os.makedirs(PROFILE_UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(INVOICE_UPLOAD_FOLDER, exist_ok=True)
+# -----------------------------
+# Upload folders (from config)
+# -----------------------------
+def _profile_folder():
+    # keep profile pics in static (fine)
+    return os.path.join(current_app.root_path, "static", "profile_pics")
+
+def _invoice_folder():
+    # IMPORTANT: comes from config; should be /var/data/invoices on Render
+    return current_app.config["INVOICE_UPLOAD_FOLDER"]
+
 
 EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
 
@@ -323,7 +328,7 @@ def package_detail(pkg_id):
 
         if invoice_file and allowed_file(invoice_file.filename):
             filename = secure_filename(invoice_file.filename)
-            upload_folder = current_app.config.get('UPLOAD_FOLDER', INVOICE_UPLOAD_FOLDER)
+            upload_folder = current_app.config["INVOICE_UPLOAD_FOLDER"]
             os.makedirs(upload_folder, exist_ok=True)
             invoice_file.save(os.path.join(upload_folder, filename))
             pkg.invoice_file = filename
@@ -374,23 +379,63 @@ def package_upload_docs(pkg_id):
     saved_any = False
     for f in files:
         if f and f.filename and allowed_file(f.filename):
-            filename = secure_filename(f.filename)
-            upload_folder = current_app.config.get('UPLOAD_FOLDER', INVOICE_UPLOAD_FOLDER)
-            os.makedirs(upload_folder, exist_ok=True)
-            f.save(os.path.join(upload_folder, filename))
+            original = f.filename
+            safe = secure_filename(original)
 
-            # create attachment row (your new model)
+            # unique stored name
+            ext = os.path.splitext(safe)[1].lower()
+            stored = f"pkg{pkg.id}_{int(datetime.utcnow().timestamp())}_{safe}"
+
+            upload_folder = _invoice_folder()
+            os.makedirs(upload_folder, exist_ok=True)
+            f.save(os.path.join(upload_folder, stored))
+
             att = PackageAttachment(
                 package_id=pkg.id,
-                file_name=filename,
-                original_name=f.filename
+                file_name=stored,         # stored filename on disk
+                original_name=original    # display name
             )
             db.session.add(att)
             saved_any = True
 
+
     db.session.commit()
     flash("Updated package documents successfully.", "success" if saved_any or dv else "info")
     return redirect(url_for("customer.view_packages"))
+
+@customer_bp.route("/package-attachment/<int:attachment_id>")
+@login_required
+def view_package_attachment(attachment_id):
+    attachment = (
+        PackageAttachment.query
+        .options(selectinload(PackageAttachment.package))
+        .get_or_404(attachment_id)
+    )
+
+    # Security: only owner can view
+    if not attachment.package or attachment.package.user_id != current_user.id:
+        abort(403)
+
+    upload_folder = _invoice_folder()
+    file_path = os.path.join(upload_folder, attachment.file_name)
+
+    if not os.path.exists(file_path):
+        current_app.logger.warning(
+            "Attachment file missing: %s (folder=%s)",
+            attachment.file_name, upload_folder
+        )
+        abort(404)
+
+    # detect content type (nice for pdf/images)
+    mimetype = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+
+    return send_from_directory(
+        directory=upload_folder,
+        path=attachment.file_name,   # Flask 2.2+ uses "path"
+        mimetype=mimetype,
+        as_attachment=False
+    )
+
 
 
 @customer_bp.route('/update_declared_value', methods=['POST'])
@@ -478,7 +523,7 @@ def submit_invoice():
 
         # save the file
         filename = secure_filename(invoice_file.filename)
-        upload_folder = current_app.config.get('UPLOAD_FOLDER', INVOICE_UPLOAD_FOLDER)
+        upload_folder = current_app.config["INVOICE_UPLOAD_FOLDER"]
         os.makedirs(upload_folder, exist_ok=True)
         invoice_file.save(os.path.join(upload_folder, filename))
 

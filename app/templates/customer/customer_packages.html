@@ -49,7 +49,7 @@
     <table class="table table-bordered table-hover align-middle">
       <thead class="table-dark">
         <tr>
-          <th style="width:60px;" class="text-center">Docs</th>
+          <th style="width:70px;" class="text-center">Docs</th>
           <th>House AWB / Status</th>
           <th>Description</th>
           <th>Tracking Number</th>
@@ -62,7 +62,7 @@
       <tbody>
         {% for pkg in packages %}
         <tr>
-          {# Docs (modal trigger) #}
+          {# Docs (modal trigger only) #}
           <td class="text-center align-middle">
             <button type="button"
                     class="btn btn-sm btn-outline-secondary"
@@ -73,7 +73,9 @@
             </button>
 
             {% if pkg.attachments and pkg.attachments|length > 0 %}
-              <i class="fas fa-paperclip text-success ms-1" title="Attachments available"></i>
+              <div class="small text-success mt-1" title="Attachments available">
+                <i class="fas fa-check-circle"></i>
+              </div>
             {% endif %}
           </td>
 
@@ -100,17 +102,18 @@
             <div class="small text-muted mt-1">VAL: ${{ "%.2f"|format(dv) }}</div>
           </td>
 
-          {# Description + attachment links #}
+          {# Description + attachment ICON links (ONLY HERE) #}
           <td>
             {{ pkg.description or "-" }}
 
             {% if pkg.attachments and pkg.attachments|length > 0 %}
-              <div class="small mt-1">
+              <div class="small mt-1 d-flex gap-2 flex-wrap">
                 {% for a in pkg.attachments %}
-                  <a class="me-2"
+                  <a class="pkg-attachment"
                      target="_blank"
-                     href="{{ url_for('static', filename='invoices/' ~ a.file_name) }}">
-                    <i class="fas fa-paperclip"></i> Doc {{ loop.index }}
+                     href="{{ url_for('customer.view_package_attachment', attachment_id=a.id) }}"
+                     title="{{ a.original_name or a.file_name }}">
+                    <i class="fas fa-file-alt"></i>
                   </a>
                 {% endfor %}
               </div>
@@ -143,76 +146,6 @@
             {% endif %}
           </td>
         </tr>
-
-        {# =========================
-           Modal (MUST be inside loop)
-           ========================= #}
-        <div class="modal fade" id="docsModal{{ pkg.id }}" tabindex="-1" aria-hidden="true">
-          <div class="modal-dialog modal-lg modal-dialog-centered">
-            <div class="modal-content">
-              <form method="POST"
-                    enctype="multipart/form-data"
-                    action="{{ url_for('customer.package_upload_docs', pkg_id=pkg.id) }}">
-                {{ form.csrf_token }}
-
-                <div class="modal-header">
-                  <h5 class="modal-title">Upload Invoices / Declared Value</h5>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-
-                <div class="modal-body">
-                  <div class="row g-3">
-                    <div class="col-md-6">
-                      <label class="form-label">Declared Value (USD)</label>
-                      <input class="form-control"
-                             type="number"
-                             name="declared_value"
-                             step="0.01"
-                             min="0"
-                             value="{{ pkg.declared_value if pkg.declared_value is not none else 65 }}">
-                      <div class="form-text">This updates the “VAL: $xx.xx” shown under status.</div>
-                    </div>
-
-                    <div class="col-md-6">
-                      <label class="form-label">Invoice File 1</label>
-                      <input class="form-control" type="file" name="invoice_file_1" accept=".pdf,.jpg,.jpeg,.png">
-
-                      <label class="form-label mt-2">Invoice File 2</label>
-                      <input class="form-control" type="file" name="invoice_file_2" accept=".pdf,.jpg,.jpeg,.png">
-
-                      <label class="form-label mt-2">Invoice File 3</label>
-                      <input class="form-control" type="file" name="invoice_file_3" accept=".pdf,.jpg,.jpeg,.png">
-                    </div>
-
-                    <div class="col-12">
-                      <div class="fw-semibold mb-1">Existing Attachments</div>
-                      {% if pkg.attachments and pkg.attachments|length > 0 %}
-                        <ul class="mb-0">
-                          {% for a in pkg.attachments %}
-                            <li>
-                              <a target="_blank" href="{{ url_for('static', filename='invoices/' ~ a.file_name) }}">
-                                {{ a.original_name or a.file_name }}
-                              </a>
-                            </li>
-                          {% endfor %}
-                        </ul>
-                      {% else %}
-                        <div class="text-muted">No attachments yet.</div>
-                      {% endif %}
-                    </div>
-
-                  </div>
-                </div>
-
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-                  <button type="submit" class="btn btn-primary">Save</button>
-                </div>
-
-              </form>
-            </div>
-          </div>
-        </div>
         {% else %}
         <tr>
           <td colspan="7" class="text-center text-muted">No packages found.</td>
@@ -236,5 +169,102 @@
     </ul>
   </nav>
 </div>
+
+{# =========================
+   Modals AFTER table (valid HTML)
+   ========================= #}
+{% for pkg in packages %}
+<div class="modal fade" id="docsModal{{ pkg.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST"
+            enctype="multipart/form-data"
+            action="{{ url_for('customer.package_upload_docs', pkg_id=pkg.id) }}">
+        {{ form.csrf_token }}
+
+        <div class="modal-header">
+          <h5 class="modal-title">Upload Invoices / Declared Value</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Declared Value (USD)</label>
+              <input class="form-control"
+                     type="number"
+                     name="declared_value"
+                     step="0.01"
+                     min="0"
+                     value="{{ pkg.declared_value if pkg.declared_value is not none else 65 }}">
+              <div class="form-text">This updates the “VAL: $xx.xx” shown under status.</div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Invoice File 1</label>
+              <input class="form-control" type="file" name="invoice_file_1" accept=".pdf,.jpg,.jpeg,.png">
+
+              <label class="form-label mt-2">Invoice File 2</label>
+              <input class="form-control" type="file" name="invoice_file_2" accept=".pdf,.jpg,.jpeg,.png">
+
+              <label class="form-label mt-2">Invoice File 3</label>
+              <input class="form-control" type="file" name="invoice_file_3" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
+
+            <div class="col-12">
+              <div class="fw-semibold mb-1">Existing Attachments</div>
+              {% if pkg.attachments and pkg.attachments|length > 0 %}
+                <div class="d-flex flex-wrap gap-2">
+                  {% for a in pkg.attachments %}
+                    <a class="btn btn-sm btn-outline-secondary"
+                       target="_blank"
+                       href="{{ url_for('customer.view_package_attachment', attachment_id=a.id) }}"
+                       title="{{ a.original_name or a.file_name }}">
+                      <i class="fas fa-file-alt me-1"></i> View
+                    </a>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="text-muted">No attachments yet.</div>
+              {% endif %}
+            </div>
+
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+{% endfor %}
+<style>
+.pkg-attachment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background-color: #f3e5f5;
+  color: #4a148c;
+  border: 1px solid #e1bee7;
+  transition: all 0.15s ease-in-out;
+  text-decoration: none;
+}
+.pkg-attachment i { font-size: 0.95rem; }
+.pkg-attachment:hover {
+  background-color: #4a148c;
+  color: #fff;
+  border-color: #4a148c;
+  transform: translateY(-1px);
+}
+</style>
+
 {% endblock %}
+
 

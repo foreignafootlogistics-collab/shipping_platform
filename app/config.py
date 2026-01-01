@@ -14,6 +14,26 @@ PROFILE_UPLOAD_FOLDER = BASE_DIR / "app" / "static" / "profile_pics"
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 PROFILE_UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
+
+# =======================
+# Invoice / Package Docs Uploads (Persistent on Render)
+# =======================
+
+# Render persistent disk mount (you set mount path to /var/data)
+RENDER_DISK_PATH = Path(os.environ.get("RENDER_DISK_PATH", "/var/data"))
+
+# Store invoice / attachment files here
+INVOICE_UPLOAD_FOLDER = (
+    (RENDER_DISK_PATH / "invoices") if IS_RENDER
+    else (BASE_DIR / "app" / "static" / "invoices")
+)
+
+# Make sure the folder exists
+Path(INVOICE_UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
+
+# Optional: keep a string version too (handy with os.path.join)
+INVOICE_UPLOAD_FOLDER = str(INVOICE_UPLOAD_FOLDER)
+
 # =======================
 # URLs
 # =======================

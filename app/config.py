@@ -6,6 +6,14 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # =======================
+# Environment detection
+# =======================
+IS_RENDER = bool(
+    os.environ.get("RENDER") or
+    os.environ.get("RENDER_EXTERNAL_URL")
+)
+
+# =======================
 # Folder Setup
 # =======================
 UPLOAD_FOLDER = BASE_DIR / "uploads"
@@ -13,7 +21,6 @@ PROFILE_UPLOAD_FOLDER = BASE_DIR / "app" / "static" / "profile_pics"
 
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 PROFILE_UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-
 
 # =======================
 # Invoice / Package Docs Uploads (Persistent on Render)
@@ -31,7 +38,7 @@ INVOICE_UPLOAD_FOLDER = (
 # Make sure the folder exists
 Path(INVOICE_UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
 
-# Optional: keep a string version too (handy with os.path.join)
+# Keep a string version too (handy with os.path.join)
 INVOICE_UPLOAD_FOLDER = str(INVOICE_UPLOAD_FOLDER)
 
 # =======================
@@ -44,13 +51,6 @@ DASHBOARD_URL = BASE_URL
 # =======================
 # DATABASE CONFIG
 # =======================
-
-# DATABASE CONFIG
-IS_RENDER = bool(
-    os.environ.get("RENDER") or
-    os.environ.get("RENDER_EXTERNAL_URL")
-)
-
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if DATABASE_URL:
@@ -89,3 +89,4 @@ def get_db_connection():
     """
     from app.extensions import db
     return db.engine.raw_connection()
+

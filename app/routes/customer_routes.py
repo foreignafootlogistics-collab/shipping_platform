@@ -38,7 +38,7 @@ from app.models import (
     Notification,
     Message as DBMessage,  # 👈 avoid name clash with Flask-Mail
     Wallet, WalletTransaction, Payment, Settings,
-    Prealert,
+    Prealert, PackageAttachment,
 )
 from sqlalchemy import func
 # Email class from Flask-Mail (alias to avoid clash)
@@ -358,6 +358,48 @@ def package_detail(pkg_id):
 
 
     return render_template('customer/package_detail.html', pkg=d, form=form)
+
+@customer_bp.route("/packages/<int:pkg_id>/docs", methods=["POST"])
+@login_required
+def package_upload_docs(pkg_id):
+    pkg = Package.query.filter_by(id=pkg_id, user_id=current_user.id).first_or_404()
+
+    # declared value
+    dv = request.form.get("declared_value")
+    if dv:
+        try:
+            pkg.declared_value = float(dv)
+        except ValueError:
+            flash("Declared value must be a number.", "warning")
+            return redirect(url_for("customer.view_packages"))
+
+    # handle 3 files
+    files = [
+        request.files.get("invoice_file_1"),
+        request.files.get("invoice_file_2"),
+        request.files.get("invoice_file_3"),
+    ]
+
+    saved_any = False
+    for f in files:
+        if f and f.filename and allowed_file(f.filename):
+            filename = secure_filename(f.filename)
+            upload_folder = current_app.config.get('UPLOAD_FOLDER', INVOICE_UPLOAD_FOLDER)
+            os.makedirs(upload_folder, exist_ok=True)
+            f.save(os.path.join(upload_folder, filename))
+
+            # create attachment row (your new model)
+            att = PackageAttachment(
+                package_id=pkg.id,
+                file_name=filename,
+                original_name=f.filename
+            )
+            db.session.add(att)
+            saved_any = True
+
+    db.session.commit()
+    flash("Updated package documents successfully.", "success" if saved_any or dv else "info")
+    return redirect(url_for("customer.view_packages"))
 
 
 @customer_bp.route('/update_declared_value', methods=['POST'])

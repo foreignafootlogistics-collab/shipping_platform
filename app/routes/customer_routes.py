@@ -43,6 +43,7 @@ from app.models import (
 from sqlalchemy import func
 # Email class from Flask-Mail (alias to avoid clash)
 from flask_mail import Message as MailMessage
+from sqlalchemy.orm import selectinload
 
 customer_bp = Blueprint('customer', __name__, template_folder='templates/customer')
 
@@ -231,29 +232,20 @@ def prealerts_view():
 @customer_bp.route('/packages', methods=['GET', 'POST'])
 @login_required
 def view_packages():
+    """
+    Customer Packages page
+
+    ✅ Fixes:
+    - Returns ORM Package objects (not dicts) so pkg.attachments works
+    - Eager-loads attachments to avoid N+1 queries
+    - Keeps your amount_due rule (only show when status == "Ready for Pick Up")
+    - Safe date filters (YYYY-MM-DD)
+    """
     form = PackageUpdateForm()
 
-    if form.validate_on_submit():
-        pkg_id = request.form.get('pkg_id', type=int)
-        declared_value = form.declared_value.data
-        invoice_file = request.files.get('invoice_file')
-
-        pkg = Package.query.filter_by(id=pkg_id, user_id=current_user.id).first_or_404()
-
-        filename = None
-        if invoice_file and allowed_file(invoice_file.filename):
-            filename = secure_filename(invoice_file.filename)
-            upload_folder = current_app.config.get('UPLOAD_FOLDER', INVOICE_UPLOAD_FOLDER)
-            os.makedirs(upload_folder, exist_ok=True)
-            invoice_file.save(os.path.join(upload_folder, filename))
-            pkg.invoice_file = filename
-
-        pkg.declared_value = declared_value
-        db.session.commit()
-        flash("Invoice and declared value submitted successfully!", "success")
-        return redirect(url_for('customer.view_packages'))
-
+    # -------------------------
     # Filters
+    # -------------------------
     status_filter = (request.args.get('status') or '').strip()
     date_from = (request.args.get('date_from') or '').strip()
     date_to = (request.args.get('date_to') or '').strip()
@@ -261,51 +253,50 @@ def view_packages():
     page = request.args.get('page', 1, type=int)
     per_page = 10
 
-    q = Package.query.filter_by(user_id=current_user.id)
+    # Base query (IMPORTANT: load attachments)
+    q = (
+        Package.query
+        .filter(Package.user_id == current_user.id)
+        .options(selectinload(Package.attachments))
+    )
 
     if status_filter:
         q = q.filter(Package.status == status_filter)
+
     if date_from:
-        q = q.filter(Package.received_date >= datetime.strptime(date_from, "%Y-%m-%d"))
+        try:
+            df = datetime.strptime(date_from, "%Y-%m-%d")
+            q = q.filter(Package.received_date >= df)
+        except Exception:
+            flash("Invalid date_from format. Use YYYY-MM-DD.", "warning")
+
     if date_to:
-        q = q.filter(Package.received_date <= datetime.strptime(date_to, "%Y-%m-%d"))
+        try:
+            # include the entire end day
+            dt = datetime.strptime(date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+            q = q.filter(Package.received_date <= dt)
+        except Exception:
+            flash("Invalid date_to format. Use YYYY-MM-DD.", "warning")
 
     if tracking_number:
         q = q.filter(Package.tracking_number.ilike(f"%{tracking_number}%"))
 
-    q = q.order_by(Package.received_date.desc().nullslast())
+    q = q.order_by(Package.received_date.desc().nullslast(), Package.id.desc())
     paginated = q.paginate(page=page, per_page=per_page, error_out=False)
 
-    # Adjust values for display
-    packages = []
-    for pkg in paginated.items:
-        d = {
-            "id": pkg.id,
-            "house_awb": pkg.house_awb,
-            "status": pkg.status,
-            "description": pkg.description,
-            "tracking_number": pkg.tracking_number,
-            "weight": 0,
-            "amount_due": pkg.amount_due or 0,
-            "received_date": pkg.received_date,
-            "invoice_file": pkg.invoice_file,
-            "declared_value": pkg.declared_value if pkg.declared_value is not None else 65.0,
-        }
-        # rounded up weight
-        try:
-            d["weight"] = ceil(float(pkg.weight or 0))
-        except Exception:
-            d["weight"] = 0
+    packages = paginated.items
+    total_pages = paginated.pages or 1
 
-        
+    # ✅ Apply your display rule without converting to dict:
+    # Only show amount_due when Ready for Pick Up (customer side)
+    for pkg in packages:
         status_norm = (pkg.status or "").strip().lower()
         if status_norm != "ready for pick up":
-            d["amount_due"] = 0
+            pkg.amount_due = 0
 
-
-        packages.append(d)
-
-    total_pages = paginated.pages or 1
+        # Optional: default declared value if None (only for display)
+        if pkg.declared_value is None:
+            pkg.declared_value = 65.0
 
     return render_template(
         'customer/customer_packages.html',

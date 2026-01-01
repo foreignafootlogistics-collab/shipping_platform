@@ -210,6 +210,26 @@ class Package(db.Model):
     def __repr__(self):
         return f"<Package {self.tracking_number} User {self.user_id}>"
 
+class PackageAttachment(db.Model):
+    __tablename__ = "package_attachments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    package_id = db.Column(db.Integer, db.ForeignKey("packages.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    file_name = db.Column(db.String(255), nullable=False)   # stored filename
+    original_name = db.Column(db.String(255))               # what user uploaded
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    package = db.relationship("Package", back_populates="attachments")
+
+
+# in Package model add:
+attachments = db.relationship(
+    "PackageAttachment",
+    back_populates="package",
+    cascade="all, delete-orphan",
+    lazy="select"
+)
 
 class ShipmentLog(db.Model):
     __tablename__ = 'shipment_log'

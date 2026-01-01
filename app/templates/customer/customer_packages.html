@@ -53,6 +53,7 @@
           <th>Description</th>
           <th>Tracking Number</th>
           <th class="text-center">Weight (LBS)</th>
+          <th class="text-center">Date Received</th>
           <th class="text-center">Declared Value (USD)</th>
           <th class="text-center">Amount Due</th>
         </tr>
@@ -101,6 +102,13 @@
           <td class="text-center">
             {% if pkg.weight is not none %}
               {{ (pkg.weight|float)|round(0,'ceil')|int }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td class="text-center">
+            {% if pkg.received_date %}
+              {{ pkg.received_date.strftime("%Y-%m-%d") if pkg.received_date.strftime else pkg.received_date }}
             {% else %}
               —
             {% endif %}

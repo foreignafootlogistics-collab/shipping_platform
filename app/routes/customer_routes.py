@@ -266,9 +266,10 @@ def view_packages():
     if status_filter:
         q = q.filter(Package.status == status_filter)
     if date_from:
-        q = q.filter(Package.received_date >= date_from)
+        q = q.filter(Package.received_date >= datetime.strptime(date_from, "%Y-%m-%d"))
     if date_to:
-        q = q.filter(Package.received_date <= date_to)
+        q = q.filter(Package.received_date <= datetime.strptime(date_to, "%Y-%m-%d"))
+
     if tracking_number:
         q = q.filter(Package.tracking_number.ilike(f"%{tracking_number}%"))
 
@@ -296,9 +297,11 @@ def view_packages():
         except Exception:
             d["weight"] = 0
 
-        # zero out amount due until ready_to_pick_up (keep your rule)
-        if pkg.status != 'ready_to_pick_up':
+        
+        status_norm = (pkg.status or "").strip().lower()
+        if status_norm != "ready for pick up":
             d["amount_due"] = 0
+
 
         packages.append(d)
 
@@ -349,8 +352,10 @@ def package_detail(pkg_id):
         d['declared_value'] = float(pkg.declared_value) if pkg.declared_value is not None else 65.0
     except Exception:
         d['declared_value'] = 65.0
-    if pkg.status != 'ready_to_pick_up':
-        d['amount_due'] = 0
+    status_norm = (pkg.get("status") or "").strip().lower()
+    if status_norm != "ready for pick up":
+        d["amount_due"] = 0
+
 
     return render_template('customer/package_detail.html', pkg=d, form=form)
 

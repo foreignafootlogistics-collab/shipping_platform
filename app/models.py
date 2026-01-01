@@ -103,6 +103,9 @@ class WalletTransaction(db.Model):
 # -------------------------------
 # Invoice & Package Models
 # -------------------------------
+# -------------------------------
+# Invoice & Package Models
+# -------------------------------
 class Invoice(db.Model):
     __tablename__ = 'invoices'
 
@@ -123,17 +126,17 @@ class Invoice(db.Model):
     gct = db.Column(db.Float, default=0)
     handling = db.Column(db.Float, default=0)
 
-    # NEW REQUIRED FIELDS FOR FINANCE
+    # Finance
     amount = db.Column(db.Float, default=0)         # legacy
     amount_due = db.Column(db.Float, default=0)     # open balance
     grand_total = db.Column(db.Float, default=0)    # full sum with fees
 
-    # DATES
-    date_issued = db.Column(db.DateTime)            # NEW required
+    # Dates
+    date_issued = db.Column(db.DateTime)
     date_submitted = db.Column(db.DateTime)
     date_paid = db.Column(db.DateTime)
     due_date = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)  # NEW required
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     status = db.Column(db.String, default="unpaid")
 
@@ -142,6 +145,7 @@ class Invoice(db.Model):
 
     def __repr__(self):
         return f"<Invoice {self.invoice_number} User {self.user_id}>"
+
 
 class Package(db.Model):
     __tablename__ = 'packages'
@@ -161,9 +165,9 @@ class Package(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
     external_company = db.Column(db.Boolean, default=False)
 
-    # Dates — FIXED
+    # Dates
     received_date = db.Column(db.DateTime)   # when package reached JA
-    date_received = db.Column(db.DateTime)   # keep legacy compatibility
+    date_received = db.Column(db.DateTime)   # legacy compatibility
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Weight / Value
@@ -175,6 +179,7 @@ class Package(db.Model):
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True, index=True)
     invoice_file = db.Column(db.String)
 
+    # Scheduled delivery link
     scheduled_delivery_id = db.Column(
         db.Integer,
         db.ForeignKey("scheduled_deliveries.id", ondelete="SET NULL"),
@@ -205,31 +210,37 @@ class Package(db.Model):
         back_populates='packages'
     )
 
-    
+    # ✅ FIX: This MUST be inside Package
+    attachments = db.relationship(
+        "PackageAttachment",
+        back_populates="package",
+        cascade="all, delete-orphan",
+        lazy="select"
+    )
 
     def __repr__(self):
         return f"<Package {self.tracking_number} User {self.user_id}>"
+
 
 class PackageAttachment(db.Model):
     __tablename__ = "package_attachments"
 
     id = db.Column(db.Integer, primary_key=True)
-    package_id = db.Column(db.Integer, db.ForeignKey("packages.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    package_id = db.Column(
+        db.Integer,
+        db.ForeignKey("packages.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
 
     file_name = db.Column(db.String(255), nullable=False)   # stored filename
     original_name = db.Column(db.String(255))               # what user uploaded
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
+    # ✅ Matches Package.attachments
     package = db.relationship("Package", back_populates="attachments")
 
-
-# in Package model add:
-attachments = db.relationship(
-    "PackageAttachment",
-    back_populates="package",
-    cascade="all, delete-orphan",
-    lazy="select"
-)
 
 class ShipmentLog(db.Model):
     __tablename__ = 'shipment_log'

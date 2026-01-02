@@ -8,6 +8,7 @@ from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from sqlalchemy import text
+from app import config as cfg 
 
 from . import config as cfg
 from .config import PROFILE_UPLOAD_FOLDER
@@ -77,15 +78,16 @@ def create_app():
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
     # Folders
-    os.makedirs(app.instance_path, exist_ok=True)
-    os.makedirs("static/invoices", exist_ok=True)
+    os.makedirs(app.instance_path, exist_ok=True)    
     os.makedirs(str(PROFILE_UPLOAD_FOLDER), exist_ok=True)
 
     # Config
     app.config['SECRET_KEY'] = cfg.SECRET_KEY
     app.config['SQLALCHEMY_DATABASE_URI'] = cfg.SQLALCHEMY_DATABASE_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = cfg.SQLALCHEMY_TRACK_MODIFICATIONS
-    app.config['UPLOAD_FOLDER'] = os.path.join('static', 'invoices')
+    # Invoice/attachment uploads (single source of truth)
+    app.config["INVOICE_UPLOAD_FOLDER"] = cfg.INVOICE_UPLOAD_FOLDER
+    )
     app.config['PROFILE_UPLOAD_FOLDER'] = str(PROFILE_UPLOAD_FOLDER)
     app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
     app.config.update(

@@ -406,33 +406,25 @@ def package_upload_docs(pkg_id):
 @customer_bp.route("/package-attachment/<int:attachment_id>")
 @login_required
 def view_package_attachment(attachment_id):
-    attachment = (
-        PackageAttachment.query
-        .options(selectinload(PackageAttachment.package))
-        .get_or_404(attachment_id)
-    )
+    attachment = PackageAttachment.query.get_or_404(attachment_id)
 
-    # Security: only owner can view
-    if not attachment.package or attachment.package.user_id != current_user.id:
+    # only owner can view
+    if attachment.package.user_id != current_user.id:
         abort(403)
 
-    upload_folder = _invoice_folder()
+    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+    if not upload_folder:
+        current_app.logger.error("INVOICE_UPLOAD_FOLDER not configured")
+        abort(500)
+
     file_path = os.path.join(upload_folder, attachment.file_name)
-
     if not os.path.exists(file_path):
-        current_app.logger.warning(
-            "Attachment file missing: %s (folder=%s)",
-            attachment.file_name, upload_folder
-        )
+        current_app.logger.warning("Attachment file missing: %s", file_path)
         abort(404)
-
-    # detect content type (nice for pdf/images)
-    mimetype = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
 
     return send_from_directory(
         directory=upload_folder,
-        path=attachment.file_name,   # Flask 2.2+ uses "path"
-        mimetype=mimetype,
+        path=attachment.file_name,
         as_attachment=False
     )
 
@@ -571,16 +563,16 @@ def view_invoice_customer(invoice_id):
     packages = [{
         "house_awb":      p.house_awb,
         "description":    p.description,
-        "weight":         _num(p.weight),
+        "weight":         _num(getattr(p, "weight", 0)),
         "value":          _num(getattr(p, "value", 0)),
         "freight":        _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
         "storage":        _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
-        "other_charges":  _num(p.other_charges),
-        "duty":           _num(p.duty),
-        "scf":            _num(p.scf),
-        "envl":           _num(p.envl),
-        "caf":            _num(p.caf),
-        "gct":            _num(p.gct),
+        "other_charges":  _num(getattr(p, "other_charges", 0)),
+        "duty":           _num(getattr(p, "duty", 0)),
+        "scf":            _num(getattr(p, "scf", 0)),
+        "envl":           _num(getattr(p, "envl", 0)),
+        "caf":            _num(getattr(p, "caf", 0)),
+        "gct":            _num(getattr(p, "gct", 0)),
         "discount_due":   _num(getattr(p, "discount_due", 0)),
     } for p in pkgs]
 
@@ -616,21 +608,22 @@ def invoice_pdf(invoice_id):
         except Exception:
             return float(default)
 
-    packages = [{
+     packages = [{
         "house_awb":      p.house_awb,
         "description":    p.description,
-        "weight":         _num(p.weight),
+        "weight":         _num(getattr(p, "weight", 0)),
         "value":          _num(getattr(p, "value", 0)),
         "freight":        _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
         "storage":        _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
-        "other_charges":  _num(p.other_charges),
-        "duty":           _num(p.duty),
-        "scf":            _num(p.scf),
-        "envl":           _num(p.envl),
-        "caf":            _num(p.caf),
-        "gct":            _num(p.gct),
+        "other_charges":  _num(getattr(p, "other_charges", 0)),
+        "duty":           _num(getattr(p, "duty", 0)),
+        "scf":            _num(getattr(p, "scf", 0)),
+        "envl":           _num(getattr(p, "envl", 0)),
+        "caf":            _num(getattr(p, "caf", 0)),
+        "gct":            _num(getattr(p, "gct", 0)),
         "discount_due":   _num(getattr(p, "discount_due", 0)),
     } for p in pkgs]
+
 
     invoice_dict = {
         "id":            inv.id,

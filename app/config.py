@@ -1,5 +1,4 @@
 # app/config.py
-
 import os
 from pathlib import Path
 
@@ -8,46 +7,32 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # =======================
 # Environment detection
 # =======================
-IS_RENDER = bool(
-    os.environ.get("RENDER") or
-    os.environ.get("RENDER_EXTERNAL_URL")
-)
+IS_RENDER = bool(os.environ.get("RENDER") or os.environ.get("RENDER_EXTERNAL_URL"))
 
 # =======================
-# Folder Setup
+# Folder Setup (local)
 # =======================
 UPLOAD_FOLDER = BASE_DIR / "uploads"
 PROFILE_UPLOAD_FOLDER = BASE_DIR / "app" / "static" / "profile_pics"
 
+# IMPORTANT:
+# Do NOT mkdir Render disk paths here (build time can be read-only).
+# Only mkdir safe local repo paths:
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 PROFILE_UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
 # =======================
 # Invoice / Package Docs Uploads
 # =======================
+# Render disk mount path must match what you set in Render (you said /var/data)
 RENDER_DISK_PATH = Path(os.environ.get("RENDER_DISK_PATH", "/var/data"))
 
-def _pick_invoice_folder() -> Path:
-    """
-    Prefer Render disk path if it exists AND is writable.
-    Otherwise fallback to a local folder inside the repo that is writable at runtime.
-    """
-    if IS_RENDER:
-        try:
-            RENDER_DISK_PATH.mkdir(parents=True, exist_ok=True)  # will fail if read-only
-            test_file = RENDER_DISK_PATH / ".write_test"
-            test_file.write_text("ok")
-            test_file.unlink(missing_ok=True)
-            return RENDER_DISK_PATH / "invoices"
-        except Exception:
-            # No disk mounted or not writable -> fallback
-            return BASE_DIR / "uploads" / "invoices"
-
-    return BASE_DIR / "app" / "static" / "invoices"
-
-INVOICE_UPLOAD_FOLDER = _pick_invoice_folder()
-INVOICE_UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-INVOICE_UPLOAD_FOLDER = str(INVOICE_UPLOAD_FOLDER)
+if IS_RENDER:
+    # Use persistent disk at runtime
+    INVOICE_UPLOAD_FOLDER = str(RENDER_DISK_PATH / "invoices")
+else:
+    # Local/dev fallback (served via /static if you want)
+    INVOICE_UPLOAD_FOLDER = str(BASE_DIR / "app" / "static" / "invoices")
 
 # =======================
 # URLs
@@ -68,10 +53,8 @@ if DATABASE_URL:
         DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
-
 elif IS_RENDER:
     raise RuntimeError("DATABASE_URL is not set on Render.")
-
 else:
     SQLITE_PATH = BASE_DIR / "instance" / "shipping_platform.db"
     SQLALCHEMY_DATABASE_URI = f"sqlite:///{SQLITE_PATH}"
@@ -87,4 +70,3 @@ WTF_CSRF_TIME_LIMIT = None
 def get_db_connection():
     from app.extensions import db
     return db.engine.raw_connection()
-

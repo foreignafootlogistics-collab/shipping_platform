@@ -1,20 +1,19 @@
 # app/__init__.py
 import os
 from datetime import datetime
+
 from flask import Flask, render_template, redirect, url_for, jsonify, current_app
 from flask_mail import Mail
-from itsdangerous import URLSafeTimedSerializer
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from sqlalchemy import text
-from app import config as cfg 
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import config as cfg
 from .config import PROFILE_UPLOAD_FOLDER
 from .forms import CalculatorForm, AdminCalculatorForm
 from .extensions import db  # SQLAlchemy shared instance
-from werkzeug.middleware.proxy_fix import ProxyFix
 
 
 migrate = Migrate()
@@ -30,16 +29,21 @@ ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png'}
 def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
 def _safe_ctx(fn):
     def wrapper():
         try:
             rv = fn()
             return rv if isinstance(rv, dict) else {}
         except Exception as e:
-            app.logger.exception(f"[CTX_PROCESSOR_FAIL] {fn.__name__}: {e}")
+            try:
+                current_app.logger.exception(f"[CTX_PROCESSOR_FAIL] {fn.__name__}: {e}")
+            except Exception:
+                pass
             return {}
     wrapper.__name__ = fn.__name__
     return wrapper
+
 
 
 def _ensure_first_admin():
@@ -86,8 +90,7 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = cfg.SQLALCHEMY_DATABASE_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = cfg.SQLALCHEMY_TRACK_MODIFICATIONS
     # Invoice/attachment uploads (single source of truth)
-    app.config["INVOICE_UPLOAD_FOLDER"] = cfg.INVOICE_UPLOAD_FOLDER
-    )
+    app.config["INVOICE_UPLOAD_FOLDER"] = cfg.INVOICE_UPLOAD_FOLDER    
     app.config['PROFILE_UPLOAD_FOLDER'] = str(PROFILE_UPLOAD_FOLDER)
     app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
     app.config.update(
@@ -202,6 +205,7 @@ def create_app():
         try:
             from .models import Settings
             settings = Settings.query.get(1)
+            return {'settings': settings}
         except Exception:
             return {'settings': None}
 

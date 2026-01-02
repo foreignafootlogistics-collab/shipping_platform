@@ -541,7 +541,6 @@ def submit_invoice():
     return render_template('customer/submit_invoice.html', package_id=package_id)
 
 
-
 # -----------------------------
 # Invoice viewer / PDF (customer)
 # -----------------------------
@@ -553,43 +552,52 @@ def view_invoice_customer(invoice_id):
         flash("Invoice not found or you don't have permission to view it.", "danger")
         return redirect(url_for('customer.view_bills'))
 
-    pkgs = Package.query.filter_by(invoice_id=inv.id).order_by(Package.id.asc()).all()
+    pkgs = (
+        Package.query
+        .filter_by(invoice_id=inv.id)
+        .order_by(Package.id.asc())
+        .all()
+    )
+
     def _num(val, default=0.0):
         try:
             return float(val or 0)
         except Exception:
             return float(default)
 
-    packages = [{
-        "house_awb":      p.house_awb,
-        "description":    p.description,
-        "weight":         _num(getattr(p, "weight", 0)),
-        "value":          _num(getattr(p, "value", 0)),
-        "freight":        _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
-        "storage":        _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
-        "other_charges":  _num(getattr(p, "other_charges", 0)),
-        "duty":           _num(getattr(p, "duty", 0)),
-        "scf":            _num(getattr(p, "scf", 0)),
-        "envl":           _num(getattr(p, "envl", 0)),
-        "caf":            _num(getattr(p, "caf", 0)),
-        "gct":            _num(getattr(p, "gct", 0)),
-        "discount_due":   _num(getattr(p, "discount_due", 0)),
-    } for p in pkgs]
+    packages = []
+    for p in pkgs:
+        packages.append({
+            "house_awb":     p.house_awb,
+            "description":   p.description,
+            "weight":        _num(p.weight),
+            "value":         _num(getattr(p, "value", 0)),
+            "freight":       _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
+            "storage":       _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
+            "other_charges": _num(getattr(p, "other_charges", 0)),
+            "duty":          _num(getattr(p, "duty", 0)),
+            "scf":           _num(getattr(p, "scf", 0)),
+            "envl":          _num(getattr(p, "envl", 0)),
+            "caf":           _num(getattr(p, "caf", 0)),
+            "gct":           _num(getattr(p, "gct", 0)),
+            "discount_due":  _num(getattr(p, "discount_due", 0)),
+        })
 
     invoice_dict = {
-        "id":            inv.id,
-        "number":        inv.invoice_number,
-        "date":          inv.date_submitted or inv.created_at or datetime.utcnow(),
-        "customer_code": current_user.registration_number,
-        "customer_name": current_user.full_name,
-        "subtotal":      float(getattr(inv, "subtotal", 0) or 0),
-        "discount_total":float(getattr(inv, "discount_total", 0) or 0),
-        "total_due":     float(getattr(inv, "grand_total", getattr(inv, "amount", 0)) or 0),
-        "packages":      packages,
-        "branch":        getattr(inv, "branch", None),
-        "staff":         getattr(inv, "staff", None),
-        "notes":         getattr(inv, "notes", None),
+        "id":             inv.id,
+        "number":         inv.invoice_number,
+        "date":           inv.date_submitted or inv.created_at or datetime.utcnow(),
+        "customer_code":  current_user.registration_number,
+        "customer_name":  current_user.full_name,
+        "subtotal":       _num(getattr(inv, "subtotal", 0)),
+        "discount_total": _num(getattr(inv, "discount_total", 0)),
+        "total_due":      _num(getattr(inv, "grand_total", getattr(inv, "amount", 0))),
+        "packages":       packages,
+        "branch":         getattr(inv, "branch", None),
+        "staff":          getattr(inv, "staff", None),
+        "notes":          getattr(inv, "notes", None),
     }
+
     return render_template("customer/invoices/view_invoice.html", invoice=invoice_dict)
 
 
@@ -601,42 +609,50 @@ def invoice_pdf(invoice_id):
         flash("Invoice not found or you don't have permission to view it.", "danger")
         return redirect(url_for('customer.view_bills'))
 
-    pkgs = Package.query.filter_by(invoice_id=inv.id).order_by(Package.id.asc()).all()
+    pkgs = (
+        Package.query
+        .filter_by(invoice_id=inv.id)
+        .order_by(Package.id.asc())
+        .all()
+    )
+
     def _num(val, default=0.0):
         try:
             return float(val or 0)
         except Exception:
             return float(default)
 
-     packages = [{
-        "house_awb":      p.house_awb,
-        "description":    p.description,
-        "weight":         _num(getattr(p, "weight", 0)),
-        "value":          _num(getattr(p, "value", 0)),
-        "freight":        _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
-        "storage":        _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
-        "other_charges":  _num(getattr(p, "other_charges", 0)),
-        "duty":           _num(getattr(p, "duty", 0)),
-        "scf":            _num(getattr(p, "scf", 0)),
-        "envl":           _num(getattr(p, "envl", 0)),
-        "caf":            _num(getattr(p, "caf", 0)),
-        "gct":            _num(getattr(p, "gct", 0)),
-        "discount_due":   _num(getattr(p, "discount_due", 0)),
-    } for p in pkgs]
-
+    packages = []
+    for p in pkgs:
+        packages.append({
+            "house_awb":     p.house_awb,
+            "description":   p.description,
+            "weight":        _num(p.weight),
+            "value":         _num(getattr(p, "value", 0)),
+            "freight":       _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
+            "storage":       _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
+            "other_charges": _num(getattr(p, "other_charges", 0)),
+            "duty":          _num(getattr(p, "duty", 0)),
+            "scf":           _num(getattr(p, "scf", 0)),
+            "envl":          _num(getattr(p, "envl", 0)),
+            "caf":           _num(getattr(p, "caf", 0)),
+            "gct":           _num(getattr(p, "gct", 0)),
+            "discount_due":  _num(getattr(p, "discount_due", 0)),
+        })
 
     invoice_dict = {
         "id":            inv.id,
         "number":        inv.invoice_number,
-        "date":          inv.date_submitted or datetime.utcnow(),
+        "date":          inv.date_submitted or inv.created_at or datetime.utcnow(),
         "customer_code": current_user.registration_number,
         "customer_name": current_user.full_name,
-        "subtotal":      float(getattr(inv, "subtotal", 0) or 0),
-        "discount_total":float(getattr(inv, "discount_total", 0) or 0),
-        "total_due":     float(getattr(inv, "grand_total", getattr(inv, "amount", 0)) or 0),
+        "subtotal":      _num(getattr(inv, "subtotal", 0)),
+        "discount_total": _num(getattr(inv, "discount_total", 0)),
+        "total_due":     _num(getattr(inv, "grand_total", getattr(inv, "amount", 0))),
         "packages":      packages,
     }
-    rel = generate_invoice(invoice_dict)  # your util that returns static path
+
+    rel = generate_invoice(invoice_dict)  # returns path relative to /static
     return redirect(url_for('static', filename=rel))
 
 

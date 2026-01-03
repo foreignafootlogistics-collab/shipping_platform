@@ -604,7 +604,7 @@ def logistics_dashboard():
                     if email:
                         user = User.query.filter(func.lower(User.email) == func.lower(email)).first()
                 assigned_unassigned = False
-                if not user and UNASSIGNED_ID is not None:
+                if not user and unassigned_id is not None:
                     user = db.session.get(User, unassigned_id)
                     assigned_unassigned = True
                 if not user:

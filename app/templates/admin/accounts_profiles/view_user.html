@@ -285,7 +285,7 @@
                   <input type="checkbox" id="pkgSelectAll">
                 </th>
                 <th>House AWB & Status</th>
-                <th>Description & Invoice</th>
+                <th>Description</th>
                 <th>Tracking Number</th>
                 <th class="text-end">Weight (lbs)</th>
                 <th>Date Received</th>
@@ -330,22 +330,26 @@
 
                   {% if pkg.attachments and pkg.attachments|length > 0 %}
                     <div class="mt-1 d-flex flex-wrap gap-2">
+
                       {% for a in pkg.attachments %}
-                        <a class="badge text-decoration-none"
-                           style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
+                        <a class="btn btn-sm"
+                           style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
                            target="_blank"
                            href="{{ url_for('logistics.view_package_attachment', attachment_id=a.id) }}"
-                           title="{{ a.original_name }}">
-                          <i class="fa-solid fa-paperclip me-1"></i>
-                          {{ (a.original_name or 'file')[:18] }}{% if (a.original_name or '')|length > 18 %}…{% endif %}
+                           title="{{ a.original_name or 'Attachment' }}">
+                          <i class="fa-solid fa-file-lines"></i>                          
                         </a>
+
                         <form method="POST"
                               action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=a.id) }}"
                               class="d-inline"
                               onsubmit="return confirm('Delete this attachment?');">
                           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                          <button type="submit" class="btn btn-link btn-sm p-0 text-danger">
-                            <i class="bi bi-x-circle"></i>
+                          <button type="submit" 
+                                  class="btn btn-sm"
+                                  style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .45rem;"
+                                  title="Delete attachment">
+                            <i class="fa-solid fa-trash"></i>
                           </button>
                         </form>
 

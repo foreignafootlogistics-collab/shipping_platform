@@ -30,7 +30,7 @@ from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import CATEGORIES
 
 # Models (these exist in your file)
-from app.models import User, Invoice, Payment, Package, Prealert, Message, Settings
+from app.models import User, Invoice, Payment, Package, Prealert, Message, Settings, PackageAttachment
 
 accounts_bp = Blueprint('accounts_profiles', __name__)
 
@@ -729,6 +729,20 @@ def view_user(id):
                 except Exception:
                     weight = 0
 
+            attachments = (
+                db.session.query(PackageAttachment.id, PackageAttachment.original_name, PackageAttachment.file_name)
+                .filter(PackageAttachment.package_id == p.id)
+                .order_by(PackageAttachment.id.desc())
+                .all()
+            )
+
+            attachments = [
+                {"id": a.id, "original_name": a.original_name or a.file_name}
+                for a in attachments
+            ]
+
+
+
             packages.append({
                 "id": p.id,
                 "user_id": p.user_id,
@@ -741,6 +755,8 @@ def view_user(id):
                 "declared_value": declared_value,
                 "amount_due": amt_due,
                 "invoice_file": getattr(p, "invoice_file", None),
+                "attachments": attachments,
+
             })
 
     except Exception:
@@ -748,6 +764,34 @@ def view_user(id):
         packages = []
         total_pkgs = 0
         pkg_from = pkg_to = pkg_awb = pkg_tn = ""
+
+    # ---------------- Attachments lookup for packages ----------------
+    pkg_ids = [p["id"] for p in packages if p.get("id")]
+
+    attachments_by_pkg = {}
+    if pkg_ids:
+        att_rows = (
+            db.session.query(
+                PackageAttachment.id,
+                PackageAttachment.package_id,
+                PackageAttachment.original_name,
+                PackageAttachment.file_name,
+            )
+            .filter(PackageAttachment.package_id.in_(pkg_ids))
+            .order_by(PackageAttachment.id.desc())
+            .all()
+        )
+
+        for att_id, pkg_id, original_name, file_name in att_rows:
+            attachments_by_pkg.setdefault(pkg_id, []).append({
+                "id": att_id,
+                "original_name": original_name or file_name,
+                "file_name": file_name,
+            })
+
+    # (optional) merge into each package dict so template stays simple
+    for p in packages:
+        p["attachments"] = attachments_by_pkg.get(p["id"], [])
 
 
     pkg_total_pages = max((total_pkgs + pkg_per_page - 1) // pkg_per_page, 1)
@@ -881,6 +925,7 @@ def view_user(id):
         pkg_to=pkg_to,
         pkg_awb=pkg_awb,
         pkg_tn=pkg_tn,
+        attachments_by_pkg=attachments_by_pkg,
         categories=categories,
     )
 

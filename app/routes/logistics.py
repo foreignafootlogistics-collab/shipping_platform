@@ -10,7 +10,8 @@ from datetime import datetime, timedelta
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    flash, jsonify, send_file, Response, current_app, session
+    flash, jsonify, send_file, Response, current_app, session, 
+    abort, send_from_directory
 )
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -23,8 +24,8 @@ from sqlalchemy.types import Date
 from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
 from app.models import (
-    Prealert, User, ScheduledDelivery, ShipmentLog, Invoice, Package,
-    Payment, shipment_packages
+    Prealert, User, ScheduledDelivery, ShipmentLog, Invoice,  
+    Package, Payment, shipment_packages, PackageAttachment
 )
 from app.forms import (
     PackageBulkActionForm, UploadPackageForm, PreAlertForm, InvoiceFinalizeForm,
@@ -925,6 +926,51 @@ def bulk_assign_packages():
         msg += " (reset Unassigned → Overseas where applicable)"
     flash(msg + ".", "success")
     return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+
+@logistics_bp.route("/package-attachment/<int:attachment_id>", methods=["GET"])
+@admin_required
+def view_package_attachment(attachment_id):
+    att = PackageAttachment.query.get_or_404(attachment_id)
+
+    # Optional: extra safety - ensure attachment is linked
+    if not att.package_id:
+        abort(404)
+
+    upload_folder = current_app.config["INVOICE_UPLOAD_FOLDER"]
+    file_path = os.path.join(upload_folder, att.file_name)
+
+    if not os.path.exists(file_path):
+        abort(404)
+
+    return send_from_directory(
+        upload_folder,
+        att.file_name,
+        as_attachment=False,
+        download_name=(att.original_name or att.file_name),
+    )
+
+
+@logistics_bp.route("/package-attachment/<int:attachment_id>/delete", methods=["POST"])
+@admin_required
+def delete_package_attachment_admin(attachment_id):
+    att = PackageAttachment.query.get_or_404(attachment_id)
+
+    upload_folder = current_app.config["INVOICE_UPLOAD_FOLDER"]
+    file_path = os.path.join(upload_folder, att.file_name)
+
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception:
+        current_app.logger.exception("Failed deleting attachment file")
+
+    db.session.delete(att)
+    db.session.commit()
+    flash("Attachment deleted.", "success")
+
+    # send admin back (adjust if you want a different redirect)
+    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="view_packages"))
+
 
 # --------------------------------------------------------------------------------------
 # Preview invalid rows CSV download

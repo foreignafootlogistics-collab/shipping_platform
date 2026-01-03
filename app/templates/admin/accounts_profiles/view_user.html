@@ -285,12 +285,12 @@
                   <input type="checkbox" id="pkgSelectAll">
                 </th>
                 <th>House AWB & Status</th>
-                <th>Description</th>
+                <th>Description & Invoice</th>
                 <th>Tracking Number</th>
                 <th class="text-end">Weight (lbs)</th>
                 <th>Date Received</th>
                 <th class="text-end">Declared Value</th>
-                <th class="text-end">Amount Due</th>
+                <th class="text-end">Amount Due</th>                
               </tr>
             </thead>
             <tbody>
@@ -325,7 +325,34 @@
                   </div>
                 </td>
 
-                <td>{{ pkg.description or '-' }}</td>
+                <td>
+                  <div>{{ pkg.description or '-' }}</div>
+
+                  {% if pkg.attachments and pkg.attachments|length > 0 %}
+                    <div class="mt-1 d-flex flex-wrap gap-2">
+                      {% for a in pkg.attachments %}
+                        <a class="badge text-decoration-none"
+                           style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
+                           target="_blank"
+                           href="{{ url_for('logistics.view_package_attachment', attachment_id=a.id) }}"
+                           title="{{ a.original_name }}">
+                          <i class="fa-solid fa-paperclip me-1"></i>
+                          {{ (a.original_name or 'file')[:18] }}{% if (a.original_name or '')|length > 18 %}…{% endif %}
+                        </a>
+                        <form method="POST"
+                              action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=a.id) }}"
+                              class="d-inline"
+                              onsubmit="return confirm('Delete this attachment?');">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <button type="submit" class="btn btn-link btn-sm p-0 text-danger">
+                            <i class="bi bi-x-circle"></i>
+                          </button>
+                        </form>
+
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </td>
                 <td>{{ pkg.tracking_number or '-' }}</td>
                 <td class="text-end">{{ pkg.weight }}</td>
                 <td>{{ pkg.date_received or 'N/A' }}</td>
@@ -1742,7 +1769,7 @@ document.getElementById('addSinglePackageForm')
               ${data.pkg.status}
             </span>
           </td>
-          <td>${data.pkg.description || '-'}</td>
+          <td><div>${data.pkg.description || '-'}</div></td>
           <td>${data.pkg.tracking_number || '-'}</td>
           <td class="text-end">${data.pkg.weight}</td>
           <td>${data.pkg.date_received || '—'}</td>

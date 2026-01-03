@@ -740,16 +740,34 @@ def logistics_dashboard():
         date_to   = today
         # inject into request args render context below
 
- 
-    pkg_q = (db.session.query(Package, User.full_name, User.registration_number)
-             .join(User, Package.user_id == User.id))
+    att_counts_sq = (
+        db.session.query(
+            PackageAttachment.package_id.label("pkg_id"),
+            func.count(PackageAttachment.id).label("att_count")
+        )
+        .group_by(PackageAttachment.package_id)
+        .subquery()
+    )
+
+    pkg_q = (
+        db.session.query(
+            Package,
+            User.full_name,
+            User.registration_number,
+            func.coalesce(att_counts_sq.c.att_count, 0).label("att_count")
+        )
+        .join(User, Package.user_id == User.id)
+        .outerjoin(att_counts_sq, att_counts_sq.c.pkg_id == Package.id)
+    )
+
     pkg_q = _apply_pkg_filters(pkg_q, unassigned_id=unassigned_id)
 
     pkg_q = pkg_q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).desc())
 
     page, per_page, total_count, total_pages, pkg_rows = _paginate(pkg_q)
     parsed_packages = []
-    for p, full_name, reg in pkg_rows:
+    for p, full_name, reg, att_count in pkg_rows:
+
         parsed_packages.append({
             "id": p.id,
             "user_id": p.user_id,
@@ -763,6 +781,7 @@ def logistics_dashboard():
             "date_received": _parse_dt_maybe(p.date_received),
             "house_awb": p.house_awb,
             "value": p.value,
+            "att_count": int(att_count or 0),
             "amount_due": p.amount_due,
             "epc": getattr(p, "epc", 0),
             "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),

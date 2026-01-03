@@ -295,7 +295,7 @@ def view_packages():
     # ✅ Apply your display rule without converting to dict:
     # Only show amount_due when Ready for Pick Up (customer side)
     for pkg in packages:
-        status_norm = (pkg.status or "").strip().lower()
+        status_norm = (getattr(pkg, "status", "") or "").strip().lower()
         if status_norm != "ready for pick up":
             pkg.amount_due = 0
 
@@ -333,8 +333,15 @@ def package_detail(pkg_id):
             invoice_file.save(os.path.join(upload_folder, filename))
             pkg.invoice_file = filename
 
+        declared_value = float(declared_value or 65)
+
         pkg.declared_value = declared_value
+
+        # ✅ keep admin View Packages in sync
+        pkg.value = declared_value
+
         db.session.commit()
+
         flash("Invoice and declared value updated successfully!", "success")
         return redirect(url_for('customer.package_detail', pkg_id=pkg_id))
 
@@ -364,10 +371,12 @@ def package_upload_docs(pkg_id):
     dv = request.form.get("declared_value")
     if dv:
         try:
-            pkg.declared_value = float(dv)
+            dvf = float(dv)
+            pkg.declared_value = dvf
+            pkg.value = dvf              # ✅ mirror for admin View Packages
         except ValueError:
             flash("Declared value must be a number.", "warning")
-            return redirect(url_for("customer.view_packages"))
+            return redirect(url_for("customer.view_packages"))        
 
     # handle 3 files
     files = [
@@ -441,8 +450,16 @@ def update_declared_value():
         return jsonify(success=False, error="Missing fields"), 400
 
     pkg = Package.query.filter_by(id=pkg_id, user_id=current_user.id).first_or_404()
-    pkg.declared_value = value
+    try:
+        value_f = float(value)
+    except Exception:
+        return jsonify(success=False, error="Declared value must be numeric"), 400
+
+    pkg.declared_value = value_f
+    pkg.value = value_f          # ✅ mirror for admin View Packages
     db.session.commit()
+    return jsonify(success=True)
+
     return jsonify(success=True)
 
 
@@ -524,6 +541,7 @@ def submit_invoice():
             if declared_value:
                 try:
                     pkg.declared_value = float(declared_value)
+                    pkg.value = pkg.declared_value
                 except ValueError:
                     flash("Declared value must be a number.", "warning")
                     return redirect(request.url)

@@ -365,24 +365,24 @@
         </td>
 
         <td>
-          <!-- Description -->
-          <div class="fw-semibold">
-            {{ pkg.description or '-' }}
-          </div>
+          <div>{{ pkg.description or '-' }}</div>
 
-          <!-- Attachments (under description) -->
-          {% if pkg.att_count and pkg.att_count > 0 %}
+          {% if pkg.attachments and pkg.attachments|length > 0 %}
             <div class="mt-1 d-flex flex-wrap gap-2">
-              <a href="{{ url_for('logistics.package_attachments_admin', package_id=pkg.id) }}"
-                 class="badge text-decoration-none"
-                 style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
-                 title="View {{ pkg.att_count }} attachment(s)">
-                <i class="fa-solid fa-paperclip me-1"></i>
-                {{ pkg.att_count }} attachment{{ 's' if pkg.att_count != 1 else '' }}
-              </a>
+              {% for a in pkg.attachments %}
+                <a class="badge text-decoration-none"
+                   style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
+                   target="_blank"
+                   href="{{ url_for('logistics.view_package_attachment', attachment_id=a.id) }}"
+                   title="{{ a.original_name or a.file_name }}">
+                  <i class="fa-solid fa-paperclip me-1"></i>
+                  {{ (a.original_name or 'file')[:18] }}{% if (a.original_name or '')|length > 18 %}…{% endif %}
+                </a>
+              {% endfor %}
             </div>
           {% endif %}
         </td>
+
 
 
         <td>

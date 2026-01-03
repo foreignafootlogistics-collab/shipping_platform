@@ -765,6 +765,32 @@ def logistics_dashboard():
     pkg_q = pkg_q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).desc())
 
     page, per_page, total_count, total_pages, pkg_rows = _paginate(pkg_q)
+
+    # Collect package ids on this page
+    page_pkg_ids = [p.id for (p, full_name, reg, att_count) in pkg_rows]
+
+    # Load attachments in ONE query (avoid N+1)
+    attachments_by_pkg = {}
+    if page_pkg_ids:
+        att_rows = (
+            db.session.query(
+                PackageAttachment.id,
+                PackageAttachment.package_id,
+                PackageAttachment.original_name,
+                PackageAttachment.file_name,
+            )
+            .filter(PackageAttachment.package_id.in_(page_pkg_ids))
+            .order_by(PackageAttachment.id.desc())
+            .all()
+        )
+
+        for att_id, pkg_id, original_name, file_name in att_rows:
+            attachments_by_pkg.setdefault(pkg_id, []).append({
+                "id": att_id,
+                "original_name": original_name,
+                "file_name": file_name,
+            })
+
     parsed_packages = []
     for p, full_name, reg, att_count in pkg_rows:
 
@@ -782,6 +808,7 @@ def logistics_dashboard():
             "house_awb": p.house_awb,
             "value": p.value,
             "att_count": int(att_count or 0),
+            "attachments": attachments_by_pkg.get(p.id, []),
             "amount_due": p.amount_due,
             "epc": getattr(p, "epc", 0),
             "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),

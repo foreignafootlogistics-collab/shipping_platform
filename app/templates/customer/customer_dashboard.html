@@ -196,7 +196,14 @@
                 </td>
                 <td>{{ pkg.description }}</td>
                 <td>{{ pkg.tracking_number }}</td>
-                <td>{{ pkg.weight }}</td>
+                <td>
+                  {% if pkg.weight is not none %}
+                    {{ (pkg.weight|float)|round(0, 'ceil')|int }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
                 <td>{{ pkg.received_date }}</td>
                 <td>${{ "%.2f"|format(pkg.amount_due) }}</td>
               </tr>

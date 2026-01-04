@@ -411,10 +411,14 @@
         </td>
 
         <td class="text-center">
-          {{ (pkg.get('declared_value') if pkg.get('declared_value') is not none else (pkg.get('value') or 50)) }}
+          {% set v = pkg.get('declared_value') if pkg.get('declared_value') is not none
+                    else (pkg.get('value') if pkg.get('value') is not none else 0) %}
+          {{ "%.2f"|format(v) }}
         </td>
 
-        <td class="text-center">{{ pkg.amount_due or 0 }}</td>
+        <td class="text-center">
+          {{ "%.2f"|format(pkg.amount_due if pkg.amount_due is not none else 0) }}
+        </td>
 
         {# Hidden EPC flag cell for filtering (must line up with header) #}
         <td class="d-none">{{ 1 if pkg['epc'] else 0 }}</td>

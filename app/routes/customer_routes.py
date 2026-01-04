@@ -299,7 +299,7 @@ def view_packages():
     # Only show amount_due when Ready for Pick Up (customer side)
     for pkg in packages:
         pkg.display_amount_due = pkg.amount_due if (pkg.status or "").strip().lower() == "ready for pick up" else 0
-        pkg.display_declared_value = pkg.declared_value if pkg.declared_value is not None else 65.0
+        pkg.display_declared_value = pkg.declared_value if pkg.declared_value is not None else 0.0
 
 
     return render_template(

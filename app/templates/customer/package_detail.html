@@ -31,7 +31,9 @@
       <span class="text-muted">Not available</span>
     {% endif %}
   </li>
-  <li><strong>Declared Value:</strong> {{ (pkg.declared_value or 65)|jmd }}</li>
+  <li><strong>Declared Value (USD):</strong>
+    ${{ "%.2f"|format(pkg.declared_value if pkg.declared_value is not none else 0) }}
+  </li>
   <li><strong>Amount Due:</strong>
     {% if (pkg.status or '')|lower == 'ready for pick up' %}
       {{ (pkg.amount_due or 0)|jmd }}
@@ -54,7 +56,7 @@
 
     <div class="mb-3">
       {{ form.declared_value.label(class="form-label") }}
-      {{ form.declared_value(class="form-control", value=pkg.declared_value or 65) }}
+      {{ form.declared_value(class="form-control", value=(pkg.declared_value if pkg.declared_value is not none else 0)) }}
       {% if form.declared_value.errors %}
         <div class="text-danger small">{{ form.declared_value.errors[0] }}</div>
       {% endif %}

@@ -204,7 +204,14 @@
                   {% endif %}
                 </td>
 
-                <td>{{ pkg.received_date }}</td>
+                <td>
+                  {% if pkg.date_received %}
+                    {{ pkg.date_received.strftime("%Y-%m-%d") }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
                 <td>${{ "%.2f"|format(pkg.amount_due) }}</td>
               </tr>
             {% endfor %}

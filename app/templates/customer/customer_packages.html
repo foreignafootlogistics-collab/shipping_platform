@@ -132,8 +132,8 @@
           </td>
 
           <td class="text-center">
-            {% if pkg.received_date %}
-              {{ pkg.received_date.strftime("%Y-%m-%d") }}
+            {% if pkg.date_received %}
+              {{ pkg.date_received.strftime("%Y-%m-%d") }}
             {% else %}
               —
             {% endif %}

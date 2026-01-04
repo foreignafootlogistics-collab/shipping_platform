@@ -274,7 +274,7 @@ def view_packages():
     if date_from:
         try:
             df = datetime.strptime(date_from, "%Y-%m-%d")
-            q = q.filter(Package.received_date >= df)
+            q = q.filter(Package.date_received >= df)
         except Exception:
             flash("Invalid date_from format. Use YYYY-MM-DD.", "warning")
 
@@ -282,14 +282,14 @@ def view_packages():
         try:
             # include the entire end day
             dt = datetime.strptime(date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
-            q = q.filter(Package.received_date <= dt)
+            q = q.filter(Package.date_received <= dt)
         except Exception:
             flash("Invalid date_to format. Use YYYY-MM-DD.", "warning")
 
     if tracking_number:
         q = q.filter(Package.tracking_number.ilike(f"%{tracking_number}%"))
 
-    q = q.order_by(Package.received_date.desc().nullslast(), Package.id.desc())
+    q = q.order_by(Package.date_received.desc().nullslast(), Package.id.desc())
     paginated = q.paginate(page=page, per_page=per_page, error_out=False)
 
     packages = paginated.items

@@ -230,19 +230,21 @@
               🚚 Shipment Packages
               {% if selected_shipment %}- <span>{{ selected_shipment.sl_id }}</span>{% endif %}
             </h5>
+          </div>
+          {% if selected_shipment %}
+          <form method="POST"
+                id="shipmentForm"
+                class="d-block"
+                action="{{ url_for('logistics.bulk_shipment_action', shipment_id=selected_shipment.id) }}"
+                novalidate>
+            {{ bulk_form.hidden_tag() }}
+            <input type="hidden" name="tab" value="shipmentLog">
 
-            {% if selected_shipment %}
-            <!-- Bulk action form wraps the whole table so checkboxes submit -->
-            <form method="POST"
-                  id="shipmentForm"
-                  class="d-flex align-items-center gap-2"
-                  action="{{ url_for('logistics.bulk_shipment_action', shipment_id=selected_shipment.id) }}"
-                  novalidate>
-              {{ bulk_form.hidden_tag() }}
-              <input type="hidden" name="tab" value="shipmentLog">
+            <!-- Bulk action bar -->
+            <div class="d-flex justify-content-end align-items-center gap-2 mb-3">
               <select name="action" class="form-select w-auto" required>
                 <option value="" selected disabled>Select Action</option>
-                <option value="calc_outstanding">🧮 Calculate Outstanding</option>                
+                <option value="calc_outstanding">🧮 Calculate Outstanding</option>
                 <option value="move">🔁 Move to Shipment…</option>
                 <option value="ready">✅ Mark Ready for Pick Up</option>
                 <option value="generate_invoice">🧾 Generate Invoice</option>
@@ -250,113 +252,114 @@
                 <option value="send_invoices">📧 Email: Invoices (Totals)</option>
                 <option value="remove_from_shipment">🗑 Remove from this Shipment</option>
               </select>
+
               <button type="button"
                       id="shipmentApplyBtn"
                       class="btn btn-purple btn-sm"
                       onclick="handleShipmentApply(event)">
                 Apply
-             </button>
+              </button>
+            </div>
 
-          </div>
+            {% if shipment_packages %}
+            <div class="table-responsive shadow-sm">
+              <table id="shipmentTable" class="table table-bordered table-striped table-hover align-middle table-sm">
+                <thead class="bg-purple text-white small">
+                  <tr>
+                    <th style="width:30px;">
+                      <input type="checkbox" id="selectAll" onclick="toggleShipmentSelectAll(this)">
+                    </th>
+                    <th>Action</th>
+                    <th>User</th>
+                    <th>Package</th>
+                    <th>House AWB</th>
+                    <th>Description</th>
+                    <th>Date Received</th>
+                    <th>Weight</th>
+                    <th>Item Value ($)</th>                  
+                    <th>Outstanding ($)</th>
+                  </tr>
+                </thead>
+                <tbody class="small">
+                  {% for pkg in shipment_packages %}
+                  <tr>
+                    <td>
+                      <input type="checkbox" 
+                             name="package_ids"
+                             value="{{ pkg.id }}"
+                             class="package-checkbox"                          
+                             onclick="updateShipmentHeaderCheckbox()">
+                    </td>
+                    <td class="text-center">
+                      <button type="button"
+                              class="btn btn-sm btn-outline-primary"
+                              data-bs-toggle="modal"
+                              data-bs-target="#chargesModal"
+                              data-pkg-id="{{ pkg.id }}"
+                              data-desc="{{ pkg.description or '' }}"
+                              data-weight="{{ pkg.weight or 0 }}"
+                              data-value="{{ pkg.value or 50 }}">
+                        <i class="bi bi-calculator"></i>
+                      </button>
+                    </td>
 
-          {% if shipment_packages %}
-          <div class="table-responsive shadow-sm">
-            <table id="shipmentTable" class="table table-bordered table-striped table-hover align-middle table-sm">
-              <thead class="bg-purple text-white small">
-                <tr>
-                  <th style="width:30px;">
-                     <input type="checkbox" 
-                            id="selectAll"
-                            onclick="toggleShipmentSelectAll(this)">
-                  </th>
-                  <th>Action</th>
-                  <th>User</th>
-                  <th>Package</th>
-                  <th>House AWB</th>
-                  <th>Description</th>
-                  <th>Date Received</th>
-                  <th>Weight</th>
-                  <th>Item Value ($)</th>                  
-                  <th>Outstanding ($)</th>
-                </tr>
-              </thead>
-              <tbody class="small">
-                {% for pkg in shipment_packages %}
-                <tr>
-                  <td>
-                    <input type="checkbox" 
-                           name="package_ids"
-                           value="{{ pkg.id }}"
-                           class="package-checkbox"
-                           onclick="updateShipmentHeaderCheckbox()">
-                  </td>
-                  <td class="text-center">
-                    <button type="button"
-                            class="btn btn-sm btn-outline-primary"
-                            data-bs-toggle="modal"
-                            data-bs-target="#chargesModal"
-                            data-pkg-id="{{ pkg.id }}"
-                            data-desc="{{ pkg.description or '' }}"
-                            data-weight="{{ pkg.weight or 0 }}"
-                            data-value="{{ pkg.value or 50 }}">
-                      <i class="bi bi-calculator"></i>
-                    </button>
-                  </td>
+                    <td>
+                      <strong>{{ pkg.full_name }}</strong><br>
+                      <small class="text-muted">{{ pkg.registration_number }}</small>
+                    </td>
 
-                  <td>
-                    <strong>{{ pkg.full_name }}</strong><br>
-                    <small class="text-muted">{{ pkg.registration_number }}</small>
-                  </td>
-                  <td>
-                    {% set status = pkg.status %}
-                    {% include 'partials/status_tracker.html' with context %}
-                    <br>
-                    <small class="text-muted">{{ pkg.tracking_number }}</small>
-                  </td>
-                  <td>{{ pkg.house_awb or '-' }}</td>
-                  <td>
-                    <div>{{ pkg.description or '-' }}</div>
+                    <td>
+                      {% set status = pkg.status %}
+                      {% include 'partials/status_tracker.html' with context %}
+                      <br>
+                      <small class="text-muted">{{ pkg.tracking_number }}</small>
+                    </td>
 
-                    {# attachments under description #}
-                    {% if pkg.attachments and pkg.attachments|length > 0 %}
-                      <div class="mt-1 d-flex flex-wrap gap-2">
-                        {% for a in pkg.attachments %}
-                          <a class="badge text-decoration-none"
-                             style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
-                             target="_blank"
-                             href="{{ url_for('logistics.view_package_attachment', attachment_id=a.id) }}"
-                             title="{{ a.original_name }}">
-                            <i class="fa-solid fa-paperclip me-1"></i>
-                            {{ (a.original_name or 'file')[:18] }}{% if (a.original_name or '')|length > 18 %}…{% endif %}
-                          </a>
+                    <td>{{ pkg.house_awb or '-' }}</td>
 
-                          {# optional: allow delete from shipment log too #}
-                          <form method="POST"
-                                action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=a.id) }}"
-                                class="d-inline"
-                                onsubmit="return confirm('Delete this attachment?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-link btn-sm p-0 text-danger">
-                              <i class="bi bi-x-circle"></i>
-                            </button>
-                          </form>
-                        {% endfor %}
-                      </div>
-                    {% endif %}
-                  </td>
+                    <td>
+                      <div>{{ pkg.description or '-' }}</div>
 
-                  <td>{{ pkg.date_received.strftime('%Y-%m-%d') if pkg.date_received else '-' }}</td>
-                  <td><input id="weight_{{ pkg.id }}" type="number" step="0.01" min="0" class="form-control form-control-sm text-end" value="{{ pkg.weight or 0 }}"></td>
-                  <td><input id="value_{{ pkg.id }}"  type="number" step="0.01" min="0" class="form-control form-control-sm text-end" value="{{ pkg.value  or 50 }}"></td>                  
-                  <td><input id="amount_due_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm text-end" value="{{ pkg.amount_due or 0 }}" readonly></td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          {% else %}
-            <p class="text-muted">No packages in this shipment.</p>
-          {% endif %}
+                      {# attachments under description #}
+                      {% if pkg.attachments and pkg.attachments|length > 0 %}
+                        <div class="mt-1 d-flex flex-wrap gap-2">
+                          {% for a in pkg.attachments %}
+                            <a class="badge text-decoration-none"
+                               style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
+                               target="_blank"
+                               href="{{ url_for('logistics.view_package_attachment', attachment_id=a.id) }}"
+                               title="{{ a.original_name }}">
+                              <i class="fa-solid fa-paperclip me-1"></i>
+                              {{ (a.original_name or 'file')[:18] }}{% if (a.original_name or '')|length > 18 %}…{% endif %}
+                            </a>
+
+                            {# optional: allow delete from shipment log too #}
+                            <form method="POST"
+                                  action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=a.id) }}"
+                                  class="d-inline"
+                                  onsubmit="return confirm('Delete this attachment?');">
+                              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                              <button type="submit" class="btn btn-link btn-sm p-0 text-danger">
+                                <i class="bi bi-x-circle"></i>
+                              </button>
+                            </form>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                    </td>
+
+                    <td>{{ pkg.date_received.strftime('%Y-%m-%d') if pkg.date_received else '-' }}</td>
+                    <td><input id="weight_{{ pkg.id }}" type="number" step="0.01" min="0" class="form-control form-control-sm text-end" value="{{ pkg.weight or 0 }}"></td>
+                    <td><input id="value_{{ pkg.id }}"  type="number" step="0.01" min="0" class="form-control form-control-sm text-end" value="{{ pkg.value  or 50 }}"></td>                  
+                    <td><input id="amount_due_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm text-end" value="{{ pkg.amount_due or 0 }}" readonly></td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+              <p class="text-muted">No packages in this shipment.</p>
+            {% endif %}
 
           </form>  {# closes form opened near the bulk actions #}
           {% endif %} {# end if selected_shipment #}
@@ -872,7 +875,6 @@
 
 
 <script>
-const categoryRates = {{ CATEGORIES|tojson }};
 const USD_TO_JMD    = {{ USD_TO_JMD }};
 
 // ---------- helper for JSON POST ----------
@@ -891,6 +893,11 @@ async function postJSON(url, body) {
   }
   return r.json();
 }
+
+function hasDataTables() {
+  return window.jQuery && $.fn && $.fn.DataTable;
+}
+
 
 /* ============================
    CHARGES MODAL / CALCULATOR
@@ -1056,10 +1063,7 @@ async function postJSON(url, body) {
     if (valueField) valueField.value = payload.value.toFixed(2);
 
     const weightField = document.getElementById('weight_' + pkgId);
-    if (weightField) weightField.value = payload.weight.toFixed(2);
-
-    const otherField = document.getElementById('other_' + pkgId);
-    if (otherField) otherField.value = payload.other_charges.toFixed(2);
+    if (weightField) weightField.value = payload.weight.toFixed(2);    
 
     // Save to DB via API
     const updateUrl = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace(/\/0$/, `/${pkgId}`);
@@ -1182,18 +1186,6 @@ async function finalizeInvoicesFromModal(ev) {
   }
 }
 
-// We KEEP the shipmentForm handler but REMOVE the old btn-finalize-invoices binding.
-// Leave this part as-is (or keep what you already have) for the shipment form:
-document.addEventListener('DOMContentLoaded', function () {
-  const finBtn = document.getElementById('btn-finalize-invoices');
-  // optional: we don't strictly need this since we use onclick on the button
-  if (finBtn) {
-    finBtn.addEventListener('click', function (e) {
-      // This won't hurt; it just also routes clicks through the same function.
-      finalizeInvoicesFromModal(e);
-    });
-  }
-});
 
 
 /* ============================
@@ -1205,6 +1197,7 @@ let dtInitialized = false;
 
 function initShipmentTable() {
   if (dtInitialized) return;
+  if (!hasDataTables()) return;
 
   const $table = $('#shipmentTable');
   if (!$table.length) return;
@@ -1353,33 +1346,18 @@ async function handleShipmentApply(e) {
 
 
 $(document).ready(function () {
-  // Pre-Alerts table in logistics dashboard
-  if ($('#dashboardPrealertsTable').length) {
+  // Pre-Alerts table
+  if (hasDataTables() && $('#dashboardPrealertsTable').length) {
     $('#dashboardPrealertsTable').DataTable({
       order: [[0, 'desc']],
       pageLength: 10,
-      language: {
-        emptyTable: "No pre-alert shipments found."
-      }
+      language: { emptyTable: "No pre-alert shipments found." }
     });
   }
 
+  // Shipment Log table
   if (document.querySelector('#shipmentLog.tab-pane.show.active, #shipmentLog.tab-pane.active')) {
     initShipmentTable();
-  }
-
-  $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
-    const target = $(e.target).attr('data-bs-target');
-    if (target === '#shipmentLog') {
-      initShipmentTable();
-      if (dt) dt.columns.adjust().draw(false);
-    }
-  });
-
-  // Wire the Apply button
-  const applyBtn = document.getElementById('shipmentApplyBtn');
-  if (applyBtn) {
-    applyBtn.addEventListener('click', handleShipmentApply);
   }
 });
 
@@ -1691,15 +1669,17 @@ document.getElementById('shipmentSearchForm')?.addEventListener('submit', async 
    SIMPLE SELECT-ALL HELPERS
    ========================== */
 function toggleShipmentSelectAll(master) {
+  // If DataTables active: apply to all rows (all pages)
+  if (dt && $.fn.DataTable.isDataTable('#shipmentTable')) {
+    dt.$('.package-checkbox').prop('checked', master.checked);
+    updateShipmentHeaderCheckbox();
+    return;
+  }
+
+  // fallback: plain DOM
   const tbody = document.querySelector('#shipmentTable tbody');
   if (!tbody) return;
-
-  const checkboxes = tbody.querySelectorAll('.package-checkbox');
-  checkboxes.forEach(cb => {
-    cb.checked = master.checked;
-  });
-
-  // keep header checkbox in sync (in case DT redraws later)
+  tbody.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = master.checked);
   updateShipmentHeaderCheckbox();
 }
 

@@ -375,6 +375,14 @@ def move_package_to_shipment(package: Package, shipment: ShipmentLog | None):
 
     # Don’t commit here; calling code will handle db.session.commit()
 
+def _effective_value(p: Package) -> float:
+    """
+    Single source of truth for package value.
+    declared_value ALWAYS wins.
+    """
+    if hasattr(p, "declared_value") and p.declared_value is not None:
+        return float(p.declared_value)
+    return float(p.value or 0)
 
 # --------------------------------------------------------------------------------------
 # Prealerts
@@ -1518,20 +1526,29 @@ def view_packages():
 # --------------------------------------------------------------------------------------
 
 def _next_sl_id():
+    """
+    Global sequence that never resets.
+    Format: SL-YYYYMMDD-00001 (date reflects creation day, number always increases)
+    """
     today = datetime.utcnow().strftime("%Y%m%d")
-    like_prefix = f"SL-{today}-"
-    last = (db.session.query(ShipmentLog.sl_id)
-            .filter(ShipmentLog.sl_id.like(like_prefix + "%"))
-            .order_by(ShipmentLog.sl_id.desc())
-            .first())
+
+    # Look for the latest SL-* regardless of date
+    last = (
+        db.session.query(ShipmentLog.sl_id)
+        .filter(ShipmentLog.sl_id.like("SL-%-%"))
+        .order_by(ShipmentLog.sl_id.desc())
+        .first()
+    )
+
+    last_num = 0
     if last and last[0]:
         try:
-            n = int(last[0].split("-")[-1])
-        except Exception:
-            n = 0
-    else:
-        n = 0
-    return f"{like_prefix}{n+1:05d}"
+            # Extract the trailing numeric portion after the last dash
+            last_num = int(last[0].rsplit("-", 1)[-1])
+        except ValueError:
+            last_num = 0
+
+    return f"SL-{today}-{last_num + 1:05d}"
 
 @logistics_bp.route('/shipmentlog/create', methods=['POST'])
 @admin_required
@@ -1732,7 +1749,12 @@ def bulk_shipment_action(shipment_id):
 
             # invoice / value
             try:
-                invoice = float(form_val) if form_val not in ("", None) else float(p.value or 0)
+                invoice = (
+                    float(form_val)
+                    if form_val not in ("", None)
+                    else _effective_value(p)
+                )
+
             except ValueError:
                 invoice = float(p.value or 0)
 
@@ -2205,7 +2227,14 @@ def bulk_calc_outstanding():
         category = (r.get("category") or db_cat or "Other")
 
         if invoice in (None, '', 0, '0', 0.0, '0.0'):
-            invoice = float(db_value or 0)
+            invoice = (
+                float(db_value)
+                if db_value not in (None, 0)
+                else _effective_value(
+                    db.session.get(Package, pid)
+                )
+            )
+
         else:
             invoice = float(invoice)
 

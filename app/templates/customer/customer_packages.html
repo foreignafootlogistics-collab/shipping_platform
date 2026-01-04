@@ -98,7 +98,7 @@
 
             <small class="text-muted d-block">{{ s }}</small>
 
-            {% set dv = (pkg.declared_value if pkg.declared_value is not none else 65) %}
+            {% set dv = (pkg.declared_value if pkg.declared_value is not none else (pkg.value if pkg.value is not none else 65)) %}
             <div class="small text-muted mt-1">VAL: ${{ "%.2f"|format(dv) }}</div>
           </td>
 
@@ -196,7 +196,7 @@
                      name="declared_value"
                      step="0.01"
                      min="0"
-                     value="{{ pkg.declared_value if pkg.declared_value is not none else 65 }}">
+                     value="{{ pkg.declared_value if pkg.declared_value is not none else (pkg.value if pkg.value is not none else 65) }}"
               <div class="form-text">This updates the “VAL: $xx.xx” shown under status.</div>
             </div>
 

@@ -199,7 +199,10 @@ def prealerts_create():
             file = form.invoice.data
             if allowed_file(file.filename):
                 filename = secure_filename(file.filename)
-                file.save(os.path.join(INVOICE_UPLOAD_FOLDER, filename))
+                upload_folder = _invoice_folder()
+                os.makedirs(upload_folder, exist_ok=True)
+                file.save(os.path.join(upload_folder, filename))
+
 
         prealert_number = generate_prealert_number()
         pa = Prealert(
@@ -295,13 +298,9 @@ def view_packages():
     # ✅ Apply your display rule without converting to dict:
     # Only show amount_due when Ready for Pick Up (customer side)
     for pkg in packages:
-        status_norm = (getattr(pkg, "status", "") or "").strip().lower()
-        if status_norm != "ready for pick up":
-            pkg.amount_due = 0
+        pkg.display_amount_due = pkg.amount_due if (pkg.status or "").strip().lower() == "ready for pick up" else 0
+        pkg.display_declared_value = pkg.declared_value if pkg.declared_value is not None else 65.0
 
-        # Optional: default declared value if None (only for display)
-        if pkg.declared_value is None:
-            pkg.declared_value = 65.0
 
     return render_template(
         'customer/customer_packages.html',
@@ -355,7 +354,7 @@ def package_detail(pkg_id):
         d['declared_value'] = float(pkg.declared_value) if pkg.declared_value is not None else 65.0
     except Exception:
         d['declared_value'] = 65.0
-    status_norm = (pkg.get("status") or "").strip().lower()
+    status_norm = (pkg.status or "").strip().lower()
     if status_norm != "ready for pick up":
         d["amount_due"] = 0
 
@@ -458,8 +457,6 @@ def update_declared_value():
     pkg.declared_value = value_f
     pkg.value = value_f          # ✅ mirror for admin View Packages
     db.session.commit()
-    return jsonify(success=True)
-
     return jsonify(success=True)
 
 
@@ -1054,9 +1051,10 @@ def upload_profile_pic():
     file = request.files.get('profile_pic')
     if file and file.filename:
         filename = f"{current_user.id}.jpg"
-        path = os.path.join(PROFILE_UPLOAD_FOLDER, filename)
-        os.makedirs(PROFILE_UPLOAD_FOLDER, exist_ok=True)
-        file.save(path)
+        folder = _profile_folder()
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, filename)
+
         current_user.profile_pic = filename
         db.session.commit()
     return redirect(url_for('customer.customer_dashboard'))

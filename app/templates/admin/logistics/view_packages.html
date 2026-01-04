@@ -410,11 +410,14 @@
           <input type="hidden" id="weight_{{ pkg.id }}" value="{{ pkg.weight }}">
         </td>
 
-        <td class="text-center">{{ pkg.value or 50 }}</td>
+        <td class="text-center">
+          {{ (pkg.get('declared_value') if pkg.get('declared_value') is not none else (pkg.get('value') or 50)) }}
+        </td>
+
         <td class="text-center">{{ pkg.amount_due or 0 }}</td>
 
         {# Hidden EPC flag cell for filtering (must line up with header) #}
-        <td class="d-none">{{ 1 if pkg ['epc'] else 0 }}</td>
+        <td class="d-none">{{ 1 if pkg['epc'] else 0 }}</td>
       </tr>
     {% endfor %}
     </tbody>

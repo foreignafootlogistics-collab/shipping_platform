@@ -14,6 +14,7 @@ from . import config as cfg
 from .config import PROFILE_UPLOAD_FOLDER
 from .forms import CalculatorForm, AdminCalculatorForm
 from .extensions import db  # SQLAlchemy shared instance
+from flask_cors import CORS
 
 
 migrate = Migrate()
@@ -130,6 +131,17 @@ def create_app():
         mail.init_app(app)
     except Exception:
         app.logger.warning("MAIL init skipped or failed; continuing without mail.")
+
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": [
+                "http://localhost:3000",
+                "https://faflcourier.com",
+                "https://www.faflcourier.com"
+                "https://app.faflcourier.com",
+            ]
+        }
+    })
     
     @app.teardown_request
     def teardown_request(exc):
@@ -252,6 +264,7 @@ def create_app():
     from .routes.settings import settings_bp
     from .routes.api_routes import api_bp
     from .routes.analytics_routes import analytics_bp
+    from app.routes.public_api import public_api_bp
 
 
     app.register_blueprint(customer_bp, url_prefix='/customer')
@@ -266,6 +279,7 @@ def create_app():
     app.register_blueprint(settings_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(analytics_bp, url_prefix='/analytics')
+    app.register_blueprint(public_api_bp)
 
 
     # Basic routes

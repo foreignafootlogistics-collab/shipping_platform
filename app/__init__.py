@@ -4,7 +4,7 @@ from datetime import datetime
 
 from flask import Flask, render_template, redirect, url_for, jsonify, current_app
 from flask_mail import Mail
-from flask_wtf.csrf import CSRFProtect, CSRFError
+from flask_wtf.csrf import CSRFError
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from sqlalchemy import text
@@ -13,10 +13,13 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from . import config as cfg
 from .config import PROFILE_UPLOAD_FOLDER
 from .forms import CalculatorForm, AdminCalculatorForm
-from .extensions import db, csrf, migrate, mail, login_manager
+from .extensions import db, csrf
 from flask_cors import CORS
 
 
+migrate = Migrate()
+mail = Mail()
+login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
 login_manager.login_message = "Please log in to access this page."
 login_manager.login_message_category = "warning"
@@ -261,6 +264,8 @@ def create_app():
     from .routes.api_routes import api_bp
     from .routes.analytics_routes import analytics_bp
     from app.routes.public_api import public_api_bp
+    csrf.exempt(public_api_bp)
+    
 
 
     app.register_blueprint(customer_bp, url_prefix='/customer')

@@ -132,7 +132,7 @@ def create_app():
         app.logger.warning("MAIL init skipped or failed; continuing without mail.")
 
     CORS(app, resources={
-        r"/api/*": {
+        r"/public-api/*": {
             "origins": [
                 "http://localhost:3000",
                 "https://faflcourier.com",
@@ -264,8 +264,7 @@ def create_app():
     from .routes.api_routes import api_bp
     from .routes.analytics_routes import analytics_bp
     from app.routes.public_api import public_api_bp
-    csrf.exempt(public_api_bp)
-    
+     
 
 
     app.register_blueprint(customer_bp, url_prefix='/customer')

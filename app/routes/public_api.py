@@ -3,18 +3,14 @@ from app.extensions import db, csrf
 from app.models import Settings, AdminRate
 from app.calculator_data import calculate_charges, CATEGORIES
 
-public_api_bp = Blueprint("public_api", __name__, url_prefix="/api")
-csrf.exempt(public_api_bp)
-
-
-def get_settings():
-    return db.session.get(Settings, 1)
+public_api_bp = Blueprint("public_api", __name__, url_prefix="/public-api")
 
 @public_api_bp.get("/categories")
 def categories():
     return jsonify(ok=True, categories=list(CATEGORIES.keys()))
 
 @public_api_bp.post("/estimate")
+@csrf.exempt
 def estimate():
     data = request.get_json(silent=True) or {}
     category = data.get("category")
@@ -26,7 +22,7 @@ def estimate():
 
 @public_api_bp.get("/rates")
 def rates():
-    s = get_settings()
+    s = db.session.get(Settings, 1)
     brackets = AdminRate.query.order_by(AdminRate.max_weight.asc()).all()
 
     return jsonify(
@@ -39,7 +35,8 @@ def rates():
             "per_lb_above_100_jmd": getattr(s, "per_lb_above_100_jmd", 500) if s else 500,
         },
         freight_brackets=[
-            {"max_weight": r.max_weight, "rate_jmd": float(getattr(r, "rate_jmd", None) or getattr(r, "rate", 0) or 0)}
+            {"max_weight": r.max_weight, "rate_jmd": float(getattr(r, "rate_jmd", 0) or 0)}
             for r in brackets
         ],
     )
+

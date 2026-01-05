@@ -13,14 +13,10 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from . import config as cfg
 from .config import PROFILE_UPLOAD_FOLDER
 from .forms import CalculatorForm, AdminCalculatorForm
-from .extensions import db  # SQLAlchemy shared instance
+from .extensions import db, csrf, migrate, mail, login_manager
 from flask_cors import CORS
 
 
-migrate = Migrate()
-mail = Mail()
-csrf = CSRFProtect()
-login_manager = LoginManager()
 login_manager.login_view = 'auth.login'
 login_manager.login_message = "Please log in to access this page."
 login_manager.login_message_category = "warning"

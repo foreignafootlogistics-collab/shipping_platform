@@ -137,7 +137,7 @@ def create_app():
             "origins": [
                 "http://localhost:3000",
                 "https://faflcourier.com",
-                "https://www.faflcourier.com"
+                "https://www.faflcourier.com",
                 "https://app.faflcourier.com",
             ]
         }

@@ -4,7 +4,7 @@ import os
 
 from app.routes.admin_auth_routes import admin_required
 from app.extensions import db
-from app.models import Settings  # make sure this model exists and has the used columns
+from app.models import Settings, AdminRate  # make sure this model exists and has the used columns
 
 # Where to store the logo
 LOGO_UPLOAD_DIR = os.path.join('static', 'uploads', 'logos')
@@ -194,7 +194,7 @@ def update_rates():
         for rate in AdminRate.query.all():
             field_name = f"rate_{rate.max_weight}"
             if field_name in request.form:
-                rate.rate_jmd = f(field_name, float(rate.rate_jmd or 0))
+                rate.rate = f(field_name, float(rate.rate_jmd or 0))
 
         db.session.commit()
         flash("Rates & Fees updated successfully.", "success")

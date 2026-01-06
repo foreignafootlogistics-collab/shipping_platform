@@ -206,26 +206,39 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
+  // ✅ MUST be global so inline onclick="toggleSidebar()" can call it
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (!sidebar || !overlay) return;
 
-document.addEventListener('DOMContentLoaded', function() {
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('show');
-  document.getElementById('sidebar-overlay').classList.toggle('show');
-}
-
-
-  // Modal trigger
-  const openCalcBtn = document.getElementById('openCalculator');
-  if (openCalcBtn) {
-    openCalcBtn.addEventListener('click', function(e) {
-      e.preventDefault();
-      const calcModalEl = document.getElementById('calculatorModal');
-      if (calcModalEl) {
-        new bootstrap.Modal(calcModalEl).show();
-      }
-    });
+    sidebar.classList.toggle('show');
+    overlay.classList.toggle('show');
   }
-});
+
+  document.addEventListener('DOMContentLoaded', function () {
+    // Calculator Modal trigger
+    const openCalcBtn = document.getElementById('openCalculator');
+    if (openCalcBtn) {
+      openCalcBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const calcModalEl = document.getElementById('calculatorModal');
+        if (calcModalEl) {
+          new bootstrap.Modal(calcModalEl).show();
+        }
+      });
+    }
+
+    // Optional: close sidebar when you click any link inside it (mobile UX)
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) {
+      sidebar.querySelectorAll('a').forEach(a => {
+        a.addEventListener('click', () => {
+          if (sidebar.classList.contains('show')) toggleSidebar();
+        });
+      });
+    }
+  });
 </script>
 
 </body>

@@ -84,7 +84,7 @@
     <a href="{{ url_for('customer.customer_dashboard') }}" class="{% if request.endpoint == 'customer.customer_dashboard' %}active{% endif %}"><i class="fas fa-home"></i> Dashboard</a>
     <a href="{{ url_for('customer.prealerts_create') }}" class="{% if request.endpoint in ['customer.prealerts_create', 'customer.prealerts_view'] %}active{% endif %}"><i class="fas fa-truck-loading"></i> Pre-Alert Shipment</a>
     <a href="{{ url_for('customer.view_packages') }}" class="{% if request.endpoint == 'customer.view_packages' %}active{% endif %}"><i class="fas fa-box"></i> Packages</a>    
-    <a href="{{ url_for('customer.transactions_home') }}"
+    <a href="{{ url_for('customer.transactions_overview') }}"
        class="{% if request.endpoint in ['customer.transactions_home','customer.transactions_bills','customer.transactions_payments'] %}active{% endif %}">
       <i class="fas fa-wallet"></i> Transactions
     </a>    

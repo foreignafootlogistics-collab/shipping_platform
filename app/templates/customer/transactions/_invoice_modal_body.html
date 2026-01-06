@@ -19,42 +19,52 @@
 </div>
 
 <div class="table-responsive">
-  <table class="table table-striped align-middle">
+  <table class="table table-bordered align-middle mb-0">
     <thead class="table-dark">
       <tr>
-        <th>House AWB</th>
-        <th>Description</th>
-        <th class="text-end">Weight</th>
-        <th class="text-end">Value</th>
-        <th class="text-end">Freight</th>
-        <th class="text-end">Handling</th>
-        <th class="text-end">Other</th>
-        <th class="text-end">Duty</th>
-        <th class="text-end">SCF</th>
-        <th class="text-end">ENVL</th>
-        <th class="text-end">CAF</th>
-        <th class="text-end">GCT</th>
-        <th class="text-end">Discount</th>
+        <th style="width:160px;">House AWB#</th>
+        <th>Information</th>
+        <th style="width:220px;">Our Fees</th>
+        <th style="width:220px;">Govt Fees</th>
+        <th style="width:140px;">Discount Due</th>
       </tr>
     </thead>
+
     <tbody>
       {% for p in invoice.packages %}
-      <tr>
-        <td>{{ p.house_awb }}</td>
-        <td>{{ p.description }}</td>
-        <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
-        <td class="text-end">{{ "%.2f"|format(p.value or 0) }}</td>
-        <td class="text-end">{{ p.freight|jmd }}</td>
-        <td class="text-end">{{ p.handling|jmd }}</td>
-        <td class="text-end">{{ p.other_charges|jmd }}</td>
-        <td class="text-end">{{ p.duty|jmd }}</td>
-        <td class="text-end">{{ p.scf|jmd }}</td>
-        <td class="text-end">{{ p.envl|jmd }}</td>
-        <td class="text-end">{{ p.caf|jmd }}</td>
-        <td class="text-end">{{ p.gct|jmd }}</td>
-        <td class="text-end">{{ p.discount_due|jmd }}</td>
-      </tr>
+        <tr>
+          <td class="fw-semibold">{{ p.house_awb }}</td>
+
+          <td>
+            <div><b>Weight:</b> {{ p.weight }} lbs</div>
+            <div><b>USD Value:</b> ${{ "%.2f"|format(p.value or 0) }}</div>
+            <div class="text-muted">{{ p.description }}</div>
+          </td>
+
+          <td>
+            <div><b>Freight:</b> {{ (p.freight or 0)|jmd }}</div>
+            <div><b>Handling:</b> {{ (p.handling or 0)|jmd }}</div>
+            <div><b>Other Charges:</b> {{ (p.other_charges or 0)|jmd }}</div>
+          </td>
+
+          <td>
+            <div><b>Duty:</b> {{ (p.duty or 0)|jmd }}</div>
+            <div><b>SCF:</b> {{ (p.scf or 0)|jmd }}</div>
+            <div><b>ENVL:</b> {{ (p.envl or 0)|jmd }}</div>
+            <div><b>CAF:</b> {{ (p.caf or 0)|jmd }}</div>
+            <div><b>GCT:</b> {{ (p.gct or 0)|jmd }}</div>
+          </td>
+
+          <td>{{ (p.discount_due or 0)|jmd }}</td>
+        </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+
+<style>
+  /* thicker divider lines between packages (like your PDF screenshot) */
+  table.table tbody tr + tr td { border-top-width: 2px; }
+  table.table tbody td { vertical-align: top; }
+</style>
+

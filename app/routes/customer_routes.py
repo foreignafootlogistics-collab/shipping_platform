@@ -1,6 +1,7 @@
 # app/routes/customer_routes.py (imports)
 
 import os, re, io
+import math
 from math import ceil
 from datetime import datetime, date
 
@@ -13,6 +14,7 @@ from werkzeug.utils import secure_filename
 import mimetypes
 import bcrypt
 import sqlalchemy as sa
+
 
 from app.forms import ReferralForm  
 from app.forms import (
@@ -554,7 +556,7 @@ def transactions_bills():
     return render_template("customer/transactions/bills.html", invoices=invoices)
 
 
-@customer_bp.route("/customer/transactions/payments", methods=["GET"])
+@customer_bp.route("/transactions/payments", methods=["GET"])
 @customer_required
 def transactions_payments():
     payments = (
@@ -604,7 +606,7 @@ def bill_invoice_modal(invoice_id):
         packages.append({
             "house_awb": p.house_awb or "",
             "description": p.description or "",
-            "weight": _num(getattr(p, "weight", 0)),
+            "weight": int(math.ceil(_num(getattr(p, "weight", 0)))),
             "value": _num(getattr(p, "value", 0)),
             "freight": _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
             "handling": _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
@@ -820,7 +822,7 @@ def view_invoice_customer(invoice_id):
         packages.append({
             "house_awb":     p.house_awb,
             "description":   p.description,
-            "weight":        _num(p.weight),
+            "weight":        int(math.ceil(_num(p.weight))),
             "value":         _num(getattr(p, "value", 0)),
             "freight":       _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
             "storage":       _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
@@ -877,7 +879,8 @@ def invoice_pdf(invoice_id):
         packages.append({
             "house_awb":     p.house_awb or "",
             "description":   p.description or "",
-            "weight":        _num(getattr(p, "weight", 0)),
+            "weight":        int(math.ceil(_num(getattr(p, "weight", 0)))),
+
             "value":         _num(getattr(p, "value", getattr(p, "value_usd", 0))),
             "freight":       _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
             "storage":       _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),

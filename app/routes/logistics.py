@@ -2538,8 +2538,37 @@ def scheduled_delivery_set_status(delivery_id, status):
 
     d = ScheduledDelivery.query.get_or_404(delivery_id)
     d.status = status
-    db.session.commit()
 
+    # ✅ Keep Package.status in sync with Delivery status
+    linked_pkgs = (Package.query
+                   .filter(Package.scheduled_delivery_id == d.id)
+                   .all())
+
+    if status == "Out for Delivery":
+        # choose your preferred in-transit label
+        for p in linked_pkgs:
+            # Only move forward (don’t override Delivered/Detained)
+            ps = (p.status or "").strip().lower()
+            if ps not in ("delivered", "detained"):
+                p.status = "Out for Delivery"
+
+    elif status == "Delivered":
+        # ✅ This is the key fix: store Delivered (not Delivery)
+        for p in linked_pkgs:
+            ps = (p.status or "").strip().lower()
+            if ps != "detained":
+                p.status = "Delivered"
+
+        # optional: clear scheduled_delivery_id once completed
+        # for p in linked_pkgs:
+        #     p.scheduled_delivery_id = None
+
+    elif status in ("Cancelled", "Scheduled"):
+        # Optional: decide what package status should be when delivery is cancelled/reset
+        # For now: do nothing to package status.
+        pass
+
+    db.session.commit()
     flash(f"Delivery #{d.id} updated to '{status}'", "success")
     return redirect(url_for("logistics.view_scheduled_deliveries"))
 

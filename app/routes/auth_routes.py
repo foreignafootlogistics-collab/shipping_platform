@@ -21,11 +21,44 @@ from app.forms import RegisterForm, LoginForm  # Import your FlaskForm classes
 from app.utils import email_utils
 from app.utils import next_registration_number
 from app.utils import apply_referral_bonus, update_wallet
-from app.models import User  # your SQLAlchemy model that implements UserMixin
+from app.models import User, Message as DBMessage
+
 
 
 auth_bp = Blueprint("auth", __name__, template_folder="../templates")
 
+# -------------------------------------------------
+# In-app system messaging helpers
+# -------------------------------------------------
+
+def _system_sender_user():
+    """
+    Pick a sender for system messages.
+    Prefer an admin user. Fallback to the first user.
+    """
+    admin = (
+        User.query
+        .filter((User.role == "admin") | (User.is_admin.is_(True)))
+        .order_by(User.id.asc())
+        .first()
+    )
+    return admin or User.query.order_by(User.id.asc()).first()
+
+
+def _log_in_app_message(recipient_id: int, subject: str, body: str):
+    sender = _system_sender_user()
+    if not sender:
+        return
+
+    msg = DBMessage(
+        sender_id=sender.id,
+        recipient_id=recipient_id,
+        subject=(subject or "").strip() or "Message",
+        body=(body or "").strip(),
+        is_read=False,
+        created_at=datetime.utcnow(),
+    )
+    db.session.add(msg)
 
 # ------------------------
 # Register
@@ -121,6 +154,24 @@ def register():
             return render_template("auth/register.html", form=form)
 
         user_id = user.id
+
+        # -------------------------
+        # Log welcome message in-app ✅ (shows in Customer Messages + Admin View User)
+        # -------------------------
+        welcome_subject = "Welcome to FAFL Courier"
+        welcome_body = (
+            f"Hi {full_name},\n\n"
+            f"Welcome to Foreign A Foot Logistics!\n\n"
+            f"Your customer code is: {registration_number}\n\n"
+            f"If you need help, message us anytime from your dashboard.\n\n"
+            f"— FAFL Team"
+        )
+
+        try:
+            _log_in_app_message(user.id, welcome_subject, welcome_body)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
         # Apply referral bonus logic (if valid code + referrer)
         if referrer_code and referrer_id:

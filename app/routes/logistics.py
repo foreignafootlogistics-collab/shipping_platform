@@ -27,6 +27,8 @@ from app.models import (
     Prealert, User, ScheduledDelivery, ShipmentLog, Invoice,  
     Package, Payment, shipment_packages, PackageAttachment
 )
+from app.models import Message as DBMessage
+
 from app.forms import (
     PackageBulkActionForm, UploadPackageForm, PreAlertForm, InvoiceFinalizeForm,
     PaymentForm, ScheduledDeliveryForm
@@ -383,6 +385,42 @@ def _effective_value(p: Package) -> float:
     if hasattr(p, "declared_value") and p.declared_value is not None:
         return float(p.declared_value)
     return float(p.value or 0)
+
+def _system_sender_user():
+    """
+    Pick a sender for system messages.
+    Prefer the currently logged-in admin if available.
+    Fallback to an admin user from DB.
+    """
+    try:
+        if current_user and getattr(current_user, "is_authenticated", False):
+            return current_user
+    except Exception:
+        pass
+
+    admin = User.query.filter_by(role="admin").order_by(User.id.asc()).first()
+    if admin:
+        return admin
+
+    return User.query.order_by(User.id.asc()).first()
+
+
+def _log_in_app_message(recipient_id: int, subject: str, body: str):
+    sender = _system_sender_user()
+    if not sender:
+        return
+
+    m = DBMessage(
+        sender_id=sender.id,
+        recipient_id=recipient_id,
+        subject=(subject or "").strip()[:255],
+        body=(body or "").strip(),
+        created_at=datetime.utcnow(),
+        is_read=False,
+    )
+    db.session.add(m)
+    # do NOT commit here; caller commits
+
 
 # --------------------------------------------------------------------------------------
 # Prealerts
@@ -1304,11 +1342,28 @@ def email_selected_packages():
             packages=pkgs,
         )
         if ok:
+            # Log message to in-app messages
+            pkg_lines = []
+            for p in pkgs:
+                pkg_lines.append(f"- {p.tracking_number or ''} | {p.house_awb or ''} | {p.description or ''} | {p.weight or 0} lb")
+
+            subject = "Packages received overseas"
+            body = (
+                f"Hi {user.full_name or ''},\n\n"
+                "Your package(s) have been received overseas and are now being prepared for shipment to Jamaica:\n\n"
+                + "\n".join(pkg_lines) +
+                "\n\nLog in to your account to track updates.\n"
+                "— FAFL Courier"
+            )
+            _log_in_app_message(user.id, subject, body)
+
             sent_count += 1
         else:
             failed.append(user.email or "(no email)")
 
+
     if sent_count:
+        db.session.commit()
         flash(f"Emailed {sent_count} customer(s) about selected package(s).", "success")
     if failed:
         flash("Some emails failed: " + ", ".join(failed), "danger")
@@ -1866,6 +1921,13 @@ def bulk_shipment_action(shipment_id):
             subject, plain, html = compose_ready_pickup_email(u.full_name, rows)
             send_email(u.email, subject, plain, html)
 
+            _log_in_app_message(
+                u.id,
+                subject or "Packages ready for pickup",
+                plain or "Your packages are ready for pickup. Please log in to view details."
+            )
+
+        db.session.commit()
         flash(f"{len(package_ids)} package(s) marked Ready and notifications sent.", "success")
         return redirect(url_for(
             'logistics.logistics_dashboard',
@@ -1935,11 +1997,21 @@ def bulk_shipment_action(shipment_id):
             )
 
             if ok:
+                subject = f"Invoice Ready: {inv.invoice_number}"
+                body = (
+                    f"Hi {user.full_name or user.email},\n\n"
+                    f"Your invoice {inv.invoice_number} is ready.\n"
+                    f"Amount Due: JMD ${amount_due:,.2f}\n\n"
+                    f"Log in to view/pay your invoice:\n{invoice_link}\n\n"
+                    "— FAFL Courier"
+                )
+                _log_in_app_message(user.id, subject, body)
                 sent += 1
             else:
                 failed.append(user.email or "(unknown)")
 
         if sent:
+            db.session.commit()
             flash(f"Invoice emails sent for {sent} invoice(s).", "success")
         if failed:
             flash("Some invoice emails failed: " + ", ".join(failed), "danger")

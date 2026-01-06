@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 import smtplib
 from math import ceil
 from typing import Iterable
@@ -10,7 +11,7 @@ from flask import current_app
 # If you still want Flask-Mail for some cases:
 try:
     from flask_mail import Message
-    from app import mail  # only used in send_referral_email fallback
+    from app import mail  # only used in send_referral_email fallback (kept for compatibility)
     _HAS_FLASK_MAIL = True
 except Exception:
     _HAS_FLASK_MAIL = False
@@ -32,7 +33,85 @@ if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
 #  EMAIL CONFIG (use environment variables in production)
 # ==========================================================
 LOGO_URL = os.getenv("FAF_LOGO_URL", "https://app.faflcourier.com/static/logo.png")
-DASHBOARD_URL = os.getenv("FAF_DASHBOARD_URL", "https://app.faflcourier.com")
+# IMPORTANT: This should be your APP domain (not www.foreignafoot.com)
+DASHBOARD_URL = os.getenv("FAF_DASHBOARD_URL", "https://app.faflcourier.com").rstrip("/")
+
+
+# ==========================================================
+#  INTERNAL: LOG EMAILS INTO IN-APP MESSAGES
+# ==========================================================
+def _get_admin_sender_id() -> int | None:
+    """
+    Returns an admin user id to use as sender_id when logging emails into DB Message table.
+    Tries: is_superadmin, role=='admin', is_admin (if exists), then first user.
+    """
+    try:
+        from app.models import User
+
+        # Prefer superadmin
+        if hasattr(User, "is_superadmin"):
+            u = User.query.filter(User.is_superadmin.is_(True)).order_by(User.id.asc()).first()
+            if u:
+                return u.id
+
+        # Prefer role-based admin
+        if hasattr(User, "role"):
+            u = User.query.filter(User.role == "admin").order_by(User.id.asc()).first()
+            if u:
+                return u.id
+
+        # Fallback: boolean is_admin
+        if hasattr(User, "is_admin"):
+            u = User.query.filter(User.is_admin.is_(True)).order_by(User.id.asc()).first()
+            if u:
+                return u.id
+
+        # Last resort
+        u = User.query.order_by(User.id.asc()).first()
+        return u.id if u else None
+
+    except Exception:
+        return None
+
+
+def log_email_to_messages(
+    recipient_user_id: int,
+    subject: str,
+    plain_body: str,
+    sender_user_id: int | None = None,
+) -> None:
+    """
+    Save the email into the same DB Message system so it shows in:
+    - Customer messages inbox
+    - Admin view user messages
+    Never breaks email sending.
+    """
+    try:
+        from app.extensions import db
+        from app.models import Message as DBMessage
+
+        sender_id = sender_user_id or _get_admin_sender_id()
+        if not sender_id:
+            return  # no admin/system sender found; skip
+
+        m = DBMessage(
+            sender_id=int(sender_id),
+            recipient_id=int(recipient_user_id),
+            subject=(subject or "").strip()[:255],
+            body=(plain_body or "").strip(),
+            created_at=datetime.utcnow(),
+            is_read=False,
+        )
+        db.session.add(m)
+        db.session.commit()
+
+    except Exception:
+        try:
+            from app.extensions import db
+            db.session.rollback()
+        except Exception:
+            pass
+
 
 # ==========================================================
 #  CORE EMAIL FUNCTION (SMTP)
@@ -43,6 +122,7 @@ def send_email(
     plain_body: str,
     html_body: str | None = None,
     attachments: list[tuple[bytes, str, str]] | None = None,
+    recipient_user_id: int | None = None,   # ✅ logs to Messages when provided
 ) -> bool:
     """
     attachments: list of (file_bytes, filename, mimetype)
@@ -61,7 +141,7 @@ def send_email(
 
     # Body (plain + optional html)
     body = MIMEMultipart("alternative")
-    body.attach(MIMEText(plain_body, "plain"))
+    body.attach(MIMEText(plain_body or "", "plain"))
     if html_body:
         body.attach(MIMEText(html_body, "html"))
     msg.attach(body)
@@ -88,6 +168,11 @@ def send_email(
                 smtp.send_message(msg)
 
         print(f"✅ Email sent to {to_email}")
+
+        # ✅ Mirror into in-app Messages
+        if recipient_user_id:
+            log_email_to_messages(recipient_user_id, subject, plain_body)
+
         return True
 
     except Exception as e:
@@ -98,7 +183,7 @@ def send_email(
 # ==========================================================
 #  WELCOME EMAIL
 # ==========================================================
-def send_welcome_email(email, full_name, reg_number):
+def send_welcome_email(email, full_name, reg_number, recipient_user_id=None):
     plain_body = f"""
 Dear {full_name},
 
@@ -144,13 +229,19 @@ Thank you for choosing us!
 </body>
 </html>
 """
-    return send_email(email, "Welcome to Foreign A Foot Logistics Limited! �✈️", plain_body, html_body)
+    return send_email(
+        to_email=email,
+        subject="Welcome to Foreign A Foot Logistics Limited! �✈️",
+        plain_body=plain_body,
+        html_body=html_body,
+        recipient_user_id=recipient_user_id,
+    )
 
 
 # ==========================================================
 #  PASSWORD RESET EMAIL
 # ==========================================================
-def send_password_reset_email(to_email, full_name, reset_link):
+def send_password_reset_email(to_email, full_name, reset_link, recipient_user_id=None):
     plain_body = f"""
 Dear {full_name},
 
@@ -177,13 +268,19 @@ If you didn’t request a password reset, simply ignore this email.
 </body>
 </html>
 """
-    return send_email(to_email, "Reset Your Password - Foreign A Foot Logistics", plain_body, html_body)
+    return send_email(
+        to_email=to_email,
+        subject="Reset Your Password - Foreign A Foot Logistics",
+        plain_body=plain_body,
+        html_body=html_body,
+        recipient_user_id=recipient_user_id,
+    )
 
 
 # ==========================================================
 #  BULK MESSAGE EMAIL
 # ==========================================================
-def send_bulk_message_email(to_email, full_name, subject, message_body):
+def send_bulk_message_email(to_email, full_name, subject, message_body, recipient_user_id=None):
     plain_body = f"""
 Dear {full_name},
 
@@ -198,25 +295,36 @@ Foreign A Foot Logistics Team
   <div style="background:#f9f9f9; padding:20px;">
     <div style="background:#fff; padding:30px; border-radius:8px;">
       <h3>Dear {full_name},</h3>
-      <p>{message_body.replace("\n", "<br>")}</p>
+      <p>{(message_body or "").replace("\n", "<br>")}</p>
       <p>Best regards,<br>Foreign A Foot Logistics Team</p>
     </div>
   </div>
 </body>
 </html>
 """
-    return send_email(to_email, f"{subject} - Foreign A Foot Logistics", plain_body, html_body)
+    return send_email(
+        to_email=to_email,
+        subject=f"{subject} - Foreign A Foot Logistics",
+        plain_body=plain_body,
+        html_body=html_body,
+        recipient_user_id=recipient_user_id,
+    )
 
 
 # ==========================================================
 #  PACKAGE OVERSEAS RECEIVED EMAIL
 # ==========================================================
-def send_overseas_received_email(to_email, full_name, reg_number, packages):
+def send_overseas_received_email(to_email, full_name, reg_number, packages, recipient_user_id=None):
+    """
+    Sends an email when FAFL receives a new package overseas.
+    Includes a button/link for the customer to upload their invoice.
+    """
     subject = f"Foreign A Foot Logistics Limited received a new package overseas for FAFL #{reg_number}"
 
-    base_url = DASHBOARD_URL.rstrip("/")
-    upload_url = f"{base_url}/customer/packages"
+    # Always points to APP domain packages page
+    upload_url = f"{DASHBOARD_URL}/customer/packages"
 
+    # Build table rows (HTML)
     rows_html = []
     for p in packages:
         house = getattr(p, "house_awb", None) if not isinstance(p, dict) else p.get("house_awb")
@@ -236,6 +344,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
           </tr>
         """)
 
+    # Plain-text fallback
     plain_lines = [
         f"Dear {full_name},",
         "",
@@ -250,6 +359,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
         tracking = getattr(p, "tracking_number", None) if not isinstance(p, dict) else p.get("tracking_number")
         desc = getattr(p, "description", None) if not isinstance(p, dict) else p.get("description")
         status = getattr(p, "status", None) if not isinstance(p, dict) else p.get("status")
+
         plain_lines.append(
             f"- House AWB: {house or '-'}, "
             f"Rounded Weight (lbs): {ceil(weight or 0)}, "
@@ -269,7 +379,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
         "",
         "Warm regards,",
         "The Foreign A Foot Logistics Team",
-        "📍 Cedar Grove PassageFort Portmore",
+        "📍 Cedar Grove Passage Fort, Portmore",
         "🌐 www.faflcourier.com",
         "✉️ foreignafootlogistics@gmail.com",
         "☎️ (876) 560-7764",
@@ -311,6 +421,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
         Upload / Add Your Invoice
       </a>
     </p>
+
     <p style="font-size:13px; color:#555; margin-top:6px;">
       Or visit <a href="{upload_url}" style="color:#4a148c; text-decoration:none;">{upload_url}</a>
       and locate this package by tracking number.
@@ -319,7 +430,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
     <hr style="margin:28px 0; border:none; border-top:1px solid #ddd;">
     <footer style="font-size:14px; color:#555;">
       <p style="margin:4px 0;">Warm regards,<br><strong>The Foreign A Foot Logistics Team</strong></p>
-      <p style="margin:4px 0;">📍 Cedar Grove PassageFort Portmore</p>
+      <p style="margin:4px 0;">📍 Cedar Grove Passage Fort, Portmore</p>
       <p style="margin:4px 0;">🌐 <a href="https://www.faflcourier.com" style="color:#4a148c;text-decoration:none;">www.faflcourier.com</a></p>
       <p style="margin:4px 0;">✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c;text-decoration:none;">foreignafootlogistics@gmail.com</a></p>
       <p style="margin:4px 0;">☎️ (876) 560-7764</p>
@@ -328,13 +439,22 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
 </body>
 </html>
 """
-    return send_email(to_email, subject, plain_body, html_body)
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        recipient_user_id=recipient_user_id,
+    )
 
 
 # ==========================================================
 #  INVOICE EMAIL
 # ==========================================================
-def send_invoice_email(to_email, full_name, invoice_number, amount_due, invoice_link):
+def send_invoice_email(to_email, full_name, invoice_number, amount_due, invoice_link, recipient_user_id=None):
+    """
+    Sends a clean, branded FAFL invoice email.
+    """
     plain_body = f"""
 Hello {full_name},
 
@@ -425,13 +545,14 @@ Foreign A Foot Logistics Limited
         subject=f"📄 Your Invoice #{invoice_number} is Ready",
         plain_body=plain_body,
         html_body=html_body,
+        recipient_user_id=recipient_user_id,
     )
 
 
 # ==========================================================
 #  NEW MESSAGE EMAIL
 # ==========================================================
-def send_new_message_email(user_email, user_name, message_subject, message_body):
+def send_new_message_email(user_email, user_name, message_subject, message_body, recipient_user_id=None):
     subject = f"New Message: {message_subject}"
     body = (
         f"Hello {user_name},\n\n"
@@ -439,7 +560,12 @@ def send_new_message_email(user_email, user_name, message_subject, message_body)
         f"{message_body}\n\n"
         f"Please log in to your account to reply or view details."
     )
-    return send_email(to_email=user_email, subject=subject, plain_body=body)
+    return send_email(
+        to_email=user_email,
+        subject=subject,
+        plain_body=body,
+        recipient_user_id=recipient_user_id,
+    )
 
 
 # ==========================================================
@@ -532,7 +658,7 @@ Foreign A Foot Logistics Team
 
 
 # --- Ready for Pick Up (no attachments) -------------------
-def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict]) -> bool:
+def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict], recipient_user_id=None) -> bool:
     rows = "\n".join(
         f"- {it.get('tracking_number','-')} | {it.get('description','-')} | Amount Due: ${it.get('amount_due',0):.2f}"
         for it in items
@@ -555,11 +681,17 @@ def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict]
   <p>Thanks,<br>Foreign A Foot Logistics</p>
 </body></html>
 """
-    return send_email(to_email, "Your package is Ready for Pick Up", plain, html)
+    return send_email(
+        to_email=to_email,
+        subject="Your package is Ready for Pick Up",
+        plain_body=plain,
+        html_body=html,
+        recipient_user_id=recipient_user_id,
+    )
 
 
 # --- Shipment invoice notice (no attachments; link/button only) ----
-def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: float, invoice_link: str) -> bool:
+def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: float, invoice_link: str, recipient_user_id=None) -> bool:
     plain = (
         f"Hi {full_name},\n\n"
         f"Your invoice for the recent shipment is ready.\n"
@@ -581,10 +713,21 @@ def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: f
   <p>Thanks,<br>Foreign A Foot Logistics</p>
 </body></html>
 """
-    return send_email(to_email, "Your Shipment Invoice", plain, html)
+    return send_email(
+        to_email=to_email,
+        subject="Your Shipment Invoice",
+        plain_body=plain,
+        html_body=html,
+        recipient_user_id=recipient_user_id,
+    )
 
 
 def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
+    """
+    packages: iterable of dicts with keys:
+      shipper, house_awb, tracking_number, weight
+    Returns: (subject, plain_body, html_body)
+    """
     subject = "Your package(s) are ready for pickup 🎉"
 
     rows_txt = []
@@ -665,3 +808,4 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
 </html>
 """
     return subject, plain_body, html_body
+

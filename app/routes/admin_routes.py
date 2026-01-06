@@ -244,7 +244,10 @@ def register_admin():
             return render_template('admin/register_admin.html', form=form)
 
         # 2) See if this is the very first admin-type user in the system
-        has_any_admin = User.query.filter(User.is_admin == True).first() is not None
+       has_any_admin = User.query.filter(
+           (User.is_admin.is_(True)) | (User.is_superadmin.is_(True)) | (User.role.in_(["admin","superadmin","finance","operations","accounts_manager"]))
+       ).first() is not None
+
 
         # Default flags
         is_admin = True
@@ -684,7 +687,7 @@ def mark_notification_read(nid):
 
 @admin_bp.route('/generate-invoice/<int:user_id>', methods=['GET', 'POST'])
 @admin_required
-def generate_invoice(user_id):
+def generate_invoice_route(user_id):
     user = User.query.get_or_404(user_id)
     packages = (Package.query
                 .filter_by(user_id=user.id, invoice_id=None)
@@ -997,8 +1000,9 @@ def view_customer_invoice(user_id):
         "customer_name": getattr(user, "full_name", ""),
         # If you later want subtotal vs fees, you can split grand_total here;
         # for now we just treat everything as one total.
-        "subtotal": float(inv.grand_total or totals["grand_total"] or 0),
-        "total_due": float(inv.amount_due or 0),
+        "subtotal": float(totals["grand_total"] or 0),
+        "total_due": float(totals["grand_total"] or 0),
+
         "packages": [
             {
                 "id": i["id"],
@@ -1677,11 +1681,11 @@ def email_proforma_invoice(invoice_id):
     if not customer_email:
         return jsonify(ok=False, error="Customer email not found for this invoice."), 400
 
-    # -----------------------------
-    # 2) Build the SAME proforma payload as the modal
-    # -----------------------------
     user_obj = inv.user
 
+    # -----------------------------
+    # 2) Build SAME proforma payload as modal
+    # -----------------------------
     pkgs = (
         Package.query
         .filter_by(invoice_id=invoice_id)
@@ -1691,10 +1695,8 @@ def email_proforma_invoice(invoice_id):
 
     from app.models import Settings
     settings = Settings.query.get(1)
+    effective_usd_to_jmd = getattr(settings, "usd_to_jmd", None) or USD_TO_JMD
 
-    effective_usd_to_jmd = (getattr(settings, "usd_to_jmd", None) or USD_TO_JMD)
-
-    # External URL so email clients can load it
     logo_url = url_for(
         "static",
         filename=(settings.logo_path if settings and settings.logo_path else "logo.png"),
@@ -1706,8 +1708,7 @@ def email_proforma_invoice(invoice_id):
 
     for p in pkgs:
         desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
-        wt_raw = float(getattr(p, "weight", 0) or 0)
-        wt = math.ceil(wt_raw)
+        wt = math.ceil(float(getattr(p, "weight", 0) or 0))
         val = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
 
         ch = calculate_charges(desc, val, wt)
@@ -1734,29 +1735,28 @@ def email_proforma_invoice(invoice_id):
 
     live_subtotal = float(subtotal or 0.0)
     _db_subtotal, discount_total, payments_total, _db_total_due = _fetch_invoice_totals_pg(invoice_id)
-    balance_due = max(live_subtotal - float(discount_total or 0) - float(payments_total or 0), 0.0)
+    balance_due = max(live_subtotal - discount_total - payments_total, 0.0)
 
     invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
-    proforma_number = inv.invoice_number or f"PROFORMA-{inv.id}"
 
     invoice_dict = {
         "id": inv.id,
-        "number": proforma_number,
+        "number": invoice_number,
         "date": inv.date_issued or inv.date_submitted or datetime.utcnow(),
-        "customer_code": getattr(user_obj, "registration_number", "") if user_obj else "",
-        "customer_name": getattr(user_obj, "full_name", "") if user_obj else "",
+        "customer_code": getattr(user_obj, "registration_number", ""),
+        "customer_name": getattr(user_obj, "full_name", ""),
         "branch": "Main Branch",
         "staff": getattr(current_user, "full_name", "FAFL ADMIN"),
         "subtotal": live_subtotal,
-        "discount_total": float(discount_total or 0.0),
-        "payments_total": float(payments_total or 0.0),
+        "discount_total": float(discount_total or 0),
+        "payments_total": float(payments_total or 0),
         "total_due": balance_due,
         "notes": getattr(inv, "description", "") or "",
         "packages": items,
     }
 
     # -----------------------------
-    # 3) Render HTML used for PDF generation
+    # 3) Render invoice HTML
     # -----------------------------
     html = render_template(
         "admin/invoices/_invoice_core.html",
@@ -1767,90 +1767,61 @@ def email_proforma_invoice(invoice_id):
     )
 
     # -----------------------------
-    # 4) Generate PDF from same HTML
-    #    base_url is IMPORTANT so CSS/images resolve in WeasyPrint
+    # 4) Generate PDF
     # -----------------------------
     try:
         pdf_bytes = HTML(
             string=html,
-            base_url=request.url_root  # e.g. https://app-faflcourier.onrender.com/
+            base_url=request.url_root
         ).write_pdf()
     except Exception as e:
-        current_app.logger.exception("PDF generation failed for invoice %s", invoice_id)
-        return jsonify(ok=False, error=f"Failed to generate PDF: {str(e)}"), 500
+        current_app.logger.exception("PDF generation failed")
+        return jsonify(ok=False, error=str(e)), 500
 
     filename = f"Proforma_{invoice_number}.pdf"
 
     # -----------------------------
-    # 5) Email subject + SMTP config
+    # 5) Email content
     # -----------------------------
     subject = f"Proforma Invoice {invoice_number} - Foreign A Foot Logistics"
-
-    host = current_app.config.get("SMTP_HOST")
-    port = int(current_app.config.get("SMTP_PORT", 587))
-    user = current_app.config.get("SMTP_USER")
-    pwd  = current_app.config.get("SMTP_PASS")
-    from_email = current_app.config.get("SMTP_FROM") or user
-
-    if not host or not user or not pwd or not from_email:
-        return jsonify(ok=False, error="SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASS)."), 500
-
-    # -----------------------------
-    # 6) Email body (SHORT) + attach PDF
-    #    (This avoids duplicating the whole invoice in the email body)
-    # -----------------------------
-    full_name = invoice_dict.get("customer_name") or "Customer"
+    full_name = invoice_dict["customer_name"] or "Customer"
 
     plain_body = (
         f"Hi {full_name},\n\n"
-        f"Please find your Proforma Invoice {invoice_number} attached as a PDF.\n\n"
+        f"Please find your Proforma Invoice {invoice_number} attached.\n\n"
         f"Balance Due: JMD {balance_due:,.2f}\n\n"
-        f"If you have any questions, just reply to this email.\n\n"
+        f"If you have any questions, simply reply to this email.\n\n"
         f"— Foreign A Foot Logistics\n"
-        f"(876) 210-4291\n"
+        f"(876) 560-7764\n"
     )
 
     html_body = f"""
-    <div style="font-family:Arial,sans-serif; line-height:1.6; color:#222;">
+    <div style="font-family:Arial,sans-serif; line-height:1.6;">
       <p>Hi <b>{full_name}</b>,</p>
-      <p>Please find your <b>Proforma Invoice {invoice_number}</b> attached as a PDF.</p>
+      <p>Your <b>Proforma Invoice {invoice_number}</b> is attached.</p>
       <p><b>Balance Due:</b> JMD {balance_due:,.2f}</p>
-      <p>If you have any questions, just reply to this email.</p>
+      <p>If you have any questions, simply reply to this email.</p>
       <p style="margin-top:16px;">
         — Foreign A Foot Logistics<br>
-        (876) 210-4291
+        (876) 560-7764
       </p>
     </div>
     """
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = from_email
-    msg["To"] = customer_email
-    msg.set_content(plain_body)
-    msg.add_alternative(html_body, subtype="html")
-
-    # Attach PDF
-    msg.add_attachment(
-        pdf_bytes,
-        maintype="application",
-        subtype="pdf",
-        filename=filename
+    # -----------------------------
+    # 6) Send via email_utils ✅
+    # -----------------------------
+    email_utils.send_email(
+        to_email=customer_email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        attachments=[(pdf_bytes, filename, "application/pdf")],
+        recipient_user_id=inv.user_id,
     )
 
-    # -----------------------------
-    # 7) Send
-    # -----------------------------
-    try:
-        with smtplib.SMTP(host, port) as s:
-            s.starttls()
-            s.login(user, pwd)
-            s.send_message(msg)
-    except Exception as e:
-        current_app.logger.exception("Proforma email failed for invoice %s", invoice_id)
-        return jsonify(ok=False, error=f"Failed to send email: {str(e)}"), 500
-
     return jsonify(ok=True, sent_to=customer_email, filename=filename)
+
 
 
 @admin_bp.route("/invoice/receipt/<int:invoice_id>")

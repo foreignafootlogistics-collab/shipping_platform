@@ -30,7 +30,11 @@ from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import CATEGORIES
 
 # Models (these exist in your file)
-from app.models import User, Invoice, Payment, Package, Prealert, Message, Settings, PackageAttachment
+from app.models import (
+    User, Invoice, Payment, Package, Prealert,
+    Message as DBMessage,  # ✅ alias it like customer_routes.py
+    Settings, PackageAttachment
+)
 
 accounts_bp = Blueprint('accounts_profiles', __name__)
 
@@ -613,11 +617,21 @@ def view_user(id):
     # Messages (subject, body, created_at)
     try:
         messages = (
-            db.session.query(Message.subject, Message.body, Message.created_at)
-            .filter(or_(Message.recipient_id == id, Message.sender_id == id))
-            .order_by(Message.created_at.desc())
+            db.session.query(
+                DBMessage.subject,
+                DBMessage.body,
+                DBMessage.created_at
+            )
+            .filter(
+                or_(
+                    DBMessage.recipient_id == id,
+                    DBMessage.sender_id == id
+                )
+            )
+            .order_by(DBMessage.created_at.desc())
             .all()
         )
+
     except Exception:
         db.session.rollback()
         messages = []

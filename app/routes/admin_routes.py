@@ -244,36 +244,43 @@ def register_admin():
             return render_template('admin/register_admin.html', form=form)
 
         # 2) See if this is the very first admin-type user in the system
-       has_any_admin = User.query.filter(
-           (User.is_admin.is_(True)) | (User.is_superadmin.is_(True)) | (User.role.in_(["admin","superadmin","finance","operations","accounts_manager"]))
-       ).first() is not None
+        admin_roles = ["admin", "superadmin", "finance", "operations", "accounts_manager"]
 
+        conds = [
+            User.is_superadmin.is_(True),
+            User.role.in_(admin_roles),
+        ]
+
+        # Some older builds use is_admin boolean
+        if hasattr(User, "is_admin"):
+            conds.append(User.is_admin.is_(True))
+
+        has_any_admin = User.query.filter(sa.or_(*conds)).first() is not None
 
         # Default flags
         is_admin = True
         is_superadmin = False
 
-        # If there are NO admins at all yet,
-        # force this one to become a superadmin owner account.
+        # If there are NO admins at all yet, force owner superadmin
         if not has_any_admin:
             role = "superadmin"
             is_superadmin = True
 
-        # 3) Optional registration number for first admin
+        # Optional registration number for first admin
         registration_number = "FAFL10000" if not has_any_admin else None
 
-        # 4) Hash password with bcrypt (store as bytes in LargeBinary column)
+        # Hash password with bcrypt (store as bytes in LargeBinary column)
         hashed_pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
 
-        # 5) Create the user
+        # Create the user
         u = User(
             full_name=full_name,
-            email=email,                     # e.g. "sade.buchanan@faflcourier.com"
-            password=hashed_pw,              # keep as bytes for LargeBinary
-            role=role,                       # from select
-            created_at=datetime.utcnow(),    # your column is String but SQLite will happily store this
+            email=email,
+            password=hashed_pw,              # bytes (LargeBinary)
+            role=role,
+            created_at=datetime.utcnow(),    # if your column is string, it'll still store fine
             registration_number=registration_number,
-            is_admin=is_admin,
+            is_admin=is_admin if hasattr(User, "is_admin") else True,
             is_superadmin=is_superadmin,
         )
 

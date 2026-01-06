@@ -25,6 +25,7 @@
     <div class="col-md-2">
       <input type="text" name="tracking_number" value="{{ tracking_number }}" class="form-control" placeholder="Tracking #">
     </div>
+
     <div class="col-md-2">
       <select name="status" class="form-control">
         <option value="">All Status</option>
@@ -33,12 +34,24 @@
         <option value="Delivered" {% if status_filter=='Delivered' %}selected{% endif %}>Delivered</option>
       </select>
     </div>
+
     <div class="col-md-2">
       <input type="date" name="date_from" value="{{ date_from }}" class="form-control">
     </div>
+
     <div class="col-md-2">
       <input type="date" name="date_to" value="{{ date_to }}" class="form-control">
     </div>
+
+    {# ✅ Show per-page selector #}
+    <div class="col-md-2">
+      <select name="per_page" class="form-control">
+        {% for n in [10,25,50,100,500] %}
+          <option value="{{ n }}" {% if per_page|int == n %}selected{% endif %}>Show {{ n }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
     <div class="col-md-2">
       <button type="submit" class="btn btn-dashboard w-100">Filter</button>
     </div>
@@ -59,100 +72,13 @@
         </tr>
       </thead>
 
-      <tbody>
-        {% for pkg in packages %}
-        <tr>
-          {# Docs (modal trigger only) #}
-          <td class="text-center align-middle">
-            <button type="button"
-                    class="btn btn-sm btn-outline-secondary"
-                    data-bs-toggle="modal"
-                    data-bs-target="#docsModal{{ pkg.id }}"
-                    title="Upload Invoices / Declared Value">
-              <i class="fas fa-file-upload"></i>
-            </button>
+      {% set mode = "customer" %}
+    <tbody>
+      {% for pkg in packages %}
+        {% include "partials/package_row_shared.html" with context %}
+      {% endfor %}
+    </tbody>
 
-            {% if pkg.attachments and pkg.attachments|length > 0 %}
-              <div class="small text-success mt-1" title="Attachments available">
-                <i class="fas fa-check-circle"></i>
-              </div>
-            {% endif %}
-          </td>
-
-          {# House AWB / Status + VAL line #}
-          <td>
-            {{ pkg.house_awb or "-" }}
-
-            {% set s = (pkg.status or '') %}
-            <div class="progress mt-1">
-              {% if s == 'Overseas' %}
-                <div class="progress-bar bg-danger" style="width:33.33%"></div>
-              {% elif s == 'Ready for Pick Up' %}
-                <div class="progress-bar bg-primary" style="width:66.66%"></div>
-              {% elif s == 'Delivered' %}
-                <div class="progress-bar bg-success" style="width:100%"></div>
-              {% else %}
-                <div class="progress-bar bg-secondary" style="width:20%"></div>
-              {% endif %}
-            </div>
-
-            <small class="text-muted d-block">{{ s }}</small>
-
-            {% set dv = (pkg.declared_value if pkg.declared_value is not none
-                        else (pkg.value if pkg.value is not none else 0)) %}
-            <div class="small text-muted mt-1">VAL: ${{ "%.2f"|format(dv) }}</div>
-          </td>
-
-          {# Description + attachment ICON links (ONLY HERE) #}
-          <td>
-            {{ pkg.description or "-" }}
-
-            {% if pkg.attachments and pkg.attachments|length > 0 %}
-              <div class="small mt-1 d-flex gap-2 flex-wrap">
-                {% for a in pkg.attachments %}
-                  <a class="pkg-attachment"
-                     target="_blank"
-                     href="{{ url_for('customer.view_package_attachment', attachment_id=a.id) }}"
-                     title="{{ a.original_name or a.file_name }}">
-                    <i class="fas fa-file-alt"></i>
-                  </a>
-                {% endfor %}
-              </div>
-            {% endif %}
-          </td>
-
-          <td>{{ pkg.tracking_number or "-" }}</td>
-
-          <td class="text-center">
-            {% if pkg.weight is not none %}
-              {{ (pkg.weight|float)|round(0,'ceil')|int }}
-            {% else %}
-              —
-            {% endif %}
-          </td>
-
-          <td class="text-center">
-            {% if pkg.date_received %}
-              {{ pkg.date_received.strftime("%Y-%m-%d") }}
-            {% else %}
-              —
-            {% endif %}
-          </td>
-
-          <td class="text-center">
-            {% if (pkg.status or '') == 'Ready for Pick Up' %}
-              {{ (pkg.amount_due or 0)|jmd }}
-            {% else %}
-              {{ 0|jmd }}
-            {% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="7" class="text-center text-muted">No packages found.</td>
-        </tr>
-        {% endfor %}
-      </tbody>
     </table>
   </div>
 
@@ -162,7 +88,7 @@
       {% for p in range(1, total_pages + 1) %}
         <li class="page-item {% if p == page %}active{% endif %}">
           <a class="page-link"
-             href="?page={{ p }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&tracking_number={{ tracking_number }}">
+             href="?page={{ p }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&tracking_number={{ tracking_number }}&per_page={{ per_page }}">
             {{ p }}
           </a>
         </li>
@@ -175,6 +101,8 @@
    Modals AFTER table (valid HTML)
    ========================= #}
 {% for pkg in packages %}
+{% set s = (pkg.status or '') %}
+{% set lock_docs = (s == 'Ready for Pick Up' or s == 'Delivered') %}
 <div class="modal fade" id="docsModal{{ pkg.id }}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
     <div class="modal-content">
@@ -189,6 +117,15 @@
         </div>
 
         <div class="modal-body">
+
+          {# ✅ Lock message #}
+          {% if lock_docs %}
+            <div class="alert alert-secondary py-2 mb-3">
+              <i class="fas fa-lock me-1"></i>
+              This package is <strong>{{ s }}</strong>, so invoices & declared value are locked.
+            </div>
+          {% endif %}
+
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label">Declared Value (USD)</label>
@@ -197,37 +134,60 @@
                      name="declared_value"
                      step="0.01"
                      min="0"
-                     value="{{ pkg.declared_value if pkg.declared_value is not none else (pkg.value if pkg.value is not none else 0) }}">
+                     value="{{ pkg.declared_value if pkg.declared_value is not none else (pkg.value if pkg.value is not none else 0) }}"
+                     {% if lock_docs %}disabled{% endif %}>
               <div class="form-text">This updates the “VAL: $xx.xx” shown under status.</div>
             </div>
 
             <div class="col-md-6">
               <label class="form-label">Invoice File 1</label>
-              <input class="form-control" type="file" name="invoice_file_1" accept=".pdf,.jpg,.jpeg,.png">
+              <input class="form-control" type="file" name="invoice_file_1" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
 
               <label class="form-label mt-2">Invoice File 2</label>
-              <input class="form-control" type="file" name="invoice_file_2" accept=".pdf,.jpg,.jpeg,.png">
+              <input class="form-control" type="file" name="invoice_file_2" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
 
               <label class="form-label mt-2">Invoice File 3</label>
-              <input class="form-control" type="file" name="invoice_file_3" accept=".pdf,.jpg,.jpeg,.png">
+              <input class="form-control" type="file" name="invoice_file_3" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
             </div>
 
             <div class="col-12">
               <div class="fw-semibold mb-1">Existing Attachments</div>
+
               {% if pkg.attachments and pkg.attachments|length > 0 %}
                 <div class="d-flex flex-wrap gap-2">
                   {% for a in pkg.attachments %}
-                    <a class="btn btn-sm btn-outline-secondary"
-                       target="_blank"
-                       href="{{ url_for('customer.view_package_attachment', attachment_id=a.id) }}"
-                       title="{{ a.original_name or a.file_name }}">
-                      <i class="fas fa-file-alt me-1"></i> View
-                    </a>
+                    <div class="d-inline-flex align-items-center gap-1">
+
+                      <a class="btn btn-sm btn-outline-secondary"
+                         target="_blank"
+                         href="{{ url_for('customer.view_package_attachment', attachment_id=a.id) }}"
+                         title="{{ a.original_name or a.file_name }}">
+                        <i class="fas fa-file-alt me-1"></i> View
+                      </a>
+
+                      {# Small X delete (hidden/disabled when locked) #}
+                      <form method="POST"
+                            action="{{ url_for('customer.delete_package_attachment_customer', attachment_id=a.id) }}"
+                            style="display:inline;"
+                            onsubmit="return confirm('Delete this attachment?');">
+                        {{ form.csrf_token }}
+
+                        <button type="submit"
+                                class="btn btn-sm"
+                                style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .40rem;"
+                                title="Delete attachment"
+                                {% if lock_docs %}disabled{% endif %}>
+                          <i class="fa-solid fa-xmark"></i>
+                        </button>
+                      </form>
+
+                    </div>
                   {% endfor %}
                 </div>
               {% else %}
                 <div class="text-muted">No attachments yet.</div>
               {% endif %}
+
             </div>
 
           </div>
@@ -235,7 +195,7 @@
 
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-          <button type="submit" class="btn btn-primary">Save</button>
+          <button type="submit" class="btn btn-primary" {% if lock_docs %}disabled{% endif %}>Save</button>
         </div>
 
       </form>
@@ -243,6 +203,7 @@
   </div>
 </div>
 {% endfor %}
+
 <style>
 .pkg-attachment {
   display: inline-flex;
@@ -267,5 +228,3 @@
 </style>
 
 {% endblock %}
-
-

@@ -29,6 +29,7 @@ from app import allowed_file, mail
 from app.extensions import db
 from app.calculator import calculate_charges
 from app.calculator_data import CATEGORIES, USD_TO_JMD
+from app.services.package_view import fetch_packages_normalized
 
 
 # Models — NO Bill model; alias Message to avoid clash with Flask-Mail's Message
@@ -237,82 +238,111 @@ def prealerts_view():
 # -----------------------------
 # Packages
 # -----------------------------
-@customer_bp.route('/packages', methods=['GET', 'POST'])
+@customer_bp.route("/packages", methods=["GET"])
 @login_required
 def view_packages():
     """
-    Customer Packages page
+    Customer Packages page (SYNCED with Admin View Packages)
 
-    ✅ Fixes:
-    - Returns ORM Package objects (not dicts) so pkg.attachments works
-    - Eager-loads attachments to avoid N+1 queries
-    - Keeps your amount_due rule (only show when status == "Ready for Pick Up")
-    - Safe date filters (YYYY-MM-DD)
+    ✅ Uses SAME normalized package data as admin
+    ✅ Same value / weight / date logic
+    ✅ Attachments included (view-only)
+    ✅ Pagination + per_page selector
     """
+
     form = PackageUpdateForm()
 
     # -------------------------
     # Filters
     # -------------------------
-    status_filter = (request.args.get('status') or '').strip()
-    date_from = (request.args.get('date_from') or '').strip()
-    date_to = (request.args.get('date_to') or '').strip()
-    tracking_number = (request.args.get('tracking_number') or '').strip()
-    page = request.args.get('page', 1, type=int)
-    per_page = 10
+    status_filter = (request.args.get("status") or "").strip()
+    date_from = (request.args.get("date_from") or "").strip()
+    date_to = (request.args.get("date_to") or "").strip()
+    tracking_number = (request.args.get("tracking_number") or "").strip()
 
-    # Base query (IMPORTANT: load attachments)
+    page = request.args.get("page", 1, type=int)
+
+    # per-page selector
+    per_page = request.args.get("per_page", 10, type=int)
+    allowed_per_page = [10, 25, 50, 100, 500]
+    if per_page not in allowed_per_page:
+        per_page = 10
+
+    # -------------------------
+    # Base query (MATCHES ADMIN)
+    # -------------------------
     q = (
-        Package.query
+        db.session.query(
+            Package,
+            User.full_name,
+            User.registration_number
+        )
+        .join(User, Package.user_id == User.id)
         .filter(Package.user_id == current_user.id)
-        .options(selectinload(Package.attachments))
     )
 
+    # Status filter
     if status_filter:
         q = q.filter(Package.status == status_filter)
 
+    # Date filters (safe)
     if date_from:
         try:
-            df = datetime.strptime(date_from, "%Y-%m-%d")
-            q = q.filter(Package.date_received >= df)
-        except Exception:
-            flash("Invalid date_from format. Use YYYY-MM-DD.", "warning")
+            df = datetime.strptime(date_from, "%Y-%m-%d").date()
+            q = q.filter(
+                func.date(func.coalesce(Package.date_received, Package.created_at)) >= df
+            )
+        except ValueError:
+            flash("Invalid start date.", "warning")
 
     if date_to:
         try:
-            # include the entire end day
-            dt = datetime.strptime(date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
-            q = q.filter(Package.date_received <= dt)
-        except Exception:
-            flash("Invalid date_to format. Use YYYY-MM-DD.", "warning")
+            dt = datetime.strptime(date_to, "%Y-%m-%d").date()
+            q = q.filter(
+                func.date(func.coalesce(Package.date_received, Package.created_at)) <= dt
+            )
+        except ValueError:
+            flash("Invalid end date.", "warning")
 
     if tracking_number:
         q = q.filter(Package.tracking_number.ilike(f"%{tracking_number}%"))
 
-    q = q.order_by(Package.date_received.desc().nullslast(), Package.id.desc())
-    paginated = q.paginate(page=page, per_page=per_page, error_out=False)
+    # Order EXACTLY like admin
+    q = q.order_by(
+        func.date(func.coalesce(Package.date_received, Package.created_at)).desc(),
+        Package.id.desc()
+    )
 
-    packages = paginated.items
-    total_pages = paginated.pages or 1
+    # -------------------------
+    # Pagination (manual, admin-style)
+    # -------------------------
+    total = q.count()
+    total_pages = max((total + per_page - 1) // per_page, 1)
 
-    # ✅ Apply your display rule without converting to dict:
-    # Only show amount_due when Ready for Pick Up (customer side)
-    for pkg in packages:
-        pkg.display_amount_due = pkg.amount_due if (pkg.status or "").strip().lower() == "ready for pick up" else 0
-        pkg.display_declared_value = pkg.declared_value if pkg.declared_value is not None else 0.0
+    q = q.limit(per_page).offset((page - 1) * per_page)
 
+    # 🔑 NORMALIZED, SHARED DATA
+    packages = fetch_packages_normalized(
+        base_query=q,
+        include_user=True,
+        include_attachments=True,
+    )
 
     return render_template(
-        'customer/customer_packages.html',
+        "customer/customer_packages.html",
         packages=packages,
         form=form,
+
         status_filter=status_filter,
         date_from=date_from,
         date_to=date_to,
         tracking_number=tracking_number,
+
         page=page,
         total_pages=total_pages,
+        per_page=per_page,
     )
+
 
 
 @customer_bp.route('/package/<int:pkg_id>', methods=['GET', 'POST'])
@@ -354,9 +384,7 @@ def package_detail(pkg_id):
         d['declared_value'] = float(pkg.declared_value) if pkg.declared_value is not None else 65.0
     except Exception:
         d['declared_value'] = 65.0
-    status_norm = (pkg.status or "").strip().lower()
-    if status_norm != "ready for pick up":
-        d["amount_due"] = 0
+    d["amount_due"] = float(pkg.amount_due or 0)
 
 
     return render_template('customer/package_detail.html', pkg=d, form=form)
@@ -436,7 +464,40 @@ def view_package_attachment(attachment_id):
         as_attachment=False
     )
 
+@customer_bp.route("/packages/attachments/<int:attachment_id>/delete", methods=["POST"])
+@login_required
+def delete_package_attachment_customer(attachment_id):
+    """
+    Customer deletes an attachment they uploaded, only if:
+    - attachment belongs to a package owned by current_user
+    - package is NOT Ready for Pick Up or Delivered (locked)
+    Deletes from DB and disk.
+    """
+    a = PackageAttachment.query.get_or_404(attachment_id)
 
+    # Ensure this attachment belongs to a package owned by this customer
+    if not a.package or a.package.user_id != current_user.id:
+        abort(403)
+
+    # Lock if package is already finalized
+    s = (a.package.status or "").strip()
+    if s in ("Ready for Pick Up", "Delivered"):
+        flash("This package is locked, so attachments can't be deleted.", "warning")
+        return redirect(url_for("customer.view_packages"))
+
+    # Delete file from disk (best effort)
+    try:
+        if a.file_path and os.path.exists(a.file_path):
+            os.remove(a.file_path)
+    except Exception:
+        pass
+
+    db.session.delete(a)
+    db.session.commit()
+    flash("Attachment deleted.", "success")
+
+    # Return to packages list (and optionally reopen modal via hash)
+    return redirect(url_for("customer.view_packages"))
 
 @customer_bp.route('/update_declared_value', methods=['POST'])
 @login_required

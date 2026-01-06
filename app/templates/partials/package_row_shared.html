@@ -1,0 +1,305 @@
+{# app/templates/partials/package_row_shared.html #}
+
+{# ------------------------------
+   Helpers (support dict OR ORM)
+   ------------------------------ #}
+{% set _id = pkg.id if pkg.id is defined else pkg.get('id') %}
+{% set _user_id = pkg.user_id if pkg.user_id is defined else pkg.get('user_id') %}
+{% set _invoice_id = pkg.invoice_id if pkg.invoice_id is defined else pkg.get('invoice_id') %}
+
+{% set _full_name = pkg.full_name if pkg.full_name is defined else pkg.get('full_name') %}
+{% set _reg = pkg.registration_number if pkg.registration_number is defined else pkg.get('registration_number') %}
+
+{% set _status = pkg.status if pkg.status is defined else pkg.get('status') %}
+{% set _tracking = pkg.tracking_number if pkg.tracking_number is defined else pkg.get('tracking_number') %}
+{% set _house = pkg.house_awb if pkg.house_awb is defined else pkg.get('house_awb') %}
+{% set _desc = pkg.description if pkg.description is defined else pkg.get('description') %}
+
+{% set _date_received = pkg.date_received if pkg.date_received is defined else pkg.get('date_received') %}
+{% set _weight = pkg.weight if pkg.weight is defined else pkg.get('weight') %}
+
+{% set _declared = pkg.declared_value if pkg.declared_value is defined else pkg.get('declared_value') %}
+{% set _value = pkg.value if pkg.value is defined else pkg.get('value') %}
+{% set _amount_due = pkg.amount_due if pkg.amount_due is defined else pkg.get('amount_due') %}
+
+{% set _attachments = pkg.attachments if pkg.attachments is defined else pkg.get('attachments') %}
+{% set _epc = pkg.epc if pkg.epc is defined else pkg.get('epc') %}
+
+{# Declared value fallback #}
+{% set dv = _declared if _declared is not none else (_value if _value is not none else 0) %}
+
+<tr>
+  {# ==========================================================
+     ADMIN MODE (matches your admin thead exactly — 10 columns)
+     ========================================================== #}
+  {% if mode == "admin" %}
+
+    {# 1) Actions #}
+    <td>
+      <input type="checkbox"
+             name="package_ids"
+             value="{{ _id }}"
+             class="package-checkbox"
+             form="bulkActionForm">
+
+      {% if _invoice_id %}
+        <a href="#"
+           onclick="viewInvoiceById({{ _invoice_id }}); return false;"
+           class="btn btn-sm btn-outline-purple ms-1"
+           title="View Existing Invoice">
+          <i class="fas fa-file-invoice-dollar"></i>
+        </a>
+      {% else %}
+        <a href="#"
+           onclick="viewInvoiceByUser({{ _user_id }}); return false;"
+           class="btn btn-sm btn-outline-purple ms-1"
+           title="Preview (Pro-forma)">
+          <i class="fas fa-eye"></i>
+        </a>
+      {% endif %}
+    </td>
+
+    {# 2) User #}
+    <td>
+      <strong>
+        <a href="{{ url_for('accounts_profiles.view_user', id=_user_id) }}"
+           class="text-purple text-decoration-none">
+          {{ _full_name or '-' }}
+        </a>
+      </strong><br>
+      <small class="text-muted">{{ _reg or '-' }}</small>
+    </td>
+
+    {# 3) Package (status tracker + tracking) #}
+    <td>
+      {% set status = _status %}
+      {% include 'partials/status_tracker.html' with context %}
+      <br>
+      <small class="text-muted">{{ _tracking or '-' }}</small>
+    </td>
+
+    {# 4) House AWB + EPC badge #}
+    <td>
+      {{ _house or '-' }}
+      {% if _epc %}
+        <span class="badge badge-epc ms-1">
+          <i class="bi bi-flag-fill" style="font-size:0.60rem;"></i> EPC
+        </span>
+      {% endif %}
+    </td>
+
+    {# 5) Description + attachments + delete X #}
+    <td>
+      <div>{{ _desc or '-' }}</div>
+
+      {% if _attachments and (_attachments|length > 0) %}
+        <div class="mt-1 d-flex flex-wrap gap-2">
+          {% for a in _attachments %}
+            {% set aid = a.id if a.id is defined else a.get('id') %}
+            {% set aname = (a.original_name if a.original_name is defined else a.get('original_name')) %}
+            {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
+
+            <div class="d-inline-flex align-items-center gap-1">
+              <a class="btn btn-sm"
+                 style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
+                 target="_blank"
+                 href="{{ url_for('logistics.view_package_attachment', attachment_id=aid) }}"
+                 title="{{ aname or fname }}">
+                <i class="fa-solid fa-file-lines"></i>
+              </a>
+
+              {# Small X delete #}
+              <form method="POST"
+                    action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=aid) }}"
+                    style="display:inline;"
+                    onsubmit="return confirm('Delete this attachment?');">
+                {# IMPORTANT: use the same csrf mechanism your page already uses #}
+                {{ bulk_form.hidden_tag() }}
+                <button type="submit"
+                        class="btn btn-sm"
+                        style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .40rem;"
+                        title="Delete attachment">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+              </form>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </td>
+
+    {# 6) Date Received #}
+    <td>
+      {% if _date_received %}
+        {% if _date_received.strftime is defined %}
+          {{ _date_received.strftime("%Y-%m-%d") }}
+        {% else %}
+          {{ (_date_received|string)[:10] }}
+        {% endif %}
+      {% else %}
+        -
+      {% endif %}
+    </td>
+
+    {# 7) Weight #}
+    <td>
+      {% if _weight is not none %}
+        {{ _weight }} ({{ (_weight|float)|round(0,'ceil')|int }})
+        <input type="hidden" id="weight_{{ _id }}" value="{{ _weight }}">
+      {% else %}
+        -
+      {% endif %}
+    </td>
+
+    {# 8) Item Value ($) #}
+    <td class="text-center">
+      {{ "%.2f"|format(dv or 0) }}
+    </td>
+
+    {# 9) Amount Due ($) #}
+    <td class="text-center">
+      {{ "%.2f"|format(_amount_due if _amount_due is not none else 0) }}
+    </td>
+
+    {# 10) Hidden EPC flag for DataTables filter #}
+    <td class="d-none">{{ 1 if _epc else 0 }}</td>
+
+
+  {# {# ==========================================================
+   CUSTOMER MODE (matches your customer thead exactly — 7 cols)
+   ========================================================== #}
+  {% else %}
+
+    {# Normalize status once (handles 'delivery' vs 'Delivered') #}
+    {% set status_l = (_status or '')|trim|lower %}
+
+    {# Lock docs when package is finalized #}
+    {% set lock_docs = (status_l in ['ready for pick up', 'delivered', 'delivery']) %}
+
+    {# Optional: if you ever pass invoice_status in the future, we’ll use it #}
+    {% set _invoice_status = pkg.invoice_status if pkg.invoice_status is defined else pkg.get('invoice_status') %}
+    {# ✅ In your workflow: Delivered only after payment #}
+    {% set is_paid = (status_l in ['delivered', 'delivery']) %}
+
+
+    {# Customer should see amount when Ready/Delivered/Delivery. Otherwise show — #}
+    {% set show_amount = (status_l in ['ready for pick up','delivered','delivery']) %}
+    {% set amount_to_show = (_amount_due if _amount_due is not none else 0) %}
+
+    {# 1) Docs #}
+    <td class="text-center align-middle">
+      <button type="button"
+              class="btn btn-sm btn-outline-secondary {% if lock_docs %}disabled{% endif %}"
+              {% if lock_docs %}disabled aria-disabled="true"{% endif %}
+              data-bs-toggle="modal"
+              data-bs-target="#docsModal{{ _id }}"
+              title="{% if lock_docs %}Locked ({{ _status }}){% else %}Upload Invoices / Declared Value{% endif %}">
+        <i class="fas {% if lock_docs %}fa-lock{% else %}fa-file-upload{% endif %}"></i>
+      </button>
+
+      {% if _attachments and (_attachments|length > 0) %}
+        <div class="small text-success mt-1" title="Attachments available">
+          <i class="fas fa-check-circle"></i>
+        </div>
+      {% endif %}
+    </td>
+
+    {# 2) House AWB / Status #}
+    <td>
+      {{ _house or "-" }}
+
+      <div class="progress mt-1">
+        {% if status_l == 'overseas' %}
+          <div class="progress-bar bg-danger" style="width:33.33%"></div>
+        {% elif status_l == 'ready for pick up' %}
+          <div class="progress-bar bg-primary" style="width:66.66%"></div>
+        {% elif status_l in ['delivered','delivery'] %}
+          <div class="progress-bar bg-success" style="width:100%"></div>
+        {% else %}
+          <div class="progress-bar bg-secondary" style="width:20%"></div>
+        {% endif %}
+      </div>
+
+      {% set status_label = _status %}
+      {% if status_label|lower == 'delivery' %}
+        {% set status_label = 'Delivered' %}
+      {% endif %}
+
+      <small class="text-muted d-block">{{ status_label }}</small>
+
+      <div class="small text-muted mt-1">VAL: ${{ "%.2f"|format(dv or 0) }}</div>
+    </td>
+
+    {# 3) Description (and icons to view attachments) #}
+    <td>
+      {{ _desc or "-" }}
+
+      {% if _attachments and (_attachments|length > 0) %}
+        <div class="small mt-1 d-flex gap-2 flex-wrap">
+          {% for a in _attachments %}
+            {% set aid = a.id if a.id is defined else a.get('id') %}
+            {% set aname = (a.original_name if a.original_name is defined else a.get('original_name')) %}
+            {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
+
+            <a class="pkg-attachment"
+               target="_blank"
+               href="{{ url_for('customer.view_package_attachment', attachment_id=aid) }}"
+               title="{{ aname or fname }}">
+              <i class="fas fa-file-alt"></i>
+            </a>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </td>
+
+    {# 4) Tracking #}
+    <td>{{ _tracking or "-" }}</td>
+
+    {# 5) Weight #}
+    <td class="text-center">
+      {% if _weight is not none %}
+        {{ (_weight|float)|round(0,'ceil')|int }}
+      {% else %}
+        —
+      {% endif %}
+    </td>
+
+    {# 6) Date Received #}
+    <td class="text-center">
+      {% if _date_received %}
+        {% if _date_received.strftime is defined %}
+          {{ _date_received.strftime("%Y-%m-%d") }}
+        {% else %}
+          {{ (_date_received|string)[:10] }}
+        {% endif %}
+      {% else %}
+        —
+      {% endif %}
+    </td>
+
+    {# 7) Amount Due (SHOW amount + (Paid icon UNDER it) ONLY if paid) #}
+    <td class="text-center">
+      {% if show_amount %}
+        <div class="fw-semibold">{{ amount_to_show|jmd }}</div>
+
+        {% if is_paid %}
+          <div class="mt-1 d-flex justify-content-center">
+            <img
+              src="{{ url_for('static', filename='images/paid-stamp.png') }}"
+              alt="PAID"
+              style="
+                height:36px;
+                opacity:0.85;
+                transform: rotate(-8deg);
+              "
+            >
+          </div>
+        {% endif %}
+      {% else %}
+        —
+      {% endif %}
+    </td>
+
+  {% endif %}
+
+</tr>

@@ -32,7 +32,7 @@ if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
 #  EMAIL CONFIG (use environment variables in production)
 # ==========================================================
 LOGO_URL = os.getenv("FAF_LOGO_URL", "https://app.faflcourier.com/static/logo.png")
-DASHBOARD_URL = os.getenv("FAF_DASHBOARD_URL", "https://www.foreignafoot.com")
+DASHBOARD_URL = os.getenv("FAF_DASHBOARD_URL", "https://app.faflcourier.com")
 
 # ==========================================================
 #  CORE EMAIL FUNCTION (SMTP)
@@ -48,8 +48,14 @@ def send_email(
     attachments: list of (file_bytes, filename, mimetype)
       e.g. [(pdf_bytes, "Invoice.pdf", "application/pdf")]
     """
+
+    # ✅ Fail fast if creds missing
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+        print("❌ Cannot send email: SMTP_USER / SMTP_PASS not set.")
+        return False
+
     msg = MIMEMultipart("mixed")
-    msg["From"] = EMAIL_FROM
+    msg["From"] = EMAIL_FROM or EMAIL_ADDRESS
     msg["To"] = to_email
     msg["Subject"] = subject
 
@@ -68,7 +74,7 @@ def send_email(
             part.add_header("Content-Disposition", "attachment", filename=filename)
             msg.attach(part)
 
-    # SEND (✅ must NOT be inside attachments)
+    # SEND
     try:
         if SMTP_PORT == 465:
             with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
@@ -203,20 +209,14 @@ Foreign A Foot Logistics Team
 
 
 # ==========================================================
-#  PACKAGE UPLOAD EMAIL (status summary)
+#  PACKAGE OVERSEAS RECEIVED EMAIL
 # ==========================================================
 def send_overseas_received_email(to_email, full_name, reg_number, packages):
-    """
-    Sends an email when Foreign A Foot Logistics Limited receives a new package overseas.
-    Includes: House AWB, Rounded-up Weight, Tracking #, Description, Status
-    AND a button/link for the customer to upload their invoice.
-    """
     subject = f"Foreign A Foot Logistics Limited received a new package overseas for FAFL #{reg_number}"
 
     base_url = DASHBOARD_URL.rstrip("/")
     upload_url = f"{base_url}/customer/packages"
 
-    # Build table rows (HTML)
     rows_html = []
     for p in packages:
         house = getattr(p, "house_awb", None) if not isinstance(p, dict) else p.get("house_awb")
@@ -236,7 +236,6 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
           </tr>
         """)
 
-    # Plain-text fallback
     plain_lines = [
         f"Dear {full_name},",
         "",
@@ -271,13 +270,12 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
         "Warm regards,",
         "The Foreign A Foot Logistics Team",
         "📍 Cedar Grove PassageFort Portmore",
-        "🌐 www.foreignafoot.com",
+        "🌐 www.faflcourier.com",
         "✉️ foreignafootlogistics@gmail.com",
-        "☎️ (876) 210-4291",
+        "☎️ (876) 560-7764",
     ]
     plain_body = "\n".join(plain_lines)
 
-    # HTML version
     html_body = f"""
 <html>
 <body style="font-family:Inter,Arial,sans-serif; line-height:1.6; color:#222;">
@@ -322,9 +320,9 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
     <footer style="font-size:14px; color:#555;">
       <p style="margin:4px 0;">Warm regards,<br><strong>The Foreign A Foot Logistics Team</strong></p>
       <p style="margin:4px 0;">📍 Cedar Grove PassageFort Portmore</p>
-      <p style="margin:4px 0;">🌐 <a href="https://www.foreignafoot.com" style="color:#4a148c;text-decoration:none;">www.foreignafoot.com</a></p>
+      <p style="margin:4px 0;">🌐 <a href="https://www.faflcourier.com" style="color:#4a148c;text-decoration:none;">www.faflcourier.com</a></p>
       <p style="margin:4px 0;">✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c;text-decoration:none;">foreignafootlogistics@gmail.com</a></p>
-      <p style="margin:4px 0;">☎️ (876) 210-4291</p>
+      <p style="margin:4px 0;">☎️ (876) 560-7764</p>
     </footer>
   </div>
 </body>
@@ -337,9 +335,6 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
 #  INVOICE EMAIL
 # ==========================================================
 def send_invoice_email(to_email, full_name, invoice_number, amount_due, invoice_link):
-    """
-    Sends a clean, branded FAFL invoice email without due date.
-    """
     plain_body = f"""
 Hello {full_name},
 
@@ -434,7 +429,7 @@ Foreign A Foot Logistics Limited
 
 
 # ==========================================================
-#  NEW MESSAGE EMAIL (bugfix: use plain_body kwarg)
+#  NEW MESSAGE EMAIL
 # ==========================================================
 def send_new_message_email(user_email, user_name, message_subject, message_body):
     subject = f"New Message: {message_subject}"
@@ -448,18 +443,17 @@ def send_new_message_email(user_email, user_name, message_subject, message_body)
 
 
 # ==========================================================
-#  REFERRAL EMAIL (use current_app safely; Flask-Mail if available)
+#  REFERRAL EMAIL
 # ==========================================================
 def send_referral_email(to_email: str, referral_code: str, referrer_name: str) -> bool:
-    """
-    Sends a nice branded referral invite email.
-    Uses the core send_email() SMTP helper so it works with your Gmail app password config.
-    """
-    base_url = (
-        current_app.config.get("BASE_URL")
-        if current_app else "https://www.foreignafoot.com"
-    ).rstrip("/")
+    # ✅ Safe BASE_URL fallback (won't crash if missing)
+    base = None
+    try:
+        base = current_app.config.get("BASE_URL") if current_app else None
+    except Exception:
+        base = None
 
+    base_url = (base or "https://www.faflcourier.com").rstrip("/")
     register_link = f"{base_url}/register?ref={referral_code}"
     subject = "You've been invited to join Foreign A Foot Logistics!"
 
@@ -591,11 +585,6 @@ def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: f
 
 
 def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
-    """
-    packages: iterable of dicts with keys:
-      shipper, house_awb, tracking_number, weight
-    Returns: (subject, plain_body, html_body)
-    """
     subject = "Your package(s) are ready for pickup 🎉"
 
     rows_txt = []
@@ -633,7 +622,7 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
         + "\n"
         "Pickup Location: Cedar Grove, Passage Fort, Portmore\n"
         "Hours: Mon–Sat, 9:00 AM – 6:00 PM\n"
-        "Contact: (876) 210-4291 | foreignafootlogistics@gmail.com\n\n"
+        "Contact: (876) 560-7764 | foreignafootlogistics@gmail.com\n\n"
         "If you need delivery, just reply to this email and we’ll arrange it.\n\n"
         "Thanks for shipping with us,\n"
         "Foreign A Foot Logistics Limited\n"
@@ -663,7 +652,7 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
       <div style="margin-top:16px;">
         <p style="margin:4px 0;"><strong>Pickup Location:</strong> Cedar Grove, Passage Fort, Portmore</p>
         <p style="margin:4px 0;"><strong>Hours:</strong> Mon–Sat, 9:00 AM – 6:00 PM</p>
-        <p style="margin:4px 0;"><strong>Contact:</strong> (876) 210-4291 · foreignafootlogistics@gmail.com</p>
+        <p style="margin:4px 0;"><strong>Contact:</strong> (876) 560-7764 · foreignafootlogistics@gmail.com</p>
       </div>
 
       <p style="margin-top:16px;">Prefer delivery? Reply to this email and we’ll set it up.</p>

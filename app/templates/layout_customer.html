@@ -85,7 +85,7 @@
     <a href="{{ url_for('customer.prealerts_create') }}" class="{% if request.endpoint in ['customer.prealerts_create', 'customer.prealerts_view'] %}active{% endif %}"><i class="fas fa-truck-loading"></i> Pre-Alert Shipment</a>
     <a href="{{ url_for('customer.view_packages') }}" class="{% if request.endpoint == 'customer.view_packages' %}active{% endif %}"><i class="fas fa-box"></i> Packages</a>    
     <a href="{{ url_for('customer.transactions_overview') }}"
-       class="{% if request.endpoint in ['customer.transactions_home','customer.transactions_bills','customer.transactions_payments'] %}active{% endif %}">
+       class="{% if request.endpoint in ['customer.transactions_overview','customer.transactions_bills','customer.transactions_payments'] %}active{% endif %}">
       <i class="fas fa-wallet"></i> Transactions
     </a>    
     <a href="{{ url_for('customer.schedule_delivery_overview') }}" class="{% if request.endpoint == 'customer.schedule_delivery_overview' %}active{% endif %}"><i class="fas fa-calendar-alt"></i> Schedule Delivery</a>
@@ -142,15 +142,15 @@
 
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle
-               {% if request.endpoint in ['customer.transactions_home','customer.transactions_bills','customer.transactions_payments'] %}active{% endif %}"
+               {% if request.endpoint in ['customer.transactions_overview','customer.transactions_bills','customer.transactions_payments'] %}active{% endif %}"
                href="#" id="transactionsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                Transactions
             </a>
 
             <ul class="dropdown-menu" aria-labelledby="transactionsDropdown">
               <li>
-                <a class="dropdown-item {% if request.endpoint == 'customer.transactions_home' %}active{% endif %}"
-                   href="{{ url_for('customer.transactions_home') }}">
+                <a class="dropdown-item {% if request.endpoint == 'customer.transactions_overview' %}active{% endif %}"
+                   href="{{ url_for('customer.transactions_overview') }}">
                   Overview
                 </a>
               </li>

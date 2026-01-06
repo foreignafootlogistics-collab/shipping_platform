@@ -694,7 +694,7 @@ def view_invoice_customer(invoice_id):
 
     invoice_dict = {
         "id":             inv.id,
-        "number":         inv.invoice_number,
+        "invoice_number":         inv.invoice_number,
         "date":           inv.date_submitted or inv.created_at or datetime.utcnow(),
         "customer_code":  current_user.registration_number,
         "customer_name":  current_user.full_name,
@@ -751,7 +751,7 @@ def invoice_pdf(invoice_id):
 
     invoice_dict = {
         "id":            inv.id,
-        "number":        inv.invoice_number,
+        "invoice_number":        inv.invoice_number,
         "date":          inv.date_submitted or inv.created_at or datetime.utcnow(),
         "customer_code": current_user.registration_number,
         "customer_name": current_user.full_name,
@@ -761,7 +761,8 @@ def invoice_pdf(invoice_id):
         "packages":      packages,
     }
 
-    rel = generate_invoice(invoice_dict)  # returns path relative to /static
+    from app.utils.invoice_pdf import generate_invoice_pdf
+    rel = generate_invoice_pdf(invoice_dict)
     return redirect(url_for('static', filename=rel))
 
 

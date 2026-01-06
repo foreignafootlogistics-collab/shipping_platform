@@ -710,13 +710,13 @@ def view_invoice_customer(invoice_id):
     return render_template("customer/invoices/view_invoice.html", invoice=invoice_dict)
 
 
-@customer_bp.route('/invoices/<int:invoice_id>/pdf')
+@customer_bp.route("/invoices/<int:invoice_id>/pdf")
 @customer_required
 def invoice_pdf(invoice_id):
     inv = Invoice.query.filter_by(id=invoice_id, user_id=current_user.id).first()
     if not inv:
         flash("Invoice not found or you don't have permission to view it.", "danger")
-        return redirect(url_for('customer.view_bills'))
+        return redirect(url_for("customer.view_bills"))
 
     pkgs = (
         Package.query
@@ -734,10 +734,10 @@ def invoice_pdf(invoice_id):
     packages = []
     for p in pkgs:
         packages.append({
-            "house_awb":     p.house_awb,
-            "description":   p.description,
-            "weight":        _num(p.weight),
-            "value":         _num(getattr(p, "value", 0)),
+            "house_awb":     p.house_awb or "",
+            "description":   p.description or "",
+            "weight":        _num(getattr(p, "weight", 0)),
+            "value":         _num(getattr(p, "value", getattr(p, "value_usd", 0))),
             "freight":       _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
             "storage":       _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
             "other_charges": _num(getattr(p, "other_charges", 0)),
@@ -749,21 +749,37 @@ def invoice_pdf(invoice_id):
             "discount_due":  _num(getattr(p, "discount_due", 0)),
         })
 
+    # ✅ totals should NOT be 0 just because inv.subtotal is blank
+    subtotal = _num(getattr(inv, "subtotal", None)) or _num(getattr(inv, "grand_total", 0)) or _num(getattr(inv, "amount", 0))
+    discount_total = _num(getattr(inv, "discount_total", 0))
+
+    # ✅ if you store payments in Payment.amount_jmd, use it
+    pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
+    payments_total = (
+        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
+        .filter(Payment.invoice_id == inv.id)
+        .scalar()
+        or 0.0
+    )
+
+    total_due = max((_num(getattr(inv, "grand_total", subtotal)) or subtotal) - discount_total - float(payments_total), 0.0)
+
     invoice_dict = {
         "id":            inv.id,
-        "invoice_number":        inv.invoice_number,
+        "number":        inv.invoice_number,  # ✅ IMPORTANT: use "number" (matches your PDF templates)
         "date":          inv.date_submitted or inv.created_at or datetime.utcnow(),
         "customer_code": current_user.registration_number,
         "customer_name": current_user.full_name,
-        "subtotal":      _num(getattr(inv, "subtotal", 0)),
-        "discount_total": _num(getattr(inv, "discount_total", 0)),
-        "total_due":     _num(getattr(inv, "grand_total", getattr(inv, "amount", 0))),
+        "subtotal":      float(subtotal),
+        "discount_total": float(discount_total),
+        "payments_total": float(payments_total),
+        "total_due":     float(total_due),
         "packages":      packages,
     }
 
     from app.utils.invoice_pdf import generate_invoice_pdf
-    rel = generate_invoice_pdf(invoice_dict)
-    return redirect(url_for('static', filename=rel))
+    rel = generate_invoice_pdf(invoice_dict)  # ✅ correct generator
+    return redirect(url_for("static", filename=rel))
 
 
 # -----------------------------

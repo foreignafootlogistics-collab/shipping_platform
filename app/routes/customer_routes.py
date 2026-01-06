@@ -554,35 +554,27 @@ def transactions_bills():
     return render_template("customer/transactions/bills.html", invoices=invoices)
 
 
-# ===== Payments list =====
-@customer_bp.route("/transactions/payments", methods=["GET"])
-@login_required
+@customer_bp.route("/customer/transactions/payments", methods=["GET"])
+@customer_required
 def transactions_payments():
-    # newest first
-    raw_payments = (
+    payments = (
         Payment.query
         .filter(Payment.user_id == current_user.id)
-        .order_by(Payment.created_at.desc())
+        .order_by(Payment.id.desc())
         .all()
     )
 
-    payments = []
-    for p in raw_payments:
-        inv = p.invoice  # relationship: Payment.invoice
+    invoice_ids = [p.invoice_id for p in payments if p.invoice_id]
+    invoices = {}
+    if invoice_ids:
+        for inv in Invoice.query.filter(Invoice.id.in_(invoice_ids)).all():
+            invoices[inv.id] = inv
 
-        payments.append({
-            "invoice_id": inv.id if inv else None,
-            "invoice_number": getattr(inv, "invoice_number", "N/A") if inv else "N/A",
-
-            # Payment model fields
-            "bill_number": p.reference or "",   # using reference as "bill #"
-            "payment_date": p.created_at.strftime("%Y-%m-%d %H:%M") if p.created_at else "",
-            "payment_type": p.method or "Unknown",
-            "amount": float(p.amount_jmd or 0),
-        })
-
-    return render_template("customer/transactions/payments.html", payments=payments)
-
+    return render_template(
+        "customer/transactions/payments.html",
+        payments=payments,
+        invoices=invoices
+    )
 
 @customer_bp.route("/transactions/bills")
 @customer_required
@@ -674,7 +666,7 @@ def view_payments():
     )
 
 
-@customer_bp.route("/transactions/receipts/<int:payment_id>")
+@customer_bp.route("/transactions/receipts/<int:payment_id>", endpoint="view_receipt")
 @customer_required
 def view_receipt(payment_id):
     p = Payment.query.filter_by(id=payment_id, user_id=current_user.id).first_or_404()
@@ -682,7 +674,7 @@ def view_receipt(payment_id):
     return render_template("customer/transactions/receipt_view.html", payment=p, invoice=inv)
 
 
-@customer_bp.route("/transactions/receipts/<int:payment_id>/pdf")
+@customer_bp.route("/transactions/receipts/<int:payment_id>/pdf", endpoint="receipt_pdf")
 @customer_required
 def receipt_pdf(payment_id):
     p = Payment.query.filter_by(id=payment_id, user_id=current_user.id).first_or_404()

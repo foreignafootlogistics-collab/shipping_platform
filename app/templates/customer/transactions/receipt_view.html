@@ -1,0 +1,64 @@
+{% extends "layout_customer.html" %}
+{% block title %}Receipt{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h3 class="mb-0">Receipt RCPT-{{ payment.id }}</h3>
+      <div class="text-muted small">
+        Date: {{ payment.created_at|datetimeformat('%Y-%m-%d %H:%M') }}
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-dark"
+         href="{{ url_for('customer.receipt_pdf', payment_id=payment.id) }}">
+        PDF
+      </a>
+      <a class="btn btn-secondary"
+         href="{{ url_for('customer.view_payments') }}">
+        Back
+      </a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="fw-semibold">Customer</div>
+          <div>{{ current_user.full_name }}</div>
+          <div class="text-muted small">{{ current_user.registration_number }}</div>
+        </div>
+
+        <div class="col-md-6 text-md-end">
+          <div class="fw-semibold">Payment</div>
+          <div>Method: <b>{{ payment.method }}</b></div>
+          <div>Amount: <b>{{ payment.amount_jmd|jmd }}</b></div>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="mb-2">
+        <div class="fw-semibold">Invoice</div>
+        {% if invoice %}
+          <div>{{ invoice.invoice_number }}</div>
+          <div class="text-muted small">Status: {{ invoice.status }}</div>
+          <div class="text-muted small">Amount Due: {{ (invoice.amount_due or 0)|jmd }}</div>
+        {% else %}
+          <div class="text-muted">Invoice not found.</div>
+        {% endif %}
+      </div>
+
+      {% if payment.reference %}
+        <div><span class="fw-semibold">Reference:</span> {{ payment.reference }}</div>
+      {% endif %}
+      {% if payment.notes %}
+        <div><span class="fw-semibold">Notes:</span> {{ payment.notes }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

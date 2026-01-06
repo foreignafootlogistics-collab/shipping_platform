@@ -1,6 +1,6 @@
 # app/routes/customer_routes.py (imports)
 
-import os, re
+import os, re, io
 from math import ceil
 from datetime import datetime, date
 
@@ -30,6 +30,11 @@ from app.extensions import db
 from app.calculator import calculate_charges
 from app.calculator_data import CATEGORIES, USD_TO_JMD
 from app.services.package_view import fetch_packages_normalized
+
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
 
 
 # Models — NO Bill model; alias Message to avoid clash with Flask-Mail's Message
@@ -579,17 +584,161 @@ def transactions_payments():
     return render_template("customer/transactions/payments.html", payments=payments)
 
 
-# (Optional) Backward compatible URLs
-@customer_bp.route("/bills", methods=["GET"])
-@login_required
+@customer_bp.route("/transactions/bills")
+@customer_required
 def view_bills():
-    return redirect(url_for("customer.transactions_bills"))
+    invoices = (
+        Invoice.query
+        .filter_by(user_id=current_user.id)
+        .order_by(Invoice.id.desc())
+        .all()
+    )
+    return render_template("customer/transactions/bills.html", invoices=invoices)
+
+@customer_bp.route("/transactions/bills/<int:invoice_id>/modal")
+@customer_required
+def bill_invoice_modal(invoice_id):
+    inv = Invoice.query.filter_by(id=invoice_id, user_id=current_user.id).first_or_404()
+
+    # packages linked to invoice
+    pkgs = Package.query.filter_by(invoice_id=inv.id).order_by(Package.id.asc()).all()
+
+    def _num(x):
+        try: return float(x or 0)
+        except: return 0.0
+
+    packages = []
+    for p in pkgs:
+        packages.append({
+            "house_awb": p.house_awb or "",
+            "description": p.description or "",
+            "weight": _num(getattr(p, "weight", 0)),
+            "value": _num(getattr(p, "value", 0)),
+            "freight": _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
+            "handling": _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
+            "other_charges": _num(getattr(p, "other_charges", 0)),
+            "duty": _num(getattr(p, "duty", 0)),
+            "scf": _num(getattr(p, "scf", 0)),
+            "envl": _num(getattr(p, "envl", 0)),
+            "caf": _num(getattr(p, "caf", 0)),
+            "gct": _num(getattr(p, "gct", 0)),
+            "discount_due": _num(getattr(p, "discount_due", 0)),
+        })
+
+    # totals (simple, consistent)
+    subtotal = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
+    discount_total = _num(getattr(inv, "discount_total", 0))
+
+    # IMPORTANT: amount owed should be inv.amount_due if you maintain it
+    amount_due = _num(getattr(inv, "amount_due", 0))
+    if amount_due <= 0:
+        # fallback if amount_due not maintained
+        amount_due = max(subtotal - discount_total, 0)
+
+    invoice_dict = {
+        "id": inv.id,
+        "number": inv.invoice_number,
+        "date": inv.date_issued or inv.date_submitted or inv.created_at,
+        "customer_code": current_user.registration_number,
+        "customer_name": current_user.full_name,
+        "subtotal": subtotal,
+        "discount_total": discount_total,
+        "total_due": amount_due,
+        "packages": packages,
+    }
+
+    return render_template("customer/transactions/_invoice_modal_body.html", invoice=invoice_dict)
 
 
-@customer_bp.route("/payments", methods=["GET"])
-@login_required
+
+@customer_bp.route("/transactions/payments")
+@customer_required
 def view_payments():
-    return redirect(url_for("customer.transactions_payments"))
+    payments = (
+        Payment.query
+        .filter(Payment.user_id == current_user.id)
+        .order_by(Payment.id.desc())
+        .all()
+    )
+
+    invoice_ids = [p.invoice_id for p in payments if p.invoice_id]
+    invoices = {}
+    if invoice_ids:
+        for inv in Invoice.query.filter(Invoice.id.in_(invoice_ids)).all():
+            invoices[inv.id] = inv
+
+    return render_template(
+        "customer/transactions/payments.html",
+        payments=payments,
+        invoices=invoices
+    )
+
+
+@customer_bp.route("/transactions/receipts/<int:payment_id>")
+@customer_required
+def view_receipt(payment_id):
+    p = Payment.query.filter_by(id=payment_id, user_id=current_user.id).first_or_404()
+    inv = Invoice.query.filter_by(id=p.invoice_id, user_id=current_user.id).first()
+    return render_template("customer/transactions/receipt_view.html", payment=p, invoice=inv)
+
+
+@customer_bp.route("/transactions/receipts/<int:payment_id>/pdf")
+@customer_required
+def receipt_pdf(payment_id):
+    p = Payment.query.filter_by(id=payment_id, user_id=current_user.id).first_or_404()
+    inv = Invoice.query.filter_by(id=p.invoice_id, user_id=current_user.id).first()
+
+    receipt_no = f"RCPT-{p.id}"
+    dt = p.created_at or datetime.utcnow()
+    method = p.method or "Cash"
+    amt = float(p.amount_jmd or 0)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
+    styles = getSampleStyleSheet()
+    flow = []
+
+    flow.append(Paragraph("<b>FOREIGN A FOOT LOGISTICS</b>", styles["Title"]))
+    flow.append(Spacer(1, 10))
+
+    flow.append(Paragraph(f"<b>Receipt #:</b> {receipt_no}", styles["Normal"]))
+    flow.append(Paragraph(f"<b>Date:</b> {dt.strftime('%b %d, %Y %I:%M %p')}", styles["Normal"]))
+    flow.append(Paragraph(f"<b>Customer:</b> {current_user.full_name} ({current_user.registration_number})", styles["Normal"]))
+    if inv:
+        flow.append(Paragraph(f"<b>Invoice:</b> {inv.invoice_number}", styles["Normal"]))
+    if p.reference:
+        flow.append(Paragraph(f"<b>Reference:</b> {p.reference}", styles["Normal"]))
+    if p.notes:
+        flow.append(Paragraph(f"<b>Notes:</b> {p.notes}", styles["Normal"]))
+
+    flow.append(Spacer(1, 12))
+
+    table = Table([
+        ["Payment Method", method],
+        ["Amount (JMD)", f"{amt:,.2f}"],
+    ], colWidths=[160, 340])
+
+    table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+        ("BACKGROUND", (0,0), (-1,0), colors.whitesmoke),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+    ]))
+
+    flow.append(table)
+    flow.append(Spacer(1, 16))
+    flow.append(Paragraph("Thank you for your payment.", styles["Italic"]))
+
+    doc.build(flow)
+    buf.seek(0)
+
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"receipt_{receipt_no}.pdf",
+        mimetype="application/pdf"
+    )
+
 
 
 @customer_bp.route('/submit-invoice', methods=['GET', 'POST'])

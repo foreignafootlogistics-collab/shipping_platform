@@ -1,0 +1,60 @@
+<div class="mb-2">
+  <div class="fw-bold">Invoice: {{ invoice.number }}</div>
+  <div class="text-muted small">
+    Date: {{ invoice.date|datetimeformat('%Y-%m-%d %H:%M') if invoice.date else '' }}
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="fw-semibold">Customer</div>
+    <div>{{ invoice.customer_name }}</div>
+    <div class="text-muted small">{{ invoice.customer_code }}</div>
+  </div>
+  <div class="col-md-6 text-md-end">
+    <div>Subtotal: <b>{{ invoice.subtotal|jmd }}</b></div>
+    <div>Discounts: <b>- {{ invoice.discount_total|jmd }}</b></div>
+    <div class="mt-1">Amount Owed: <b>{{ invoice.total_due|jmd }}</b></div>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-striped align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th>House AWB</th>
+        <th>Description</th>
+        <th class="text-end">Weight</th>
+        <th class="text-end">Value</th>
+        <th class="text-end">Freight</th>
+        <th class="text-end">Handling</th>
+        <th class="text-end">Other</th>
+        <th class="text-end">Duty</th>
+        <th class="text-end">SCF</th>
+        <th class="text-end">ENVL</th>
+        <th class="text-end">CAF</th>
+        <th class="text-end">GCT</th>
+        <th class="text-end">Discount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in invoice.packages %}
+      <tr>
+        <td>{{ p.house_awb }}</td>
+        <td>{{ p.description }}</td>
+        <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
+        <td class="text-end">{{ "%.2f"|format(p.value or 0) }}</td>
+        <td class="text-end">{{ p.freight|jmd }}</td>
+        <td class="text-end">{{ p.handling|jmd }}</td>
+        <td class="text-end">{{ p.other_charges|jmd }}</td>
+        <td class="text-end">{{ p.duty|jmd }}</td>
+        <td class="text-end">{{ p.scf|jmd }}</td>
+        <td class="text-end">{{ p.envl|jmd }}</td>
+        <td class="text-end">{{ p.caf|jmd }}</td>
+        <td class="text-end">{{ p.gct|jmd }}</td>
+        <td class="text-end">{{ p.discount_due|jmd }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -84,8 +84,10 @@
     <a href="{{ url_for('customer.customer_dashboard') }}" class="{% if request.endpoint == 'customer.customer_dashboard' %}active{% endif %}"><i class="fas fa-home"></i> Dashboard</a>
     <a href="{{ url_for('customer.prealerts_create') }}" class="{% if request.endpoint in ['customer.prealerts_create', 'customer.prealerts_view'] %}active{% endif %}"><i class="fas fa-truck-loading"></i> Pre-Alert Shipment</a>
     <a href="{{ url_for('customer.view_packages') }}" class="{% if request.endpoint == 'customer.view_packages' %}active{% endif %}"><i class="fas fa-box"></i> Packages</a>    
-    <a href="{{ url_for('customer.view_bills') }}" class="{% if request.endpoint == 'customer.view_bills' %}active{% endif %}"><i class="fas fa-file-invoice-dollar"></i> Bills</a>
-    <a href="{{ url_for('customer.view_payments') }}" class="{% if request.endpoint == 'customer.view_payments' %}active{% endif %}"><i class="fas fa-receipt"></i> Payments</a>    
+    <a href="{{ url_for('customer.transactions_home') }}"
+       class="{% if request.endpoint in ['customer.transactions_home','customer.transactions_bills','customer.transactions_payments'] %}active{% endif %}">
+      <i class="fas fa-wallet"></i> Transactions
+    </a>    
     <a href="{{ url_for('customer.schedule_delivery_overview') }}" class="{% if request.endpoint == 'customer.schedule_delivery_overview' %}active{% endif %}"><i class="fas fa-calendar-alt"></i> Schedule Delivery</a>
     <a href="{{ url_for('customer.authorized_pickup_overview') }}" class="{% if request.endpoint == 'customer.authorized_pickup_overview' %}active{% endif %}"><i class="fas fa-user-check"></i> Authorized Pickup</a>
     <a href="{{ url_for('customer.referrals') }}" class="{% if request.endpoint == 'customer.referrals' %}active{% endif %}"><i class="fas fa-gift"></i> Refer a Friend</a>
@@ -139,12 +141,34 @@
           <li class="nav-item"><a class="nav-link {% if request.endpoint == 'customer.view_packages' %}active{% endif %}" href="{{ url_for('customer.view_packages') }}">Packages</a></li>
 
           <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle {% if request.endpoint in ['customer.view_bills','customer.view_payments'] %}active{% endif %}" href="#" id="transactionsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Transactions</a>
+            <a class="nav-link dropdown-toggle
+               {% if request.endpoint in ['customer.transactions_home','customer.transactions_bills','customer.transactions_payments'] %}active{% endif %}"
+               href="#" id="transactionsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+               Transactions
+            </a>
+
             <ul class="dropdown-menu" aria-labelledby="transactionsDropdown">
-              <li><a class="dropdown-item {% if request.endpoint == 'customer.view_bills' %}active{% endif %}" href="{{ url_for('customer.view_bills') }}">Bills</a></li>
-              <li><a class="dropdown-item {% if request.endpoint == 'customer.view_payments' %}active{% endif %}" href="{{ url_for('customer.view_payments') }}">Payments</a></li>
+              <li>
+                <a class="dropdown-item {% if request.endpoint == 'customer.transactions_home' %}active{% endif %}"
+                   href="{{ url_for('customer.transactions_home') }}">
+                  Overview
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item {% if request.endpoint == 'customer.transactions_bills' %}active{% endif %}"
+                   href="{{ url_for('customer.transactions_bills') }}">
+                  Bills
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item {% if request.endpoint == 'customer.transactions_payments' %}active{% endif %}"
+                   href="{{ url_for('customer.transactions_payments') }}">
+                  Payments
+                </a>
+              </li>
             </ul>
           </li>
+
 
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle {% if request.endpoint in ['customer.schedule_delivery_overview','customer.authorized_pickup_overview'] %}active{% endif %}" href="#" id="deliveryDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">🚚 Delivery</a>

@@ -1048,48 +1048,54 @@ def mark_invoice_paid():
         authorized_by = (request.form.get('authorized_by') or "Admin").strip()
 
         inv = Invoice.query.get_or_404(invoice_id)
-        inv.status = 'paid'
 
-        kwargs = dict(
-            bill_number=f'BILL-{inv.id}-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}',
-            payment_date=datetime.utcnow(),
+        if amount <= 0:
+            return jsonify({"success": False, "error": "Payment amount must be greater than 0."}), 400
+
+        # ✅ Create Payment using ONLY columns that exist in your model
+        notes = f"Authorized by: {authorized_by}" if authorized_by else None
+
+        payment = Payment(
             invoice_id=inv.id,
             user_id=inv.user_id,
-            authorized_by=authorized_by,
+            method=method,
+            amount_jmd=amount,
+            notes=notes,
+            created_at=datetime.utcnow(),
         )
-
-        # ✅ amount column
-        if hasattr(Payment, "amount_jmd"):
-            kwargs["amount_jmd"] = amount
-        else:
-            kwargs["amount"] = amount
-
-        # ✅ method column
-        if hasattr(Payment, "method"):
-            kwargs["method"] = method
-        else:
-            kwargs["payment_type"] = method
-
-        payment = Payment(**kwargs)
-
         db.session.add(payment)
+        db.session.flush()
 
-        # keep invoice amount_due consistent
-        inv.amount_due = 0
+        # ✅ Recompute using your shared totals function (includes discounts + all payments)
+        subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(inv.id)
 
-        # mark packages delivered
-        _mark_invoice_packages_delivered(inv.id)
+        inv.amount_due = float(total_due)
+        prev_status = inv.status
+
+        if inv.amount_due <= 0:
+            inv.status = "paid"
+            inv.date_paid = datetime.utcnow()
+            if prev_status != "paid":
+                _mark_invoice_packages_delivered(inv.id)
+        elif float(payments_total) > 0:
+            inv.status = "partial"
+            inv.date_paid = None
+        else:
+            inv.status = "unpaid"
+            inv.date_paid = None
 
         db.session.commit()
 
         return jsonify({
-            'success': True,
-            'invoice_id': inv.id,
-            'bill_number': payment.bill_number,
-            'payment_date': payment.payment_date.strftime('%Y-%m-%d %H:%M:%S'),
-            'payment_type': method,
-            'amount': amount,
-            'authorized_by': authorized_by,
+            "success": True,
+            "invoice_id": inv.id,
+            "status": inv.status,
+            "amount_due": float(inv.amount_due),
+            "paid_sum": float(payments_total),
+            "payment_date": payment.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            "payment_type": method,
+            "amount": amount,
+            "authorized_by": authorized_by,
         })
     except Exception as e:
         db.session.rollback()
@@ -1448,9 +1454,12 @@ def add_payment(invoice_id):
         or 0.0
     )
 
-    base_total = float(inv.grand_total or inv.amount or inv.subtotal or 0)
-    new_due = max(base_total - float(paid_sum), 0.0)
-    inv.amount_due = new_due
+    subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(inv.id)
+    inv.amount_due = float(total_due)
+    new_due = inv.amount_due
+    base_total = float(subtotal or 0)
+    paid_sum = float(payments_total or 0)
+
 
     previous_status = inv.status
 

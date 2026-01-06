@@ -487,8 +487,10 @@ def delete_package_attachment_customer(attachment_id):
 
     # Delete file from disk (best effort)
     try:
-        if a.file_path and os.path.exists(a.file_path):
-            os.remove(a.file_path)
+        upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+        fp = os.path.join(upload_folder, a.file_name)
+        if upload_folder and os.path.exists(fp):
+            os.remove(fp)
     except Exception:
         pass
 
@@ -522,42 +524,73 @@ def update_declared_value():
 
 
 # -----------------------------
-# Bills & Payments
+# Transactions (Bills & Payments)
 # -----------------------------
-# ===== Bills → Invoices list =====
-@customer_bp.route('/bills')
-@login_required
-def view_bills():
-    invoices = (Invoice.query
-                .filter_by(user_id=current_user.id)
-                .order_by(Invoice.date_submitted.desc().nullslast(), Invoice.id.desc())
-                .all())
-    return render_template("customer/bills.html", invoices=invoices)
 
-@customer_bp.route('/payments')
-@customer_required
-def view_payments():
-    # Get all payments for this user, newest first
+@customer_bp.route("/transactions", methods=["GET"])
+@login_required
+def transactions_overview():
+    """
+    Simple hub page that links to Bills (Invoices) and Payments.
+    """
+    return render_template("customer/transactions/index.html")
+
+
+# ===== Bills = Invoices list =====
+@customer_bp.route("/transactions/bills", methods=["GET"])
+@login_required
+def transactions_bills():
+    invoices = (
+        Invoice.query
+        .filter(Invoice.user_id == current_user.id)
+        .order_by(Invoice.date_submitted.desc().nullslast(), Invoice.id.desc())
+        .all()
+    )
+    return render_template("customer/transactions/bills.html", invoices=invoices)
+
+
+# ===== Payments list =====
+@customer_bp.route("/transactions/payments", methods=["GET"])
+@login_required
+def transactions_payments():
+    # newest first
     raw_payments = (
         Payment.query
-        .filter_by(user_id=current_user.id)
+        .filter(Payment.user_id == current_user.id)
         .order_by(Payment.created_at.desc())
         .all()
     )
 
     payments = []
     for p in raw_payments:
-        inv = p.invoice  # via relationship
+        inv = p.invoice  # relationship: Payment.invoice
 
         payments.append({
-            "invoice_id":    inv.id if inv else None,
+            "invoice_id": inv.id if inv else None,
             "invoice_number": getattr(inv, "invoice_number", "N/A") if inv else "N/A",
-            "payment_date":  p.created_at.strftime("%Y-%m-%d %H:%M") if p.created_at else "",
-            "payment_type":  p.method or "Unknown",
-            "amount":        float(p.amount_jmd or 0),
+
+            # Payment model fields
+            "bill_number": p.reference or "",   # using reference as "bill #"
+            "payment_date": p.created_at.strftime("%Y-%m-%d %H:%M") if p.created_at else "",
+            "payment_type": p.method or "Unknown",
+            "amount": float(p.amount_jmd or 0),
         })
 
-    return render_template('customer/payments.html', payments=payments)
+    return render_template("customer/transactions/payments.html", payments=payments)
+
+
+# (Optional) Backward compatible URLs
+@customer_bp.route("/bills", methods=["GET"])
+@login_required
+def view_bills():
+    return redirect(url_for("customer.transactions_bills"))
+
+
+@customer_bp.route("/payments", methods=["GET"])
+@login_required
+def view_payments():
+    return redirect(url_for("customer.transactions_payments"))
+
 
 @customer_bp.route('/submit-invoice', methods=['GET', 'POST'])
 @login_required

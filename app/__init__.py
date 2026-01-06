@@ -84,13 +84,16 @@ def create_app():
     # Folders
     os.makedirs(app.instance_path, exist_ok=True)    
     os.makedirs(str(PROFILE_UPLOAD_FOLDER), exist_ok=True)
+    os.makedirs(app.config["INVOICE_UPLOAD_FOLDER"], exist_ok=True)
+    os.makedirs(app.config["PACKAGE_ATTACHMENT_FOLDER"], exist_ok=True)
 
     # Config
     app.config['SECRET_KEY'] = cfg.SECRET_KEY
     app.config['SQLALCHEMY_DATABASE_URI'] = cfg.SQLALCHEMY_DATABASE_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = cfg.SQLALCHEMY_TRACK_MODIFICATIONS
     # Invoice/attachment uploads (single source of truth)
-    app.config["INVOICE_UPLOAD_FOLDER"] = cfg.INVOICE_UPLOAD_FOLDER    
+    app.config["INVOICE_UPLOAD_FOLDER"] = cfg.INVOICE_UPLOAD_FOLDER
+    app.config["PACKAGE_ATTACHMENT_FOLDER"] = cfg.PACKAGE_ATTACHMENT_FOLDER    
     app.config['PROFILE_UPLOAD_FOLDER'] = str(PROFILE_UPLOAD_FOLDER)
     app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
     app.config.update(

@@ -1025,14 +1025,11 @@ def bulk_assign_packages():
 @admin_required
 def view_package_attachment(attachment_id):
     att = PackageAttachment.query.get_or_404(attachment_id)
-
-    # Optional: extra safety - ensure attachment is linked
     if not att.package_id:
         abort(404)
 
-    upload_folder = current_app.config["INVOICE_UPLOAD_FOLDER"]
+    upload_folder = current_app.config["PACKAGE_ATTACHMENT_FOLDER"]
     file_path = os.path.join(upload_folder, att.file_name)
-
     if not os.path.exists(file_path):
         abort(404)
 
@@ -1049,7 +1046,7 @@ def view_package_attachment(attachment_id):
 def delete_package_attachment_admin(attachment_id):
     att = PackageAttachment.query.get_or_404(attachment_id)
 
-    upload_folder = current_app.config["INVOICE_UPLOAD_FOLDER"]
+    upload_folder = current_app.config["PACKAGE_ATTACHMENT_FOLDER"]
     file_path = os.path.join(upload_folder, att.file_name)
 
     try:
@@ -1061,8 +1058,6 @@ def delete_package_attachment_admin(attachment_id):
     db.session.delete(att)
     db.session.commit()
     flash("Attachment deleted.", "success")
-
-    # send admin back (adjust if you want a different redirect)
     return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="view_packages"))
 
 
@@ -2288,24 +2283,24 @@ def bulk_calc_outstanding():
 
     # map id -> incoming values
     wanted = {int(r["pkg_id"]): r for r in rows if "pkg_id" in r}
-    pkgs = (db.session.query(Package.id, Package.value, Package.weight, Package.category)
-            .filter(Package.id.in_(list(wanted.keys()))).all())
+    pkgs = (
+        db.session.query(Package.id, Package.value, Package.weight)
+        .filter(Package.id.in_(list(wanted.keys())))
+        .all()
+    )
 
     results = []
-    for pid, db_value, db_weight, db_cat in pkgs:
+    for pid, db_value, db_weight in pkgs:
         r = wanted[pid]
         invoice = r.get("invoice")
         weight  = r.get("weight")
-        category = (r.get("category") or db_cat or "Other")
 
+        # ✅ No Package.category in your model → always default
+        category = (r.get("category") or "Other")
+
+        # Invoice fallback
         if invoice in (None, '', 0, '0', 0.0, '0.0'):
-            invoice = (
-                float(db_value)
-                if db_value not in (None, 0)
-                else _effective_value(
-                    db.session.get(Package, pid)
-                )
-            )
+            invoice = float(db_value or 0) if db_value not in (None, 0) else _effective_value(db.session.get(Package, pid))
 
         else:
             invoice = float(invoice)
@@ -2432,35 +2427,13 @@ def view_scheduled_deliveries():
         q = q.filter(ScheduledDelivery.scheduled_date <= datetime.strptime(end_date, '%Y-%m-%d').date())
 
     deliveries = q.order_by(ScheduledDelivery.scheduled_date.desc()).all()
-    return render_template('admin/logistics/scheduled_deliveries.html',
-                           deliveries=deliveries,
-                           start_date=start_date,
-                           end_date=end_date)
-
-@logistics_bp.route("/scheduled-delivery/<int:delivery_id>", methods=["GET"])
-@admin_required(roles=['operations'])
-def view_scheduled_delivery(delivery_id):
-    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
-
-    linked_packages = (Package.query
-        .filter(Package.scheduled_delivery_id == delivery.id)
-        .order_by(Package.created_at.desc())
-        .all()
-    )
-
-    available_packages = (Package.query
-        .filter(Package.scheduled_delivery_id.is_(None))
-        .order_by(Package.created_at.desc())
-        .limit(200)
-        .all()
-    )
-
     return render_template(
-        "admin/logistics/scheduled_delivery_view.html",
-        delivery=delivery,
-        linked_packages=linked_packages,
-        available_packages=available_packages
+        'admin/logistics/scheduled_deliveries.html',
+        deliveries=deliveries,
+        start_date=start_date,
+        end_date=end_date
     )
+
 
 @logistics_bp.route('/scheduled_deliveries/pdf')
 @admin_required(roles=['operations'])
@@ -2496,14 +2469,18 @@ def scheduled_deliveries_pdf():
 
     p.save()
     buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name="scheduled_deliveries.pdf", mimetype='application/pdf')
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="scheduled_deliveries.pdf",
+        mimetype='application/pdf'
+    )
+
 
 @logistics_bp.route('/scheduled_deliveries/add', methods=['GET', 'POST'])
 @admin_required(roles=['operations'])
 def add_scheduled_delivery():
     form = ScheduledDeliveryForm()
-
-    # Needed for the user dropdown
     users = User.query.order_by(User.full_name.asc()).all()
 
     if form.validate_on_submit():
@@ -2528,121 +2505,23 @@ def add_scheduled_delivery():
         users=users
     )
 
-@logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/set-status/<status>", methods=["POST"])
-@admin_required(roles=['operations'])
-def scheduled_delivery_set_status(delivery_id, status):
-    allowed = {"Scheduled", "Out for Delivery", "Delivered", "Cancelled"}
-    if status not in allowed:
-        flash("Invalid status", "danger")
-        return redirect(url_for("logistics.view_scheduled_deliveries"))
 
-    d = ScheduledDelivery.query.get_or_404(delivery_id)
-    d.status = status
-
-    # ✅ Keep Package.status in sync with Delivery status
-    linked_pkgs = (Package.query
-                   .filter(Package.scheduled_delivery_id == d.id)
-                   .all())
-
-    if status == "Out for Delivery":
-        # choose your preferred in-transit label
-        for p in linked_pkgs:
-            # Only move forward (don’t override Delivered/Detained)
-            ps = (p.status or "").strip().lower()
-            if ps not in ("delivered", "detained"):
-                p.status = "Out for Delivery"
-
-    elif status == "Delivered":
-        # ✅ This is the key fix: store Delivered (not Delivery)
-        for p in linked_pkgs:
-            ps = (p.status or "").strip().lower()
-            if ps != "detained":
-                p.status = "Delivered"
-
-        # optional: clear scheduled_delivery_id once completed
-        # for p in linked_pkgs:
-        #     p.scheduled_delivery_id = None
-
-    elif status in ("Cancelled", "Scheduled"):
-        # Optional: decide what package status should be when delivery is cancelled/reset
-        # For now: do nothing to package status.
-        pass
-
-    db.session.commit()
-    flash(f"Delivery #{d.id} updated to '{status}'", "success")
-    return redirect(url_for("logistics.view_scheduled_deliveries"))
-
-@logistics_bp.route("/scheduled-delivery/<int:delivery_id>/attach-package", methods=["POST"])
-@admin_required(roles=['operations'])
-def attach_package_to_delivery(delivery_id):
-    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
-
-    package_id = request.form.get("package_id")
-    if not package_id:
-        flash("No package selected.", "warning")
-        return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
-
-    pkg = Package.query.get_or_404(int(package_id))
-
-    # OPTIONAL: basic guardrails
-    # if pkg.status not in ("Ready", "Arrived", "In Warehouse"):
-    #     flash("Only ready/arrived packages can be scheduled.", "warning")
-    #     return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
-
-    pkg.scheduled_delivery_id = delivery.id
-    db.session.commit()
-
-    flash(f"Package {pkg.tracking_number or pkg.house_awb or pkg.id} linked to delivery.", "success")
-    return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
-
-@logistics_bp.route("/scheduled-delivery/<int:delivery_id>/remove-package/<int:package_id>", methods=["POST"])
-@admin_required(roles=['operations'])
-def remove_package_from_delivery(delivery_id, package_id):
-    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
-    pkg = Package.query.get_or_404(package_id)
-
-    if pkg.scheduled_delivery_id != delivery.id:
-        flash("That package is not linked to this delivery.", "warning")
-        return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
-
-    pkg.scheduled_delivery_id = None
-    db.session.commit()
-
-    flash("Package removed from scheduled delivery.", "success")
-    return redirect(url_for("logistics.view_scheduled_delivery", delivery_id=delivery_id))
-
-@logistics_bp.route("/scheduled_deliveries/<int:delivery_id>")
-@admin_required(roles=["operations"])
-def scheduled_delivery_detail(delivery_id):
-    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
-
-    # (Step 3 we’ll populate these properly)
-    linked_packages = delivery.packages.order_by(Package.created_at.desc()).all()
-
-    return render_template(
-        "admin/logistics/scheduled_delivery_view.html",
-        delivery=delivery,
-        linked_packages=linked_packages
-    )
-
-
+# ✅ KEEP ONLY THIS ONE delivery view route (ONE canonical URL)
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>", methods=["GET"])
 @admin_required(roles=["operations"])
 def scheduled_delivery_view(delivery_id):
     d = ScheduledDelivery.query.get_or_404(delivery_id)
 
-    # Packages already linked to this delivery
-    assigned_packages = (Package.query
+    assigned_packages = (
+        Package.query
         .filter(Package.scheduled_delivery_id == d.id)
         .order_by(Package.created_at.desc())
         .all()
     )
 
-    # Eligible packages to assign:
-    # - belong to same user
-    # - NOT already assigned
-    # - optional filter by status
-    eligible_packages = (Package.query
+    # Eligible packages:
+    eligible_packages = (
+        Package.query
         .filter(
             Package.user_id == d.user_id,
             Package.scheduled_delivery_id.is_(None),
@@ -2660,9 +2539,78 @@ def scheduled_delivery_view(delivery_id):
     )
 
 
-from flask import request, redirect, url_for, flash
-from app.extensions import db
-from app.models import ScheduledDelivery, Package
+@logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/set-status/<status>", methods=["POST"])
+@admin_required(roles=['operations'])
+def scheduled_delivery_set_status(delivery_id, status):
+    allowed = {"Scheduled", "Out for Delivery", "Delivered", "Cancelled"}
+    if status not in allowed:
+        flash("Invalid status", "danger")
+        return redirect(url_for("logistics.view_scheduled_deliveries"))
+
+    d = ScheduledDelivery.query.get_or_404(delivery_id)
+    d.status = status
+
+    linked_pkgs = (
+        Package.query
+        .filter(Package.scheduled_delivery_id == d.id)
+        .all()
+    )
+
+    if status == "Out for Delivery":
+        for p in linked_pkgs:
+            ps = (p.status or "").strip().lower()
+            if ps not in ("delivered", "detained"):
+                p.status = "Out for Delivery"
+
+    elif status == "Delivered":
+        for p in linked_pkgs:
+            ps = (p.status or "").strip().lower()
+            if ps != "detained":
+                p.status = "Delivered"
+
+    # Cancelled / Scheduled: leave package statuses as-is
+    db.session.commit()
+    flash(f"Delivery #{d.id} updated to '{status}'", "success")
+    return redirect(url_for("logistics.view_scheduled_deliveries"))
+
+
+@logistics_bp.route("/scheduled-delivery/<int:delivery_id>/attach-package", methods=["POST"])
+@admin_required(roles=['operations'])
+def attach_package_to_delivery(delivery_id):
+    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
+
+    package_id = request.form.get("package_id")
+    if not package_id:
+        flash("No package selected.", "warning")
+        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+
+    pkg = Package.query.get_or_404(int(package_id))
+    pkg.scheduled_delivery_id = delivery.id
+    db.session.commit()
+
+    flash(
+        f"Package {pkg.tracking_number or pkg.house_awb or pkg.id} linked to delivery.",
+        "success"
+    )
+    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+
+
+@logistics_bp.route("/scheduled-delivery/<int:delivery_id>/remove-package/<int:package_id>", methods=["POST"])
+@admin_required(roles=['operations'])
+def remove_package_from_delivery(delivery_id, package_id):
+    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
+    pkg = Package.query.get_or_404(package_id)
+
+    if pkg.scheduled_delivery_id != delivery.id:
+        flash("That package is not linked to this delivery.", "warning")
+        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+
+    pkg.scheduled_delivery_id = None
+    db.session.commit()
+
+    flash("Package removed from scheduled delivery.", "success")
+    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+
 
 @logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/assign-packages", methods=["POST"])
 @admin_required(roles=["operations"])
@@ -2674,11 +2622,12 @@ def scheduled_delivery_assign_packages(delivery_id):
         flash("Please select at least one package to assign.", "warning")
         return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
 
-    # Only allow packages for the same customer + selected IDs
-    packages = (Package.query
-                .filter(Package.id.in_(package_ids))
-                .filter(Package.user_id == delivery.user_id)
-                .all())
+    packages = (
+        Package.query
+        .filter(Package.id.in_(package_ids))
+        .filter(Package.user_id == delivery.user_id)
+        .all()
+    )
 
     if not packages:
         flash("No valid packages selected for this customer.", "danger")
@@ -2688,7 +2637,6 @@ def scheduled_delivery_assign_packages(delivery_id):
     skipped_count = 0
 
     for p in packages:
-        # If already assigned to another delivery, skip it (safety)
         if p.scheduled_delivery_id and p.scheduled_delivery_id != delivery.id:
             skipped_count += 1
             continue
@@ -2706,8 +2654,6 @@ def scheduled_delivery_assign_packages(delivery_id):
     return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
 
 
-
-
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/unassign/<int:package_id>", methods=["POST"])
 @admin_required(roles=["operations"])
 def scheduled_delivery_unassign_package(delivery_id, package_id):
@@ -2720,9 +2666,9 @@ def scheduled_delivery_unassign_package(delivery_id, package_id):
 
     p.scheduled_delivery_id = None
     db.session.commit()
+
     flash("Package unassigned from delivery.", "success")
     return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id))
-
 
 @logistics_bp.route('/shipmentlog/create-shipment', methods=['GET'])
 @admin_required

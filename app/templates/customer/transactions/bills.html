@@ -1,0 +1,67 @@
+{% extends "layout_customer.html" %}
+{% block title %}My Bills{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">My Bills</h2>
+    <a href="{{ url_for('customer.transactions_overview') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="fas fa-arrow-left"></i> Back
+    </a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <table class="table table-hover table-striped table-bordered align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th scope="col">Invoice #</th>
+            <th scope="col">Date</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="text-end">Amount Due (JMD)</th>
+            <th scope="col">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if invoices %}
+            {% for inv in invoices %}
+              <tr>
+                <td>{{ inv.invoice_number }}</td>
+                <td>{{ (inv.date_submitted or inv.created_at)|datetimeformat('%Y-%m-%d %H:%M') }}</td>
+                <td>
+                  {% set st = (inv.status or '').lower() %}
+                  {% if st in ['paid'] %}
+                    <span class="badge bg-success">Paid</span>
+                  {% elif st in ['unpaid'] %}
+                    <span class="badge bg-warning text-dark">Unpaid</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ inv.status or 'Unknown' }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">{{ inv.amount_due|default(0)|float|round(2) }}</td>
+                <td class="d-flex gap-2">
+                  <a class="btn btn-sm btn-secondary"
+                     href="{{ url_for('customer.view_invoice_customer', invoice_id=inv.id) }}"
+                     target="_blank">
+                    View
+                  </a>
+                  <a class="btn btn-sm btn-outline-dark"
+                     href="{{ url_for('customer.invoice_pdf', invoice_id=inv.id) }}"
+                     target="_blank">
+                    PDF
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="5" class="text-center py-3">No bills found.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

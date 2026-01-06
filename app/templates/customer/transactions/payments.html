@@ -1,0 +1,69 @@
+{% extends 'layout_customer.html' %}
+{% block title %}Payments{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">Payment History</h2>
+    <a href="{{ url_for('customer.transactions_overview') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="fas fa-arrow-left"></i> Back
+    </a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <table class="table table-hover table-striped table-bordered align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th scope="col">Invoice</th>
+            <th scope="col">Bill #</th>
+            <th scope="col">Date</th>
+            <th scope="col">Payment Type</th>
+            <th scope="col" class="text-end">Amount (JMD)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if payments %}
+            {% for p in payments %}
+              <tr>
+                <td>
+                  {% if p.invoice_id %}
+                    <a href="{{ url_for('customer.view_invoice_customer', invoice_id=p.invoice_id) }}"
+                       class="btn btn-sm btn-outline-primary" target="_blank">
+                      <i class="fas fa-file-invoice"></i> View
+                    </a>
+                  {% else %}
+                    <span class="text-muted">No invoice</span>
+                  {% endif %}
+                </td>
+                <td>{{ p.bill_number or "—" }}</td>
+                <td>{{ p.payment_date }}</td>
+                <td>
+                  {% set pt = (p.payment_type or '') %}
+                  {% if pt in ['Credit Card','Card'] %}
+                    <span class="badge bg-primary">{{ pt }}</span>
+                  {% elif pt == 'Cash' %}
+                    <span class="badge bg-success">Cash</span>
+                  {% elif pt == 'Bank' %}
+                    <span class="badge bg-info text-dark">Bank</span>
+                  {% elif pt == 'Wallet' %}
+                    <span class="badge bg-warning text-dark">Wallet</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ pt or 'Unknown' }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">${{ '%.2f'|format(p.amount) }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="5" class="text-center py-3">No payments found.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

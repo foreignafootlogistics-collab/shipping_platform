@@ -24,15 +24,15 @@ PROFILE_UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 # =======================
 # Invoice / Package Docs Uploads
 # =======================
-# Render disk mount path must match what you set in Render (you said /var/data)
 RENDER_DISK_PATH = Path(os.environ.get("RENDER_DISK_PATH", "/var/data"))
 
 if IS_RENDER:
-    # Use persistent disk at runtime
-    INVOICE_UPLOAD_FOLDER = str(RENDER_DISK_PATH / "invoices")
+    UPLOADS_BASE_FOLDER = RENDER_DISK_PATH / "uploads"
 else:
-    # Local/dev fallback (served via /static if you want)
-    INVOICE_UPLOAD_FOLDER = str(BASE_DIR / "app" / "static" / "invoices")
+    UPLOADS_BASE_FOLDER = BASE_DIR / "app" / "static" / "uploads"
+
+INVOICE_UPLOAD_FOLDER = str(UPLOADS_BASE_FOLDER / "invoices")
+PACKAGE_ATTACHMENT_FOLDER = str(UPLOADS_BASE_FOLDER / "package_attachments")
 
 # =======================
 # URLs

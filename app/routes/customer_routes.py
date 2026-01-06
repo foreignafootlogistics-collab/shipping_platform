@@ -15,7 +15,6 @@ import mimetypes
 import bcrypt
 import sqlalchemy as sa
 
-
 from app.forms import ReferralForm  
 from app.forms import (
     LoginForm, PersonalInfoForm, AddressForm, PasswordChangeForm,
@@ -29,8 +28,7 @@ from app.utils.invoice_utils import generate_invoice
 from app.calculator_data import categories
 from app import allowed_file, mail
 from app.extensions import db
-from app.calculator import calculate_charges
-from app.calculator_data import CATEGORIES, USD_TO_JMD
+from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.package_view import fetch_packages_normalized
 
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -603,12 +601,19 @@ def bill_invoice_modal(invoice_id):
 
     packages = []
     for p in pkgs:
+        w_raw = _num(getattr(p, "weight", 0))
+        w = int(ceil(w_raw))
+        if w < 1 and w_raw > 0:
+            w = 1
+
+        freight = float(get_freight(w) or 0)
+
         packages.append({
             "house_awb": p.house_awb or "",
             "description": p.description or "",
-            "weight": int(math.ceil(_num(getattr(p, "weight", 0)))),
+            "weight": w,
             "value": _num(getattr(p, "value", 0)),
-            "freight": _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
+            "freight": freight,
             "handling": _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
             "other_charges": _num(getattr(p, "other_charges", 0)),
             "duty": _num(getattr(p, "duty", 0)),

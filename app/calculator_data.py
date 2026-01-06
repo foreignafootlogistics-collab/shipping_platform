@@ -52,19 +52,27 @@ def normalize_category(category: str) -> str:
 
 
 def get_freight(weight):
+    from math import ceil
     from app.models import AdminRate  # lazy import to avoid circular import
-    weight = int(round(weight))
 
-    bracket = AdminRate.query.filter(AdminRate.max_weight >= weight).order_by(AdminRate.max_weight.asc()).first()
+    w_raw = float(weight or 0)
+    weight = int(ceil(w_raw))
+    if weight < 1 and w_raw > 0:
+        weight = 1
+
+    bracket = (AdminRate.query
+               .filter(AdminRate.max_weight >= weight)
+               .order_by(AdminRate.max_weight.asc())
+               .first())
     if bracket:
-        return bracket.rate
+        return float(bracket.rate or 0)
 
     last_bracket = AdminRate.query.order_by(AdminRate.max_weight.desc()).first()
     if last_bracket:
-        extra = weight - last_bracket.max_weight
-        return last_bracket.rate + extra * 500
+        extra = weight - int(last_bracket.max_weight or 0)
+        return float(last_bracket.rate or 0) + extra * 500
 
-    return 0
+    return 0.0
 
 # ===== STEP 3: Constants =====
 USD_TO_JMD = 165

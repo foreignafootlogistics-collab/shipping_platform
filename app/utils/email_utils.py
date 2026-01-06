@@ -1,14 +1,11 @@
 import os
 import smtplib
 from math import ceil
+from typing import Iterable
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from flask import current_app
-from app.config import LOGO_URL
-from math import ceil
-from typing import Iterable
-
 
 # If you still want Flask-Mail for some cases:
 try:
@@ -19,13 +16,26 @@ except Exception:
     _HAS_FLASK_MAIL = False
 
 # ==========================================================
+#  SMTP CREDENTIALS (Render / Production compatible)
+# ==========================================================
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+
+EMAIL_ADDRESS = os.getenv("SMTP_USER")
+EMAIL_PASSWORD = os.getenv("SMTP_PASS")
+EMAIL_FROM = os.getenv("SMTP_FROM", EMAIL_ADDRESS)
+
+if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+    print("❌ SMTP credentials missing. Check SMTP_USER / SMTP_PASS env vars.")
+
+# ==========================================================
 #  EMAIL CONFIG (use environment variables in production)
 # ==========================================================
-LOGO_URL = os.getenv("FAF_LOGO_URL", "https://yourdomain.com/static/faf_logo.png")  # update
+LOGO_URL = os.getenv("FAF_LOGO_URL", "https://app.faflcourier.com/static/logo.png")
 DASHBOARD_URL = os.getenv("FAF_DASHBOARD_URL", "https://www.foreignafoot.com")
 
 # ==========================================================
-#  CORE EMAIL FUNCTION (SMTP - Gmail)
+#  CORE EMAIL FUNCTION (SMTP)
 # ==========================================================
 def send_email(
     to_email: str,
@@ -36,38 +46,48 @@ def send_email(
 ) -> bool:
     """
     attachments: list of (file_bytes, filename, mimetype)
-      e.g. [(pdf_bytes, "Proforma_INV-001.pdf", "application/pdf")]
+      e.g. [(pdf_bytes, "Invoice.pdf", "application/pdf")]
     """
-    msg = MIMEMultipart("mixed")  # mixed because we may attach files
-    msg["From"] = EMAIL_ADDRESS
+    msg = MIMEMultipart("mixed")
+    msg["From"] = EMAIL_FROM
     msg["To"] = to_email
     msg["Subject"] = subject
 
-    # Email body container
+    # Body (plain + optional html)
     body = MIMEMultipart("alternative")
     body.attach(MIMEText(plain_body, "plain"))
     if html_body:
         body.attach(MIMEText(html_body, "html"))
-
     msg.attach(body)
 
-    # Attachments
+    # Attachments (optional)
     if attachments:
         for file_bytes, filename, mimetype in attachments:
-            maintype, subtype = (mimetype.split("/", 1) + ["octet-stream"])[:2]
+            _maintype, subtype = (mimetype.split("/", 1) + ["octet-stream"])[:2]
             part = MIMEApplication(file_bytes, _subtype=subtype)
             part.add_header("Content-Disposition", "attachment", filename=filename)
             msg.attach(part)
 
+    # SEND (✅ must NOT be inside attachments)
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            smtp.send_message(msg)
+        if SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
+                smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                smtp.send_message(msg)
+        else:
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
+                smtp.ehlo()
+                smtp.starttls()
+                smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                smtp.send_message(msg)
+
         print(f"✅ Email sent to {to_email}")
         return True
+
     except Exception as e:
         print(f"❌ Email sending failed to {to_email}: {e}")
         return False
+
 
 # ==========================================================
 #  WELCOME EMAIL
@@ -97,24 +117,29 @@ Thank you for choosing us!
     html_body = f"""
 <html>
 <body style="font-family: Arial, sans-serif;">
-    <div style="background:#f9f9f9;padding:20px;">
-        <div style="max-width:600px;margin:auto;background:#fff;padding:20px;border-radius:8px;">
-            <img src="{LOGO_URL}" alt="Logo" style="max-width:180px;">
-            <h2>Welcome, {full_name}!</h2>
-            <p>Your registration number is <b>{reg_number}</b>.</p>
-            <p><b>U.S. Shipping Address:</b><br>
-            Air Standard<br>
-            {full_name}<br>
-            4652 N Hiatus Rd<br>
-            {reg_number} A<br>
-            Sunrise, Florida 33351</p>
-            <p><a href="{DASHBOARD_URL}" style="background:#5c3d91;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;">Login to Dashboard</a></p>
-        </div>
+  <div style="background:#f9f9f9;padding:20px;">
+    <div style="max-width:600px;margin:auto;background:#fff;padding:20px;border-radius:8px;">
+      <img src="{LOGO_URL}" alt="Logo" style="max-width:180px;">
+      <h2>Welcome, {full_name}!</h2>
+      <p>Your registration number is <b>{reg_number}</b>.</p>
+      <p><b>U.S. Shipping Address:</b><br>
+      Air Standard<br>
+      {full_name}<br>
+      4652 N Hiatus Rd<br>
+      {reg_number} A<br>
+      Sunrise, Florida 33351</p>
+      <p>
+        <a href="{DASHBOARD_URL}" style="background:#5c3d91;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;">
+          Login to Dashboard
+        </a>
+      </p>
     </div>
+  </div>
 </body>
 </html>
 """
-    return send_email(email, "Welcome to Foreign A Foot Logistics Limited! 🚛✈️", plain_body, html_body)
+    return send_email(email, "Welcome to Foreign A Foot Logistics Limited! �✈️", plain_body, html_body)
+
 
 # ==========================================================
 #  PASSWORD RESET EMAIL
@@ -135,14 +160,19 @@ If you didn’t request a password reset, simply ignore this email.
     html_body = f"""
 <html>
 <body>
-    <p>Dear {full_name},</p>
-    <p>We received a request to reset your password.</p>
-    <p><a href="{reset_link}" style="background:#5c3d91;color:#fff;padding:10px 20px;text-decoration:none;">Reset Password</a></p>
-    <p>This link will expire in 10 minutes.</p>
+  <p>Dear {full_name},</p>
+  <p>We received a request to reset your password.</p>
+  <p>
+    <a href="{reset_link}" style="background:#5c3d91;color:#fff;padding:10px 20px;text-decoration:none;">
+      Reset Password
+    </a>
+  </p>
+  <p>This link will expire in 10 minutes.</p>
 </body>
 </html>
 """
     return send_email(to_email, "Reset Your Password - Foreign A Foot Logistics", plain_body, html_body)
+
 
 # ==========================================================
 #  BULK MESSAGE EMAIL
@@ -159,63 +189,54 @@ Foreign A Foot Logistics Team
     html_body = f"""
 <html>
 <body style="font-family: Arial, sans-serif;">
-    <div style="background:#f9f9f9; padding:20px;">
-        <div style="background:#fff; padding:30px; border-radius:8px;">
-            <h3>Dear {full_name},</h3>
-            <p>{message_body.replace("\n", "<br>")}</p>
-            <p>Best regards,<br>Foreign A Foot Logistics Team</p>
-        </div>
+  <div style="background:#f9f9f9; padding:20px;">
+    <div style="background:#fff; padding:30px; border-radius:8px;">
+      <h3>Dear {full_name},</h3>
+      <p>{message_body.replace("\n", "<br>")}</p>
+      <p>Best regards,<br>Foreign A Foot Logistics Team</p>
     </div>
+  </div>
 </body>
 </html>
 """
     return send_email(to_email, f"{subject} - Foreign A Foot Logistics", plain_body, html_body)
 
+
 # ==========================================================
 #  PACKAGE UPLOAD EMAIL (status summary)
 # ==========================================================
-try:
-    from app.config import LOGO_URL
-except ImportError:
-    LOGO_URL = "https://www.foreignafoot.com/app/static/logo.png"  # fallback
-
-
 def send_overseas_received_email(to_email, full_name, reg_number, packages):
     """
     Sends an email when Foreign A Foot Logistics Limited receives a new package overseas.
     Includes: House AWB, Rounded-up Weight, Tracking #, Description, Status
     AND a button/link for the customer to upload their invoice.
     """
-
     subject = f"Foreign A Foot Logistics Limited received a new package overseas for FAFL #{reg_number}"
 
-    # URL where customer can upload invoices (adjust path if needed)
-    base_url = DASHBOARD_URL.rstrip("/")  # e.g. https://www.foreignafoot.com
-    upload_url = f"{base_url}/customer/packages"   # customer package page
+    base_url = DASHBOARD_URL.rstrip("/")
+    upload_url = f"{base_url}/customer/packages"
 
     # Build table rows (HTML)
     rows_html = []
     for p in packages:
         house = getattr(p, "house_awb", None) if not isinstance(p, dict) else p.get("house_awb")
-        weight = getattr(p, "weight", 0)        if not isinstance(p, dict) else p.get("weight", 0)
+        weight = getattr(p, "weight", 0) if not isinstance(p, dict) else p.get("weight", 0)
         tracking = getattr(p, "tracking_number", None) if not isinstance(p, dict) else p.get("tracking_number")
-        desc = getattr(p, "description", None)  if not isinstance(p, dict) else p.get("description")
-        status = getattr(p, "status", None)     if not isinstance(p, dict) else p.get("status")
+        desc = getattr(p, "description", None) if not isinstance(p, dict) else p.get("description")
+        status = getattr(p, "status", None) if not isinstance(p, dict) else p.get("status")
         rounded = ceil(weight or 0)
 
         rows_html.append(f"""
-            <tr>
-                <td style="padding:8px;border:1px solid #eee;">{house or '-'}</td>
-                <td style="padding:8px;border:1px solid #eee; text-align:center;">{rounded}</td>
-                <td style="padding:8px;border:1px solid #eee;">{tracking or '-'}</td>
-                <td style="padding:8px;border:1px solid #eee;">{desc or '-'}</td>
-                <td style="padding:8px;border:1px solid #eee; color:#d97706; font-weight:bold;">{status or 'Overseas'}</td>
-            </tr>
+          <tr>
+            <td style="padding:8px;border:1px solid #eee;">{house or '-'}</td>
+            <td style="padding:8px;border:1px solid #eee; text-align:center;">{rounded}</td>
+            <td style="padding:8px;border:1px solid #eee;">{tracking or '-'}</td>
+            <td style="padding:8px;border:1px solid #eee;">{desc or '-'}</td>
+            <td style="padding:8px;border:1px solid #eee; color:#d97706; font-weight:bold;">{status or 'Overseas'}</td>
+          </tr>
         """)
 
-    # -------------------------------
     # Plain-text fallback
-    # -------------------------------
     plain_lines = [
         f"Dear {full_name},",
         "",
@@ -226,10 +247,10 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
 
     for p in packages:
         house = getattr(p, "house_awb", None) if not isinstance(p, dict) else p.get("house_awb")
-        weight = getattr(p, "weight", 0)        if not isinstance(p, dict) else p.get("weight", 0)
+        weight = getattr(p, "weight", 0) if not isinstance(p, dict) else p.get("weight", 0)
         tracking = getattr(p, "tracking_number", None) if not isinstance(p, dict) else p.get("tracking_number")
-        desc = getattr(p, "description", None)  if not isinstance(p, dict) else p.get("description")
-        status = getattr(p, "status", None)     if not isinstance(p, dict) else p.get("status")
+        desc = getattr(p, "description", None) if not isinstance(p, dict) else p.get("description")
+        status = getattr(p, "status", None) if not isinstance(p, dict) else p.get("status")
         plain_lines.append(
             f"- House AWB: {house or '-'}, "
             f"Rounded Weight (lbs): {ceil(weight or 0)}, "
@@ -256,68 +277,61 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages):
     ]
     plain_body = "\n".join(plain_lines)
 
-    # -------------------------------
-    # HTML version (with button)
-    # -------------------------------
+    # HTML version
     html_body = f"""
-    <html>
-    <body style="font-family:Inter,Arial,sans-serif; line-height:1.6; color:#222;">
-      <div style="max-width:700px;margin:0 auto;padding:16px;">
-        <img src="{LOGO_URL}" alt="Foreign A Foot Logistics" style="max-width:180px; margin-bottom:16px;">
-        <p>Hello {full_name},</p>
-        <p>Great news – we’ve received a new package overseas for you. Package details:</p>
+<html>
+<body style="font-family:Inter,Arial,sans-serif; line-height:1.6; color:#222;">
+  <div style="max-width:700px;margin:0 auto;padding:16px;">
+    <img src="{LOGO_URL}" alt="Foreign A Foot Logistics" style="max-width:180px; margin-bottom:16px;">
+    <p>Hello {full_name},</p>
+    <p>Great news – we’ve received a new package overseas for you. Package details:</p>
 
-        <table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; margin:16px 0;">
-          <thead>
-            <tr style="background:#f5f2fb; color:#4a148c;">
-              <th style="padding:8px; text-align:left; border:1px solid #eee;">House AWB/Control #</th>
-              <th style="padding:8px; text-align:center; border:1px solid #eee;">Rounded Weight (lbs)</th>
-              <th style="padding:8px; text-align:left; border:1px solid #eee;">Tracking #</th>
-              <th style="padding:8px; text-align:left; border:1px solid #eee;">Description</th>
-              <th style="padding:8px; text-align:left; border:1px solid #eee;">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {''.join(rows_html)}
-          </tbody>
-        </table>
+    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; margin:16px 0;">
+      <thead>
+        <tr style="background:#f5f2fb; color:#4a148c;">
+          <th style="padding:8px; text-align:left; border:1px solid #eee;">House AWB/Control #</th>
+          <th style="padding:8px; text-align:center; border:1px solid #eee;">Rounded Weight (lbs)</th>
+          <th style="padding:8px; text-align:left; border:1px solid #eee;">Tracking #</th>
+          <th style="padding:8px; text-align:left; border:1px solid #eee;">Description</th>
+          <th style="padding:8px; text-align:left; border:1px solid #eee;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {''.join(rows_html)}
+      </tbody>
+    </table>
 
-        <p style="margin-top:20px; color:#333;">
-          Customs requires a proper invoice for all packages.<br>
-          To avoid any delays, please upload or send your invoice as soon as possible.
-        </p>
+    <p style="margin-top:20px; color:#333;">
+      Customs requires a proper invoice for all packages.<br>
+      To avoid any delays, please upload or send your invoice as soon as possible.
+    </p>
 
-        <!-- 🔗 Upload invoice button -->
-        <p style="margin-top:18px;">
-          <a href="{upload_url}"
-             style="display:inline-block; padding:10px 22px; background:#4a148c; color:#ffffff;
-                    text-decoration:none; border-radius:6px; font-weight:600;">
-            Upload / Add Your Invoice
-          </a>
-        </p>
-        <p style="font-size:13px; color:#555; margin-top:6px;">
-          Or visit
-          <a href="{upload_url}" style="color:#4a148c; text-decoration:none;">{upload_url}</a>
-          and locate this package by tracking number.
-        </p>
+    <p style="margin-top:18px;">
+      <a href="{upload_url}"
+         style="display:inline-block; padding:10px 22px; background:#4a148c; color:#ffffff;
+                text-decoration:none; border-radius:6px; font-weight:600;">
+        Upload / Add Your Invoice
+      </a>
+    </p>
+    <p style="font-size:13px; color:#555; margin-top:6px;">
+      Or visit <a href="{upload_url}" style="color:#4a148c; text-decoration:none;">{upload_url}</a>
+      and locate this package by tracking number.
+    </p>
 
-        <hr style="margin:28px 0; border:none; border-top:1px solid #ddd;">
-        <footer style="font-size:14px; color:#555;">
-          <p style="margin:4px 0;">Warm regards,<br><strong>The Foreign A Foot Logistics Team</strong></p>
-          <p style="margin:4px 0;">📍 Cedar Grove PassageFort Portmore</p>
-          <p style="margin:4px 0;">🌐 <a href="https://www.foreignafoot.com"
-                style="color:#4a148c;text-decoration:none;">www.foreignafoot.com</a></p>
-          <p style="margin:4px 0;">✉️ <a href="mailto:foreignafootlogistics@gmail.com"
-                style="color:#4a148c;text-decoration:none;">foreignafootlogistics@gmail.com</a></p>
-          <p style="margin:4px 0;">☎️ (876) 210-4291</p>
-        </footer>
-      </div>
-    </body>
-    </html>
-    """
-
-    # ✅ use the send_email helper defined at the top of this file
+    <hr style="margin:28px 0; border:none; border-top:1px solid #ddd;">
+    <footer style="font-size:14px; color:#555;">
+      <p style="margin:4px 0;">Warm regards,<br><strong>The Foreign A Foot Logistics Team</strong></p>
+      <p style="margin:4px 0;">📍 Cedar Grove PassageFort Portmore</p>
+      <p style="margin:4px 0;">🌐 <a href="https://www.foreignafoot.com" style="color:#4a148c;text-decoration:none;">www.foreignafoot.com</a></p>
+      <p style="margin:4px 0;">✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c;text-decoration:none;">foreignafootlogistics@gmail.com</a></p>
+      <p style="margin:4px 0;">☎️ (876) 210-4291</p>
+    </footer>
+  </div>
+</body>
+</html>
+"""
     return send_email(to_email, subject, plain_body, html_body)
+
 
 # ==========================================================
 #  INVOICE EMAIL
@@ -326,8 +340,6 @@ def send_invoice_email(to_email, full_name, invoice_number, amount_due, invoice_
     """
     Sends a clean, branded FAFL invoice email without due date.
     """
-
-    # -------- Plain text fallback --------
     plain_body = f"""
 Hello {full_name},
 
@@ -344,20 +356,16 @@ Foreign A Foot Logistics Limited
 (876) 210-4291
 """
 
-    # -------- HTML version --------
     html_body = f"""
 <html>
   <body style="font-family: Inter, Arial, sans-serif; background:#f8f8fc; padding:0; margin:0;">
-
-    <div style="max-width:640px; margin:20px auto; background:#ffffff; 
+    <div style="max-width:640px; margin:20px auto; background:#ffffff;
                 border-radius:12px; padding:30px; box-shadow:0 4px 20px rgba(0,0,0,0.06);">
 
-      <!-- Logo -->
       <div style="text-align:center; margin-bottom:20px;">
         <img src="{LOGO_URL}" alt="FAFL Logo" style="max-width:180px;">
       </div>
 
-      <!-- Header -->
       <h2 style="text-align:center; color:#4a148c; margin-top:0;">
         Your Invoice is Ready
       </h2>
@@ -368,12 +376,11 @@ Foreign A Foot Logistics Limited
         You may review the details below and click the button to view or download the full invoice.
       </p>
 
-      <!-- Invoice Summary -->
       <div style="
-        border:1px solid #e5e0f0; 
-        border-radius:10px; 
-        padding:18px 22px; 
-        background:#faf7ff; 
+        border:1px solid #e5e0f0;
+        border-radius:10px;
+        padding:18px 22px;
+        background:#faf7ff;
         margin:25px 0;
       ">
         <p style="margin:8px 0; font-size:15px;">
@@ -389,7 +396,6 @@ Foreign A Foot Logistics Limited
         </p>
       </div>
 
-      <!-- Button -->
       <div style="text-align:center; margin:25px 0 10px;">
         <a href="{invoice_link}"
            style="background:#4a148c; color:#ffffff; padding:14px 28px;
@@ -405,7 +411,6 @@ Foreign A Foot Logistics Limited
 
       <hr style="border:none; border-top:1px solid #e4e4e4; margin:30px 0;">
 
-      <!-- Footer -->
       <div style="text-align:center; color:#777; font-size:13px;">
         <p style="margin:4px 0;"><strong>Foreign A Foot Logistics Limited</strong></p>
         <p style="margin:4px 0;">Cedar Grove, Passage Fort, Portmore</p>
@@ -416,19 +421,17 @@ Foreign A Foot Logistics Limited
         </p>
         <p style="margin:4px 0;">☎️ (876) 210-4291</p>
       </div>
-
     </div>
-
   </body>
 </html>
 """
-
     return send_email(
         to_email=to_email,
         subject=f"📄 Your Invoice #{invoice_number} is Ready",
         plain_body=plain_body,
         html_body=html_body,
     )
+
 
 # ==========================================================
 #  NEW MESSAGE EMAIL (bugfix: use plain_body kwarg)
@@ -443,15 +446,14 @@ def send_new_message_email(user_email, user_name, message_subject, message_body)
     )
     return send_email(to_email=user_email, subject=subject, plain_body=body)
 
+
 # ==========================================================
 #  REFERRAL EMAIL (use current_app safely; Flask-Mail if available)
 # ==========================================================
 def send_referral_email(to_email: str, referral_code: str, referrer_name: str) -> bool:
     """
     Sends a nice branded referral invite email.
-
-    Uses the core send_email() SMTP helper so it works with your Gmail
-    app password config.
+    Uses the core send_email() SMTP helper so it works with your Gmail app password config.
     """
     base_url = (
         current_app.config.get("BASE_URL")
@@ -459,10 +461,8 @@ def send_referral_email(to_email: str, referral_code: str, referrer_name: str) -
     ).rstrip("/")
 
     register_link = f"{base_url}/register?ref={referral_code}"
-
     subject = "You've been invited to join Foreign A Foot Logistics!"
 
-    # -------- Plain text (fallback) ----------
     plain_body = f"""
 Hi there,
 
@@ -479,7 +479,6 @@ Thanks,
 Foreign A Foot Logistics Team
 """
 
-    # -------- HTML version ----------
     html_body = f"""
 <html>
   <body style="font-family: Inter, Arial, sans-serif; background:#f4f4f7; margin:0; padding:0;">
@@ -535,8 +534,6 @@ Foreign A Foot Logistics Team
   </body>
 </html>
 """
-
-    # Use your SMTP helper (works with Gmail app password)
     return send_email(to_email=to_email, subject=subject, plain_body=plain_body, html_body=html_body)
 
 
@@ -546,23 +543,26 @@ def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict]
         f"- {it.get('tracking_number','-')} | {it.get('description','-')} | Amount Due: ${it.get('amount_due',0):.2f}"
         for it in items
     ) or "- (no details)"
+
     plain = (
         f"Hi {full_name},\n\n"
         f"The following package(s) are now READY FOR PICK UP:\n"
         f"{rows}\n\n"
         f"Thanks,\nForeign A Foot Logistics"
     )
+
     html = f"""
-    <html><body>
-      <p>Hi {full_name},</p>
-      <p>The following package(s) are now <b>READY FOR PICK UP</b>:</p>
-      <ul>
-        {''.join(f"<li>{it.get('tracking_number','-')} — {it.get('description','-')} — ${it.get('amount_due',0):.2f}</li>" for it in items)}
-      </ul>
-      <p>Thanks,<br>Foreign A Foot Logistics</p>
-    </body></html>
-    """
+<html><body>
+  <p>Hi {full_name},</p>
+  <p>The following package(s) are now <b>READY FOR PICK UP</b>:</p>
+  <ul>
+    {''.join(f"<li>{it.get('tracking_number','-')} — {it.get('description','-')} — ${it.get('amount_due',0):.2f}</li>" for it in items)}
+  </ul>
+  <p>Thanks,<br>Foreign A Foot Logistics</p>
+</body></html>
+"""
     return send_email(to_email, "Your package is Ready for Pick Up", plain, html)
+
 
 # --- Shipment invoice notice (no attachments; link/button only) ----
 def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: float, invoice_link: str) -> bool:
@@ -573,18 +573,22 @@ def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: f
         f"View/pay here: {invoice_link}\n\n"
         f"Thanks,\nForeign A Foot Logistics"
     )
+
     html = f"""
-    <html><body>
-      <p>Hi {full_name},</p>
-      <p>Your invoice for the recent shipment is ready.</p>
-      <p><b>Total Amount Due:</b> ${total_due:.2f}</p>
-      <p><a href="{invoice_link}" style="background:#5c3d91;color:#fff;padding:10px 16px;text-decoration:none;border-radius:4px;">
-        View / Pay Invoice
-      </a></p>
-      <p>Thanks,<br>Foreign A Foot Logistics</p>
-    </body></html>
-    """
+<html><body>
+  <p>Hi {full_name},</p>
+  <p>Your invoice for the recent shipment is ready.</p>
+  <p><b>Total Amount Due:</b> ${total_due:.2f}</p>
+  <p>
+    <a href="{invoice_link}" style="background:#5c3d91;color:#fff;padding:10px 16px;text-decoration:none;border-radius:4px;">
+      View / Pay Invoice
+    </a>
+  </p>
+  <p>Thanks,<br>Foreign A Foot Logistics</p>
+</body></html>
+"""
     return send_email(to_email, "Your Shipment Invoice", plain, html)
+
 
 def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
     """
@@ -594,15 +598,14 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
     """
     subject = "Your package(s) are ready for pickup 🎉"
 
-    # Normalize/round and build rows
     rows_txt = []
     rows_html = []
     for p in packages:
         shipper = (p.get("shipper") or p.get("vendor") or "—")
-        awb     = p.get("house_awb") or p.get("house") or "—"
-        track   = p.get("tracking_number") or p.get("tracking") or "—"
-        w_raw   = p.get("weight") or 0
-        w_up    = ceil(float(w_raw) or 0)
+        awb = p.get("house_awb") or p.get("house") or "—"
+        track = p.get("tracking_number") or p.get("tracking") or "—"
+        w_raw = p.get("weight") or 0
+        w_up = ceil(float(w_raw) or 0)
 
         rows_txt.append(
             f"Shipper: {shipper}\n"
@@ -613,16 +616,15 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
         )
 
         rows_html.append(f"""
-        <tr>
-          <td style="padding:8px; border:1px solid #eee;">{shipper}</td>
-          <td style="padding:8px; border:1px solid #eee;">{awb}</td>
-          <td style="padding:8px; border:1px solid #eee;">{track}</td>
-          <td style="padding:8px; border:1px solid #eee; text-align:center;">{w_up}</td>
-          <td style="padding:8px; border:1px solid #eee; color:#16a34a; font-weight:600;">Ready for Pickup/Delivery</td>
-        </tr>
-        """)
+<tr>
+  <td style="padding:8px; border:1px solid #eee;">{shipper}</td>
+  <td style="padding:8px; border:1px solid #eee;">{awb}</td>
+  <td style="padding:8px; border:1px solid #eee;">{track}</td>
+  <td style="padding:8px; border:1px solid #eee; text-align:center;">{w_up}</td>
+  <td style="padding:8px; border:1px solid #eee; color:#16a34a; font-weight:600;">Ready for Pickup/Delivery</td>
+</tr>
+""")
 
-    # Plain
     plain_body = (
         f"Hi {full_name},\n\n"
         f"Good news—your package(s) with Foreign A Foot Logistics Limited are ready for pickup/delivery.\n\n"
@@ -637,41 +639,40 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
         "Foreign A Foot Logistics Limited\n"
     )
 
-    # HTML
     html_body = f"""
-    <html>
-      <body style="font-family:Arial, sans-serif; color:#222;">
-        <div style="max-width:680px; margin:0 auto; padding:16px;">
-          <h2 style="color:#4a148c; margin:0 0 12px;">Great news—your package(s) are ready!</h2>
-          <p>We’ve prepared the following item(s) for pickup/delivery:</p>
-          <table style="width:100%; border-collapse:collapse; margin:12px 0;">
-            <thead>
-              <tr style="background:#f3ecff; color:#4a148c;">
-                <th style="text-align:left; padding:8px; border:1px solid #eee;">Shipper</th>
-                <th style="text-align:left; padding:8px; border:1px solid #eee;">Airway Bill</th>
-                <th style="text-align:left; padding:8px; border:1px solid #eee;">Tracking #</th>
-                <th style="text-align:center; padding:8px; border:1px solid #eee;">Weight (lbs)</th>
-                <th style="text-align:left; padding:8px; border:1px solid #eee;">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {''.join(rows_html) if rows_html else '<tr><td colspan="5" style="padding:8px; border:1px solid #eee;">No package details</td></tr>'}
-            </tbody>
-          </table>
+<html>
+  <body style="font-family:Arial, sans-serif; color:#222;">
+    <div style="max-width:680px; margin:0 auto; padding:16px;">
+      <h2 style="color:#4a148c; margin:0 0 12px;">Great news—your package(s) are ready!</h2>
+      <p>We’ve prepared the following item(s) for pickup/delivery:</p>
+      <table style="width:100%; border-collapse:collapse; margin:12px 0;">
+        <thead>
+          <tr style="background:#f3ecff; color:#4a148c;">
+            <th style="text-align:left; padding:8px; border:1px solid #eee;">Shipper</th>
+            <th style="text-align:left; padding:8px; border:1px solid #eee;">Airway Bill</th>
+            <th style="text-align:left; padding:8px; border:1px solid #eee;">Tracking #</th>
+            <th style="text-align:center; padding:8px; border:1px solid #eee;">Weight (lbs)</th>
+            <th style="text-align:left; padding:8px; border:1px solid #eee;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(rows_html) if rows_html else '<tr><td colspan="5" style="padding:8px; border:1px solid #eee;">No package details</td></tr>'}
+        </tbody>
+      </table>
 
-          <div style="margin-top:16px;">
-            <p style="margin:4px 0;"><strong>Pickup Location:</strong> Cedar Grove, Passage Fort, Portmore</p>
-            <p style="margin:4px 0;"><strong>Hours:</strong> Mon–Sat, 9:00 AM – 6:00 PM</p>
-            <p style="margin:4px 0;"><strong>Contact:</strong> (876) 210-4291 · foreignafootlogistics@gmail.com</p>
-          </div>
+      <div style="margin-top:16px;">
+        <p style="margin:4px 0;"><strong>Pickup Location:</strong> Cedar Grove, Passage Fort, Portmore</p>
+        <p style="margin:4px 0;"><strong>Hours:</strong> Mon–Sat, 9:00 AM – 6:00 PM</p>
+        <p style="margin:4px 0;"><strong>Contact:</strong> (876) 210-4291 · foreignafootlogistics@gmail.com</p>
+      </div>
 
-          <p style="margin-top:16px;">Prefer delivery? Reply to this email and we’ll set it up.</p>
+      <p style="margin-top:16px;">Prefer delivery? Reply to this email and we’ll set it up.</p>
 
-          <p style="margin-top:12px; color:#555;">
-            Thanks for choosing <strong>Foreign A Foot Logistics Limited</strong>—we appreciate your business!
-          </p>
-        </div>
-      </body>
-    </html>
-    """
+      <p style="margin-top:12px; color:#555;">
+        Thanks for choosing <strong>Foreign A Foot Logistics Limited</strong>—we appreciate your business!
+      </p>
+    </div>
+  </body>
+</html>
+"""
     return subject, plain_body, html_body

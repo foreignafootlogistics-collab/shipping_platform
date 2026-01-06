@@ -2029,3 +2029,4 @@ def admin_profile():
         return redirect(url_for('admin.admin_profile'))
 
     return render_template('admin/admin_profile.html', form=form, admin=current_user)
+

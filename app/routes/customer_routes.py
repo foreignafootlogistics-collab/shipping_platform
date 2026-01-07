@@ -1349,25 +1349,46 @@ def update_delivery_address():
     return render_template('customer/update_delivery_address.html', address=getattr(user, 'address', '') or '')
 
 
-@customer_bp.route('/security', methods=['GET', 'POST'])
+import bcrypt
+from datetime import datetime
+from flask import render_template, redirect, url_for, flash
+from flask_login import login_required, current_user
+from app.extensions import db
+from app.forms import PasswordChangeForm
+
+
+@customer_bp.route("/security", methods=["GET", "POST"])
 @login_required
 def security():
     form = PasswordChangeForm()
-    if form.validate_on_submit():
-        current_password = form.current_password.data.encode('utf-8')
-        new_password = form.new_password.data.encode('utf-8')
 
-        # current_user.password may be str (hashed) or bytes; normalize
-        stored = current_user.password.encode() if isinstance(current_user.password, str) else current_user.password
-        if stored and bcrypt.checkpw(current_password, stored):
-            hashed = bcrypt.hashpw(new_password, bcrypt.gensalt())
-            current_user.password = hashed.decode('utf-8')
-            db.session.commit()
-            flash("Password updated successfully.", "success")
+    if form.validate_on_submit():
+        current_pw = form.current_password.data.encode("utf-8")
+        new_pw     = form.new_password.data.encode("utf-8")
+
+        # 🔐 Ensure stored password is bytes
+        stored_pw = current_user.password
+        if isinstance(stored_pw, str):
+            stored_pw = stored_pw.encode("utf-8")
+
+        # ❌ Wrong current password
+        if not bcrypt.checkpw(current_pw, stored_pw):
+            flash("Current password is incorrect.", "danger")
             return redirect(url_for("customer.security"))
-        else:
-            flash("Incorrect current password.", "danger")
-    return render_template('customer/security.html', form=form)
+
+        # ✅ Hash new password (BYTES)
+        hashed_pw = bcrypt.hashpw(new_pw, bcrypt.gensalt())
+        current_user.password = hashed_pw
+
+        # optional timestamp
+        if hasattr(current_user, "updated_at"):
+            current_user.updated_at = datetime.utcnow()
+
+        db.session.commit()
+        flash("Password updated successfully.", "success")
+        return redirect(url_for("customer.security"))
+
+    return render_template("customer/security.html", form=form)
 
 
 # -----------------------------

@@ -30,6 +30,7 @@ from app.calculator_data import categories
 from app import allowed_file, mail
 from app.extensions import db
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
+from app.calculator_data import get_freight
 from app.services.package_view import fetch_packages_normalized
 
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -47,12 +48,36 @@ from app.models import (
     Wallet, WalletTransaction, Payment, Settings,
     Prealert, PackageAttachment,
 )
-from sqlalchemy import func
+from sqlalchemy import func, or_
 # Email class from Flask-Mail (alias to avoid clash)
 from flask_mail import Message as MailMessage
 from sqlalchemy.orm import selectinload
 
 customer_bp = Blueprint('customer', __name__, template_folder='templates/customer')
+
+
+def _calc_handling(weight_lbs: float) -> float:
+    """
+    Match your calculator handling rules.
+    Weight is in lbs (rounded up).
+    """
+    try:
+        w = int(math.ceil(float(weight_lbs or 0)))
+    except Exception:
+        w = 0
+
+    if 40 < w <= 50:
+        return 2000.0
+    elif 51 <= w <= 60:
+        return 3000.0
+    elif 61 <= w <= 80:
+        return 5000.0
+    elif 81 <= w <= 100:
+        return 10000.0
+    elif w > 100:
+        return 20000.0
+    return 0.0
+
 
 # -----------------------------
 # Upload folders (from config)
@@ -532,6 +557,82 @@ def update_declared_value():
 # -----------------------------
 # Transactions (Bills & Payments)
 # -----------------------------
+@customer_bp.route("/transactions/all", methods=["GET"])
+@customer_required
+def transactions_all():
+    # Bills (Invoices)
+    invoices = (
+        Invoice.query
+        .filter(Invoice.user_id == current_user.id)
+        .order_by(Invoice.date_submitted.desc().nullslast(), Invoice.id.desc())
+        .all()
+    )
+
+    # Payments
+    payments = (
+        Payment.query
+        .filter(Payment.user_id == current_user.id)
+        .order_by(Payment.created_at.desc().nullslast(), Payment.id.desc())
+        .all()
+    )
+
+    # Build unified list
+    rows = []
+
+    def _dt(x):
+        return x or datetime.utcnow()
+
+    def _num(x):
+        try: return float(x or 0)
+        except: return 0.0
+
+    # Bills -> Transaction rows
+    for inv in invoices:
+        # amount owed: prefer amount_due, fallback grand_total/subtotal
+        amount = _num(getattr(inv, "amount_due", None))
+        if amount <= 0:
+            amount = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
+
+        rows.append({
+            "type": "bill",
+            "date": _dt(inv.date_issued or inv.date_submitted or getattr(inv, "created_at", None)),
+            "invoice_id": inv.id,
+            "invoice_number": inv.invoice_number,
+            "status": getattr(inv, "status", "") or "",
+            "method": "",
+            "amount": amount,
+            "payment_id": None,
+        })
+
+    # Payments -> Transaction rows
+    for p in payments:
+        rows.append({
+            "type": "payment",
+            "date": _dt(p.created_at),
+            "invoice_id": p.invoice_id,
+            "invoice_number": "",  # we can show invoice id or load invoice map if you want
+            "status": "Paid",
+            "method": p.method or "Cash",
+            "amount": _num(p.amount_jmd),
+            "payment_id": p.id,
+        })
+
+    # Sort newest first
+    rows.sort(key=lambda r: r["date"], reverse=True)
+
+    return render_template("customer/transactions/all.html", rows=rows)
+
+
+@customer_bp.route("/transactions/receipts/<int:payment_id>/modal")
+@customer_required
+def receipt_modal(payment_id):
+    p = Payment.query.filter_by(id=payment_id, user_id=current_user.id).first_or_404()
+    inv = Invoice.query.filter_by(id=p.invoice_id, user_id=current_user.id).first()
+
+    # IMPORTANT: this template must be a partial (NO extends)
+    return render_template("customer/transactions/_receipt_modal_body.html", payment=p, invoice=inv)
+
+
 
 @customer_bp.route("/transactions", methods=["GET"])
 @login_required
@@ -542,40 +643,6 @@ def transactions_overview():
     return render_template("customer/transactions/index.html")
 
 
-# ===== Bills = Invoices list =====
-@customer_bp.route("/transactions/bills", methods=["GET"])
-@login_required
-def transactions_bills():
-    invoices = (
-        Invoice.query
-        .filter(Invoice.user_id == current_user.id)
-        .order_by(Invoice.date_submitted.desc().nullslast(), Invoice.id.desc())
-        .all()
-    )
-    return render_template("customer/transactions/bills.html", invoices=invoices)
-
-
-@customer_bp.route("/transactions/payments", methods=["GET"])
-@customer_required
-def transactions_payments():
-    payments = (
-        Payment.query
-        .filter(Payment.user_id == current_user.id)
-        .order_by(Payment.id.desc())
-        .all()
-    )
-
-    invoice_ids = [p.invoice_id for p in payments if p.invoice_id]
-    invoices = {}
-    if invoice_ids:
-        for inv in Invoice.query.filter(Invoice.id.in_(invoice_ids)).all():
-            invoices[inv.id] = inv
-
-    return render_template(
-        "customer/transactions/payments.html",
-        payments=payments,
-        invoices=invoices
-    )
 
 @customer_bp.route("/transactions/bills")
 @customer_required

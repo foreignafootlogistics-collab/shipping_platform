@@ -1,0 +1,140 @@
+{% extends "layout_customer.html" %}
+{% block title %}Transactions{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">Transactions</h2>
+    <a href="{{ url_for('customer.customer_dashboard') }}" class="btn btn-sm btn-outline-secondary">
+      <i class="fas fa-arrow-left"></i> Back
+    </a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <table class="table table-hover table-striped table-bordered align-middle mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th style="width:110px;">Type</th>
+            <th>Reference</th>
+            <th>Date</th>
+            <th>Status</th>
+            <th>Method</th>
+            <th class="text-end">Amount (JMD)</th>
+            <th style="width:220px;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+            <tr>
+              <td>
+                {% if r.type == "bill" %}
+                  <span class="badge bg-primary">Bill</span>
+                {% else %}
+                  <span class="badge bg-success">Payment</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if r.type == "bill" %}
+                  {{ r.invoice_number }}
+                {% else %}
+                  RCPT-{{ r.payment_id }}
+                  {% if r.invoice_id %}<div class="small text-muted">Invoice ID: {{ r.invoice_id }}</div>{% endif %}
+                {% endif %}
+              </td>
+
+              <td>{{ r.date|datetimeformat('%Y-%m-%d %H:%M') }}</td>
+
+              <td>
+                {% if r.type == "bill" %}
+                  <span class="badge bg-secondary">{{ r.status or "Unpaid" }}</span>
+                {% else %}
+                  <span class="badge bg-success">Paid</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if r.type == "payment" %}
+                  <span class="badge bg-info text-dark">{{ r.method }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+
+              <td class="text-end">{{ (r.amount or 0)|float|round(2) }}</td>
+
+              <td class="d-flex gap-2">
+                {% if r.type == "bill" %}
+                  <button
+                    class="btn btn-sm btn-dark"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#invoiceModal"
+                    data-invoice-id="{{ r.invoice_id }}"
+                  >
+                    View
+                  </button>
+                {% else %}
+                  <a class="btn btn-sm btn-primary"
+                     href="{{ url_for('customer.view_receipt', payment_id=r.payment_id) }}">
+                    View
+                  </a>
+                  <a class="btn btn-sm btn-outline-dark"
+                     href="{{ url_for('customer.receipt_pdf', payment_id=r.payment_id) }}">
+                    PDF
+                  </a>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="7" class="text-center py-3">No transactions found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Invoice Modal -->
+<div class="modal fade" id="invoiceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Invoice Breakdown</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="invoiceModalBody">
+        <div class="text-muted">Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const modal = document.getElementById("invoiceModal");
+  if (!modal) return;
+
+  modal.addEventListener("show.bs.modal", async function (event) {
+    const btn = event.relatedTarget;
+    const invoiceId = btn?.getAttribute("data-invoice-id");
+    const body = document.getElementById("invoiceModalBody");
+    if (!invoiceId || !body) return;
+
+    body.innerHTML = `<div class="text-muted">Loading...</div>`;
+
+    try {
+      const res = await fetch(`/transactions/bills/${invoiceId}/modal`);
+      const html = await res.text();
+      body.innerHTML = html;
+    } catch (e) {
+      body.innerHTML = `<div class="alert alert-danger">Failed to load invoice.</div>`;
+    }
+  });
+});
+</script>
+
+{% endblock %}
+

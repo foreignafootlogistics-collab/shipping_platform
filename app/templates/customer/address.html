@@ -3,7 +3,6 @@
 
 {% block content %}
 <div class="container mt-4">
-  <h2 class="mb-4">📍 Delivery Address</h2>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -13,18 +12,169 @@
     {% endif %}
   {% endwith %}
 
-  <form method="POST" class="card shadow-sm p-4">
-    {{ form.hidden_tag() }}
+  <div class="row justify-content-center">
+    <div class="col-lg-8 col-xl-7">
 
-    <div class="mb-3">
-      {{ form.address.label(class="form-label") }}
-      {{ form.address(class="form-control", rows="4", placeholder="Enter your delivery address") }}
-      {% if form.address.errors %}
-        <div class="text-danger small">{{ form.address.errors[0] }}</div>
-      {% endif %}
+      <div class="card shadow-sm da-card">
+
+        <!-- Header -->
+        <div class="da-header">
+          <div class="d-flex justify-content-between align-items-center w-100">
+            <h4 class="mb-0">📍Delivery Address</h4>
+
+            <div class="text-muted da-updated">
+              {% if current_user.updated_at %}
+                <span id="daLastUpdated" data-iso="{{ current_user.updated_at.isoformat() }}Z">
+                  Last updated: {{ current_user.updated_at.strftime('%b %d, %Y') }}
+                </span>
+              {% else %}
+                <span>Last updated: —</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Body -->
+        <div class="da-body">
+          <form method="POST" id="daForm">
+            {{ form.hidden_tag() }}
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="form-label fw-semibold mb-0">
+                {{ form.address.label.text if form.address.label else "Address" }}
+              </label>
+
+              <div class="d-flex gap-2">
+                <button type="button" id="daEditBtn" class="btn btn-sm btn-primary">
+                  <i class="bi bi-pencil-square me-1"></i> Edit
+                </button>
+
+                <button type="button" id="daCancelBtn" class="btn btn-sm btn-outline-secondary d-none">
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            {{ form.address(
+              class="form-control da-textarea",
+              rows="5",
+              id="address"
+            ) }}
+
+            {% if form.address.errors %}
+              <div class="text-danger small mt-1">{{ form.address.errors[0] }}</div>
+            {% endif %}
+
+            <button type="submit" id="daSaveBtn" class="btn btn-primary w-100 fw-semibold mt-3" disabled>
+              Save Address
+            </button>
+          </form>
+        </div>
+
+      </div>
+
     </div>
-
-    {{ form.submit(class="btn btn-dashboard w-100") }}
-  </form>
+  </div>
 </div>
+
+<script>
+(function () {
+  const textarea = document.getElementById("address");
+  const editBtn = document.getElementById("daEditBtn");
+  const cancelBtn = document.getElementById("daCancelBtn");
+  const saveBtn = document.getElementById("daSaveBtn");
+
+  if (!textarea) return;
+
+  // store original for cancel
+  let original = textarea.value || "";
+
+  function setLocked(locked) {
+    textarea.disabled = locked;
+    saveBtn.disabled = locked;
+    textarea.classList.toggle("da-disabled", locked);
+
+    if (locked) {
+      cancelBtn.classList.add("d-none");
+    } else {
+      cancelBtn.classList.remove("d-none");
+    }
+  }
+
+  // initial state: locked
+  setLocked(true);
+
+  editBtn?.addEventListener("click", () => {
+    setLocked(false);
+    textarea.focus();
+  });
+
+  cancelBtn?.addEventListener("click", () => {
+    textarea.value = original;
+    setLocked(true);
+  });
+
+  // relative last updated (optional)
+  const lastEl = document.getElementById("daLastUpdated");
+  if (lastEl) {
+    const iso = lastEl.getAttribute("data-iso");
+    if (iso) {
+      const dt = new Date(iso);
+      const now = new Date();
+      let diffMs = now - dt;
+      if (diffMs < 0) diffMs = 0;
+
+      const mins = Math.floor(diffMs / 60000);
+      const hrs  = Math.floor(mins / 60);
+      const days = Math.floor(hrs / 24);
+
+      let txt = "";
+      if (mins < 60) txt = `${mins} min${mins===1?"":"s"} ago`;
+      else if (hrs < 24) txt = `${hrs} hour${hrs===1?"":"s"} ago`;
+      else txt = `${days} day${days===1?"":"s"} ago`;
+
+      lastEl.textContent = `Last updated: ${txt}`;
+    }
+  }
+})();
+</script>
+
+<style>
+/* Flat, smaller centered card */
+.da-card {
+  border-radius: 0;
+  border: 1px solid #d1d5db;
+  overflow: hidden;
+}
+
+.da-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.da-updated {
+  font-size: .95rem;
+}
+
+.da-body {
+  padding: 18px;
+  background: #fff;
+}
+
+.da-textarea {
+  border-radius: 0;
+  font-size: 1rem;
+  padding: .75rem .85rem;
+}
+
+.da-disabled {
+  background: #f9fafb !important;
+}
+
+@media (max-width: 576px) {
+  .da-body { padding: 14px; }
+  .da-updated { font-size: .85rem; }
+}
+</style>
 {% endblock %}

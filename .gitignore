@@ -21,3 +21,10 @@ instance/*.db
 # Backups / legacy folders
 app_backup_dbpath_20251105_1248/
 legacy_sqlite/
+
+# Generated invoices
+app/static/invoices/*.pdf
+
+# Deprecated template (email modal replaced page)
+app/templates/customer/change_email.html
+

@@ -1316,22 +1316,24 @@ def change_email_modal_submit():
     })
 
 
-@customer_bp.route('/address', methods=['GET', 'POST'])
+@customer_bp.route("/address", methods=["GET", "POST"])
 @login_required
 def address():
     user = current_user
-    form = AddressForm()
-
-    if request.method == 'GET':
-        form.address.data = getattr(user, "address", "") or ""
+    form = AddressForm(obj=user)  # expects form.address
 
     if form.validate_on_submit():
-        user.address = form.address.data
+        user.address = (form.address.data or "").strip()
+
+        # update timestamp if column exists
+        if hasattr(user, "updated_at"):
+            user.updated_at = datetime.utcnow()
+
         db.session.commit()
-        flash("Address updated successfully.", "success")
+        flash("Delivery address updated successfully.", "success")
         return redirect(url_for("customer.address"))
 
-    return render_template('customer/address.html', form=form)
+    return render_template("customer/address.html", form=form)
 
 
 @customer_bp.route('/update_delivery_address', methods=['GET', 'POST'])

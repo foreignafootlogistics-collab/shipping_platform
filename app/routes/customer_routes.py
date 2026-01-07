@@ -688,56 +688,74 @@ def receipt_pdf(payment_id):
     p = Payment.query.filter_by(id=payment_id, user_id=current_user.id).first_or_404()
     inv = Invoice.query.filter_by(id=p.invoice_id, user_id=current_user.id).first()
 
-    receipt_no = f"RCPT-{p.id}"
-    dt = p.created_at or datetime.utcnow()
-    method = p.method or "Cash"
-    amt = float(p.amount_jmd or 0)
+    if not inv:
+        flash("Invoice not found for this payment.", "danger")
+        return redirect(url_for("customer.view_payments"))
 
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
-    styles = getSampleStyleSheet()
-    flow = []
+    # packages linked to invoice
+    pkgs = Package.query.filter_by(invoice_id=inv.id).order_by(Package.id.asc()).all()
 
-    flow.append(Paragraph("<b>FOREIGN A FOOT LOGISTICS</b>", styles["Title"]))
-    flow.append(Spacer(1, 10))
+    def _num(val, default=0.0):
+        try:
+            return float(val or 0)
+        except Exception:
+            return float(default)
 
-    flow.append(Paragraph(f"<b>Receipt #:</b> {receipt_no}", styles["Normal"]))
-    flow.append(Paragraph(f"<b>Date:</b> {dt.strftime('%b %d, %Y %I:%M %p')}", styles["Normal"]))
-    flow.append(Paragraph(f"<b>Customer:</b> {current_user.full_name} ({current_user.registration_number})", styles["Normal"]))
-    if inv:
-        flow.append(Paragraph(f"<b>Invoice:</b> {inv.invoice_number}", styles["Normal"]))
-    if p.reference:
-        flow.append(Paragraph(f"<b>Reference:</b> {p.reference}", styles["Normal"]))
-    if p.notes:
-        flow.append(Paragraph(f"<b>Notes:</b> {p.notes}", styles["Normal"]))
+    packages = []
+    for pkg in pkgs:
+        w_raw = _num(getattr(pkg, "weight", 0))
+        w_lbs = int(ceil(w_raw))
+        freight = float(get_freight(w_lbs) or 0.0)
+        handling = float(_calc_handling(w_lbs) or 0.0)
 
-    flow.append(Spacer(1, 12))
+        packages.append({
+            "house_awb": pkg.house_awb or "",
+            "description": pkg.description or "",
+            "weight": w_lbs,
+            "value": _num(getattr(pkg, "value", 0)),
+            "freight": freight,
+            "handling": handling,
+            "other_charges": _num(getattr(pkg, "other_charges", 0)),
+            "duty": _num(getattr(pkg, "duty", 0)),
+            "scf": _num(getattr(pkg, "scf", 0)),
+            "envl": _num(getattr(pkg, "envl", 0)),
+            "caf": _num(getattr(pkg, "caf", 0)),
+            "gct": _num(getattr(pkg, "gct", 0)),
+            "discount_due": _num(getattr(pkg, "discount_due", 0)),
+        })
 
-    table = Table([
-        ["Payment Method", method],
-        ["Amount (JMD)", f"{amt:,.2f}"],
-    ], colWidths=[160, 340])
+    # totals
+    subtotal = _num(getattr(inv, "subtotal", None)) or _num(getattr(inv, "grand_total", 0)) or _num(getattr(inv, "amount", 0))
+    discount_total = _num(getattr(inv, "discount_total", 0))
+    payments_total = _num(getattr(p, "amount_jmd", 0))  # this receipt payment
 
-    table.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
-        ("BACKGROUND", (0,0), (-1,0), colors.whitesmoke),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-    ]))
+    # receipt should show paid amount & balance
+    balance = max((subtotal - discount_total) - payments_total, 0.0)
 
-    flow.append(table)
-    flow.append(Spacer(1, 16))
-    flow.append(Paragraph("Thank you for your payment.", styles["Italic"]))
+    invoice_dict = {
+        "id": inv.id,
+        "number": inv.invoice_number,
+        "date": p.created_at or datetime.utcnow(),  # receipt date
+        "customer_code": current_user.registration_number,
+        "customer_name": current_user.full_name,
+        "subtotal": float(subtotal),
+        "discount_total": float(discount_total),
+        "payments_total": float(payments_total),
+        "total_due": float(balance),
+        "packages": packages,
 
-    doc.build(flow)
-    buf.seek(0)
+        # extra receipt fields (you will display these in the pdf template)
+        "receipt_no": f"RCPT-{p.id}",
+        "payment_method": p.method or "Cash",
+        "payment_reference": p.reference or "",
+        "payment_notes": p.notes or "",
+        "doc_type": "receipt",
+    }
 
-    return send_file(
-        buf,
-        as_attachment=True,
-        download_name=f"receipt_{receipt_no}.pdf",
-        mimetype="application/pdf"
-    )
+    from app.utils.invoice_pdf import generate_invoice_pdf
+    rel = generate_invoice_pdf(invoice_dict)  # ✅ now receipt uses same style as proforma
+    return redirect(url_for("static", filename=rel))
+
 
 
 

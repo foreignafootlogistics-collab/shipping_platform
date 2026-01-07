@@ -3,6 +3,7 @@
 
 {% block content %}
 <div class="container mt-4">
+
   <h2 class="mb-4">🔐 Login & Security</h2>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -13,43 +14,200 @@
     {% endif %}
   {% endwith %}
 
-  <form method="POST" class="card shadow-sm p-4">
-    {{ form.hidden_tag() }}
+  <div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
 
-    <div class="mb-3">
-      {{ form.current_password.label(class="form-label") }}
-      {{ form.current_password(class="form-control", placeholder="Enter current password") }}
-      {% if form.current_password.errors %}
-        <div class="text-danger small">{{ form.current_password.errors[0] }}</div>
-      {% endif %}
+      <form method="POST" class="card shadow-sm p-4 security-card">
+        {{ form.hidden_tag() }}
+
+        <!-- Current Password -->
+        <div class="mb-3 position-relative">
+          {{ form.current_password.label(class="form-label") }}
+          {{ form.current_password(
+              class="form-control pe-5 password-input",
+              placeholder="Enter current password",
+              id="current_password"
+          ) }}
+
+          <span class="password-toggle" data-target="current_password" title="Show/Hide">
+            <i class="bi bi-eye"></i>
+          </span>
+
+          {% if form.current_password.errors %}
+            <div class="text-danger small">{{ form.current_password.errors[0] }}</div>
+          {% endif %}
+        </div>
+
+        <!-- New Password -->
+        <div class="mb-2 position-relative">
+          {{ form.new_password.label(class="form-label") }}
+          {{ form.new_password(
+              class="form-control pe-5 password-input",
+              placeholder="Enter new password",
+              id="new_password"
+          ) }}
+
+          <span class="password-toggle" data-target="new_password" title="Show/Hide">
+            <i class="bi bi-eye"></i>
+          </span>
+
+          {% if form.new_password.errors %}
+            <div class="text-danger small">{{ form.new_password.errors[0] }}</div>
+          {% endif %}
+        </div>
+
+        <!-- Reactive password requirements -->
+        <div class="mb-3 small">
+          <div class="text-muted mb-1"><strong>Password requirements</strong></div>
+
+          <ul class="pw-req-list mb-0" id="pwReqList">
+            <li id="req-len" class="pw-req-item">
+              <i class="bi bi-circle"></i>
+              <span>At least 8 characters</span>
+            </li>
+            <li id="req-upper" class="pw-req-item">
+              <i class="bi bi-circle"></i>
+              <span>1 uppercase letter</span>
+            </li>
+            <li id="req-lower" class="pw-req-item">
+              <i class="bi bi-circle"></i>
+              <span>1 lowercase letter</span>
+            </li>
+            <li id="req-num" class="pw-req-item">
+              <i class="bi bi-circle"></i>
+              <span>1 number</span>
+            </li>
+            <li id="req-special" class="pw-req-item">
+              <i class="bi bi-circle"></i>
+              <span>1 special character</span>
+            </li>
+            <li id="req-match" class="pw-req-item">
+              <i class="bi bi-circle"></i>
+              <span>Confirm password matches</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Confirm Password -->
+        <div class="mb-3 position-relative">
+          {{ form.confirm_password.label(class="form-label") }}
+          {{ form.confirm_password(
+              class="form-control pe-5 password-input",
+              placeholder="Confirm new password",
+              id="confirm_password"
+          ) }}
+
+          <span class="password-toggle" data-target="confirm_password" title="Show/Hide">
+            <i class="bi bi-eye"></i>
+          </span>
+
+          {% if form.confirm_password.errors %}
+            <div class="text-danger small">{{ form.confirm_password.errors[0] }}</div>
+          {% endif %}
+        </div>
+
+        {{ form.submit(class="btn btn-dashboard w-100") }}
+      </form>
+
     </div>
-
-    <div class="mb-3">
-      {{ form.new_password.label(class="form-label") }}
-      {{ form.new_password(class="form-control", placeholder="Enter new password") }}
-      {% if form.new_password.errors %}
-        <div class="text-danger small">{{ form.new_password.errors[0] }}</div>
-      {% endif %}
-    </div>
-
-    <div class="mb-3">
-      {{ form.confirm_password.label(class="form-label") }}
-      {{ form.confirm_password(class="form-control", placeholder="Confirm new password") }}
-      {% if form.confirm_password.errors %}
-        <div class="text-danger small">{{ form.confirm_password.errors[0] }}</div>
-      {% endif %}
-    </div>
-
-    <div class="mb-3 small text-muted">
-      <strong>Password requirements:</strong><br>
-      - At least 8 characters<br>
-      - 1 uppercase letter<br>
-      - 1 lowercase letter<br>
-      - 1 number<br>
-      - 1 special character
-    </div>
-
-    {{ form.submit(class="btn btn-dashboard w-100") }}
-  </form>
+  </div>
 </div>
+
+<script>
+(function () {
+  // ---- Eye toggle (works for all fields) ----
+  document.addEventListener("click", function (e) {
+    const toggle = e.target.closest(".password-toggle");
+    if (!toggle) return;
+
+    const inputId = toggle.getAttribute("data-target");
+    const input = document.getElementById(inputId);
+    const icon = toggle.querySelector("i");
+    if (!input) return;
+
+    if (input.type === "password") {
+      input.type = "text";
+      icon.classList.remove("bi-eye");
+      icon.classList.add("bi-eye-slash");
+    } else {
+      input.type = "password";
+      icon.classList.remove("bi-eye-slash");
+      icon.classList.add("bi-eye");
+    }
+  });
+
+  // ---- Reactive requirements ----
+  const newPw = document.getElementById("new_password");
+  const confirmPw = document.getElementById("confirm_password");
+
+  function setReq(id, ok) {
+    const li = document.getElementById(id);
+    if (!li) return;
+
+    const icon = li.querySelector("i");
+    li.classList.toggle("met", ok);
+    li.classList.toggle("unmet", !ok);
+
+    if (icon) {
+      icon.className = ok ? "bi bi-check-circle-fill" : "bi bi-circle";
+    }
+  }
+
+  function evaluate() {
+    const v = (newPw?.value || "");
+
+    setReq("req-len", v.length >= 8);
+    setReq("req-upper", /[A-Z]/.test(v));
+    setReq("req-lower", /[a-z]/.test(v));
+    setReq("req-num", /\d/.test(v));
+    setReq("req-special", /[^A-Za-z0-9]/.test(v));
+
+    const c = (confirmPw?.value || "");
+    // only consider "match" once user starts typing confirm
+    const matchOk = c.length > 0 && v.length > 0 && c === v;
+    setReq("req-match", matchOk);
+  }
+
+  if (newPw) newPw.addEventListener("input", evaluate);
+  if (confirmPw) confirmPw.addEventListener("input", evaluate);
+
+  // initial state
+  evaluate();
+})();
+</script>
+
+<style>
+.security-card { border-radius: 0; }
+
+.password-toggle {
+  position: absolute;
+  top: 38px;
+  right: 12px;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 1rem;
+}
+.password-toggle:hover { color: #4a148c; }
+
+/* Requirements list */
+.pw-req-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+.pw-req-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .15rem 0;
+  color: #6b7280;
+}
+.pw-req-item i { font-size: 1rem; }
+
+/* unmet/met styles */
+.pw-req-item.unmet { color: #6b7280; }
+.pw-req-item.met { color: #198754; } /* bootstrap green */
+.pw-req-item.met i { color: #198754; }
+</style>
 {% endblock %}
+

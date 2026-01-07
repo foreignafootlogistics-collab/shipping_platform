@@ -1,140 +1,305 @@
+{# customer/transactions/all.html #}
 {% extends "layout_customer.html" %}
-{% block title %}Transactions{% endblock %}
+{% block title %}Transactions - Foreign A Foot Logistics{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container my-4 txn-wrap">
 
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <h2 class="mb-0">Transactions</h2>
-    <a href="{{ url_for('customer.customer_dashboard') }}" class="btn btn-sm btn-outline-secondary">
-      <i class="fas fa-arrow-left"></i> Back
-    </a>
+  <!-- Header row: title left, show dropdown right -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">Transactions</h3>
+
+    <form method="GET" class="d-flex align-items-center gap-2">
+      <span class="small text-muted">Show</span>
+
+      <select name="per_page"
+              class="form-select form-select-sm txn-perpage"
+              onchange="this.form.submit()">
+        {% for opt in per_page_options %}
+          <option value="{{ opt }}" {% if opt == per_page %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+
+      {# always reset to page 1 when changing per_page #}
+      <input type="hidden" name="page" value="1">
+    </form>
   </div>
 
-  <div class="card shadow-sm">
-    <div class="card-body p-0">
-      <table class="table table-hover table-striped table-bordered align-middle mb-0">
+  <div class="card shadow-sm txn-card">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover table-bordered align-middle mb-0 txn-table">
         <thead class="table-dark">
           <tr>
-            <th style="width:110px;">Type</th>
+            <th style="width:120px;">Type</th>
             <th>Reference</th>
-            <th>Date</th>
-            <th>Status</th>
-            <th>Method</th>
-            <th class="text-end">Amount (JMD)</th>
-            <th style="width:220px;">Action</th>
+            <th style="width:220px;">Date</th>
+            <th style="width:160px;">Status</th>
+            <th style="width:140px;">Method</th>
+            <th style="width:170px;" class="text-end">Amount (JMD)</th>
           </tr>
         </thead>
+
         <tbody>
-          {% for r in rows %}
-            <tr>
-              <td>
-                {% if r.type == "bill" %}
-                  <span class="badge bg-primary">Bill</span>
-                {% else %}
-                  <span class="badge bg-success">Payment</span>
-                {% endif %}
-              </td>
+        {% for r in rows %}
+          <tr>
+            <td>
+              {% if r.type == "payment" %}
+                <span class="badge rounded-pill bg-success">Payment</span>
+              {% else %}
+                <span class="badge rounded-pill bg-primary">Bill</span>
+              {% endif %}
+            </td>
 
-              <td>
-                {% if r.type == "bill" %}
-                  {{ r.invoice_number }}
-                {% else %}
-                  RCPT-{{ r.payment_id }}
-                  {% if r.invoice_id %}<div class="small text-muted">Invoice ID: {{ r.invoice_id }}</div>{% endif %}
-                {% endif %}
-              </td>
+            <td>
+              <div class="ref-main">{{ r.reference_main }}</div>
+              {% if r.reference_sub %}
+                <div class="ref-sub">{{ r.reference_sub }}</div>
+              {% endif %}
 
-              <td>{{ r.date|datetimeformat('%Y-%m-%d %H:%M') }}</td>
+              {# View icon/link under reference #}
+              <a href="#"
+                 class="txn-view d-inline-flex align-items-center gap-1 mt-1"
+                 data-url="{{ r.view_modal_url }}"
+                 title="View details">
+                <i class="bi bi-eye-fill"></i>
+                <span class="small">View</span>
+              </a>
+            </td>
 
-              <td>
-                {% if r.type == "bill" %}
-                  <span class="badge bg-secondary">{{ r.status or "Unpaid" }}</span>
-                {% else %}
-                  <span class="badge bg-success">Paid</span>
-                {% endif %}
-              </td>
+            <td class="text-nowrap">
+              {{ r.date.strftime("%Y-%m-%d %H:%M") if r.date else "" }}
+            </td>
 
-              <td>
-                {% if r.type == "payment" %}
-                  <span class="badge bg-info text-dark">{{ r.method }}</span>
-                {% else %}
-                  <span class="text-muted">—</span>
-                {% endif %}
-              </td>
+            <td class="text-nowrap">
+              <span class="badge bg-success">{{ r.status or "—" }}</span>
 
-              <td class="text-end">{{ (r.amount or 0)|float|round(2) }}</td>
+              {# PDF icon beside status (only when available) #}
+              {% if r.pdf_url %}
+                <a href="#"
+                   class="txn-pdf ms-2"
+                   data-url="{{ r.pdf_url }}"
+                   title="Open PDF">
+                  <i class="bi bi-file-earmark-pdf-fill text-danger"></i>
+                </a>
+              {% endif %}
+            </td>
 
-              <td class="d-flex gap-2">
-                {% if r.type == "bill" %}
-                  <button
-                    class="btn btn-sm btn-dark"
-                    type="button"
-                    data-bs-toggle="modal"
-                    data-bs-target="#invoiceModal"
-                    data-invoice-id="{{ r.invoice_id }}"
-                  >
-                    View
-                  </button>
-                {% else %}
-                  <a class="btn btn-sm btn-primary"
-                     href="{{ url_for('customer.view_receipt', payment_id=r.payment_id) }}">
-                    View
-                  </a>
-                  <a class="btn btn-sm btn-outline-dark"
-                     href="{{ url_for('customer.receipt_pdf', payment_id=r.payment_id) }}">
-                    PDF
-                  </a>
-                {% endif %}
-              </td>
-            </tr>
-          {% else %}
-            <tr><td colspan="7" class="text-center py-3">No transactions found.</td></tr>
-          {% endfor %}
+            <td class="text-nowrap">
+              {{ r.method or "—" }}
+            </td>
+
+            <td class="text-end">
+              {{ "{:,.2f}".format(r.amount or 0) }}
+            </td>
+          </tr>
+        {% endfor %}
         </tbody>
+
       </table>
+    </div>
+  </div>
+
+  {# Pagination bottom-center #}
+  {% if total_pages > 1 %}
+  <nav class="d-flex justify-content-center mt-3" aria-label="Transactions pagination">
+    <ul class="pagination pagination-sm mb-0">
+
+      <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('customer.transactions_all', page=page-1, per_page=per_page) }}"
+           aria-label="Previous">
+          <span aria-hidden="true">&laquo;</span>
+        </a>
+      </li>
+
+      <li class="page-item disabled">
+        <span class="page-link">Page {{ page }} of {{ total_pages }}</span>
+      </li>
+
+      <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('customer.transactions_all', page=page+1, per_page=per_page) }}"
+           aria-label="Next">
+          <span aria-hidden="true">&raquo;</span>
+        </a>
+      </li>
+
+    </ul>
+  </nav>
+  {% endif %}
+
+</div>
+
+{# =========================
+   VIEW MODAL (Receipt/Invoice)
+   ========================= #}
+<div class="modal fade" id="txnViewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-receipt"></i> Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="txnViewBody">
+        <div class="text-center py-4 text-muted">Loading…</div>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- Invoice Modal -->
-<div class="modal fade" id="invoiceModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+{# =========================
+   PDF MODAL (iframe preview)
+   ========================= #}
+<div class="modal fade" id="txnPdfModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Invoice Breakdown</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h5 class="modal-title"><i class="bi bi-file-earmark-pdf"></i> PDF Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body" id="invoiceModalBody">
-        <div class="text-muted">Loading...</div>
+
+      <div class="modal-body p-0" style="height:75vh;">
+        <iframe id="txnPdfFrame" src="" style="width:100%; height:100%; border:0;"></iframe>
+      </div>
+
+      <div class="modal-footer">
+        <a id="txnPdfOpenNew" class="btn btn-outline-secondary" href="#" target="_blank" rel="noopener">
+          <i class="bi bi-box-arrow-up-right"></i> Open in new tab
+        </a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-  const modal = document.getElementById("invoiceModal");
-  if (!modal) return;
+(function () {
+  function ensureBootstrap() {
+    if (!window.bootstrap || !bootstrap.Modal) {
+      console.error("Bootstrap Modal not available. Ensure bootstrap.bundle.min.js is loaded.");
+      alert("Bootstrap JS not loaded. Add bootstrap.bundle.min.js in layout_customer.html.");
+      return false;
+    }
+    return true;
+  }
 
-  modal.addEventListener("show.bs.modal", async function (event) {
-    const btn = event.relatedTarget;
-    const invoiceId = btn?.getAttribute("data-invoice-id");
-    const body = document.getElementById("invoiceModalBody");
-    if (!invoiceId || !body) return;
+  const viewModalEl = document.getElementById("txnViewModal");
+  const viewBody = document.getElementById("txnViewBody");
 
-    body.innerHTML = `<div class="text-muted">Loading...</div>`;
+  const pdfModalEl = document.getElementById("txnPdfModal");
+  const pdfFrame = document.getElementById("txnPdfFrame");
+  const pdfOpenNew = document.getElementById("txnPdfOpenNew");
 
-    try {
-      const res = await fetch(`/transactions/bills/${invoiceId}/modal`);
-      const html = await res.text();
-      body.innerHTML = html;
-    } catch (e) {
-      body.innerHTML = `<div class="alert alert-danger">Failed to load invoice.</div>`;
+  let viewModal = null;
+  let pdfModal = null;
+
+  document.addEventListener("click", async (e) => {
+    const viewLink = e.target.closest(".txn-view");
+    const pdfLink  = e.target.closest(".txn-pdf");
+
+    if (viewLink) {
+      e.preventDefault();
+      if (!ensureBootstrap()) return;
+
+      if (!viewModal) viewModal = new bootstrap.Modal(viewModalEl);
+
+      const url = viewLink.getAttribute("data-url");
+      if (!url) return;
+
+      viewBody.innerHTML = `<div class="text-center py-4 text-muted">Loading…</div>`;
+      viewModal.show();
+
+      try {
+        const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+        if (!res.ok) {
+          viewBody.innerHTML = `<div class="alert alert-danger mb-0">Failed to load (HTTP ${res.status}).</div>`;
+          return;
+        }
+        viewBody.innerHTML = await res.text();
+      } catch (err) {
+        console.error(err);
+        viewBody.innerHTML = `<div class="alert alert-danger mb-0">Failed to load details.</div>`;
+      }
+    }
+
+    if (pdfLink) {
+      e.preventDefault();
+      if (!ensureBootstrap()) return;
+
+      if (!pdfModal) pdfModal = new bootstrap.Modal(pdfModalEl);
+
+      const url = pdfLink.getAttribute("data-url");
+      if (!url) return;
+
+      pdfFrame.src = url;
+      pdfOpenNew.href = url;
+      pdfModal.show();
     }
   });
-});
+
+  if (pdfModalEl) {
+    pdfModalEl.addEventListener("hidden.bs.modal", () => {
+      if (pdfFrame) pdfFrame.src = "";
+    });
+  }
+})();
 </script>
 
+<style>
+  .txn-wrap { max-width: 1050px; }
+
+  .txn-card {
+    border-radius: 0;
+    overflow: hidden;
+    border: 1px solid #d1d5db;
+  }
+
+  .txn-table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .txn-table thead th {
+    padding: .65rem .75rem;
+    border-right: 1px solid #d1d5db;
+    border-bottom: 1px solid #d1d5db;
+    white-space: nowrap;
+  }
+  .txn-table thead th:last-child { border-right: none; }
+
+  .txn-table tbody td {
+    padding: .6rem .75rem;
+    vertical-align: middle;
+    border-right: 1px solid #e5e7eb;
+    border-bottom: 1px solid #e5e7eb;
+    background-color: #fff;
+  }
+  .txn-table tbody tr:last-child td { border-bottom: none; }
+  .txn-table tbody td:last-child { border-right: none; }
+
+  .txn-table tbody tr:hover td { background-color: #f9fafb; }
+
+  .ref-main { font-weight: 700; }
+  .ref-sub { font-size: .82rem; color: #6b7280; }
+
+  .txn-view, .txn-pdf {
+    text-decoration: none;
+    font-size: .92rem;
+  }
+  .txn-view:hover, .txn-pdf:hover { text-decoration: underline; }
+
+  .txn-perpage { width: 110px; }
+
+  @media (max-width: 576px) {
+    .txn-wrap { max-width: 100%; }
+    .txn-table thead th,
+    .txn-table tbody td { padding: .55rem .6rem; }
+  }
+  .pagination .page-link {
+    border-radius: 0 !important;
+  }
+
+</style>
 {% endblock %}
+
 

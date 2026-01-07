@@ -6,7 +6,34 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/status.css') }}">
 
 <div class="container mt-4">
-  <h2 class="mb-4">My Packages</h2>
+
+  <!-- Header row: title left, show dropdown right -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">My Packages</h2>
+
+    <!-- Show dropdown (like Transactions) -->
+    <form method="get" action="{{ url_for('customer.view_packages') }}" class="d-flex align-items-center gap-2">
+      <span class="small text-muted mb-0">Show</span>
+
+      <select name="per_page"
+              class="form-select form-select-sm"
+              style="width:110px;"
+              onchange="this.form.submit()">
+        {% for n in [10,25,50,100,500] %}
+          <option value="{{ n }}" {% if per_page|int == n %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+
+      {# Preserve filters when changing per_page #}
+      <input type="hidden" name="tracking_number" value="{{ tracking_number }}">
+      <input type="hidden" name="status" value="{{ status_filter }}">
+      <input type="hidden" name="date_from" value="{{ date_from }}">
+      <input type="hidden" name="date_to" value="{{ date_to }}">
+
+      {# Reset to first page when changing show #}
+      <input type="hidden" name="page" value="1">
+    </form>
+  </div>
 
   {# Flash messages #}
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -20,13 +47,13 @@
     {% endif %}
   {% endwith %}
 
-  {# Filter #}
+  {# Filter (NO Show here anymore) #}
   <form method="get" action="{{ url_for('customer.view_packages') }}" class="row g-2 mb-3">
-    <div class="col-md-2">
+    <div class="col-md-3">
       <input type="text" name="tracking_number" value="{{ tracking_number }}" class="form-control" placeholder="Tracking #">
     </div>
 
-    <div class="col-md-2">
+    <div class="col-md-3">
       <select name="status" class="form-control">
         <option value="">All Status</option>
         <option value="Overseas" {% if status_filter=='Overseas' %}selected{% endif %}>Overseas</option>
@@ -43,18 +70,20 @@
       <input type="date" name="date_to" value="{{ date_to }}" class="form-control">
     </div>
 
-    {# ✅ Show per-page selector #}
-    <div class="col-md-2">
-      <select name="per_page" class="form-control">
-        {% for n in [10,25,50,100,500] %}
-          <option value="{{ n }}" {% if per_page|int == n %}selected{% endif %}>Show {{ n }}</option>
-        {% endfor %}
-      </select>
+    {# Keep per_page when filtering #}
+    <input type="hidden" name="per_page" value="{{ per_page }}">
+
+    <div class="col-md-2 d-flex gap-2">
+      <button type="submit" class="btn btn-dashboard w-100">
+        Filter
+      </button>
+
+      <a href="{{ url_for('customer.view_packages', per_page=per_page) }}"
+         class="btn btn-outline-secondary w-100">
+        Clear
+      </a>
     </div>
 
-    <div class="col-md-2">
-      <button type="submit" class="btn btn-dashboard w-100">Filter</button>
-    </div>
   </form>
 
   {# Table #}
@@ -73,16 +102,16 @@
       </thead>
 
       {% set mode = "customer" %}
-    <tbody>
-      {% for pkg in packages %}
-        {% include "partials/package_row_shared.html" with context %}
-      {% endfor %}
-    </tbody>
-
+      <tbody>
+        {% for pkg in packages %}
+          {% include "partials/package_row_shared.html" with context %}
+        {% endfor %}
+      </tbody>
     </table>
   </div>
 
   {# Pagination #}
+  {% if total_pages > 1 %}
   <nav aria-label="Page navigation">
     <ul class="pagination justify-content-center">
       {% for p in range(1, total_pages + 1) %}
@@ -95,6 +124,7 @@
       {% endfor %}
     </ul>
   </nav>
+  {% endif %}
 </div>
 
 {# =========================
@@ -118,7 +148,6 @@
 
         <div class="modal-body">
 
-          {# ✅ Lock message #}
           {% if lock_docs %}
             <div class="alert alert-secondary py-2 mb-3">
               <i class="fas fa-lock me-1"></i>
@@ -165,7 +194,6 @@
                         <i class="fas fa-file-alt me-1"></i> View
                       </a>
 
-                      {# Small X delete (hidden/disabled when locked) #}
                       <form method="POST"
                             action="{{ url_for('customer.delete_package_attachment_customer', attachment_id=a.id) }}"
                             style="display:inline;"
@@ -189,7 +217,6 @@
               {% endif %}
 
             </div>
-
           </div>
         </div>
 
@@ -225,6 +252,11 @@
   border-color: #4a148c;
   transform: translateY(-1px);
 }
+.btn-outline-secondary {
+  --bs-btn-color: #374151;
+  --bs-btn-border-color: #d1d5db;
+}
+
 </style>
 
 {% endblock %}

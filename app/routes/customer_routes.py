@@ -26,6 +26,7 @@ from app.utils.email_utils import send_referral_email
 from app.utils.referrals import ensure_user_referral_code
 from app.utils.helpers import customer_required
 from app.utils.invoice_utils import generate_invoice
+from app.utils.invoice_pdf import generate_invoice_pdf
 from app.calculator_data import categories
 from app import allowed_file, mail
 from app.extensions import db
@@ -560,7 +561,16 @@ def update_declared_value():
 @customer_bp.route("/transactions/all", methods=["GET"])
 @customer_required
 def transactions_all():
-    # Bills (Invoices)
+    # pagination inputs
+    page = request.args.get("page", type=int, default=1)
+    per_page = request.args.get("per_page", type=int, default=10)
+
+    allowed = [10, 25, 50, 100, 500]
+    if per_page not in allowed:
+        per_page = 10
+    if page < 1:
+        page = 1
+
     invoices = (
         Invoice.query
         .filter(Invoice.user_id == current_user.id)
@@ -568,7 +578,6 @@ def transactions_all():
         .all()
     )
 
-    # Payments
     payments = (
         Payment.query
         .filter(Payment.user_id == current_user.id)
@@ -576,19 +585,19 @@ def transactions_all():
         .all()
     )
 
-    # Build unified list
     rows = []
 
     def _dt(x):
         return x or datetime.utcnow()
 
     def _num(x):
-        try: return float(x or 0)
-        except: return 0.0
+        try:
+            return float(x or 0)
+        except Exception:
+            return 0.0
 
-    # Bills -> Transaction rows
+    # Bills
     for inv in invoices:
-        # amount owed: prefer amount_due, fallback grand_total/subtotal
         amount = _num(getattr(inv, "amount_due", None))
         if amount <= 0:
             amount = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
@@ -596,31 +605,51 @@ def transactions_all():
         rows.append({
             "type": "bill",
             "date": _dt(inv.date_issued or inv.date_submitted or getattr(inv, "created_at", None)),
-            "invoice_id": inv.id,
-            "invoice_number": inv.invoice_number,
-            "status": getattr(inv, "status", "") or "",
-            "method": "",
+            "reference_main": inv.invoice_number or f"Invoice #{inv.id}",
+            "reference_sub": "",
+            "status": (getattr(inv, "status", "") or "").strip(),
+            "method": "—",
             "amount": amount,
-            "payment_id": None,
+            "view_modal_url": url_for("customer.bill_invoice_modal", invoice_id=inv.id),
+            "pdf_url": "",  # (optional later)
         })
 
-    # Payments -> Transaction rows
+    # Payments
     for p in payments:
         rows.append({
             "type": "payment",
             "date": _dt(p.created_at),
-            "invoice_id": p.invoice_id,
-            "invoice_number": "",  # we can show invoice id or load invoice map if you want
+            "reference_main": f"RCPT-{p.id}",
+            "reference_sub": f"Invoice ID: {p.invoice_id}" if p.invoice_id else "",
             "status": "Paid",
-            "method": p.method or "Cash",
-            "amount": _num(p.amount_jmd),
-            "payment_id": p.id,
+            "method": (p.method or "Cash"),
+            "amount": _num(getattr(p, "amount_jmd", 0)),
+            "view_modal_url": url_for("customer.receipt_modal", payment_id=p.id),
+            "pdf_url": url_for("customer.receipt_pdf_inline", payment_id=p.id),
         })
 
-    # Sort newest first
     rows.sort(key=lambda r: r["date"], reverse=True)
 
-    return render_template("customer/transactions/all.html", rows=rows)
+    total = len(rows)
+    total_pages = max((total + per_page - 1) // per_page, 1)
+
+    if page > total_pages:
+        page = total_pages
+
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_rows = rows[start:end]
+
+    return render_template(
+        "customer/transactions/all.html",
+        rows=page_rows,
+        page=page,
+        per_page=per_page,
+        total=total,
+        total_pages=total_pages,
+        per_page_options=allowed,
+    )
+
 
 
 @customer_bp.route("/transactions/receipts/<int:payment_id>/modal")
@@ -631,17 +660,6 @@ def receipt_modal(payment_id):
 
     # IMPORTANT: this template must be a partial (NO extends)
     return render_template("customer/transactions/_receipt_modal_body.html", payment=p, invoice=inv)
-
-
-
-@customer_bp.route("/transactions", methods=["GET"])
-@login_required
-def transactions_overview():
-    """
-    Simple hub page that links to Bills (Invoices) and Payments.
-    """
-    return render_template("customer/transactions/index.html")
-
 
 
 @customer_bp.route("/transactions/bills")
@@ -749,17 +767,19 @@ def view_receipt(payment_id):
     return render_template("customer/transactions/receipt_view.html", payment=p, invoice=inv)
 
 
-@customer_bp.route("/transactions/receipts/<int:payment_id>/pdf", endpoint="receipt_pdf")
+import os
+from flask import send_file, current_app, abort
+from app.utils.invoice_pdf import generate_invoice_pdf
+
+@customer_bp.route("/transactions/receipts/<int:payment_id>/pdf-inline", endpoint="receipt_pdf_inline")
 @customer_required
-def receipt_pdf(payment_id):
+def receipt_pdf_inline(payment_id):
     p = Payment.query.filter_by(id=payment_id, user_id=current_user.id).first_or_404()
     inv = Invoice.query.filter_by(id=p.invoice_id, user_id=current_user.id).first()
 
     if not inv:
-        flash("Invoice not found for this payment.", "danger")
-        return redirect(url_for("customer.view_payments"))
+        abort(404)
 
-    # packages linked to invoice
     pkgs = Package.query.filter_by(invoice_id=inv.id).order_by(Package.id.asc()).all()
 
     def _num(val, default=0.0):
@@ -791,18 +811,15 @@ def receipt_pdf(payment_id):
             "discount_due": _num(getattr(pkg, "discount_due", 0)),
         })
 
-    # totals
     subtotal = _num(getattr(inv, "subtotal", None)) or _num(getattr(inv, "grand_total", 0)) or _num(getattr(inv, "amount", 0))
     discount_total = _num(getattr(inv, "discount_total", 0))
-    payments_total = _num(getattr(p, "amount_jmd", 0))  # this receipt payment
-
-    # receipt should show paid amount & balance
+    payments_total = _num(getattr(p, "amount_jmd", 0))
     balance = max((subtotal - discount_total) - payments_total, 0.0)
 
     invoice_dict = {
         "id": inv.id,
         "number": inv.invoice_number,
-        "date": p.created_at or datetime.utcnow(),  # receipt date
+        "date": p.created_at or datetime.utcnow(),
         "customer_code": current_user.registration_number,
         "customer_name": current_user.full_name,
         "subtotal": float(subtotal),
@@ -810,8 +827,6 @@ def receipt_pdf(payment_id):
         "payments_total": float(payments_total),
         "total_due": float(balance),
         "packages": packages,
-
-        # extra receipt fields (you will display these in the pdf template)
         "receipt_no": f"RCPT-{p.id}",
         "payment_method": p.method or "Cash",
         "payment_reference": p.reference or "",
@@ -819,10 +834,19 @@ def receipt_pdf(payment_id):
         "doc_type": "receipt",
     }
 
-    from app.utils.invoice_pdf import generate_invoice_pdf
-    rel = generate_invoice_pdf(invoice_dict)  # ✅ now receipt uses same style as proforma
-    return redirect(url_for("static", filename=rel))
+    rel = generate_invoice_pdf(invoice_dict)  # returns something like "invoices/xxx.pdf"
+    abs_path = os.path.join(current_app.static_folder, rel)
 
+    if not os.path.exists(abs_path):
+        abort(404)
+
+    return send_file(
+        abs_path,
+        mimetype="application/pdf",
+        as_attachment=False,                 # IMPORTANT: inline preview
+        download_name=os.path.basename(abs_path),
+        conditional=True
+    )
 
 
 

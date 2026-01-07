@@ -3,8 +3,8 @@
 
 {% block content %}
 <div class="container mt-4">
-  <h2 class="mb-4">Personal Information</h2>
 
+  {# Flash messages #}
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
@@ -13,42 +13,634 @@
     {% endif %}
   {% endwith %}
 
-  <form method="POST" class="card shadow-sm p-4">
-    {{ form.hidden_tag() }}
+  {# -------------------------------
+     Completeness calculation
+     ------------------------------- #}
+  {% set total_fields = 4 %}
+  {% set completed = 0 %}
+  {% if form.full_name.data %}{% set completed = completed + 1 %}{% endif %}
+  {% if form.email.data %}{% set completed = completed + 1 %}{% endif %}
+  {% if form.mobile.data %}{% set completed = completed + 1 %}{% endif %}
+  {% if form.trn.data %}{% set completed = completed + 1 %}{% endif %}
+  {% set percent = (completed / total_fields * 100) | int %}
 
-    <div class="mb-3">
-      {{ form.full_name.label(class="form-label") }}
-      {{ form.full_name(class="form-control", placeholder="Enter full name") }}
-      {% if form.full_name.errors %}
-        <div class="text-danger small">{{ form.full_name.errors[0] }}</div>
-      {% endif %}
+  {% if percent < 50 %}
+    {% set label_text = "Incomplete" %}
+    {% set label_class = "text-danger" %}
+  {% elif percent < 100 %}
+    {% set label_text = "Almost Complete!" %}
+    {% set label_class = "text-warning" %}
+  {% else %}
+    {% set label_text = "Complete!" %}
+    {% set label_class = "text-success" %}
+  {% endif %}
+
+  <!-- Smaller, centered card like the image -->
+  <div class="row justify-content-center">
+    <div class="col-lg-10 col-xl-9">
+
+      <div class="card shadow-sm pi-card">
+
+        <!-- Header -->
+        <div class="pi-header">
+          <div class="pi-title">Personal Information</div>
+
+          <div class="pi-updated">
+            {% if current_user.updated_at %}
+              <span id="piLastUpdated" data-iso="{{ current_user.updated_at.isoformat() }}Z">
+                Last updated: {{ current_user.updated_at.strftime('%b %d, %Y') }}
+              </span>
+            {% else %}
+              <span class="text-muted">Last updated: —</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="pi-body">
+
+          <!-- Completeness row -->
+          <div class="pi-section">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <div class="pi-strong">Profile Completeness: {{ percent }}%</div>
+
+              <div class="pi-progress-wrap">
+                <div class="progress pi-progress">
+                  <div class="progress-bar bg-success" style="width: {{ [percent, 85] | min }}%;"></div>
+                  {% if percent < 100 %}
+                    <div class="progress-bar bg-warning" style="width: {{ (percent > 85) and (percent-85) or 0 }}%;"></div>
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="pi-label {{ label_class }}">
+                <i class="bi bi-check2-circle"></i>
+                <span class="ms-1">{{ label_text }}</span>
+              </div>
+            </div>
+          </div>
+
+          <hr class="pi-divider">
+
+          <form method="POST" id="piForm">
+            {{ form.hidden_tag() }}
+
+            <!-- Full Name -->
+            <div class="pi-row" data-field="full_name">
+              <div class="pi-row-head">
+                <div class="pi-row-title">Full Name</div>
+
+                <div class="pi-actions">
+                  <button type="button" class="btn btn-sm pi-icon-btn pi-edit" data-target="full_name" title="Edit">
+                    <i class="bi bi-pencil-fill"></i>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-primary pi-edit" data-target="full_name">
+                    <i class="bi bi-pencil-square me-1"></i> Edit
+                  </button>
+                </div>
+              </div>
+
+              <div class="pi-input-wrap">
+                {{ form.full_name(class="form-control pi-input", placeholder="Enter full name", id="full_name") }}
+              </div>
+
+              {% if form.full_name.errors %}
+                <div class="text-danger small mt-1">{{ form.full_name.errors[0] }}</div>
+              {% endif %}
+            </div>
+
+            <hr class="pi-divider">
+
+            <!-- Email Address (display row like image) -->
+            <div class="pi-row">
+              <div class="pi-row-head">
+                <div class="pi-row-title">Email Address</div>
+
+                <div class="pi-actions">
+                  {% if change_email_url is defined and change_email_url %}
+                    {# STEP 4: open modal instead of navigating #}
+                    <a class="pi-link"
+                       href="#"
+                       id="openChangeEmail"
+                       data-url="{{ change_email_url }}">
+                      Change Email <i class="bi bi-chevron-right"></i>
+                    </a>
+                  {% else %}
+                    <span class="pi-link text-muted">Change Email <i class="bi bi-chevron-right"></i></span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="d-flex align-items-center gap-3 flex-wrap">
+                {# STEP 5: give email text an id so JS can update it #}
+                <div class="pi-email" id="profileEmailText">
+                  {{ form.email.data or current_user.email }}
+                </div>
+
+                {% set verified = (email_verified if email_verified is defined else (current_user.email_verified if current_user.email_verified is defined else False)) %}
+                {% if verified %}
+                  <span class="pi-verified">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span class="ms-1">Verified</span>
+                  </span>
+                {% endif %}
+              </div>
+
+              {# keep email field in form (hidden) to avoid changing backend expectations #}
+              <div class="d-none">
+                {{ form.email(id="email_hidden") }}
+              </div>
+            </div>
+
+            <hr class="pi-divider">
+
+            <!-- Mobile Number (inline Save/Cancel row like image) -->
+            <div class="pi-row" data-field="mobile">
+              <div class="pi-row-head">
+                <div class="pi-row-title">Mobile Number</div>
+
+                <div class="pi-actions">
+                  <button type="button" class="btn btn-sm btn-primary pi-edit" data-target="mobile">
+                    <i class="bi bi-pencil-square me-1"></i> Edit
+                  </button>
+                </div>
+              </div>
+
+              <div class="pi-inline">
+                <div class="pi-input-wrap flex-grow-1">
+                  {{ form.mobile(class="form-control pi-input", placeholder="Enter mobile number", id="mobile") }}
+                </div>
+
+                <div class="pi-inline-actions">
+                  <button type="button" class="btn btn-sm btn-primary pi-save-one" data-target="mobile">Save</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary pi-cancel-one" data-target="mobile">Cancel</button>
+                </div>
+              </div>
+
+              {% if form.mobile.errors %}
+                <div class="text-danger small mt-1">{{ form.mobile.errors[0] }}</div>
+              {% endif %}
+            </div>
+
+            <hr class="pi-divider">
+
+            <!-- TRN -->
+            <div class="pi-row" data-field="trn">
+              <div class="pi-row-head">
+                <div class="pi-row-title">TRN (Tax Registration Number)</div>
+
+                <div class="pi-actions">
+                  <button type="button" class="btn btn-sm pi-icon-btn pi-edit" data-target="trn" title="Edit">
+                    <i class="bi bi-pencil-fill"></i>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-primary pi-edit" data-target="trn">
+                    <i class="bi bi-pencil-square me-1"></i> Edit
+                  </button>
+                </div>
+              </div>
+
+              <div class="pi-input-wrap">
+                {{ form.trn(class="form-control pi-input", placeholder="Enter TRN", id="trn") }}
+              </div>
+
+              {% if form.trn.errors %}
+                <div class="text-danger small mt-1">{{ form.trn.errors[0] }}</div>
+              {% endif %}
+            </div>
+
+            <!-- Bottom green banner like image -->
+            {% if percent < 100 %}
+              <div class="pi-banner">
+                <i class="bi bi-check-circle-fill"></i>
+                <div>
+                  <strong>Almost there!</strong> Complete your profile and click <strong>Save</strong> to finish.
+                </div>
+              </div>
+            {% else %}
+              <div class="pi-banner">
+                <i class="bi bi-check-circle-fill"></i>
+                <div>
+                  <strong>All set!</strong> Your profile is complete.
+                </div>
+              </div>
+            {% endif %}
+
+            <!-- Bottom centered Save Changes button -->
+            <div class="pi-footer">
+              {{ form.submit(class="btn btn-primary px-5 py-2 pi-submit", value="Save Changes") }}
+            </div>
+
+          </form>
+        </div>
+      </div>
+
     </div>
-
-    <div class="mb-3">
-      {{ form.email.label(class="form-label") }}
-      {{ form.email(class="form-control", placeholder="Enter email") }}
-      {% if form.email.errors %}
-        <div class="text-danger small">{{ form.email.errors[0] }}</div>
-      {% endif %}
-    </div>
-
-    <div class="mb-3">
-      {{ form.mobile.label(class="form-label") }}
-      {{ form.mobile(class="form-control", placeholder="Enter mobile number") }}
-      {% if form.mobile.errors %}
-        <div class="text-danger small">{{ form.mobile.errors[0] }}</div>
-      {% endif %}
-    </div>
-
-    <div class="mb-3">
-      {{ form.trn.label(class="form-label") }}
-      {{ form.trn(class="form-control", placeholder="Enter TRN") }}
-      {% if form.trn.errors %}
-        <div class="text-danger small">{{ form.trn.errors[0] }}</div>
-      {% endif %}
-    </div>
-
-    {{ form.submit(class="btn btn-dashboard w-100") }}
-  </form>
+  </div>
 </div>
+
+{# STEP 4: Change Email modal shell #}
+<div class="modal fade" id="changeEmailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:520px;">
+    <div class="modal-content" style="border-radius:0;">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-envelope"></i> Change Email</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="changeEmailModalBody">
+        <div class="text-center py-4 text-muted">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // --- Disable all editable inputs by default (like image) ---
+  const editableIds = ["full_name", "mobile", "trn"];
+  const originals = {};
+
+  function setDisabled(id, disabled) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.disabled = disabled;
+    el.classList.toggle("pi-disabled", disabled);
+  }
+
+  function rememberOriginal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    originals[id] = el.value;
+  }
+
+  function restoreOriginal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (originals[id] !== undefined) el.value = originals[id];
+  }
+
+  // init: disable + remember values
+  editableIds.forEach(id => {
+    rememberOriginal(id);
+    setDisabled(id, true);
+  });
+
+  // --- Edit buttons: enable field and show inline actions if mobile row ---
+  document.addEventListener("click", (e) => {
+    const editBtn = e.target.closest(".pi-edit");
+    if (editBtn) {
+      const id = editBtn.getAttribute("data-target");
+      if (!id) return;
+
+      setDisabled(id, false);
+      const el = document.getElementById(id);
+      if (el) el.focus();
+
+      if (id === "mobile") {
+        document.querySelector(".pi-inline-actions")?.classList.add("show");
+      }
+      return;
+    }
+
+    const saveOne = e.target.closest(".pi-save-one");
+    if (saveOne) {
+      document.querySelector(".pi-submit")?.click();
+      return;
+    }
+
+    const cancelOne = e.target.closest(".pi-cancel-one");
+    if (cancelOne) {
+      const id = cancelOne.getAttribute("data-target");
+      if (!id) return;
+
+      restoreOriginal(id);
+      setDisabled(id, true);
+
+      if (id === "mobile") {
+        document.querySelector(".pi-inline-actions")?.classList.remove("show");
+      }
+      return;
+    }
+  });
+
+  // --- Relative "Last updated: 2 days ago" ---
+  const lastEl = document.getElementById("piLastUpdated");
+  if (lastEl) {
+    const iso = lastEl.getAttribute("data-iso");
+    if (iso) {
+      const dt = new Date(iso);
+      const now = new Date();
+      let diffMs = now - dt;
+
+      if (diffMs < 0) diffMs = 0;
+
+      const mins = Math.floor(diffMs / 60000);
+      const hrs  = Math.floor(mins / 60);
+      const days = Math.floor(hrs / 24);
+
+      let txt = "";
+      if (mins < 60) txt = `${mins} min${mins===1?"":"s"} ago`;
+      else if (hrs < 24) txt = `${hrs} hour${hrs===1?"":"s"} ago`;
+      else txt = `${days} day${days===1?"":"s"} ago`;
+
+      lastEl.textContent = `Last updated: ${txt}`;
+    }
+  }
+
+  // --------------------------------------------
+  // STEP 6: Change Email Modal (AJAX + fetch)
+  // --------------------------------------------
+  function ensureBootstrap() {
+    if (!window.bootstrap || !bootstrap.Modal) {
+      console.error("Bootstrap Modal not available. Ensure bootstrap.bundle.min.js is loaded.");
+      alert("Bootstrap JS not loaded. Add bootstrap.bundle.min.js in layout_customer.html.");
+      return false;
+    }
+    return true;
+  }
+
+  const openBtn = document.getElementById("openChangeEmail");
+  const ceModalEl = document.getElementById("changeEmailModal");
+  const ceBody = document.getElementById("changeEmailModalBody");
+  const emailText = document.getElementById("profileEmailText");
+  let ceModal = null;
+
+  async function loadChangeEmailModal(url) {
+    ceBody.innerHTML = `<div class="text-center py-4 text-muted">Loading…</div>`;
+    if (!ceModal) ceModal = new bootstrap.Modal(ceModalEl);
+    ceModal.show();
+
+    try {
+      const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" }});
+      const html = await res.text();
+      ceBody.innerHTML = html;
+      wireChangeEmailForm(url);
+    } catch (e) {
+      ceBody.innerHTML = `<div class="alert alert-danger mb-0">Failed to load.</div>`;
+    }
+  }
+
+  function setErr(id, msg) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (msg) {
+      el.classList.remove("d-none");
+      el.textContent = msg;
+    } else {
+      el.classList.add("d-none");
+      el.textContent = "";
+    }
+  }
+
+  function wireChangeEmailForm(postUrl) {
+    const form = document.getElementById("changeEmailForm");
+    if (!form) return;
+
+    const toggleBtn = document.getElementById("ceTogglePw");
+    const pw = document.getElementById("ceCurrentPassword");
+
+    if (toggleBtn && pw) {
+      toggleBtn.addEventListener("click", () => {
+        const isPw = pw.getAttribute("type") === "password";
+        pw.setAttribute("type", isPw ? "text" : "password");
+        toggleBtn.innerHTML = isPw ? `<i class="bi bi-eye-slash"></i>` : `<i class="bi bi-eye"></i>`;
+      });
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      setErr("ceErrCurrentPassword", "");
+      setErr("ceErrNewEmail", "");
+
+      const okBox = document.getElementById("ceSuccess");
+      const badBox = document.getElementById("ceFail");
+      const btn = document.getElementById("ceSubmitBtn");
+
+      if (okBox) okBox.classList.add("d-none");
+      if (badBox) badBox.classList.add("d-none");
+      if (btn) btn.disabled = true;
+
+      try {
+        const formData = new FormData(form);
+        const res = await fetch(postUrl, {
+          method: "POST",
+          body: formData,
+          headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok) {
+            if (emailText && data.email) emailText.textContent = data.email;
+
+            if (okBox) {
+              okBox.textContent = data.message || "Email updated.";
+              okBox.classList.remove("d-none");
+            }
+
+            setTimeout(() => {
+              try { ceModal.hide(); } catch(e) {}
+              window.location.reload();
+            }, 650);
+            return;
+          }
+        }
+
+        let payload = null;
+        try { payload = await res.json(); } catch (e) {}
+
+        if (payload && payload.errors) {
+          setErr("ceErrCurrentPassword", payload.errors.current_password || "");
+          setErr("ceErrNewEmail", payload.errors.new_email || "");
+        } else {
+          if (badBox) {
+            badBox.textContent = "Failed to update email.";
+            badBox.classList.remove("d-none");
+          }
+        }
+
+      } catch (err) {
+        if (badBox) {
+          badBox.textContent = "Network error. Please try again.";
+          badBox.classList.remove("d-none");
+        }
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+  }
+
+  if (openBtn) {
+    openBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (!ensureBootstrap()) return;
+      const url = openBtn.getAttribute("data-url");
+      if (!url) return;
+      loadChangeEmailModal(url);
+    });
+  }
+})();
+</script>
+
+<style>
+/* Flat, no rounded borders */
+.pi-card {
+  border-radius: 0;
+  border: 1px solid #d1d5db;
+  overflow: hidden;
+}
+
+.pi-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 22px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.pi-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: #111827;
+}
+
+.pi-updated {
+  color: #6b7280;
+  font-size: .95rem;
+}
+
+.pi-body {
+  padding: 18px 22px 14px 22px;
+  background: #fff;
+}
+
+.pi-section {
+  padding: 10px 0 6px 0;
+}
+
+.pi-strong {
+  font-weight: 700;
+  color: #111827;
+  min-width: 210px;
+}
+
+.pi-progress-wrap { flex: 1 1 auto; min-width: 240px; }
+.pi-progress { height: 14px; border-radius: 0; background: #e5e7eb; }
+
+.pi-label {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pi-divider {
+  margin: 16px 0;
+  border-top: 1px solid #e5e7eb;
+  opacity: 1;
+}
+
+.pi-row { padding: 2px 0; }
+.pi-row-head {
+  display:flex;
+  justify-content: space-between;
+  align-items:center;
+  margin-bottom: 10px;
+}
+.pi-row-title {
+  font-weight: 800;
+  color: #111827;
+  font-size: 1.15rem;
+}
+
+.pi-actions { display:flex; align-items:center; gap: 10px; }
+
+.pi-icon-btn {
+  border: 0;
+  background: transparent;
+  padding: 6px;
+  color: #374151;
+}
+.pi-icon-btn:hover { color: #4a148c; }
+
+.pi-input {
+  border-radius: 0;
+  font-size: 1.05rem;
+  padding: .75rem .9rem;
+}
+.pi-disabled {
+  background: #f9fafb !important;
+  color: #111827;
+}
+
+.pi-email {
+  font-size: 1.1rem;
+  color: #111827;
+}
+
+.pi-verified {
+  display:inline-flex;
+  align-items:center;
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.pi-link {
+  color: #0b63ce;
+  text-decoration: underline;
+  font-weight: 600;
+}
+.pi-link:hover { color: #084ea3; }
+
+.pi-inline {
+  display:flex;
+  align-items:center;
+  gap: 12px;
+}
+.pi-inline-actions {
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s ease;
+}
+.pi-inline-actions.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pi-banner {
+  margin-top: 16px;
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  padding: 14px 14px;
+  display:flex;
+  gap: 10px;
+  align-items:flex-start;
+  color: #065f46;
+  font-size: 1rem;
+}
+
+.pi-footer {
+  display:flex;
+  justify-content:center;
+  padding: 18px 0 6px 0;
+}
+
+.pi-submit {
+  border-radius: 0;
+  min-width: 260px;
+  font-weight: 800;
+}
+
+@media (max-width: 768px) {
+  .pi-title { font-size: 1.35rem; }
+  .pi-strong { min-width: auto; }
+  .pi-inline { flex-direction: column; align-items: stretch; }
+  .pi-inline-actions { justify-content: flex-end; width: 100%; }
+}
+</style>
 {% endblock %}
+
+

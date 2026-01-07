@@ -30,6 +30,9 @@ class User(db.Model, UserMixin):
     date_registered = db.Column(db.String)
     address = db.Column(db.String)
     wallet_balance = db.Column(db.Float, default=0.0)
+   
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at_dt = db.Column(db.DateTime, default=datetime.utcnow)
 
     referred_by = db.Column(db.Integer)
     referral_code = db.Column(db.String, unique=True)  # <--- unique

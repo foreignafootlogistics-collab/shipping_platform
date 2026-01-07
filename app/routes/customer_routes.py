@@ -1,5 +1,4 @@
 # app/routes/customer_routes.py (imports)
-
 import os, re, io
 import math
 from math import ceil
@@ -767,10 +766,6 @@ def view_receipt(payment_id):
     return render_template("customer/transactions/receipt_view.html", payment=p, invoice=inv)
 
 
-import os
-from flask import send_file, current_app, abort
-from app.utils.invoice_pdf import generate_invoice_pdf
-
 @customer_bp.route("/transactions/receipts/<int:payment_id>/pdf-inline", endpoint="receipt_pdf_inline")
 @customer_required
 def receipt_pdf_inline(payment_id):
@@ -1177,15 +1172,148 @@ def profile():
     form = PersonalInfoForm(obj=user)
 
     if form.validate_on_submit():
-        user.full_name = form.full_name.data.strip()
-        user.email = form.email.data.strip()
-        user.mobile = form.mobile.data.strip()
-        user.trn = form.trn.data.strip() if hasattr(user, "trn") else getattr(user, "trn", None)
+        user.full_name = (form.full_name.data or "").strip()
+        user.email     = (form.email.data or "").strip()
+        user.mobile    = (form.mobile.data or "").strip()
+
+        # TRN (safe even if missing)
+        if hasattr(user, "trn"):
+            user.trn = (form.trn.data or "").strip()
+
+        # Track updated_at if your model supports it
+        # (won't break if the column doesn't exist)
+        try:
+            from datetime import datetime
+            if hasattr(user, "updated_at"):
+                user.updated_at = datetime.utcnow()
+        except Exception:
+            pass
+
         db.session.commit()
         flash("Your personal information has been updated.", "success")
         return redirect(url_for('customer.profile'))
 
-    return render_template('customer/profile.html', form=form)
+    # Optional: verified flag (template uses this)
+    email_verified = False
+    try:
+        email_verified = bool(getattr(user, "email_verified", False))
+    except Exception:
+        email_verified = False
+
+    # Optional: change email URL (only pass if you actually have that endpoint)
+    change_email_url = None
+    try:
+        change_email_url = url_for("customer.change_email_modal")
+    except Exception:
+        change_email_url = None
+
+    return render_template(
+        'customer/profile.html',
+        form=form,
+        email_verified=email_verified,
+        change_email_url=change_email_url
+    )
+
+@customer_bp.route("/profile/change-email", methods=["GET", "POST"])
+@login_required
+def change_email():
+    user = current_user
+
+    if request.method == "POST":
+        current_password = request.form.get("current_password", "") or ""
+        new_email = (request.form.get("new_email") or "").strip().lower()
+
+        # Basic validation
+        if not current_password:
+            flash("Please enter your current password.", "warning")
+            return redirect(url_for("customer.change_email"))
+
+        if not new_email:
+            flash("Please enter a new email address.", "warning")
+            return redirect(url_for("customer.change_email"))
+
+        # Check password (your User.password is bcrypt hash bytes)
+        try:
+            ok = bcrypt.checkpw(current_password.encode("utf-8"), user.password)
+        except Exception:
+            ok = False
+
+        if not ok:
+            flash("Current password is incorrect.", "danger")
+            return redirect(url_for("customer.change_email"))
+
+        # Prevent duplicates
+        exists = User.query.filter(User.email == new_email, User.id != user.id).first()
+        if exists:
+            flash("That email is already in use.", "danger")
+            return redirect(url_for("customer.change_email"))
+
+        # Update email
+        user.email = new_email
+        if hasattr(user, "updated_at"):
+            user.updated_at = datetime.utcnow()
+
+        db.session.commit()
+        flash("Email updated successfully.", "success")
+        return redirect(url_for("customer.profile"))
+
+    return render_template("customer/change_email.html")
+
+
+@customer_bp.route("/profile/change-email/modal", methods=["GET"])
+@login_required
+def change_email_modal():
+    # partial template ONLY (no extends)
+    return render_template("customer/_change_email_modal_body.html", user=current_user)
+
+
+@customer_bp.route("/profile/change-email/modal", methods=["POST"])
+@login_required
+def change_email_modal_submit():
+    user = current_user
+
+    current_password = request.form.get("current_password", "") or ""
+    new_email = (request.form.get("new_email") or "").strip().lower()
+
+    errors = {}
+
+    if not current_password:
+        errors["current_password"] = "Current password is required."
+
+    if not new_email:
+        errors["new_email"] = "New email is required."
+
+    # Validate password
+    if not errors.get("current_password"):
+        try:
+            ok = bcrypt.checkpw(current_password.encode("utf-8"), user.password)
+        except Exception:
+            ok = False
+        if not ok:
+            errors["current_password"] = "Current password is incorrect."
+
+    # Validate uniqueness
+    if new_email and not errors.get("new_email"):
+        exists = User.query.filter(User.email == new_email, User.id != user.id).first()
+        if exists:
+            errors["new_email"] = "That email is already in use."
+
+    if errors:
+        # return 400 with structured errors for the modal to render
+        return jsonify({"ok": False, "errors": errors}), 400
+
+    # Save
+    user.email = new_email
+    if hasattr(user, "updated_at"):
+        user.updated_at = datetime.utcnow()
+
+    db.session.commit()
+
+    return jsonify({
+        "ok": True,
+        "message": "Email updated successfully.",
+        "email": user.email
+    })
 
 
 @customer_bp.route('/address', methods=['GET', 'POST'])

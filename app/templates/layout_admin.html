@@ -96,10 +96,11 @@
                 </li>
 
                 <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_messages' else '' }}"
-                     href="{{ url_for('admin.view_messages') }}">
-                    <i class="bi bi-chat-dots me-2"></i> Messages
+                  <a class="nav-link {{ 'active' if request.endpoint in ['admin.messages','admin.view_message'] else '' }}"
+                    href="{{ url_for('admin.messages') }}">
+                   <i class="bi bi-chat-dots me-2"></i> Messages
                   </a>
+
                 </li>
 
                 <li class="nav-item">
@@ -395,7 +396,7 @@
           </a>
 
           <!-- Messages -->
-          <a href="{{ url_for('admin.view_messages') }}" class="position-relative text-dark">
+          <a href="{{ url_for('admin.messages') }}" class="position-relative text-dark">
             <i class="fas fa-envelope fa-lg"></i>
             {% if unread_messages_count > 0 %}
               <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning">

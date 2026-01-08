@@ -360,10 +360,18 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sender_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     recipient_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+
     subject = db.Column(db.String(255), nullable=False)
     body = db.Column(db.Text, nullable=False)
     is_read = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # ✅ NEW (threads + archive/delete per user)
+    thread_key = db.Column(db.String(64), index=True)
+    archived_by_sender = db.Column(db.Boolean, default=False, nullable=False)
+    archived_by_recipient = db.Column(db.Boolean, default=False, nullable=False)
+    deleted_by_sender = db.Column(db.Boolean, default=False, nullable=False)
+    deleted_by_recipient = db.Column(db.Boolean, default=False, nullable=False)
 
     sender = db.relationship("User", foreign_keys=[sender_id], backref="sent_messages")
     recipient = db.relationship("User", foreign_keys=[recipient_id], backref="received_messages")

@@ -36,6 +36,8 @@ from app.utils.wallet import update_wallet, update_wallet_balance
 from app.utils.invoice_utils import generate_invoice
 from app.utils.rates import get_rate_for_weight
 from app.utils.invoice_pdf import generate_invoice_pdf
+from app.utils.messages import make_thread_key
+from app.utils.message_notify import send_new_message_email
 from app.calculator import calculate_charges
 from app.calculator_data import CATEGORIES, USD_TO_JMD
 
@@ -615,60 +617,245 @@ def edit_rate(rate_id):
 # ----- Admin Inbox / Sent + Bulk Messaging -----
 @admin_bp.route("/messages", methods=["GET", "POST"])
 @admin_required
-def view_messages():
-    admin_id = current_user.id  # <- use ORM user
-    form = SendMessageForm()
+def messages():
+    form = BulkMessageForm()
 
-    form.recipient_ids.choices = [
-        (u.id, f"{u.full_name} ({u.email})")
-        for u in User.query.order_by(User.full_name).all()
-    ]
+    customers = (User.query
+                 .filter(User.role == "customer")
+                 .order_by(User.full_name.asc())
+                 .all())
+    form.user_ids.choices = [(u.id, f"{u.full_name} ({u.email})") for u in customers]
 
-    if form.validate_on_submit():
-        subject = form.subject.data.strip()
-        body = form.body.data.strip()
-        selected_user_ids = form.recipient_ids.data
+    # ---- Bulk send ----
+    if request.method == "POST" and form.validate_on_submit():
+        ids = form.user_ids.data or []
+        if not ids:
+            flash("Please select at least one recipient.", "warning")
+            return redirect(url_for("admin.messages"))
 
-        if not selected_user_ids:
-            flash("Please select at least one recipient.", "danger")
-            return redirect(url_for("admin.view_messages"))
+        subject = (form.subject.data or "").strip()
+        body = (form.message.data or "").strip()
 
-        msgs = []
-        for uid in selected_user_ids:
-            msgs.append(Message(
-                sender_id=admin_id,
+        for uid in ids:
+            tk = make_thread_key(current_user.id, uid)
+            db.session.add(Message(
+                sender_id=current_user.id,
                 recipient_id=uid,
                 subject=subject,
                 body=body,
-                created_at=datetime.utcnow()
+                thread_key=tk,
+                is_read=False,
+                created_at=datetime.utcnow(),
             ))
-        db.session.add_all(msgs)
+
         db.session.commit()
-        flash(f"Message sent to {len(selected_user_ids)} user(s)!", "success")
-        return redirect(url_for("admin.view_messages"))
+        flash(f"Message sent to {len(ids)} customer(s).", "success")
+        return redirect(url_for("admin.messages"))
 
-    inbox = Message.query.filter_by(recipient_id=admin_id).order_by(Message.created_at.desc()).all()
-    for msg in inbox:
-        sender = User.query.get(msg.sender_id)
-        msg.sender_label = "Admin" if (sender and getattr(sender, "is_admin", False)) else "Customer"
+    # ---- Threads list (latest message per thread) ----
+    unread_only = request.args.get("unread") == "1"
+    include_archived = request.args.get("archived") == "1"
 
-    sent = Message.query.filter_by(sender_id=admin_id).order_by(Message.created_at.desc()).all()
-    return render_template("admin/messages.html", form=form, inbox=inbox, sent=sent)
+    base = Message.query.filter(
+        sa.or_(Message.sender_id == current_user.id, Message.recipient_id == current_user.id)
+    )
 
+    # hide deleted for THIS admin
+    base = base.filter(
+        sa.and_(
+            sa.or_(Message.sender_id != current_user.id, Message.deleted_by_sender.is_(False)),
+            sa.or_(Message.recipient_id != current_user.id, Message.deleted_by_recipient.is_(False)),
+        )
+    )
 
-@admin_bp.route("/messages/mark_read/<int:msg_id>", methods=["POST"])
+    # archived toggle
+    if not include_archived:
+        base = base.filter(
+            sa.and_(
+                sa.or_(Message.sender_id != current_user.id, Message.archived_by_sender.is_(False)),
+                sa.or_(Message.recipient_id != current_user.id, Message.archived_by_recipient.is_(False)),
+            )
+        )
+
+    if unread_only:
+        base = base.filter(Message.recipient_id == current_user.id, Message.is_read.is_(False))
+
+    # latest message per thread_key
+    sub = (db.session.query(
+                Message.thread_key.label("tk"),
+                func.max(Message.id).label("max_id")
+           )
+           .filter(Message.thread_key.isnot(None))
+           .group_by(Message.thread_key)
+           ).subquery()
+
+    threads = (db.session.query(Message)
+               .join(sub, Message.id == sub.c.max_id)
+               .order_by(Message.created_at.desc())
+               .all())
+
+    # Separate quick views like you had:
+    inbox = [m for m in threads if m.recipient_id == current_user.id]
+    sent  = [m for m in threads if m.sender_id == current_user.id]
+
+    return render_template("admin/messages.html", inbox=inbox, sent=sent, form=form)
+
+@admin_bp.route("/messages/thread/<int:user_id>", methods=["GET"])
 @admin_required
-def mark_message_read(msg_id):
-    admin_id = current_user.id
-    msg = Message.query.get_or_404(msg_id)
-    if msg.recipient_id != admin_id:
-        flash("Not authorized.", "danger")
-        return redirect(url_for("admin.view_messages"))
+def message_thread(user_id):
+    other = User.query.get_or_404(user_id)
 
-    msg.is_read = True
+    tk = make_thread_key(current_user.id, other.id)
+
+    # load thread, hide deleted for this admin
+    msgs = (Message.query
+            .filter(Message.thread_key == tk)
+            .filter(
+                sa.and_(
+                    sa.or_(Message.sender_id != current_user.id, Message.deleted_by_sender.is_(False)),
+                    sa.or_(Message.recipient_id != current_user.id, Message.deleted_by_recipient.is_(False)),
+                )
+            )
+            .order_by(Message.created_at.asc())
+            .all())
+
+    # mark all as read if admin is recipient
+    for m in msgs:
+        if m.recipient_id == current_user.id and not m.is_read:
+            m.is_read = True
     db.session.commit()
-    flash("Message marked as read.", "success")
-    return redirect(url_for("admin.view_messages"))
+
+    return render_template("admin/message_thread.html", other=other, msgs=msgs)
+
+
+@admin_bp.route("/messages/thread/<int:user_id>/reply", methods=["POST"])
+@admin_required
+def message_thread_reply(user_id):
+    other = User.query.get_or_404(user_id)
+
+    body = (request.form.get("body") or "").strip()
+    if not body:
+        flash("Message can't be empty.", "warning")
+        return redirect(url_for("admin.message_thread", user_id=other.id))
+
+    tk = make_thread_key(current_user.id, other.id)
+
+    # subject: keep latest or default
+    subject = (request.form.get("subject") or "").strip() or "Message"
+
+    msg = Message(
+        sender_id=current_user.id,
+        recipient_id=other.id,
+        subject=subject,
+        body=body,
+        thread_key=tk,
+        is_read=False,
+        created_at=datetime.utcnow(),
+    )
+    db.session.add(msg)
+    db.session.commit()
+
+    # ✅ email notify customer
+    preview = (body[:120] + "…") if len(body) > 120 else body
+    send_new_message_email(other.email, subject, preview)
+
+    flash("Reply sent.", "success")
+    return redirect(url_for("admin.message_thread", user_id=other.id))
+
+@admin_bp.route("/messages/thread/<int:user_id>/archive", methods=["POST"])
+@admin_required
+def archive_thread(user_id):
+    other = User.query.get_or_404(user_id)
+    tk = make_thread_key(current_user.id, other.id)
+
+    msgs = Message.query.filter(Message.thread_key == tk).all()
+    for m in msgs:
+        if m.sender_id == current_user.id:
+            m.archived_by_sender = True
+        if m.recipient_id == current_user.id:
+            m.archived_by_recipient = True
+
+    db.session.commit()
+    flash("Thread archived.", "success")
+    return redirect(url_for("admin.messages"))
+
+
+@admin_bp.route("/messages/thread/<int:user_id>/delete", methods=["POST"])
+@admin_required
+def delete_thread(user_id):
+    other = User.query.get_or_404(user_id)
+    tk = make_thread_key(current_user.id, other.id)
+
+    msgs = Message.query.filter(Message.thread_key == tk).all()
+    for m in msgs:
+        if m.sender_id == current_user.id:
+            m.deleted_by_sender = True
+        if m.recipient_id == current_user.id:
+            m.deleted_by_recipient = True
+
+    db.session.commit()
+    flash("Thread deleted.", "success")
+    return redirect(url_for("admin.messages"))
+
+
+@admin_bp.route("/messages/<int:message_id>", methods=["GET"])
+@admin_required
+def view_message(message_id):
+    m = Message.query.get_or_404(message_id)
+
+    # security: only sender or recipient can view
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        flash("You don't have permission to view that message.", "danger")
+        return redirect(url_for("admin.messages"))
+
+    # mark read when admin opens inbox message
+    if m.recipient_id == current_user.id and not m.is_read:
+        m.is_read = True
+        db.session.commit()
+
+    reply_to_id = m.sender_id if m.recipient_id == current_user.id else m.recipient_id
+
+    return render_template("admin/message_view.html", m=m, reply_to_id=reply_to_id)
+
+
+
+@admin_bp.route("/messages/<int:message_id>/reply", methods=["POST"])
+@admin_required
+def reply_to_message(message_id):
+    m = Message.query.get_or_404(message_id)
+
+    # security: only sender or recipient can reply/view
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        flash("You don't have permission to reply to that message.", "danger")
+        return redirect(url_for("admin.messages"))
+
+    # determine who to reply to
+    reply_to_id = m.sender_id if m.recipient_id == current_user.id else m.recipient_id
+
+    subject = (request.form.get("subject") or "").strip()
+    body    = (request.form.get("body") or "").strip()
+
+    if not subject or not body:
+        flash("Subject and message are required.", "warning")
+        return redirect(url_for("admin.view_message", message_id=m.id))
+
+    # prevent admin replying to self by mistake
+    if reply_to_id == current_user.id:
+        flash("Invalid reply target.", "warning")
+        return redirect(url_for("admin.view_message", message_id=m.id))
+
+    db.session.add(Message(
+        sender_id=current_user.id,
+        recipient_id=reply_to_id,
+        subject=subject,
+        body=body,
+        is_read=False,
+        created_at=datetime.utcnow(),
+    ))
+    db.session.commit()
+
+    flash("Reply sent.", "success")
+    return redirect(url_for("admin.view_message", message_id=m.id))
 
 
 

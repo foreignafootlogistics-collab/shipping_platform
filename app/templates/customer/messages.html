@@ -3,7 +3,17 @@
 
 {% block content %}
 <div class="container mt-4">
-  <h3 class="mb-3">Messages</h3>
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h3 class="mb-0">Messages</h3>
+
+    {# Thread shortcut (opens the admin thread) #}
+    {% if admin %}
+      <a class="btn btn-sm btn-outline-secondary"
+         href="{{ url_for('customer.customer_message_thread', admin_id=admin.id) }}">
+        <i class="bi bi-chat-dots"></i> Open Thread
+      </a>
+    {% endif %}
+  </div>
 
   <!-- Flash -->
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -18,75 +28,134 @@
   {% endwith %}
 
   <div class="row g-3">
-    <!-- Inbox -->
+
+    <!-- Inbox + Sent -->
     <div class="col-lg-7">
+
+      <!-- Inbox -->
       <div class="card-box">
-        <div class="d-flex align-items-center mb-2">
+        <div class="d-flex align-items-center justify-content-between mb-2">
           <h5 class="mb-0">Inbox</h5>
         </div>
 
         {% if inbox|length == 0 %}
           <p class="text-muted mb-0">No messages.</p>
         {% else %}
-          <ul class="list-group">
-            {% for m in inbox %}
-            <li class="list-group-item d-flex justify-content-between align-items-start">
-              <div class="ms-0 me-2">
-                <div class="fw-bold">
-                  {{ m.subject }}
-                  {% if not m.is_read %}
-                    <span class="badge bg-primary ms-1">Unread</span>
-                  {% endif %}
-                </div>
-                <div class="small text-muted">
-                  From: {{ m.sender_id }} • {{ m.created_at.strftime('%Y-%m-%d %H:%M') }}
-                </div>
-                <div class="mt-1">
-                  {{ m.body }}
-                </div>
-              </div>
-              {% if not m.is_read %}
-                <form method="POST" action="{{ url_for('customer.mark_message_read', msg_id=m.id) }}">
-                  {{ csrf_token() }}
-                  <button class="btn btn-sm btn-outline-secondary">Mark read</button>
-                </form>
-              {% endif %}
-            </li>
-            {% endfor %}
-          </ul>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:45%;">Subject</th>
+                  <th style="width:25%;">From</th>
+                  <th style="width:20%;">Date</th>
+                  <th style="width:10%;">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in inbox %}
+                <tr style="cursor:pointer"
+                    onclick="window.location='{{ url_for('customer.customer_message_thread', admin_id=m.sender_id) }}'">
+                  <td class="fw-semibold">
+                    {{ m.subject }}
+                    {% if not m.is_read %}
+                      <span class="badge bg-primary ms-2">Unread</span>
+                    {% endif %}
+                    <div class="text-muted small mt-1">
+                      {{ (m.body or '')[:80] }}{% if m.body and m.body|length > 80 %}...{% endif %}
+                    </div>
+                  </td>
+
+                  <td>
+                    {{ m.sender.full_name if m.sender and m.sender.full_name else "Admin" }}
+                    {% if m.sender and m.sender.email %}
+                      <div class="text-muted small">{{ m.sender.email }}</div>
+                    {% endif %}
+                  </td>
+
+                  <td class="text-muted small">
+                    {{ m.created_at.strftime('%Y-%m-%d %I:%M %p') if m.created_at else "" }}
+                  </td>
+
+                  <td>
+                    {% if not m.is_read %}
+                      <form method="POST"
+                            action="{{ url_for('customer.mark_message_read', msg_id=m.id) }}"
+                            onClick="event.stopPropagation();">
+                        {{ csrf_token() }}
+                        <button class="btn btn-sm btn-outline-secondary">Mark read</button>
+                      </form>
+                    {% else %}
+                      <span class="badge bg-secondary">Read</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         {% endif %}
       </div>
 
       <!-- Sent -->
       <div class="card-box mt-3">
-        <h5>Sent</h5>
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h5 class="mb-0">Sent</h5>
+        </div>
+
         {% if sent|length == 0 %}
           <p class="text-muted mb-0">No sent messages.</p>
         {% else %}
-          <ul class="list-group">
-            {% for m in sent %}
-            <li class="list-group-item">
-              <div class="fw-bold">{{ m.subject }}</div>
-              <div class="small text-muted">
-                To: {{ m.recipient_id }} • {{ m.created_at.strftime('%Y-%m-%d %H:%M') }}
-              </div>
-              <div class="mt-1">{{ m.body }}</div>
-            </li>
-            {% endfor %}
-          </ul>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th style="width:50%;">Subject</th>
+                  <th style="width:25%;">To</th>
+                  <th style="width:25%;">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in sent %}
+                <tr style="cursor:pointer"
+                    onclick="window.location='{{ url_for('customer.customer_message_thread', admin_id=m.recipient_id) }}'">
+                  <td class="fw-semibold">
+                    {{ m.subject }}
+                    <div class="text-muted small mt-1">
+                      {{ (m.body or '')[:90] }}{% if m.body and m.body|length > 90 %}...{% endif %}
+                    </div>
+                  </td>
+
+                  <td>
+                    {{ m.recipient.full_name if m.recipient and m.recipient.full_name else "Admin" }}
+                    {% if m.recipient and m.recipient.email %}
+                      <div class="text-muted small">{{ m.recipient.email }}</div>
+                    {% endif %}
+                  </td>
+
+                  <td class="text-muted small">
+                    {{ m.created_at.strftime('%Y-%m-%d %I:%M %p') if m.created_at else "" }}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
         {% endif %}
       </div>
+
     </div>
 
-    <!-- Compose -->
+    <!-- Compose (quick send to admin) -->
     <div class="col-lg-5">
       <div class="card-box">
-        <h5>New Message</h5>
-        <form method="POST">
+        <h5 class="mb-3">New Message</h5>
+
+        <form method="POST" action="{{ url_for('customer.view_messages') }}">
           {{ form.hidden_tag() }}
+
           <div class="mb-3">
             {{ form.subject.label(class="form-label") }}
-            {{ form.subject(class="form-control") }}
+            {{ form.subject(class="form-control", placeholder="Subject") }}
             {% for e in form.subject.errors %}
               <div class="text-danger small">{{ e }}</div>
             {% endfor %}
@@ -94,16 +163,30 @@
 
           <div class="mb-3">
             {{ form.body.label(class="form-label") }}
-            {{ form.body(class="form-control", rows=5) }}
+            {{ form.body(class="form-control", rows=6, placeholder="Write your message...") }}
             {% for e in form.body.errors %}
               <div class="text-danger small">{{ e }}</div>
             {% endfor %}
           </div>
 
-          <button class="btn btn-dashboard">Send</button>
+          <button class="btn btn-dashboard" type="submit">
+            <i class="bi bi-send"></i> Send
+          </button>
         </form>
+
+        {% if admin %}
+          <hr>
+          <div class="small text-muted">
+            Tip: Use the thread view for replies + full history.
+          </div>
+          <a class="btn btn-sm btn-outline-primary mt-2"
+             href="{{ url_for('customer.customer_message_thread', admin_id=admin.id) }}">
+            Open thread with Admin
+          </a>
+        {% endif %}
       </div>
     </div>
+
   </div>
 </div>
 {% endblock %}

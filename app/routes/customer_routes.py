@@ -26,6 +26,8 @@ from app.utils.referrals import ensure_user_referral_code
 from app.utils.helpers import customer_required
 from app.utils.invoice_utils import generate_invoice
 from app.utils.invoice_pdf import generate_invoice_pdf
+from app.utils.messages import make_thread_key
+from app.utils.message_notify import send_new_message_email
 from app.calculator_data import categories
 from app import allowed_file, mail
 from app.extensions import db
@@ -1046,9 +1048,11 @@ def view_messages():
 
     # Choose an admin recipient (first admin, else first user)
     admin = (
-        User.query.filter_by(is_admin=True).order_by(User.id.asc()).first()
+        User.query.filter(User.role == "admin").order_by(User.id.asc()).first()
+        or User.query.filter(User.is_superadmin.is_(True)).order_by(User.id.asc()).first()
         or User.query.order_by(User.id.asc()).first()
     )
+
 
     if request.method == "POST" and form.validate_on_submit():
         if not admin:
@@ -1079,7 +1083,7 @@ def view_messages():
         .order_by(DBMessage.created_at.desc())
         .all()
     )
-    return render_template("customer/messages.html", form=form, inbox=inbox, sent=sent)
+    return render_template("customer/messages.html", form=form, inbox=inbox, sent=sent, admin=admin)
 
 
 @customer_bp.route("/messages/mark_read/<int:msg_id>", methods=["POST"])
@@ -1117,6 +1121,64 @@ def inject_message_counts():
         current_app.logger.warning("inject_message_counts failed: %s", e)
         count = 0
     return dict(unread_messages_count=int(count))
+
+@customer_bp.route("/messages/thread/<int:admin_id>", methods=["GET"])
+@login_required
+def customer_message_thread(admin_id):
+    admin_user = User.query.get_or_404(admin_id)
+
+    tk = make_thread_key(current_user.id, admin_user.id)
+
+    msgs = (DBMessage.query
+            .filter(DBMessage.thread_key == tk)
+            .filter(
+                sa.and_(
+                    sa.or_(DBMessage.sender_id != current_user.id, DBMessage.deleted_by_sender.is_(False)),
+                    sa.or_(DBMessage.recipient_id != current_user.id, DBMessage.deleted_by_recipient.is_(False)),
+                )
+            )
+            .order_by(DBMessage.created_at.asc())
+            .all())
+
+    for m in msgs:
+        if m.recipient_id == current_user.id and not m.is_read:
+            m.is_read = True
+    db.session.commit()
+
+    return render_template("customer/message_thread.html", admin_user=admin_user, msgs=msgs)
+
+
+@customer_bp.route("/messages/thread/<int:admin_id>/reply", methods=["POST"])
+@login_required
+def customer_message_thread_reply(admin_id):
+    admin_user = User.query.get_or_404(admin_id)
+
+    body = (request.form.get("body") or "").strip()
+    if not body:
+        flash("Message can't be empty.", "warning")
+        return redirect(url_for("customer.customer_message_thread", admin_id=admin_user.id))
+
+    tk = make_thread_key(current_user.id, admin_user.id)
+    subject = (request.form.get("subject") or "").strip() or "Message"
+
+    msg = DBMessage(
+        sender_id=current_user.id,
+        recipient_id=admin_user.id,
+        subject=subject,
+        body=body,
+        thread_key=tk,
+        is_read=False,
+        created_at=datetime.utcnow(),
+    )
+    db.session.add(msg)
+    db.session.commit()
+
+    # ✅ email notify admin (send to admin_user.email)
+    preview = (body[:120] + "…") if len(body) > 120 else body
+    send_new_message_email(admin_user.email, subject, preview)
+
+    flash("Message sent.", "success")
+    return redirect(url_for("customer.customer_message_thread", admin_id=admin_user.id))
 
 # -----------------------------
 # Notifications
@@ -1347,14 +1409,6 @@ def update_delivery_address():
         flash('Delivery address updated successfully!', 'success')
         return redirect(url_for('customer.customer_dashboard'))
     return render_template('customer/update_delivery_address.html', address=getattr(user, 'address', '') or '')
-
-
-import bcrypt
-from datetime import datetime
-from flask import render_template, redirect, url_for, flash
-from flask_login import login_required, current_user
-from app.extensions import db
-from app.forms import PasswordChangeForm
 
 
 @customer_bp.route("/security", methods=["GET", "POST"])

@@ -1,0 +1,70 @@
+{% extends "layout_admin.html" %}
+{% block title %}Conversation{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h3 class="mb-0">Conversation</h3>
+      <div class="text-muted small">{{ other.full_name }}{% if other.email %} • {{ other.email }}{% endif %}</div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <form method="POST" action="{{ url_for('admin.archive_thread', user_id=other.id) }}">
+        <button class="btn btn-outline-secondary btn-sm" type="submit">
+          <i class="bi bi-archive"></i> Archive
+        </button>
+      </form>
+      <form method="POST" action="{{ url_for('admin.delete_thread', user_id=other.id) }}"
+            onsubmit="return confirm('Delete this conversation for you?')">
+        <button class="btn btn-outline-danger btn-sm" type="submit">
+          <i class="bi bi-trash"></i> Delete
+        </button>
+      </form>
+      <a href="{{ url_for('admin.messages') }}" class="btn btn-sm btn-outline-primary">
+        <i class="bi bi-arrow-left"></i> Back
+      </a>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body" style="max-height: 420px; overflow-y:auto;">
+      {% if msgs|length == 0 %}
+        <div class="text-muted">No messages yet.</div>
+      {% else %}
+        {% for m in msgs %}
+          {% set mine = (m.sender_id == current_user.id) %}
+          <div class="d-flex mb-3 {{ 'justify-content-end' if mine else 'justify-content-start' }}">
+            <div class="p-2 rounded border {{ 'bg-light' if mine else '' }}" style="max-width: 78%;">
+              <div class="small text-muted mb-1">
+                <span class="fw-semibold">{{ 'You' if mine else (m.sender.full_name if m.sender else 'Customer') }}</span>
+                • {{ m.created_at.strftime('%Y-%m-%d %I:%M %p') if m.created_at else '' }}
+              </div>
+              <div style="white-space: pre-wrap;">{{ m.body }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header fw-bold">Reply</div>
+    <div class="card-body">
+      <form method="POST" action="{{ url_for('admin.message_thread_reply', user_id=other.id) }}">
+        <div class="mb-2">
+          <input name="subject" class="form-control" placeholder="Subject (optional)">
+        </div>
+        <div class="mb-2">
+          <textarea name="body" class="form-control" rows="4" placeholder="Type your message..." required></textarea>
+        </div>
+        <button class="btn btn-primary" type="submit">
+          <i class="bi bi-send"></i> Send
+        </button>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

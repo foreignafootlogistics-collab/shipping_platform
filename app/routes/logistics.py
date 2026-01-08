@@ -20,6 +20,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from sqlalchemy import func, or_, and_, asc, desc, cast
 from sqlalchemy.types import Date
+from sqlalchemy.sql import func
 
 from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
@@ -244,9 +245,27 @@ def _parse_date_any(v):
     except Exception:
         return None
 
-def _apply_pkg_filters(q, unassigned_id=None):
-    date_from  = (request.args.get('date_from') or '').strip()
-    date_to    = (request.args.get('date_to')   or '').strip()
+
+def _apply_pkg_filters(q, unassigned_id=None, date_from=None, date_to=None):
+    """
+    Apply package filters to a SQLAlchemy query.
+
+    Key upgrade:
+    - Accepts date_from/date_to as optional args.
+    - If not provided, falls back to request.args (old behavior).
+    """
+
+    # ✅ Prefer explicitly passed dates (used by dashboard default-today logic)
+    if date_from is None:
+        date_from = (request.args.get('date_from') or '').strip()
+    else:
+        date_from = (str(date_from) or '').strip()
+
+    if date_to is None:
+        date_to = (request.args.get('date_to') or '').strip()
+    else:
+        date_to = (str(date_to) or '').strip()
+
     house      = request.args.get('house',      '', type=str)
     tracking   = request.args.get('tracking',   '', type=str)
     user_code  = request.args.get('user_code',  '', type=str)
@@ -260,27 +279,28 @@ def _apply_pkg_filters(q, unassigned_id=None):
     unassigned_only = (request.args.get('show_unassigned') or
                        request.args.get('unassigned_only') or '').lower() in ('1', 'true', 'on', 'yes')
 
-    # 🔧 FIXED: cast the string params to DATE so Postgres is happy
+    # ✅ Always use the same date expression everywhere
+    dt_expr = func.date(func.coalesce(Package.date_received, Package.created_at))
+
+    # 🔧 Cast string params to DATE so Postgres is happy
     if date_from:
-        q = q.filter(
-            func.date(func.coalesce(Package.date_received, Package.created_at)) >=
-            cast(date_from, Date)
-        )
+        q = q.filter(dt_expr >= cast(date_from, Date))
 
     if date_to:
-        q = q.filter(
-            func.date(func.coalesce(Package.date_received, Package.created_at)) <=
-            cast(date_to, Date)
-        )
+        q = q.filter(dt_expr <= cast(date_to, Date))
 
     if house:
         q = q.filter(Package.house_awb.ilike(f"%{house.strip()}%"))
+
     if tracking:
         q = q.filter(Package.tracking_number.ilike(f"%{tracking.strip()}%"))
+
     if user_code:
         q = q.filter(User.registration_number.ilike(f"%{user_code.strip()}%"))
+
     if first_name:
         q = q.filter(User.full_name.ilike(f"%{first_name.strip()}%"))
+
     if last_name:
         q = q.filter(User.full_name.ilike(f"%{last_name.strip()}%"))
 
@@ -779,13 +799,22 @@ def logistics_dashboard():
     # View Packages table (filters + pagination) ORM version
     # ----------------------------------------------------------------------------------
     # Default to today's date range when viewing packages and no filter provided
-    date_from  = (request.args.get('date_from') or '').strip()
-    date_to    = (request.args.get('date_to')   or '').strip()
+    # View Packages table (filters + pagination) ORM version
+    raw_date_from = (request.args.get('date_from') or '').strip()
+    raw_date_to   = (request.args.get('date_to')   or '').strip()
+
+    # TRUE only when the user actually applied a date filter in the URL
+    user_date_filter = bool(raw_date_from or raw_date_to)
+
+    date_from = raw_date_from
+    date_to   = raw_date_to
+
+    # Default to today's date range when viewing packages and no filter provided
     if tab == 'view_packages' and not date_from and not date_to:
         today = datetime.now().strftime('%Y-%m-%d')
         date_from = today
         date_to   = today
-        # inject into request args render context below
+
 
     att_counts_sq = (
         db.session.query(
@@ -877,8 +906,9 @@ def logistics_dashboard():
 
     # Daily breakdown when date filters present
     daily_totals = []
-    if date_from or date_to:
+    if user_date_filter:
         dtcol = func.date(func.coalesce(Package.date_received, Package.created_at)).label("day")
+
         dq = _apply_pkg_filters(
             db.session.query(
                 dtcol,
@@ -886,7 +916,10 @@ def logistics_dashboard():
                 func.coalesce(func.sum(Package.weight), 0.0)
             ).join(User, Package.user_id == User.id),
             unassigned_id=unassigned_id,
+            date_from=date_from,
+            date_to=date_to,
         ).group_by(dtcol).order_by(dtcol.asc())
+
         for day, cnt, tw in dq.all():
             daily_totals.append({"day": str(day), "count": int(cnt or 0), "total_weight": float(tw or 0.0)})
 
@@ -946,6 +979,7 @@ def logistics_dashboard():
         status_filter=status_filter,
         date_from=date_from,
         date_to=date_to,
+        user_date_filter=user_date_filter,
         house=house,
         tracking=tracking,
         user_code=user_code,

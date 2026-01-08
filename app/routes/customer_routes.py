@@ -2,7 +2,7 @@
 import os, re, io
 import math
 from math import ceil
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
@@ -249,7 +249,7 @@ def prealerts_create():
             package_contents=form.package_contents.data,
             item_value_usd=float(form.item_value_usd.data or 0),
             invoice_filename=filename,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.session.add(pa)
         db.session.commit()
@@ -1064,7 +1064,7 @@ def view_messages():
             recipient_id=admin.id,
             subject=form.subject.data.strip(),
             body=form.body.data.strip(),
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.session.add(msg)
         db.session.commit()
@@ -1168,7 +1168,7 @@ def customer_message_thread_reply(admin_id):
         body=body,
         thread_key=tk,
         is_read=False,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.session.add(msg)
     db.session.commit()

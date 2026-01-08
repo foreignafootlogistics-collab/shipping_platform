@@ -3,94 +3,135 @@
 
 {% block content %}
 <div class="container mt-4">
+  <div class="page-narrow">
 
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <div>
-      <h4 class="mb-0">Thread</h4>
-      <div class="text-muted small">
-        Chat with: <strong>{{ admin_user.full_name or "Admin" }}</strong>
-        {% if admin_user.email %} • {{ admin_user.email }}{% endif %}
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div>
+        <h4 class="mb-0">Thread</h4>
+        <div class="text-muted small">
+          Chat with: <strong>Administrator</strong>
+        </div>
       </div>
+
+      <a href="{{ url_for('customer.view_messages') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back
+      </a>
     </div>
 
-    <a href="{{ url_for('customer.view_messages') }}" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-arrow-left"></i> Back
-    </a>
-  </div>
-
-  <!-- Flash -->
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      {% endfor %}
-    {% endif %}
-  {% endwith %}
-
-  <div class="card shadow-sm">
-    <div class="card-body" style="max-height: 520px; overflow-y: auto;" id="threadBox">
-
-      {% if msgs|length == 0 %}
-        <p class="text-muted mb-0">No messages yet. Say hello!</p>
-      {% else %}
-        {% for m in msgs %}
-          {% set mine = (m.sender_id == current_user.id) %}
-
-          <div class="d-flex mb-3 {{ 'justify-content-end' if mine else 'justify-content-start' }}">
-            <div style="max-width: 80%;">
-              <div class="small text-muted mb-1 {{ 'text-end' if mine else '' }}">
-                {% if mine %}
-                  You
-                {% else %}
-                  {{ admin_user.full_name or 'Admin' }}
-                {% endif %}
-                • {{ m.created_at.strftime('%Y-%m-%d %I:%M %p') if m.created_at else '' }}
-              </div>
-
-              <div class="p-3 rounded-3 {{ 'bg-primary text-white' if mine else 'bg-light' }}">
-                {% if m.subject %}
-                  <div class="fw-semibold mb-1">{{ m.subject }}</div>
-                {% endif %}
-                <div style="white-space: pre-wrap;">{{ m.body }}</div>
-              </div>
-            </div>
+    <!-- Flash -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
           </div>
         {% endfor %}
       {% endif %}
+    {% endwith %}
 
-    </div>
+    <div class="card shadow-sm">
+      <div class="card-header text-white fw-bold" style="background:#4A148C;">
+        <i class="bi bi-chat-dots me-2"></i>Conversation
+      </div>
 
-    <div class="card-footer bg-white">
-      <form method="POST" action="{{ url_for('customer.customer_message_thread_reply', admin_id=admin_user.id) }}">
-        {{ csrf_token() }}
+      <div class="card-body" style="max-height: 520px; overflow-y: auto;" id="threadBox">
 
-        <div class="row g-2">
-          <div class="col-12">
-            <input type="text" name="subject" class="form-control" placeholder="Subject (optional)">
+        {% if msgs|length == 0 %}
+          <p class="text-muted mb-0">No messages yet. Say hello!</p>
+        {% else %}
+          {% for m in msgs %}
+            {% set mine = (m.sender_id == current_user.id) %}
+
+            <div class="d-flex mb-3 {{ 'justify-content-end' if mine else 'justify-content-start' }}">
+              <div style="max-width: 70%;">
+
+                <div class="small text-muted mb-1 {{ 'text-end' if mine else '' }}">
+                  {% if mine %}You{% else %}Administrator{% endif %}
+                  • {{ to_jamaica(m.created_at).strftime('%Y-%m-%d %I:%M %p') if m.created_at else '' }}
+
+                  {# ✔✔ Read / ✔ Sent indicator (only on YOUR messages) #}
+                  {% if mine %}
+                    {% if m.is_read %}
+                      <i class="bi bi-check2-all ms-1 tick-read" title="Read"></i>
+                    {% else %}
+                      <i class="bi bi-check2 ms-1 tick-sent" title="Sent"></i>
+                    {% endif %}
+                  {% endif %}
+                </div>
+
+                <div class="p-3 rounded-3 {{ 'bubble-mine' if mine else 'bubble-other' }}">
+                  {% if m.subject %}
+                    <div class="fw-semibold mb-1">{{ m.subject }}</div>
+                  {% endif %}
+                  <div style="white-space: pre-wrap;">{{ m.body }}</div>
+                </div>
+
+              </div>
+            </div>
+          {% endfor %}
+        {% endif %}
+
+      </div>
+
+      <div class="card-footer bg-white">
+        <form method="POST" action="{{ url_for('customer.customer_message_thread_reply', admin_id=admin_user.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="row g-2">
+            <div class="col-12">
+              <input type="text" name="subject" class="form-control" placeholder="Subject (optional)">
+            </div>
+
+            <div class="col-12">
+              <textarea name="body" class="form-control" rows="3" placeholder="Write your reply..." required></textarea>
+            </div>
+
+            <div class="col-12 d-flex justify-content-end gap-2">
+              <button class="btn" type="submit" style="background:#4A148C; color:#fff;">
+                <i class="bi bi-send"></i> Send
+              </button>
+
+              <button type="button" class="btn btn-outline-secondary"
+                      onclick="this.closest('form').reset();">
+                Cancel
+              </button>
+            </div>
           </div>
-          <div class="col-12">
-            <textarea name="body" class="form-control" rows="3" placeholder="Write your reply..." required></textarea>
-          </div>
-          <div class="col-12 d-flex justify-content-end gap-2">
-            <button class="btn btn-primary" type="submit">
-              <i class="bi bi-send"></i> Send
-            </button>
-          </div>
-        </div>
-      </form>
+        </form>
+      </div>
+
     </div>
 
   </div>
 </div>
 
 <script>
-  // auto-scroll to bottom
-  document.addEventListener("DOMContentLoaded", function () {
-    const box = document.getElementById("threadBox");
-    if (box) box.scrollTop = box.scrollHeight;
-  });
+document.addEventListener("DOMContentLoaded", function () {
+  const box = document.getElementById("threadBox");
+  if (box) box.scrollTop = box.scrollHeight;
+});
 </script>
+
+<style>
+  .bubble-mine{
+    background:#4A148C; /* FAFL purple */
+    color:#fff;
+  }
+  .bubble-other{
+    background:#f3f4f6;
+    color:#111827;
+  }
+  .tick-read{
+    color:#16a34a; /* green */
+    font-size:0.9rem;
+    vertical-align:middle;
+  }
+  .tick-sent{
+    color:#facc15; /* yellow */
+    font-size:0.9rem;
+    vertical-align:middle;
+  }
+</style>
 {% endblock %}
+

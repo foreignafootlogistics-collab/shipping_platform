@@ -10,6 +10,7 @@ from flask_login import LoginManager
 from sqlalchemy import text
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+
 from . import config as cfg
 from .config import PROFILE_UPLOAD_FOLDER
 from .forms import CalculatorForm, AdminCalculatorForm
@@ -244,8 +245,8 @@ def create_app():
         try:
             return "${:,.2f}".format(float(value))
         except (ValueError, TypeError):
-            return "$0.00"
-
+            return "$0.00"   
+    
     # Errors
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
@@ -265,7 +266,7 @@ def create_app():
     from .routes.api_routes import api_bp
     from .routes.analytics_routes import analytics_bp
     from app.routes.public_api import public_api_bp
-     
+    from app.utils.time import to_jamaica
 
 
     app.register_blueprint(customer_bp, url_prefix='/customer')
@@ -281,6 +282,7 @@ def create_app():
     app.register_blueprint(api_bp)
     app.register_blueprint(analytics_bp, url_prefix='/analytics')
     app.register_blueprint(public_api_bp)
+    app.jinja_env.globals["to_jamaica"] = to_jamaica
 
 
     # Basic routes

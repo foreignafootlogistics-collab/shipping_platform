@@ -5,12 +5,15 @@
 <div class="container mt-4">
   <div class="d-flex align-items-center justify-content-between mb-3">
     <h3 class="mb-0">Admin Messages</h3>
-    <a href="{{ url_for('admin.messages') }}" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-arrow-clockwise"></i> Refresh
-    </a>
+
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.messages') }}">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+      </a>
+    </div>
   </div>
 
-  <!-- Flash Messages -->
+  <!-- Flash -->
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
@@ -23,177 +26,92 @@
   {% endwith %}
 
   <div class="row g-3">
-    <!-- Inbox & Sent -->
+
+    <!-- LEFT: Threads (like customer inbox) -->
     <div class="col-lg-6">
+      <div class="card shadow-sm mb-3">
+        <div class="card-header d-flex align-items-center justify-content-between text-white"
+             style="background:#4A148C;">
+          <div class="fw-bold"><i class="bi bi-inbox me-2"></i>Threads</div>
 
-      <!-- Inbox -->
-      <div class="card mb-3">
-        <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between align-items-center">
-          <span><i class="bi bi-inbox me-2"></i>Inbox</span>
+          <div class="d-flex align-items-center gap-3">
+            <a class="text-white text-decoration-none small"
+               href="{{ url_for('admin.messages', unread='1' if not unread_only else None, archived='1' if include_archived else None) }}">
+              <input type="checkbox" class="form-check-input me-1" {% if unread_only %}checked{% endif %} onclick="return false;">
+              Unread only
+            </a>
 
-          <!-- Unread toggle -->
-          <form method="GET" class="m-0">
-            <div class="form-check form-check-inline m-0">
-              <input class="form-check-input"
-                     type="checkbox"
-                     name="unread"
-                     value="1"
-                     id="unreadOnly"
-                     onchange="this.form.submit()"
-                     {% if request.args.get('unread') == '1' %}checked{% endif %}>
-              <label class="form-check-label text-white" for="unreadOnly">
-                Unread only
-              </label>
-            </div>
-          </form>
-        </div>
-
-        <!-- Inbox Search -->
-        <div class="p-2 border-bottom">
-          <input type="text" id="inboxSearch" class="form-control form-control-sm"
-                 placeholder="Search inbox (subject, sender, preview)...">
+            <a class="text-white text-decoration-none small"
+               href="{{ url_for('admin.messages', archived='1' if not include_archived else None, unread='1' if unread_only else None) }}">
+              <input type="checkbox" class="form-check-input me-1" {% if include_archived %}checked{% endif %} onclick="return false;">
+              Archived
+            </a>
+          </div>
         </div>
 
         <div class="card-body p-0">
-          {% if inbox|length == 0 %}
-            <p class="text-muted m-3">No messages.</p>
+          {% if thread_rows|length == 0 %}
+            <p class="text-muted m-3 mb-0">No threads yet.</p>
           {% else %}
             <div class="table-responsive">
-              <table id="inboxTable" class="table table-hover table-striped mb-0 align-middle">
+              <table class="table table-hover mb-0 align-middle">
                 <thead class="table-light">
                   <tr>
-                    <th style="width: 22%;">Subject</th>
-                    <th style="width: 22%;">From</th>
+                    <th>Customer</th>
                     <th>Preview</th>
-                    <th style="width: 18%;">Date</th>
-                    <th style="width: 10%;">Status</th>
-                    <th style="width: 10%;">Action</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th></th>
                   </tr>
                 </thead>
-
                 <tbody>
-                  {% for m in inbox %}
-                  <tr class="inbox-row" style="cursor:pointer"
-                      onclick="window.location='{{ url_for('admin.view_message', message_id=m.id) }}'">
-
-                    <td class="fw-semibold">{{ m.subject }}</td>
-
-                    <td>
-                      {{ m.sender.full_name if m.sender else "Customer" }}
-                      {% if m.sender and m.sender.email %}
-                        <div class="text-muted small">{{ m.sender.email }}</div>
-                      {% endif %}
-                    </td>
-
-                    <td class="text-muted small">
-                      {{ (m.body or '')[:70] }}{% if (m.body or '')|length > 70 %}…{% endif %}
-                    </td>
-
-                    <td>
-                      {{ m.created_at.strftime('%Y-%m-%d %I:%M %p') if m.created_at else "" }}
-                    </td>
-
-                    <td>
-                      {% if not m.is_read %}
-                        <span class="badge bg-primary">Unread</span>
-                      {% else %}
-                        <span class="badge bg-secondary">Read</span>
-                      {% endif %}
-                    </td>
-
-                    <td>
-                      <a class="btn btn-sm btn-outline-primary"
-                         href="{{ url_for('admin.view_message', message_id=m.id) }}"
-                         onclick="event.stopPropagation();">
-                        Reply
-                      </a>
-                    </td>
-
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% endif %}
-        </div>
-      </div>
-
-      <!-- Sent -->
-      <div class="card mb-3">
-        <div class="card-header bg-success text-white fw-bold">
-          <i class="bi bi-send me-2"></i>Sent Messages
-        </div>
-
-        <!-- Sent Search -->
-        <div class="p-2 border-bottom">
-          <input type="text" id="sentSearch" class="form-control form-control-sm"
-                 placeholder="Search sent (subject, recipient, preview)...">
-        </div>
-
-        <div class="card-body p-0">
-          {% if sent|length == 0 %}
-            <p class="text-muted m-3">No sent messages.</p>
-          {% else %}
-            <div class="table-responsive">
-              <table id="sentTable" class="table table-hover table-striped mb-0 align-middle">
-                <thead class="table-light">
-                  <tr>
-                    <th style="width: 22%;">Subject</th>
-                    <th style="width: 22%;">To</th>
-                    <th>Preview</th>
-                    <th style="width: 18%;">Date</th>
-                    <th style="width: 10%;">Action</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {% for m in sent %}
+                {% for last, other in thread_rows %}
+                  {% set is_unread = (last.recipient_id == current_user.id and not last.is_read) %}
                   <tr style="cursor:pointer"
-                      onclick="window.location='{{ url_for('admin.view_message', message_id=m.id) }}'">
+                      onclick="window.location='{{ url_for('admin.message_thread', user_id=other.id) }}'">
+                    <td class="fw-semibold">
+                      {{ other.full_name or "Customer" }}
+                      <div class="text-muted small">{{ other.registration_number or "" }}</div>
+                    </td>
+                    <td class="text-muted">
+                      <div class="fw-semibold text-dark">{{ last.subject or "Message" }}</div>
+                      <div class="small">{{ (last.body or "")[:60] }}{% if (last.body or "")|length > 60 %}…{% endif %}</div>
+                    </td>
+                    <td class="small">
+                      {{ to_jamaica(last.created_at).strftime('%Y-%m-%d %I:%M %p') if last.created_at else "" }}
 
-                    <td class="fw-semibold">{{ m.subject }}</td>
-
+                    </td>
                     <td>
-                      {{ m.recipient.full_name if m.recipient else "Customer" }}
-                      {% if m.recipient and m.recipient.email %}
-                        <div class="text-muted small">{{ m.recipient.email }}</div>
+                      {% if not last.is_read %}
+                        <span class="badge" style="background:#FACC15; color:#111827;">Unread</span>
+                      {% else %}
+                        <span class="badge" style="background:#15803D;">Read</span>
                       {% endif %}
-                    </td>
 
-                    <td class="text-muted small">
-                      {{ (m.body or '')[:70] }}{% if (m.body or '')|length > 70 %}…{% endif %}
                     </td>
-
-                    <td>
-                      {{ m.created_at.strftime('%Y-%m-%d %I:%M %p') if m.created_at else "" }}
-                    </td>
-
-                    <td>
-                      <a class="btn btn-sm btn-outline-secondary"
-                         href="{{ url_for('admin.view_message', message_id=m.id) }}"
+                    <td class="text-end">
+                      <a class="btn btn-sm btn-outline-primary"
+                         href="{{ url_for('admin.message_thread', user_id=other.id) }}"
                          onclick="event.stopPropagation();">
-                        View
+                        Open
                       </a>
                     </td>
-
                   </tr>
-                  {% endfor %}
+                {% endfor %}
                 </tbody>
               </table>
             </div>
           {% endif %}
         </div>
       </div>
-
     </div>
 
-    <!-- Compose / Bulk Message -->
+    <!-- RIGHT: Bulk message (like your current compose) -->
     <div class="col-lg-6">
-      <div class="card">
-        <div class="card-header bg-info text-white fw-bold">
-          <i class="bi bi-megaphone me-2"></i>Send Bulk Message
+      <div class="card shadow-sm">
+        <div class="card-header text-white fw-bold" style="background:#111827;">
+          <i class="bi bi-megaphone me-2"></i> Send Bulk Message
         </div>
-
         <div class="card-body">
           <form method="POST" action="{{ url_for('admin.messages') }}">
             {{ form.hidden_tag() }}
@@ -201,137 +119,74 @@
             <div class="mb-3">
               {{ form.subject.label(class="form-label") }}
               {{ form.subject(class="form-control", placeholder="Enter subject") }}
-              {% for e in form.subject.errors %}
-                <div class="text-danger small">{{ e }}</div>
-              {% endfor %}
+              {% for e in form.subject.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
             <div class="mb-3">
               {{ form.message.label(class="form-label") }}
               {{ form.message(class="form-control", rows="5", placeholder="Write your message...") }}
-              {% for e in form.message.errors %}
-                <div class="text-danger small">{{ e }}</div>
-              {% endfor %}
+              {% for e in form.message.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
             <div class="mb-3">
               <label class="form-label">Recipients</label>
 
-              <!-- Recipients Search -->
               <input type="text" id="recipientSearch" class="form-control mb-2"
                      placeholder="Search customers by name or email...">
 
-              <!-- Select/Deselect -->
-              <div class="mb-2 d-flex gap-2 flex-wrap">
-                <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllBtn">
-                  Select All
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllBtn">
-                  Deselect All
-                </button>
+              <div class="mb-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllBtn">Select All</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllBtn">Deselect All</button>
               </div>
 
-              <!-- Checkbox list -->
-              <div style="max-height: 260px; overflow-y:auto; border: 1px solid #ddd; border-radius: 8px; padding: 10px;">
+              <div style="max-height: 240px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:8px; padding:10px;">
                 {% for value, label in form.user_ids.choices %}
                   <div class="form-check recipient-item" data-label="{{ label|lower }}">
-                    <input
-                      class="form-check-input user-checkbox"
-                      type="checkbox"
-                      name="{{ form.user_ids.name }}"
-                      value="{{ value }}"
-                      id="u_{{ value }}"
-                      {% if value in (form.user_ids.data or []) %}checked{% endif %}
-                    >
-                    <label class="form-check-label" for="u_{{ value }}">
-                      {{ label }}
-                    </label>
+                    <input class="form-check-input user-checkbox"
+                           type="checkbox"
+                           name="{{ form.user_ids.name }}"
+                           value="{{ value }}"
+                           id="u_{{ value }}">
+                    <label class="form-check-label" for="u_{{ value }}">{{ label }}</label>
                   </div>
                 {% endfor %}
               </div>
 
-              {% for e in form.user_ids.errors %}
-                <div class="text-danger small">{{ e }}</div>
-              {% endfor %}
+              {% for e in form.user_ids.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
-            <!-- Buttons -->
             <div class="d-flex gap-2">
               <button type="submit" class="btn btn-primary">
                 <i class="bi bi-send"></i> Send
               </button>
-              <button type="reset" class="btn btn-outline-secondary">
-                Cancel
-              </button>
+              <button type="reset" class="btn btn-outline-secondary">Cancel</button>
             </div>
+
           </form>
         </div>
       </div>
-
-      <!-- Quick tips card -->
-      <div class="alert alert-light border mt-3 mb-0">
-        <div class="fw-semibold mb-1"><i class="bi bi-lightbulb me-2"></i>Tip</div>
-        Use <b>Unread only</b> to focus, or search inbox/sent to find messages fast.
-      </div>
-
     </div>
+
   </div>
 </div>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-  // -------- Bulk recipients: select/deselect + search --------
-  const recipientCheckboxes = document.querySelectorAll(".user-checkbox");
+  const checkboxes = document.querySelectorAll(".user-checkbox");
   const selectAllBtn = document.getElementById("selectAllBtn");
   const deselectAllBtn = document.getElementById("deselectAllBtn");
 
-  if (selectAllBtn) {
-    selectAllBtn.addEventListener("click", () => {
-      recipientCheckboxes.forEach(cb => cb.checked = true);
-    });
-  }
+  if (selectAllBtn) selectAllBtn.addEventListener("click", () => checkboxes.forEach(cb => cb.checked = true));
+  if (deselectAllBtn) deselectAllBtn.addEventListener("click", () => checkboxes.forEach(cb => cb.checked = false));
 
-  if (deselectAllBtn) {
-    deselectAllBtn.addEventListener("click", () => {
-      recipientCheckboxes.forEach(cb => cb.checked = false);
-    });
-  }
-
-  const recipientSearch = document.getElementById("recipientSearch");
-  const recipientItems = document.querySelectorAll(".recipient-item");
-
-  if (recipientSearch) {
-    recipientSearch.addEventListener("input", () => {
-      const q = recipientSearch.value.toLowerCase().trim();
-      recipientItems.forEach(item => {
+  const search = document.getElementById("recipientSearch");
+  const items = document.querySelectorAll(".recipient-item");
+  if (search) {
+    search.addEventListener("input", () => {
+      const q = search.value.toLowerCase().trim();
+      items.forEach(item => {
         const text = item.getAttribute("data-label") || "";
         item.style.display = text.includes(q) ? "" : "none";
-      });
-    });
-  }
-
-  // -------- Inbox search (client-side) --------
-  const inboxSearch = document.getElementById("inboxSearch");
-  const inboxRows = document.querySelectorAll("#inboxTable tbody tr");
-
-  if (inboxSearch) {
-    inboxSearch.addEventListener("input", () => {
-      const q = inboxSearch.value.toLowerCase().trim();
-      inboxRows.forEach(row => {
-        row.style.display = row.innerText.toLowerCase().includes(q) ? "" : "none";
-      });
-    });
-  }
-
-  // -------- Sent search (client-side) --------
-  const sentSearch = document.getElementById("sentSearch");
-  const sentRows = document.querySelectorAll("#sentTable tbody tr");
-
-  if (sentSearch) {
-    sentSearch.addEventListener("input", () => {
-      const q = sentSearch.value.toLowerCase().trim();
-      sentRows.forEach(row => {
-        row.style.display = row.innerText.toLowerCase().includes(q) ? "" : "none";
       });
     });
   }

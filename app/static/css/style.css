@@ -414,3 +414,13 @@ td form .form-control-sm {
 .declared-input {
   -moz-appearance: textfield; /* Firefox */
 }
+/* Narrow page wrapper (customer + admin reusable) */
+.page-narrow{
+  max-width: 880px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.bubble-mine{
+    background:#4a148c;   /* FAFL purple */
+    color:#fff;
+  }

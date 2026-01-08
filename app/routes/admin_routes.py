@@ -8,7 +8,7 @@ from werkzeug.utils import secure_filename
 
 import os, io, math, smtplib
 from email.message import EmailMessage
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from calendar import monthrange
 from collections import OrderedDict
 from collections import defaultdict
@@ -280,7 +280,7 @@ def register_admin():
             email=email,
             password=hashed_pw,              # bytes (LargeBinary)
             role=role,
-            created_at=datetime.utcnow(),    # if your column is string, it'll still store fine
+            created_at=datetime.now(timezone.utc),    # if your column is string, it'll still store fine
             registration_number=registration_number,
             is_admin=is_admin if hasattr(User, "is_admin") else True,
             is_superadmin=is_superadmin,
@@ -620,6 +620,7 @@ def edit_rate(rate_id):
 def messages():
     form = BulkMessageForm()
 
+    # recipients for bulk send
     customers = (User.query
                  .filter(User.role == "customer")
                  .order_by(User.full_name.asc())
@@ -645,20 +646,21 @@ def messages():
                 body=body,
                 thread_key=tk,
                 is_read=False,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
             ))
 
         db.session.commit()
         flash(f"Message sent to {len(ids)} customer(s).", "success")
         return redirect(url_for("admin.messages"))
 
-    # ---- Threads list (latest message per thread) ----
+    # ---- Thread list ----
     unread_only = request.args.get("unread") == "1"
     include_archived = request.args.get("archived") == "1"
 
     base = Message.query.filter(
-        sa.or_(Message.sender_id == current_user.id, Message.recipient_id == current_user.id)
-    )
+        sa.or_(Message.sender_id == current_user.id,
+               Message.recipient_id == current_user.id)
+    ).filter(Message.thread_key.isnot(None))
 
     # hide deleted for THIS admin
     base = base.filter(
@@ -668,7 +670,7 @@ def messages():
         )
     )
 
-    # archived toggle
+    # hide archived unless explicitly included
     if not include_archived:
         base = base.filter(
             sa.and_(
@@ -678,14 +680,14 @@ def messages():
         )
 
     if unread_only:
-        base = base.filter(Message.recipient_id == current_user.id, Message.is_read.is_(False))
+        base = base.filter(Message.recipient_id == current_user.id,
+                           Message.is_read.is_(False))
 
-    # latest message per thread_key
-    sub = (db.session.query(
+    # latest message per thread_key (IMPORTANT: built from base)
+    sub = (base.with_entities(
                 Message.thread_key.label("tk"),
                 func.max(Message.id).label("max_id")
            )
-           .filter(Message.thread_key.isnot(None))
            .group_by(Message.thread_key)
            ).subquery()
 
@@ -694,20 +696,26 @@ def messages():
                .order_by(Message.created_at.desc())
                .all())
 
-    # Separate quick views like you had:
-    inbox = [m for m in threads if m.recipient_id == current_user.id]
-    sent  = [m for m in threads if m.sender_id == current_user.id]
+    # Build display rows with "other user" + preview
+    thread_rows = []
+    for last in threads:
+        other_id = last.recipient_id if last.sender_id == current_user.id else last.sender_id
+        other = User.query.get(other_id)
+        thread_rows.append((last, other))
 
-    return render_template("admin/messages.html", inbox=inbox, sent=sent, form=form)
+    return render_template("admin/messages.html",
+                           form=form,
+                           thread_rows=thread_rows,
+                           unread_only=unread_only,
+                           include_archived=include_archived)
+
 
 @admin_bp.route("/messages/thread/<int:user_id>", methods=["GET"])
 @admin_required
 def message_thread(user_id):
     other = User.query.get_or_404(user_id)
-
     tk = make_thread_key(current_user.id, other.id)
 
-    # load thread, hide deleted for this admin
     msgs = (Message.query
             .filter(Message.thread_key == tk)
             .filter(
@@ -719,7 +727,7 @@ def message_thread(user_id):
             .order_by(Message.created_at.asc())
             .all())
 
-    # mark all as read if admin is recipient
+    # mark as read when admin receives
     for m in msgs:
         if m.recipient_id == current_user.id and not m.is_read:
             m.is_read = True
@@ -738,10 +746,8 @@ def message_thread_reply(user_id):
         flash("Message can't be empty.", "warning")
         return redirect(url_for("admin.message_thread", user_id=other.id))
 
-    tk = make_thread_key(current_user.id, other.id)
-
-    # subject: keep latest or default
     subject = (request.form.get("subject") or "").strip() or "Message"
+    tk = make_thread_key(current_user.id, other.id)
 
     msg = Message(
         sender_id=current_user.id,
@@ -750,17 +756,19 @@ def message_thread_reply(user_id):
         body=body,
         thread_key=tk,
         is_read=False,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.session.add(msg)
     db.session.commit()
 
-    # ✅ email notify customer
+    # notify customer
     preview = (body[:120] + "…") if len(body) > 120 else body
-    send_new_message_email(other.email, subject, preview)
+    if other.email:
+        send_new_message_email(other.email, subject, preview)
 
-    flash("Reply sent.", "success")
+    flash("Sent.", "success")
     return redirect(url_for("admin.message_thread", user_id=other.id))
+
 
 @admin_bp.route("/messages/thread/<int:user_id>/archive", methods=["POST"])
 @admin_required
@@ -798,64 +806,6 @@ def delete_thread(user_id):
     return redirect(url_for("admin.messages"))
 
 
-@admin_bp.route("/messages/<int:message_id>", methods=["GET"])
-@admin_required
-def view_message(message_id):
-    m = Message.query.get_or_404(message_id)
-
-    # security: only sender or recipient can view
-    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
-        flash("You don't have permission to view that message.", "danger")
-        return redirect(url_for("admin.messages"))
-
-    # mark read when admin opens inbox message
-    if m.recipient_id == current_user.id and not m.is_read:
-        m.is_read = True
-        db.session.commit()
-
-    reply_to_id = m.sender_id if m.recipient_id == current_user.id else m.recipient_id
-
-    return render_template("admin/message_view.html", m=m, reply_to_id=reply_to_id)
-
-
-
-@admin_bp.route("/messages/<int:message_id>/reply", methods=["POST"])
-@admin_required
-def reply_to_message(message_id):
-    m = Message.query.get_or_404(message_id)
-
-    # security: only sender or recipient can reply/view
-    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
-        flash("You don't have permission to reply to that message.", "danger")
-        return redirect(url_for("admin.messages"))
-
-    # determine who to reply to
-    reply_to_id = m.sender_id if m.recipient_id == current_user.id else m.recipient_id
-
-    subject = (request.form.get("subject") or "").strip()
-    body    = (request.form.get("body") or "").strip()
-
-    if not subject or not body:
-        flash("Subject and message are required.", "warning")
-        return redirect(url_for("admin.view_message", message_id=m.id))
-
-    # prevent admin replying to self by mistake
-    if reply_to_id == current_user.id:
-        flash("Invalid reply target.", "warning")
-        return redirect(url_for("admin.view_message", message_id=m.id))
-
-    db.session.add(Message(
-        sender_id=current_user.id,
-        recipient_id=reply_to_id,
-        subject=subject,
-        body=body,
-        is_read=False,
-        created_at=datetime.utcnow(),
-    ))
-    db.session.commit()
-
-    flash("Reply sent.", "success")
-    return redirect(url_for("admin.view_message", message_id=m.id))
 
 
 
@@ -1248,7 +1198,7 @@ def mark_invoice_paid():
             method=method,
             amount_jmd=amount,
             notes=notes,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         db.session.add(payment)
         db.session.flush()

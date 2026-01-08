@@ -114,7 +114,7 @@
                     style="display:inline;"
                     onsubmit="return confirm('Delete this attachment?');">
                 {# IMPORTANT: use the same csrf mechanism your page already uses #}
-                {{ bulk_form.hidden_tag() }}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit"
                         class="btn btn-sm"
                         style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .40rem;"

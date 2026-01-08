@@ -15,6 +15,19 @@
     {{ bulk_form.hidden_tag() }}
     <input type="hidden" name="bulk_action" id="bulkActionHiddenAction" value="">
 
+    <!-- ✅ KEEP FILTERS/PAGING WHEN YOU POST BULK ACTIONS -->
+    <input type="hidden" name="page" value="{{ page }}">
+    <input type="hidden" name="per_page" value="{{ per_page }}">
+    <input type="hidden" name="date_from" value="{{ date_from or '' }}">
+    <input type="hidden" name="date_to" value="{{ date_to or '' }}">
+    <input type="hidden" name="house" value="{{ house or '' }}">
+    <input type="hidden" name="tracking" value="{{ tracking or '' }}">
+    <input type="hidden" name="user_code" value="{{ user_code or '' }}">
+    <input type="hidden" name="first_name" value="{{ first_name or '' }}">
+    <input type="hidden" name="last_name" value="{{ last_name or '' }}">
+    <input type="hidden" name="unassigned_only" value="{{ '1' if unassigned_only else '' }}">
+    <input type="hidden" name="epc_only" value="{{ '1' if epc_only else '' }}">
+ 
     <div class="d-flex align-items-center action-toolbar shadow-sm">
     
       <!-- Move to Shipment Log -->
@@ -38,8 +51,7 @@
       <!-- Send Invoice Request (stays on bulk_action route) -->
       <button type="submit"
               class="toolbar-btn"
-              name="action"
-              value="send_invoice_request"
+              onclick="document.getElementById('bulkActionHiddenAction').value='send_invoice_request';"
               title="Send Invoice Request">
         <i class="bi bi-file-earmark-text"></i>
       </button>
@@ -505,8 +517,13 @@
 
   
   // Select All checkboxes
-  document.getElementById('selectAll').addEventListener('change', function() {
-    document.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = this.checked);
+  document.addEventListener('DOMContentLoaded', function () {
+    const selectAll = document.getElementById('selectAll');
+    if (!selectAll) return;
+
+    selectAll.addEventListener('change', function() {
+      document.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = this.checked);
+    });
   });
 
   // Bulk actions must have at least one selected

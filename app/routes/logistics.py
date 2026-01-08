@@ -1420,11 +1420,11 @@ def packages_bulk_action():
 
     if not action:
         flash("No action selected.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
     if not pkg_ids:
         flash("Please select at least one package.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
     pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
 
@@ -1434,6 +1434,7 @@ def packages_bulk_action():
             for p in pkgs:
                 db.session.delete(p)
             db.session.flush()
+
             if affected_invoice_ids:
                 still_used = (
                     db.session.query(Package.invoice_id)
@@ -1445,6 +1446,7 @@ def packages_bulk_action():
                 to_delete = [iid for iid in affected_invoice_ids if iid not in still_used_ids]
                 if to_delete:
                     Invoice.query.filter(Invoice.id.in_(to_delete)).delete(synchronize_session=False)
+
             db.session.commit()
             flash(f"Deleted {len(pkgs)} package(s).", "success")
 
@@ -1452,56 +1454,48 @@ def packages_bulk_action():
             now = datetime.utcnow()
             for p in pkgs:
                 p.status = "Received"
-
-                # ✅ stamp date if missing
                 if not getattr(p, "received_date", None):
                     p.received_date = now
                 if not getattr(p, "date_received", None):
                     p.date_received = p.received_date
-            db.session.commit()            
+            db.session.commit()
             flash(f"Marked {len(pkgs)} package(s) as Received.", "success")
 
         elif action == "export_pdf":
             from reportlab.pdfgen import canvas as rlcanvas
             buf = io.BytesIO()
-            p = rlcanvas.Canvas(buf, pagesize=letter)
+            c = rlcanvas.Canvas(buf, pagesize=letter)
             y = 750
             for row in pkgs:
-                p.drawString(
-                    50,
-                    y,
+                c.drawString(
+                    50, y,
                     f"Tracking: {row.tracking_number}, Desc: {row.description}, "
                     f"Weight: {row.weight} lbs, Status: {row.status}"
                 )
                 y -= 20
                 if y < 60:
-                    p.showPage()
+                    c.showPage()
                     y = 750
-            p.save()
+            c.save()
             buf.seek(0)
             return send_file(buf, as_attachment=True,
                              download_name="packages.pdf",
                              mimetype="application/pdf")
 
         elif action == "create_shipment":
-            return redirect(url_for('logistics.create_shipment'))
+            return redirect(url_for("logistics.create_shipment"))
 
         elif action == "assign":
-            return redirect(url_for('logistics.assign_packages'))
+            return redirect(url_for("logistics.assign_packages"))
 
-        elif action == "invoice_request":
-            # Group selected packages by user
+        elif action in ("invoice_request", "send_invoice_request"):
             from app.utils import email_utils
 
             grouped = {}
             for p in pkgs:
                 if not p.user:
                     continue
-                if p.user_id not in grouped:
-                    grouped[p.user_id] = {
-                        "user": p.user,
-                        "packages": []
-                    }
+                grouped.setdefault(p.user_id, {"user": p.user, "packages": []})
                 grouped[p.user_id]["packages"].append({
                     "description": p.description or "-",
                     "tracking_number": p.tracking_number or "-",
@@ -1515,8 +1509,6 @@ def packages_bulk_action():
 
             for data in grouped.values():
                 user = data["user"]
-                pkg_dicts = data["packages"]
-
                 if not user.email:
                     failed.append("(no email)")
                     continue
@@ -1524,7 +1516,7 @@ def packages_bulk_action():
                 ok = email_utils.send_package_upload_email(
                     recipient_email=user.email,
                     first_name=(user.full_name or "Customer").split()[0],
-                    packages=pkg_dicts,
+                    packages=data["packages"],
                 )
                 if ok:
                     sent += 1
@@ -1538,15 +1530,15 @@ def packages_bulk_action():
 
         elif action == "mark_epc":
             for p in pkgs:
-                if hasattr(Package, 'epc'):
-                    setattr(p, 'epc', 1)
+                if hasattr(Package, "epc"):
+                    p.epc = 1
             db.session.commit()
             flash(f"Marked {len(pkgs)} package(s) as EPC.", "success")
 
         elif action == "clear_epc":
             for p in pkgs:
-                if hasattr(Package, 'epc'):
-                    setattr(p, 'epc', 0)
+                if hasattr(Package, "epc"):
+                    p.epc = 0
             db.session.commit()
             flash(f"Cleared EPC on {len(pkgs)} package(s).", "success")
 
@@ -1557,18 +1549,34 @@ def packages_bulk_action():
         db.session.rollback()
         flash(f"Error performing bulk action: {e}", "danger")
 
+    # ✅ pull filters from POST (because this is a POST)
+    page = request.form.get("page", 1)
+    per_page = request.form.get("per_page", 10)
+
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 1
+
+    try:
+        per_page = int(per_page)
+    except (TypeError, ValueError):
+        per_page = 10
+
     return redirect(url_for(
         "logistics.logistics_dashboard",
         tab="view_packages",
-        page=request.args.get("page", 1),
-        per_page=request.args.get("per_page", 10),
-        date_from=request.args.get("date_from"),
-        date_to=request.args.get("date_to"),
-        house=request.args.get("house"),
-        tracking=request.args.get("tracking"),
-        user_code=request.args.get("user_code"),
-        first_name=request.args.get("first_name"),
-        last_name=request.args.get("last_name"),
+        page=page,
+        per_page=per_page,
+        date_from=request.form.get("date_from") or None,
+        date_to=request.form.get("date_to") or None,
+        house=request.form.get("house") or None,
+        tracking=request.form.get("tracking") or None,
+        user_code=request.form.get("user_code") or None,
+        first_name=request.form.get("first_name") or None,
+        last_name=request.form.get("last_name") or None,
+        unassigned_only=request.form.get("unassigned_only") or None,
+        epc_only=request.form.get("epc_only") or None,
     ))
 
 # --------------------------------------------------------------------------------------

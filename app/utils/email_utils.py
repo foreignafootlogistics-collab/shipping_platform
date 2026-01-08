@@ -809,3 +809,105 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
 """
     return subject, plain_body, html_body
 
+
+def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=None):
+    """
+    Email: "Please provide invoices for the following packages"
+    Matches your screenshot style: simple blocks + customs note + red button.
+    packages: list[dict] or list[ORM] with keys/attrs:
+      shipper/vendor, house_awb, tracking_number, weight, status
+    """
+    first_name = (full_name or "Customer").split()[0]
+    subject = "Invoice Request - Foreign A Foot Logistics Limited"
+
+    upload_url = f"{DASHBOARD_URL}/customer/packages"
+
+    # -------- helpers to read dict OR ORM ----------
+    def getp(p, key, default=None):
+        if isinstance(p, dict):
+            return p.get(key, default)
+        return getattr(p, key, default)
+
+    # Build PLAIN blocks
+    blocks_txt = []
+    for p in packages:
+        shipper  = getp(p, "shipper") or getp(p, "vendor") or "-"
+        house    = getp(p, "house_awb") or getp(p, "house") or "-"
+        tracking = getp(p, "tracking_number") or getp(p, "tracking") or "-"
+        weight   = getp(p, "weight") or 0
+        status   = getp(p, "status") or "At Overseas Warehouse"
+
+        blocks_txt.append(
+            f"Shipper: {shipper}\n"
+            f"Airway Bill: {house}\n"
+            f"Tracking Number: {tracking}\n"
+            f"Weight: {int(weight) if str(weight).isdigit() else weight}\n"
+            f"Status: {status}\n"
+        )
+
+    plain_body = (
+        f"Hi {first_name},\n\n"
+        f"Please provide Foreign a Foot Logistics Limited with invoices for the following packages.\n\n"
+        + "\n\n".join(blocks_txt)
+        + "\n\n"
+        "Customs requires a proper invoice for all packages. Packages without a proper invoices will result in delays and/or additional storage costs.\n\n"
+        f"Provide Invoice(s) Now: {upload_url}\n"
+    )
+
+    # Build HTML blocks (screenshot-style)
+    blocks_html = []
+    for p in packages:
+        shipper  = getp(p, "shipper") or getp(p, "vendor") or "-"
+        house    = getp(p, "house_awb") or getp(p, "house") or "-"
+        tracking = getp(p, "tracking_number") or getp(p, "tracking") or "-"
+        weight   = getp(p, "weight") or 0
+        status   = getp(p, "status") or "At Overseas Warehouse"
+
+        blocks_html.append(f"""
+          <div style="margin:18px 0;">
+            <div><b>Shipper:</b> {shipper}</div>
+            <div><b>Airway Bill:</b> {house}</div>
+            <div><b>Tracking Number:</b> {tracking}</div>
+            <div><b>Weight:</b> {weight}</div>
+            <div><b>Status:</b> {status}</div>
+          </div>
+        """)
+
+    html_body = f"""
+<html>
+  <body style="font-family: Arial, sans-serif; color:#111; background:#fff; margin:0; padding:0;">
+    <div style="max-width:900px; padding:24px 28px;">
+      <p style="margin:0 0 14px;">Hi {first_name},</p>
+
+      <p style="margin:0 0 18px;">
+        Please provide Foreign a Foot Logistics Limited with invoices for the following packages.
+      </p>
+
+      {''.join(blocks_html)}
+
+      <p style="margin:18px 0 22px;">
+        <b>Customs requires a proper invoice for all packages. Packages without a proper invoices will result in delays and/or additional storage costs.</b>
+      </p>
+
+      <a href="{upload_url}"
+         style="display:inline-block; background:#ef4444; color:#fff; text-decoration:none;
+                padding:12px 18px; font-weight:700; border-radius:2px;">
+        Provide Invoice(s) Now
+      </a>
+
+      <div style="margin-top:28px;">
+        <img src="{LOGO_URL}" alt="FAFL" style="width:26px; height:auto;">
+      </div>
+    </div>
+  </body>
+</html>
+"""
+
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        recipient_user_id=recipient_user_id,
+    )
+

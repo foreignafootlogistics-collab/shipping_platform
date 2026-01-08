@@ -1495,13 +1495,16 @@ def packages_bulk_action():
             for p in pkgs:
                 if not p.user:
                     continue
-                grouped.setdefault(p.user_id, {"user": p.user, "packages": []})
+
+                if p.user_id not in grouped:
+                    grouped[p.user_id] = {"user": p.user, "packages": []}
+
                 grouped[p.user_id]["packages"].append({
-                    "description": p.description or "-",
-                    "tracking_number": p.tracking_number or "-",
+                    "shipper": getattr(p, "shipper", None) or getattr(p, "vendor", None) or "-",
                     "house_awb": p.house_awb or "-",
+                    "tracking_number": p.tracking_number or "-",
                     "weight": p.weight or 0,
-                    "status": p.status or "Overseas",
+                    "status": p.status or "At Overseas Warehouse",
                 })
 
             sent = 0
@@ -1513,20 +1516,23 @@ def packages_bulk_action():
                     failed.append("(no email)")
                     continue
 
-                ok = email_utils.send_package_upload_email(
-                    recipient_email=user.email,
-                    first_name=(user.full_name or "Customer").split()[0],
+                ok = email_utils.send_invoice_request_email(
+                    to_email=user.email,
+                    full_name=user.full_name or "Customer",
                     packages=data["packages"],
+                    recipient_user_id=user.id,   # optional (logs to Messages if your send_email supports it)
                 )
+
                 if ok:
                     sent += 1
                 else:
-                    failed.append(user.email or "(no email)")
+                    failed.append(user.email)
 
             if sent:
                 flash(f"Sent invoice request email to {sent} customer(s).", "success")
             if failed:
-                flash("Some invoice request emails failed: " + ", ".join(failed), "danger")
+                flash("Some invoice request emails failed: " + ", ".join(failed), "danger")           
+
 
         elif action == "mark_epc":
             for p in pkgs:

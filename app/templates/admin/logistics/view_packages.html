@@ -933,22 +933,6 @@
   }
 
 
-document.addEventListener('DOMContentLoaded', function () {
-  const deleteBtn     = document.getElementById('deleteSelectedBtn');
-  const bulkForm      = document.getElementById('bulkActionForm');
-  const hiddenAction  = document.getElementById('bulkActionHiddenAction');
-
-  if (deleteBtn && bulkForm && hiddenAction) {
-    deleteBtn.addEventListener('click', function () {
-      // set the bulk_action used in packages_bulk_action()
-      hiddenAction.value = 'delete';
-      bulkForm.submit();
-    });
-  }
-});
-
-
-
   /* ============================
      EPC filter & count (clean)
      ============================ */

@@ -183,6 +183,17 @@ class BulkMessageForm(FlaskForm):
     user_ids = SelectMultipleField('Select Recipients', coerce=int, validators=[DataRequired()])
     submit = SubmitField('Send Messages')
 
+class BroadcastNotificationForm(FlaskForm):
+    subject = StringField(
+        "Subject",
+        validators=[DataRequired(), Length(max=120)]
+    )
+    message = TextAreaField(
+        "Message",
+        validators=[DataRequired(), Length(max=255)]
+    )
+    submit = SubmitField("Send Broadcast")
+
 
 class PersonalInfoForm(FlaskForm):
     full_name = StringField("Full Name", validators=[

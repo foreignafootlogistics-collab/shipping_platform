@@ -1187,7 +1187,12 @@ def customer_message_thread_reply(admin_id):
 @login_required
 def view_notifications():
     notes = (Notification.query
-             .filter_by(user_id=current_user.id)
+             .filter(
+                 sa.or_(
+                     Notification.user_id == current_user.id,
+                     Notification.is_broadcast.is_(True)  # broadcast
+                 )
+             )
              .order_by(Notification.created_at.desc())
              .all())
     return render_template("customer/notifications.html", notes=notes)
@@ -1197,9 +1202,13 @@ def view_notifications():
 @login_required
 def mark_notification_read(nid):
     n = Notification.query.get_or_404(nid)
-    if n.user_id != current_user.id:
+
+    # customer can mark read if:
+    # - it belongs to them OR it's a broadcast
+    if n.user_id != current_user.id and not n.is_broadcast:
         flash("Not authorized.", "danger")
         return redirect(url_for("customer.view_notifications"))
+
     n.is_read = True
     db.session.commit()
     flash("Notification marked as read.", "success")
@@ -1213,8 +1222,13 @@ def inject_notification_counts():
         if current_user.is_authenticated:
             count = db.session.scalar(
                 sa.select(func.count()).select_from(Notification).where(
-                    Notification.user_id == current_user.id,
-                    Notification.is_read.is_(False)
+                    sa.and_(
+                        sa.or_(
+                            Notification.user_id == current_user.id,
+                            Notification.is_broadcast.is_(True)
+                        ),
+                        Notification.is_read.is_(False)
+                    )
                 )
             ) or 0
     except Exception as e:

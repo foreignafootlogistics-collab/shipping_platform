@@ -3,31 +3,80 @@
 
 {% block content %}
 <div class="container mt-4">
-  <h3 class="mb-3">Notifications</h3>
+  <div class="page-narrow">
 
-  {% if notes|length == 0 %}
-    <p class="text-muted">No notifications.</p>
-  {% else %}
-    <ul class="list-group">
-      {% for n in notes %}
-      <li class="list-group-item d-flex justify-content-between align-items-start">
-        <div>
-          <div>{{ n.message }}</div>
-          <div class="small text-muted">{{ n.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
-          {% if not n.is_read %}
-            <span class="badge bg-primary mt-1">Unread</span>
-          {% endif %}
-        </div>
-        {% if not n.is_read %}
-        <form method="POST" action="{{ url_for('customer.mark_notification_read', nid=n.id) }}">
-          {{ csrf_token() }}
-          <button class="btn btn-sm btn-outline-secondary">Mark read</button>
-        </form>
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h3 class="mb-0">Notifications</h3>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('customer.view_notifications') }}">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+      </a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="card shadow-sm">
+      <div class="card-header text-white" style="background:#4A148C;">
+        <i class="bi bi-bell me-2"></i> Your Notifications
+      </div>
+
+      <div class="card-body p-0">
+        {% if notes|length == 0 %}
+          <p class="text-muted m-3 mb-0">No notifications.</p>
+        {% else %}
+          <ul class="list-group list-group-flush">
+            {% for n in notes %}
+            <li class="list-group-item d-flex justify-content-between align-items-start">
+              <div class="me-3">
+                <div class="fw-semibold">
+                  {{ n.subject }}
+                </div>
+
+                <div class="small text-muted">
+                  {{ n.message }}
+                </div>
+
+
+                <div class="small text-muted">
+                  {{ to_jamaica(n.created_at).strftime('%Y-%m-%d %I:%M %p') if n.created_at else "" }}
+
+                  {% if n.is_broadcast %}
+                    <span class="ms-2 badge" style="background:#111827;">Broadcast</span>
+                  {% endif %}
+                </div>
+
+                {% if not n.is_read %}
+                  <span class="badge mt-2" style="background:#FACC15; color:#111827;">
+                    <i class="bi bi-exclamation-circle me-1"></i> Unread
+                  </span>
+                {% else %}
+                  <span class="badge mt-2" style="background:#15803D;">
+                    <i class="bi bi-check2-circle me-1"></i> Read
+                  </span>
+                {% endif %}
+              </div>
+
+              {% if not n.is_read %}
+              <form method="POST" action="{{ url_for('customer.mark_notification_read', nid=n.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-secondary">Mark read</button>
+              </form>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
         {% endif %}
-      </li>
-      {% endfor %}
-    </ul>
-  {% endif %}
+      </div>
+    </div>
+
+  </div>
 </div>
 {% endblock %}
-

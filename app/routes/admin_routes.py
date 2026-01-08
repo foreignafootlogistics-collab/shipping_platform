@@ -27,8 +27,7 @@ from wtforms.validators import DataRequired, Email
 from app.forms import (
     LoginForm, SendMessageForm, AdminLoginForm, BulkMessageForm, UploadPackageForm,
     SingleRateForm, BulkRateForm, MiniRateForm, AdminProfileForm, AdminRegisterForm,
-    ExpenseForm, WalletUpdateForm, AdminCalculatorForm, PackageBulkActionForm, InvoiceForm, InvoiceItemForm
-
+    ExpenseForm, WalletUpdateForm, AdminCalculatorForm, PackageBulkActionForm, InvoiceForm, InvoiceItemForm, BroadcastNotificationForm
 )
 
 from app.utils import email_utils
@@ -806,15 +805,64 @@ def delete_thread(user_id):
     return redirect(url_for("admin.messages"))
 
 
-
-
-
-@admin_bp.route("/notifications", methods=["GET"])
+# --- Admin Notifications: list + broadcast ---
+@admin_bp.route("/notifications", methods=["GET", "POST"])
 @admin_required
 def view_notifications():
-    # Get all notifications for admin (or global notifications)
-    notes = Notification.query.order_by(Notification.created_at.desc()).all()
-    return render_template("admin/notifications.html", notes=notes)
+    form = BroadcastNotificationForm()
+
+    if request.method == "POST" and form.validate_on_submit():
+        subject = form.subject.data.strip()
+        message = form.message.data.strip()
+
+        customers = (
+            User.query
+            .filter(User.role == "customer")
+            .with_entities(User.id)
+            .all()
+        )
+
+        rows = []
+        now = datetime.now(timezone.utc)
+
+        for (uid,) in customers:
+            rows.append({
+                "user_id": uid,
+                "subject": subject,
+                "message": message,
+                "is_read": False,
+                "is_broadcast": True,
+                "created_at": now,
+            })
+
+        db.session.bulk_insert_mappings(Notification, rows)
+        db.session.commit()
+
+        flash(f"Broadcast sent to {len(customers)} customers.", "success")
+        return redirect(url_for("admin.view_notifications"))
+
+    notes = (
+        Notification.query
+        .filter(Notification.is_broadcast.is_(True))
+        .order_by(Notification.created_at.desc())
+        .limit(300)
+        .all()
+    )
+
+    delivered_map = {}
+    for n in notes:
+        delivered_map[n.id] = db.session.scalar(
+            sa.select(func.count()).select_from(Notification).where(
+                Notification.is_broadcast.is_(True),
+                Notification.subject == n.subject,
+                Notification.message == n.message,
+                Notification.created_at == n.created_at
+            )
+        ) or 0
+
+    return render_template("admin/notifications.html", notes=notes, form=form, datetime=datetime, delivered_map=delivered_map)
+
+
 
 @admin_bp.route("/notifications/mark_read/<int:nid>", methods=["POST"])
 @admin_required
@@ -823,7 +871,7 @@ def mark_notification_read(nid):
     n.is_read = True
     db.session.commit()
     flash("Notification marked as read.", "success")
-    return redirect(url_for('admin.view_notifications'))
+    return redirect(url_for("admin.view_notifications"))
 
 
 
@@ -2166,4 +2214,41 @@ def admin_profile():
         return redirect(url_for('admin.admin_profile'))
 
     return render_template('admin/admin_profile.html', form=form, admin=current_user)
+
+
+@admin_bp.app_context_processor
+def inject_admin_badges():
+    # defaults
+    unread_broadcast_count = 0
+    unread_messages_count = 0
+
+    try:
+        if current_user.is_authenticated:
+            # Broadcast notifications unread (for admin view)
+            unread_broadcast_count = db.session.scalar(
+                sa.select(func.count()).select_from(Notification).where(
+                    Notification.is_broadcast.is_(True),
+                    Notification.is_read.is_(False),
+                )
+            ) or 0
+
+            # Admin unread messages (where admin is the recipient)
+            unread_messages_count = db.session.scalar(
+                sa.select(func.count()).select_from(Message).where(
+                    Message.recipient_id == current_user.id,
+                    Message.is_read.is_(False)
+                )
+            ) or 0
+
+    except Exception as e:
+        db.session.rollback()
+        # optional logging
+        # current_app.logger.warning("inject_admin_badges failed: %s", e)
+        unread_broadcast_count = 0
+        unread_messages_count = 0
+
+    return dict(
+        unread_broadcast_count=int(unread_broadcast_count),
+        unread_messages_count=int(unread_messages_count),
+    )
 

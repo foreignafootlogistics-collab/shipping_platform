@@ -2,7 +2,7 @@
 import hashlib
 import random
 import string
-from datetime import datetime
+from datetime import datetime, timezone
 from flask_login import UserMixin
 from app.extensions import db
 
@@ -340,18 +340,37 @@ class AuthorizedPickup(db.Model):
 # Notification & Calculator
 # -------------------------------
 class Notification(db.Model):
-    __tablename__ = 'notifications'
+    __tablename__ = "notifications"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    message = db.Column(db.String(255), nullable=False)
-    is_read = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    user = db.relationship('User', back_populates='notifications')
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=False,
+        index=True
+    )
+
+    # ✅ NEW: short title for the notification
+    subject = db.Column(db.String(120), nullable=False, default="Notification")
+
+    message = db.Column(db.String(255), nullable=False)
+
+    is_read = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    is_broadcast = db.Column(db.Boolean, nullable=False, default=False, index=True)
+
+    # ✅ keep timezone-aware UTC timestamps
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    user = db.relationship("User", back_populates="notifications")
 
     def __repr__(self):
-        return f"<Notification {self.id} for User {self.user_id}>"
+        return f"<Notification {self.id} {self.subject} for User {self.user_id}>"
+
 
 
 class Message(db.Model):

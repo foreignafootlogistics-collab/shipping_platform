@@ -386,10 +386,11 @@
         <div class="d-flex align-items-center ms-auto gap-3">
 
           <!-- Notifications -->
-          <a href="{{ url_for('admin.view_notifications') }}" class="position-relative text-dark">
+          <a href="{{ url_for('admin.view_notifications') }}" class="position-relative text-dark" title="Broadcast Notifications">
             <i class="fas fa-bell fa-lg"></i>
-            {% if unread_notifications_count > 0 %}
-              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+            {% if unread_broadcast_count|default(0) > 0 %}
+              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill"
+                    style="background:#FACC15; color:#111827; font-weight:700;">
                 {{ unread_notifications_count }}
               </span>
             {% endif %}
@@ -398,8 +399,9 @@
           <!-- Messages -->
           <a href="{{ url_for('admin.messages') }}" class="position-relative text-dark">
             <i class="fas fa-envelope fa-lg"></i>
-            {% if unread_messages_count > 0 %}
-              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning">
+            {% if unread_messages_count|default(0) > 0 %}
+              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill"
+                    style="background:#4A148C; color:#fff; font-weight:700;">
                 {{ unread_messages_count }}
               </span>
             {% endif %}

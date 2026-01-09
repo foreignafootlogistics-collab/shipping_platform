@@ -468,47 +468,47 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 #  INVOICE EMAIL
 # ==========================================================
 def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_user_id=None):
-    invoice = invoice or {}
+    """
+    invoice dict must include:
+      id, number, date, total_due
+    pdf_bytes: raw PDF bytes (REQUIRED if attaching)
+    """
 
     inv_no = invoice.get("number") or "—"
-    subject = f"📄 Invoice {inv_no} is Ready"
 
-    total_due = invoice.get("total_due") or 0
     try:
-        total_due_num = float(total_due)
+        total_due = float(invoice.get("total_due") or 0)
     except (TypeError, ValueError):
-        total_due_num = 0.0
+        total_due = 0.0
 
-    inv_date = invoice.get("date")
-    if hasattr(inv_date, "strftime"):
-        inv_date_str = inv_date.strftime("%Y-%m-%d %H:%M")
-    elif isinstance(inv_date, str) and inv_date:
-        inv_date_str = inv_date
-    else:
-        inv_date_str = ""
+    # Online transactions page
+    pay_url = TRANSACTIONS_URL
+
+    subject = f"Invoice {inv_no} from Foreign a Foot Logistics for Packages is Ready"
 
     plain_body = (
         f"Hi {full_name},\n\n"
-        f"Your invoice from Foreign A Foot Logistics Limited is now available.\n\n"
+        f"Your invoice from Foreign A Foot Logistics Limited is ready.\n\n"
         f"Invoice #: {inv_no}\n"
-        f"Date: {inv_date_str}\n"
-        f"Total Due: JMD {total_due_num:,.2f}\n\n"
-        f"View details / pay here:\n{TRANSACTIONS_URL}\n\n"
-        f"Thank you for shipping with us!\n"
-        f"Foreign A Foot Logistics Limited\n"
+        f"Total Due: JMD {total_due:,.2f}\n\n"
+        f"View or pay online:\n{pay_url}\n\n"
+        f"The invoice PDF is attached to this email.\n\n"
+        f"Foreign A Foot Logistics Limited"
     )
 
     html_body = render_template(
         "emails/invoice_email.html",
         full_name=full_name,
         invoice=invoice,
-        transactions_url=TRANSACTIONS_URL,
+        transactions_url=pay_url,
         LOGO_URL=LOGO_URL,
     )
 
     attachments = []
-    if isinstance(pdf_bytes, (bytes, bytearray)) and len(pdf_bytes) > 0:
-        attachments = [(bytes(pdf_bytes), f"Invoice_{inv_no}.pdf", "application/pdf")]
+    if isinstance(pdf_bytes, (bytes, bytearray)) and pdf_bytes:
+        attachments.append(
+            (bytes(pdf_bytes), f"Invoice_{inv_no}.pdf", "application/pdf")
+        )
 
     return send_email(
         to_email=to_email,

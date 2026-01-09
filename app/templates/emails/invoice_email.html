@@ -1,237 +1,63 @@
 <!doctype html>
 <html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta charset="utf-8" />
-    <style>
-      /* --- email-safe resets --- */
-      body, table, td, div, p { font-family: Arial, sans-serif; }
-      img { border: 0; outline: none; text-decoration: none; }
-      table { border-collapse: collapse; }
-      a { text-decoration: none; }
+  <body style="font-family: Arial, sans-serif; background:#f6f7fb; margin:0; padding:0;">
+    <div style="max-width:640px; margin:0 auto; padding:20px;">
 
-      /* --- helpers --- */
-      .container { width: 100%; background:#f6f7fb; padding: 0; }
-      .wrap { width: 100%; max-width: 760px; margin: 0 auto; padding: 18px; }
-      .card { background:#ffffff; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden; }
+      <div style="background:#ffffff; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden;">
 
-      .p-22 { padding:22px; }
-      .pb-10 { padding-bottom:10px; }
-      .border-b { border-bottom:1px solid #e5e7eb; }
+        <!-- Header -->
+        <div style="padding:22px; text-align:center; border-bottom:1px solid #e5e7eb;">
+          <img src="{{ LOGO_URL }}"
+               alt="Foreign A Foot Logistics"
+               style="max-width:160px; margin-bottom:12px;">
 
-      .center { text-align:center; }
-      .muted { color:#6b7280; }
-      .brand { color:#4a148c; }
+          <h2 style="margin:0; color:#4a148c; font-size:22px;">
+            Invoice {{ invoice.number }} is Ready
+          </h2>
 
-      /* Desktop table visible; mobile cards hidden by default */
-      .desktop-table { display: table; width: 100%; }
-      .mobile-cards { display: none; }
+          <p style="margin:8px 0 0; color:#6b7280; font-size:14px;">
+            Hi {{ full_name }}, your invoice is attached below.
+          </p>
+        </div>
 
-      /* --- mobile rules --- */
-      @media screen and (max-width: 600px) {
-        .wrap { padding: 12px !important; }
-        .p-22 { padding: 16px !important; }
-        .h2 { font-size: 18px !important; }
-        .total { font-size: 26px !important; }
-        .btn { display:block !important; width:100% !important; box-sizing:border-box !important; }
-        .desktop-table { display: none !important; }
-        .mobile-cards { display: block !important; }
-      }
-    </style>
-  </head>
-
-  <body style="margin:0; padding:0; background:#f6f7fb;">
-    <div class="container">
-      <div class="wrap">
-
-        <div class="card">
-          <!-- Header -->
-          <div class="p-22 pb-10 border-b">
-            <div class="center">
-              <img
-                src="{{ LOGO_URL if LOGO_URL is defined else 'https://app.faflcourier.com/static/logo.png' }}"
-                alt="FAFL Logo"
-                style="max-width:170px; height:auto;"
-              >
-            </div>
-
-            <h2 class="h2" style="margin:16px 0 6px; text-align:center; color:#4a148c; font-size:22px;">
-              Invoice {{ invoice.number }} is Ready
-            </h2>
-
-            <p style="margin:0; text-align:center; color:#6b7280; font-size:14px;">
-              Hi {{ full_name }}, your invoice is attached and available online.
-            </p>
+        <!-- Amount -->
+        <div style="padding:22px; text-align:center;">
+          <div style="font-size:13px; color:#6b7280;">Total Due</div>
+          <div style="font-size:34px; font-weight:800; color:#4a148c; margin:6px 0;">
+            {{ invoice.total_due|jmd }}
           </div>
 
-          <!-- Total Due -->
-          <div class="p-22">
-            <div style="background:#faf7ff; border:1px solid #eadcff; border-radius:12px; padding:16px;">
-              <div style="color:#6b7280; font-size:13px; margin-bottom:6px;">Total Due</div>
-              <div class="total" style="font-size:30px; font-weight:800; color:#4a148c;">
-                {{ invoice.total_due|jmd if invoice.total_due is not none else "" }}
-              </div>
-
-              <div style="margin-top:10px; color:#6b7280; font-size:13px; line-height:1.5;">
-                Invoice #: <b style="color:#111827;">{{ invoice.number }}</b>
-                {% if invoice.date %}
-                  <br>
-                  Date: <b style="color:#111827;">{{ invoice.date|datetimeformat('%Y-%m-%d %H:%M') }}</b>
-                {% endif %}
-              </div>
-            </div>
-
-            <!-- CTA -->
-            <div class="center" style="margin:18px 0 6px;">
-              <a class="btn" href="{{ transactions_url }}"
-                 style="display:inline-block; background:#4a148c; color:#fff;
-                        padding:12px 18px; border-radius:10px; font-weight:700; font-size:14px;">
-                View Details / Pay
-              </a>
-            </div>
-
-            <p class="center muted" style="margin:0; font-size:12px; line-height:1.4;">
-              Or copy & paste:<br>
-              <span style="word-break:break-all;">{{ transactions_url }}</span>
-            </p>
+          <div style="font-size:13px; color:#6b7280;">
+            Invoice #: <b>{{ invoice.number }}</b>
+            {% if invoice.date %}
+              · {{ invoice.date|datetimeformat('%Y-%m-%d') }}
+            {% endif %}
           </div>
+        </div>
 
-          <!-- Customer + totals -->
-          <div style="padding:0 22px 22px;">
-            <div style="border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;">
-              <div style="padding:14px; border-bottom:1px solid #e5e7eb;">
-                <div style="font-weight:700; color:#111827;">Customer</div>
-                <div style="color:#111827;">{{ invoice.customer_name }}</div>
-                <div style="color:#6b7280; font-size:12px;">{{ invoice.customer_code }}</div>
-              </div>
+        <!-- CTA -->
+        <div style="text-align:center; padding-bottom:10px;">
+          <a href="{{ transactions_url }}"
+             style="display:inline-block; background:#4a148c; color:#ffffff;
+                    padding:12px 22px; text-decoration:none;
+                    border-radius:10px; font-weight:700; font-size:14px;">
+            View / Pay Online
+          </a>
+        </div>
 
-              <div style="padding:12px 14px; border-bottom:1px solid #e5e7eb;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-                  <tr>
-                    <td style="padding:4px 0; color:#374151;">Subtotal:</td>
-                    <td style="padding:4px 0; text-align:right;"><b>{{ invoice.subtotal|jmd }}</b></td>
-                  </tr>
-                  <tr>
-                    <td style="padding:4px 0; color:#374151;">Discounts:</td>
-                    <td style="padding:4px 0; text-align:right;"><b>- {{ invoice.discount_total|jmd }}</b></td>
-                  </tr>
-                  <tr>
-                    <td style="padding:6px 0; color:#111827; font-weight:700;">Amount Owed:</td>
-                    <td style="padding:6px 0; text-align:right; color:#111827; font-weight:700;">
-                      {{ invoice.total_due|jmd }}
-                    </td>
-                  </tr>
-                </table>
-              </div>
+        <!-- Attachment note -->
+        <p style="text-align:center; margin:10px 22px 22px;
+                  font-size:13px; color:#6b7280;">
+          📎 Your invoice PDF is attached to this email.
+        </p>
 
-              <!-- =========================
-                   DESKTOP TABLE (hidden on mobile)
-                   ========================= -->
-              <div class="desktop-table" style="padding:14px;">
-                <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                  <thead>
-                    <tr style="background:#111827; color:#fff;">
-                      <th style="padding:10px; border:1px solid #e5e7eb; text-align:left; width:140px;">House AWB#</th>
-                      <th style="padding:10px; border:1px solid #e5e7eb; text-align:left;">Information</th>
-                      <th style="padding:10px; border:1px solid #e5e7eb; text-align:left; width:180px;">Our Fees</th>
-                      <th style="padding:10px; border:1px solid #e5e7eb; text-align:left; width:180px;">Govt Fees</th>
-                      <th style="padding:10px; border:1px solid #e5e7eb; text-align:left; width:120px;">Discount Due</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {% for p in invoice.packages %}
-                    <tr>
-                      <td style="padding:10px; border:1px solid #e5e7eb; vertical-align:top; font-weight:700;">
-                        {{ p.house_awb }}
-                      </td>
-
-                      <td style="padding:10px; border:1px solid #e5e7eb; vertical-align:top;">
-                        <div><b>Weight:</b> {{ p.weight }} lbs</div>
-                        <div><b>USD Value:</b> ${{ "%.2f"|format(p.value or 0) }}</div>
-                        <div style="color:#6b7280;">{{ p.description }}</div>
-                      </td>
-
-                      <td style="padding:10px; border:1px solid #e5e7eb; vertical-align:top;">
-                        <div><b>Freight:</b> {{ (p.freight or 0)|jmd }}</div>
-                        <div><b>Handling:</b> {{ (p.handling or 0)|jmd }}</div>
-                        <div><b>Other:</b> {{ (p.other_charges or 0)|jmd }}</div>
-                      </td>
-
-                      <td style="padding:10px; border:1px solid #e5e7eb; vertical-align:top;">
-                        <div><b>Duty:</b> {{ (p.duty or 0)|jmd }}</div>
-                        <div><b>SCF:</b> {{ (p.scf or 0)|jmd }}</div>
-                        <div><b>ENVL:</b> {{ (p.envl or 0)|jmd }}</div>
-                        <div><b>CAF:</b> {{ (p.caf or 0)|jmd }}</div>
-                        <div><b>GCT:</b> {{ (p.gct or 0)|jmd }}</div>
-                      </td>
-
-                      <td style="padding:10px; border:1px solid #e5e7eb; vertical-align:top;">
-                        {{ (p.discount_due or 0)|jmd }}
-                      </td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- =========================
-                   MOBILE CARDS (shown on mobile)
-                   ========================= -->
-              <div class="mobile-cards" style="padding:14px;">
-                {% for p in invoice.packages %}
-                  <div style="border:1px solid #e5e7eb; border-radius:12px; padding:12px; margin:10px 0;">
-                    <div style="font-weight:800; color:#111827; margin-bottom:6px;">
-                      House AWB: {{ p.house_awb }}
-                    </div>
-
-                    <div style="color:#374151; font-size:13px; line-height:1.55;">
-                      <div><b>Weight:</b> {{ p.weight }} lbs</div>
-                      <div><b>USD Value:</b> ${{ "%.2f"|format(p.value or 0) }}</div>
-                      {% if p.description %}
-                        <div style="color:#6b7280; margin-top:4px;">{{ p.description }}</div>
-                      {% endif %}
-                    </div>
-
-                    <div style="margin-top:10px; border-top:1px solid #e5e7eb; padding-top:10px;">
-                      <div style="font-weight:700; color:#111827; margin-bottom:6px;">Our Fees</div>
-                      <div style="font-size:13px; line-height:1.55; color:#374151;">
-                        <div>Freight: <b>{{ (p.freight or 0)|jmd }}</b></div>
-                        <div>Handling: <b>{{ (p.handling or 0)|jmd }}</b></div>
-                        <div>Other: <b>{{ (p.other_charges or 0)|jmd }}</b></div>
-                      </div>
-                    </div>
-
-                    <div style="margin-top:10px; border-top:1px solid #e5e7eb; padding-top:10px;">
-                      <div style="font-weight:700; color:#111827; margin-bottom:6px;">Govt Fees</div>
-                      <div style="font-size:13px; line-height:1.55; color:#374151;">
-                        <div>Duty: <b>{{ (p.duty or 0)|jmd }}</b></div>
-                        <div>SCF: <b>{{ (p.scf or 0)|jmd }}</b></div>
-                        <div>ENVL: <b>{{ (p.envl or 0)|jmd }}</b></div>
-                        <div>CAF: <b>{{ (p.caf or 0)|jmd }}</b></div>
-                        <div>GCT: <b>{{ (p.gct or 0)|jmd }}</b></div>
-                      </div>
-                    </div>
-
-                    <div style="margin-top:10px; border-top:1px solid #e5e7eb; padding-top:10px;">
-                      <div style="font-size:13px; color:#111827;">
-                        Discount Due: <b>{{ (p.discount_due or 0)|jmd }}</b>
-                      </div>
-                    </div>
-                  </div>
-                {% endfor %}
-              </div>
-
-            </div>
-
-            <!-- Footer -->
-            <div style="margin-top:16px; text-align:center; color:#6b7280; font-size:12px; line-height:1.6;">
-              <div><b style="color:#111827;">Foreign A Foot Logistics Limited</b></div>
-              <div>Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</div>
-              <div>(876) 560-7764 · foreignafootlogistics@gmail.com</div>
-            </div>
-
-          </div>
+        <!-- Footer -->
+        <div style="background:#fafafa; border-top:1px solid #e5e7eb;
+                    padding:16px; text-align:center;
+                    font-size:12px; color:#6b7280;">
+          <b style="color:#111827;">Foreign A Foot Logistics Limited</b><br>
+          Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine<br>
+          (876) 560-7764 · foreignafootlogistics@gmail.com
         </div>
 
       </div>

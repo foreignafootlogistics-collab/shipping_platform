@@ -845,6 +845,35 @@ def receipt_pdf_inline(payment_id):
         conditional=True
     )
 
+@customer_bp.route("/invoices/<int:invoice_id>/download", methods=["GET"])
+@login_required
+def download_invoice_pdf(invoice_id):
+    from app.models import Invoice  # avoid circular imports
+    inv = Invoice.query.get_or_404(invoice_id)
+
+    # ✅ customer can only download their own invoice
+    if getattr(inv, "user_id", None) != current_user.id and not getattr(current_user, "is_superadmin", False):
+        abort(403)
+
+    # ✅ locate the stored pdf path (adjust field name if yours differs)
+    pdf_path = getattr(inv, "pdf_path", None) or getattr(inv, "pdf_file", None) or None
+
+    # If you store only filename, build absolute path here
+    # Example:
+    # pdf_path = os.path.join(current_app.config["INVOICE_UPLOAD_FOLDER"], pdf_path)
+
+    if not pdf_path or not os.path.exists(pdf_path):
+        abort(404)
+
+    filename = f"Invoice_{getattr(inv, 'invoice_number', inv.id)}.pdf"
+
+    return send_file(
+        pdf_path,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename,
+        max_age=0,
+    )
 
 
 @customer_bp.route('/submit-invoice', methods=['GET', 'POST'])

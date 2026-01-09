@@ -56,6 +56,13 @@
         <i class="bi bi-file-earmark-text"></i>
       </button>
 
+      <button type="button"
+              class="toolbar-btn"
+              id="btnFinanceInvoicePreview"
+              title="Finance Invoice Preview">
+        <i class="bi bi-receipt"></i>
+      </button>
+
       <!-- Bulk Assign to Customer (opens modal) -->
       <button type="button"
               id="openBulkAssignBtn"
@@ -464,6 +471,54 @@
   </small>
 {% endif %}
 
+<!-- Bulk Invoice Preview Modal (shared) -->
+<div class="modal fade" id="bulkInvoicePreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Invoice Preview</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <p id="detained-note" class="text-muted small mb-2"></p>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Customer</th>
+                <th class="text-center">Packages</th>
+                <th class="text-end">Total Due</th>
+              </tr>
+            </thead>
+            <tbody id="inv-prev-tbody"></tbody>
+            <tfoot>
+              <tr class="table-light">
+                <th colspan="3" class="text-end">Total Amount Due</th>
+                <th class="text-end" id="inv-prev-total">0.00</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button"
+                class="btn btn-secondary"
+                data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <button id="btn-finalize-invoices"
+                class="btn btn-purple"
+                type="button"
+                onclick="finalizeInvoicesFromModal(event)">
+          Generate Customer Invoice(s)
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 {# =============== Bulk Assign Modal =============== #}
 <div class="modal fade" id="bulkAssignModal" tabindex="-1" aria-labelledby="bulkAssignLabel" aria-hidden="true">
@@ -509,13 +564,116 @@
 </div>
 
 
-<script>
+<script>  
   // Toggle pricing row
   function togglePricing(pkgId) {
     document.getElementById("pricing_" + pkgId)?.classList.toggle("d-none");
   }
-
   
+  /* ================================
+   BULK INVOICE PREVIEW + FINALIZE
+   (shared across tabs)
+   ================================ */
+
+  // helper for JSON POST (only define if not already defined on this page)
+  async function postJSON(url, body) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ csrf_token() }}'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error('Request failed: ' + txt);
+    }
+    return r.json();
+  }
+
+  async function openInvoicePreview(selectedPkgIds) {
+    console.log('openInvoicePreview, ids =', selectedPkgIds);
+
+    const data = await postJSON("{{ url_for('logistics.bulk_invoice_preview') }}", {
+      package_ids: selectedPkgIds
+    });
+
+    const tbody = document.querySelector('#inv-prev-tbody');
+    if (!tbody) {
+      alert('Preview table body #inv-prev-tbody not found in DOM.');
+      return;
+    }
+    tbody.innerHTML = '';
+
+    let grand = 0;
+
+    for (const row of (data.rows || [])) {
+      grand += Number(row.total_due || 0);
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>
+          <input type="checkbox" class="inv-user" data-uid="${row.user_id}"
+                 data-pkgs="${(row.package_ids || []).join(',')}" checked>
+        </td>
+        <td><strong>${row.registration_number || ''}</strong> ${row.full_name || ''}</td>
+        <td class="text-center">${row.package_count || 0}</td>
+        <td class="text-end">${Number(row.total_due || 0).toFixed(2)}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    const totalCell = document.getElementById('inv-prev-total');
+    if (totalCell) totalCell.textContent = grand.toFixed(2);
+
+    const note = document.getElementById('detained-note');
+    if (note) {
+      note.textContent = data.detained_skipped
+        ? `• ${data.detained_skipped} detained package(s) skipped`
+        : '';
+    }
+
+    const modalEl = document.getElementById('bulkInvoicePreviewModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+  }
+
+  async function finalizeInvoicesFromModal(ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+
+    const checks = [...document.querySelectorAll('.inv-user:checked')];
+    const selections = checks.map(ch => ({
+      user_id: Number(ch.dataset.uid),
+      package_ids: (ch.dataset.pkgs || '').split(',').filter(Boolean).map(x => Number(x))
+    }));
+
+    if (!selections.length) {
+      alert('Select at least one customer.');
+      return;
+    }
+
+    try {
+      const res = await postJSON(
+        "{{ url_for('logistics.bulk_invoice_finalize_json') }}",
+        { selections }
+      );
+
+      if (res.error) {
+        alert('⚠️ Server error: ' + res.error);
+        return;
+      }
+
+      alert(`Created ${res.created} invoice(s).`);
+
+      // refresh so UI updates (invoice_id / amounts)
+      setTimeout(() => window.location.reload(), 500);
+    } catch (err) {
+      console.error(err);
+      alert('⚠️ Error generating invoices: ' + (err.message || err));
+    }
+  }
+
   // Select All checkboxes
   document.addEventListener('DOMContentLoaded', function () {
     const selectAll = document.getElementById('selectAll');
@@ -894,7 +1052,32 @@
   }
 
 
-  
+  // ===============================
+  // Finance Invoice Preview (View Packages toolbar)
+  // ===============================
+  document.getElementById('btnFinanceInvoicePreview')?.addEventListener('click', async function () {
+    const selected = Array.from(document.querySelectorAll('.package-checkbox:checked'))
+                          .map(cb => cb.value);
+
+    if (!selected.length) {
+      alert("⚠️ Please select at least one package.");
+      return;
+    }
+
+    // Reuse the same function from Shipment Log (openInvoicePreview)
+    if (typeof openInvoicePreview !== "function") {
+      alert("⚠️ Invoice preview function not found. Next step will add the modal + functions here too.");
+      return;
+    }
+
+    try {
+      await openInvoicePreview(selected);
+    } catch (err) {
+      console.error(err);
+      alert("⚠️ Could not load invoice preview.");
+    }
+  });
+
 
   // Open bulk-assign only if at least one package is selected
   document.getElementById('openBulkAssignBtn')?.addEventListener('click', function (e) {
@@ -995,6 +1178,8 @@
     }
     updateCount();
   })();
+
+
 </script>
 
 <style>

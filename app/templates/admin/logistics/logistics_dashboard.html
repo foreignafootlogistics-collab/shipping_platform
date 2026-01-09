@@ -249,6 +249,7 @@
                 <option value="ready">✅ Mark Ready for Pick Up</option>
                 <option value="revert_overseas">↩️ Revert to Overseas</option>
                 <option value="generate_invoice">🧾 Generate Invoice</option>
+                <option value="finance_invoice">💼 Finance Invoice</option>
                 <option value="notify_ready">📣 Email: Ready for Pick-Up</option>
                 <option value="send_invoices">📧 Email: Invoices (Totals)</option>
                 <option value="remove_from_shipment">🗑 Remove from this Shipment</option>
@@ -707,10 +708,36 @@
           </div>
         </div>
       </div>
+      <!-- ✅ Shipment Finance Invoice Preview Modal (Supplier Cost) -->
+      <div class="modal fade" id="shipmentFinanceInvoiceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Shipment Finance Invoice</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body" id="shipmentFinanceInvoiceBody">
+              <p class="text-muted mb-0">Loading shipment invoice…</p>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+
+              <!-- optional later: save/export -->
+              <button type="button" class="btn btn-purple" id="btnPrintShipmentFinance">
+                Print / Save
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
     </div> <!-- /shipmentLog tab-pane -->
     {% endif %}
 
+
+     
     <!-- ======================= -->
     <!-- Upload Packages Tab     -->
     <!-- ======================= -->
@@ -1070,7 +1097,7 @@ function hasDataTables() {
     if (valueField) valueField.value = payload.value.toFixed(2);
 
     const weightField = document.getElementById('weight_' + pkgId);
-    if (weightField) weightField.value = payload.weight.toFixed(2);    
+    if (weightField) weightField.value = payload.weight.toFixed(2);
 
     // Save to DB via API
     const updateUrl = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace(/\/0$/, `/${pkgId}`);
@@ -1193,7 +1220,136 @@ async function finalizeInvoicesFromModal(ev) {
   }
 }
 
+/* =====================================
+   SHIPMENT FINANCE INVOICE (OPTION A)
+   ===================================== */
 
+// ✅ Open Shipment Finance Invoice (supplier cost) in the modal
+function openShipmentFinanceInvoiceModalWithHtml(html) {
+  const bodyEl = document.getElementById('shipmentFinanceInvoiceBody');
+  if (bodyEl) bodyEl.innerHTML = html;
+
+  const modalEl = document.getElementById('shipmentFinanceInvoiceModal');
+  if (!modalEl) {
+    alert("Shipment finance invoice modal not found.");
+    return;
+  }
+
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.show();
+}
+
+// ✅ Entire shipment: POST to preview-json with empty package_ids
+async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
+  const url = "{{ url_for('logistics.shipment_finance_invoice_preview_json', shipment_id=0) }}"
+                .replace(/0$/, String(shipmentId));
+
+  try {
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": "{{ csrf_token() }}",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify({ package_ids: packageIds || [] })
+    });
+
+    const data = await r.json();
+
+    if (!r.ok || !data.ok) {
+      console.error("Finance preview-json failed:", r.status, data);
+      alert(`⚠️ Finance invoice preview failed (${r.status}). ${data.error || ""}`);
+      return;
+    }
+
+    const fmt2 = (n) => Number(n || 0).toFixed(2);
+
+    let bandsHtml = "";
+    (data.service_bands || []).forEach(b => {
+      bandsHtml += `
+        <tr>
+          <td>${b.band}</td>
+          <td class="text-end">${b.count}</td>
+          <td class="text-end">$${fmt2(b.rate_usd)}</td>
+          <td class="text-end">$${fmt2(b.line_usd)}</td>
+        </tr>
+      `;
+    });
+
+    const html = `
+      <div class="mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+          <h6 class="mb-0 fw-bold text-purple">Shipment Finance Invoice (Supplier Cost)</h6>
+          <span class="badge bg-purple">Shipment #${data.shipment_id}</span>
+        </div>
+        <div class="small text-muted">Packages: ${data.package_count}</div>
+      </div>
+
+      <div class="row g-2 small mb-3">
+        <div class="col-md-3"><div class="border rounded p-2"><div class="text-muted">Total lbs</div><div class="fw-bold">${fmt2(data.total_lbs)}</div></div></div>
+        <div class="col-md-3"><div class="border rounded p-2"><div class="text-muted">Total kg</div><div class="fw-bold">${fmt2(data.total_kg)}</div></div></div>
+        <div class="col-md-3"><div class="border rounded p-2"><div class="text-muted">Freight (USD)</div><div class="fw-bold">$${fmt2(data.freight_usd)}</div></div></div>
+        <div class="col-md-3"><div class="border rounded p-2"><div class="text-muted">USD→JMD</div><div class="fw-bold">${fmt2(data.usd_to_jmd)}</div></div></div>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Service Band (lbs)</th>
+              <th class="text-end">Count</th>
+              <th class="text-end">Rate (USD)</th>
+              <th class="text-end">Line (USD)</th>
+            </tr>
+          </thead>
+          <tbody>${bandsHtml}</tbody>
+          <tfoot>
+            <tr class="table-light">
+              <th colspan="3" class="text-end">Service Total (USD)</th>
+              <th class="text-end">$${fmt2(data.service_usd_total)}</th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div class="row g-2 small mt-2">
+        <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted">Subtotal (USD)</div><div class="fw-bold">$${fmt2(data.subtotal_usd)}</div></div></div>
+        <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted">Subtotal (JMD)</div><div class="fw-bold">${fmt2(data.subtotal_jmd)}</div></div></div>
+        <div class="col-md-4"><div class="border rounded p-2 bg-light"><div class="text-muted">Extra Service (JMD)</div><div class="fw-bold">${fmt2(data.extra_service_jmd)}</div></div></div>
+      </div>
+
+      <div class="mt-3 p-3 border rounded bg-light">
+        <div class="d-flex justify-content-between">
+          <div class="text-muted">TOTAL (JMD)</div>
+          <div class="fw-bold fs-5">${fmt2(data.total_jmd)}</div>
+        </div>
+      </div>
+    `;
+
+    openShipmentFinanceInvoiceModalWithHtml(html);
+
+  } catch (err) {
+    console.error(err);
+    alert("⚠️ Unable to load shipment finance invoice preview (JSON).");
+  }
+}
+
+// Optional: Print button (prints modal content)
+document.getElementById('btnPrintShipmentFinance')?.addEventListener('click', function () {
+  const body = document.getElementById('shipmentFinanceInvoiceBody');
+  if (!body) return;
+
+  const w = window.open('', '_blank');
+  w.document.write(`
+    <html><head><title>Shipment Finance Invoice</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    </head><body>${body.innerHTML}</body></html>
+  `);
+  w.document.close();
+  w.focus();
+  w.print();
+});
 
 /* ============================
    SHIPMENT TABLE / BULK ACTION
@@ -1291,14 +1447,27 @@ async function handleShipmentApply(e) {
                .map(cb => cb.value);
   }
 
+  console.log('handleShipmentApply action=', action, 'ids=', ids);
+
+  // ✅ Finance Invoice (Supplier / Shipment totals) → OPTION A entire shipment
+  if (action === 'finance_invoice') {
+    const shipmentId = "{{ selected_shipment.id if selected_shipment else 0 }}";
+    if (!shipmentId || shipmentId === "0") {
+      alert("⚠️ No shipment selected.");
+      return;
+    }
+    // Entire shipment = no selection needed
+    await openShipmentFinanceInvoicePreviewJSON(shipmentId, []);
+    return;
+  }
+
+  // All other actions require selection
   if (!ids.length) {
     alert('⚠️ Please select at least one package.');
     return;
   }
 
-  console.log('handleShipmentApply action=', action, 'ids=', ids);
-
-  // 🔹 Generate Invoice → open preview modal via JSON
+  // 🔹 Generate Invoice (Customer) → JSON preview modal
   if (action === 'generate_invoice') {
     try {
       await openInvoicePreview(ids);
@@ -1306,7 +1475,7 @@ async function handleShipmentApply(e) {
       console.error('Error in openInvoicePreview:', err);
       alert('⚠️ Could not load invoice preview.');
     }
-    return; // stop here, do NOT submit the form
+    return;
   }
 
   // 🔹 Move to another shipment → open "Move" modal
@@ -1351,7 +1520,6 @@ async function handleShipmentApply(e) {
   form.submit();
 }
 
-
 $(document).ready(function () {
   // Pre-Alerts table
   if (hasDataTables() && $('#dashboardPrealertsTable').length) {
@@ -1367,7 +1535,6 @@ $(document).ready(function () {
     initShipmentTable();
   }
 });
-
 
 /* ======================
    VARIOUS SAVE HELPERS
@@ -1638,7 +1805,6 @@ function handleConfirmSubmit(e) {
   return true;
 }
 
-
 /* ==========================
    SHIPMENT SEARCH MODAL
    ========================== */
@@ -1700,6 +1866,7 @@ function updateShipmentHeaderCheckbox() {
   header.checked = (boxes.length > 0 && boxes.length === checked.length);
 }
 </script>
+
 
 
 <style>

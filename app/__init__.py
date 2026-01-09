@@ -86,6 +86,10 @@ def create_app():
     os.makedirs(app.instance_path, exist_ok=True)    
     os.makedirs(str(PROFILE_UPLOAD_FOLDER), exist_ok=True)    
     
+    expense_folder = os.path.join(app.instance_path, "expense_uploads")
+    os.makedirs(expense_folder, exist_ok=True)
+    app.config["EXPENSE_UPLOAD_FOLDER"] = expense_folder
+
     # Config
     app.config['SECRET_KEY'] = cfg.SECRET_KEY
     app.config['SQLALCHEMY_DATABASE_URI'] = cfg.SQLALCHEMY_DATABASE_URI

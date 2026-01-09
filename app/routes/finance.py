@@ -1,3 +1,8 @@
+import os
+import uuid
+from werkzeug.utils import secure_filename
+from flask import current_app, abort
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file
 from datetime import datetime, date, timedelta
 from calendar import monthrange
@@ -53,6 +58,65 @@ def _invoice_issued_date_expr():
 def _invoice_paid_date_expr():
     # COALESCE(i.date_paid, i.created_at)
     return func.coalesce(Invoice.date_paid, Invoice.created_at)
+
+def _ensure_expense_upload_folder():
+    folder = current_app.config.get("EXPENSE_UPLOAD_FOLDER")
+    if not folder:
+        # default to instance folder (safe, not publicly served)
+        folder = os.path.join(current_app.instance_path, "expense_uploads")
+        current_app.config["EXPENSE_UPLOAD_FOLDER"] = folder
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _save_expense_pdf(file_storage):
+    """
+    Saves a PDF to disk and returns:
+      (original_name, stored_name, mime)
+    """
+    if not file_storage or not getattr(file_storage, "filename", ""):
+        return None, None, None
+
+    filename = secure_filename(file_storage.filename)
+    if not filename.lower().endswith(".pdf"):
+        raise ValueError("Only PDF files are allowed.")
+
+    folder = _ensure_expense_upload_folder()
+    stored = f"expense_{uuid.uuid4().hex}.pdf"
+    path = os.path.join(folder, stored)
+
+    file_storage.save(path)
+
+    mime = file_storage.mimetype or "application/pdf"
+    return filename, stored, mime
+
+
+def _log_expense_action(action: str, expense, request_obj):
+    """
+    Writes an audit log snapshot for CREATED/UPDATED/DELETED.
+    """
+    from app.models import ExpenseAuditLog  # avoid circular import
+
+    actor_id = getattr(current_user, "id", None)
+    actor_email = getattr(current_user, "email", None)
+    actor_role = getattr(current_user, "role", None)
+
+    log = ExpenseAuditLog(
+        expense_id=getattr(expense, "id", None),
+        action=action,
+        actor_id=actor_id,
+        actor_email=actor_email,
+        actor_role=actor_role,
+        expense_date=getattr(expense, "date", None),
+        expense_category=getattr(expense, "category", None),
+        expense_amount=float(getattr(expense, "amount", 0.0) or 0.0),
+        expense_description=getattr(expense, "description", None),
+        expense_attachment_name=getattr(expense, "attachment_name", None),
+        expense_attachment_stored=getattr(expense, "attachment_stored", None),
+        ip_address=(request_obj.headers.get("X-Forwarded-For", request_obj.remote_addr) or "")[:64],
+        user_agent=(request_obj.headers.get("User-Agent", "") or "")[:255],
+    )
+    db.session.add(log)
 
 
 # ---------------------- FINANCE DASHBOARD ---------------------- #
@@ -401,30 +465,50 @@ def monthly_expenses():
 
     if form.validate_on_submit():
         try:
+            original_name, stored_name, mime = None, None, None
+
+            # ✅ handle PDF upload
+            file_obj = request.files.get("attachment")
+            if file_obj and file_obj.filename:
+                original_name, stored_name, mime = _save_expense_pdf(file_obj)
+
             new_expense = Expense(
                 date=form.date.data,
                 category=form.category.data,
                 amount=float(form.amount.data),
                 description=form.description.data or '',
+                attachment_name=original_name,
+                attachment_stored=stored_name,
+                attachment_mime=mime,
+                attachment_uploaded_at=datetime.utcnow() if stored_name else None,
             )
             db.session.add(new_expense)
+            db.session.flush()  # so new_expense.id exists for logging
+
+            # ✅ audit log (created)
+            _log_expense_action("CREATED", new_expense, request)
+
             db.session.commit()
             flash('Expense added successfully.', 'success')
             return redirect(url_for('finance.monthly_expenses'))
+
         except Exception as e:
             db.session.rollback()
             flash(f'Error adding expense: {e}', 'danger')
 
     expenses_q = Expense.query.order_by(Expense.date.desc()).all()
-    expenses = [
-        {
+    expenses = []
+    for e in expenses_q:
+        expenses.append({
+            'id': e.id,
             'date': e.date,
             'category': e.category,
             'amount': float(e.amount or 0),
             'description': e.description,
-        }
-        for e in expenses_q
-    ]
+            'attachment_name': e.attachment_name,
+            'has_attachment': bool(e.attachment_stored),
+        })
+
     total_expenses = sum(e['amount'] for e in expenses) if expenses else 0.0
 
     return render_template(
@@ -433,6 +517,59 @@ def monthly_expenses():
         expenses=expenses,
         total_expenses=total_expenses,
     )
+
+@finance_bp.route('/expenses/<int:expense_id>/attachment')
+@admin_required(roles=['finance'])
+def download_expense_attachment(expense_id):
+    expense = db.session.get(Expense, expense_id)
+    if not expense or not expense.attachment_stored:
+        abort(404)
+
+    folder = _ensure_expense_upload_folder()
+    path = os.path.join(folder, expense.attachment_stored)
+    if not os.path.exists(path):
+        abort(404)
+
+    return send_file(
+        path,
+        as_attachment=True,
+        download_name=expense.attachment_name or "expense.pdf",
+        mimetype=expense.attachment_mime or "application/pdf"
+    )
+
+@finance_bp.route('/expenses/delete/<int:expense_id>', methods=['POST'])
+@admin_required(roles=['finance'])
+def delete_expense(expense_id):
+    try:
+        expense = db.session.get(Expense, expense_id)
+        if not expense:
+            flash("Expense not found.", "danger")
+            return redirect(url_for('finance.monthly_expenses'))
+
+        # ✅ audit log BEFORE delete (captures snapshot)
+        _log_expense_action("DELETED", expense, request)
+
+        # Optional: delete file from disk too
+        if expense.attachment_stored:
+            folder = _ensure_expense_upload_folder()
+            path = os.path.join(folder, expense.attachment_stored)
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except Exception:
+                # don't block deletion if file removal fails
+                pass
+
+        db.session.delete(expense)
+        db.session.commit()
+        flash("Expense deleted successfully.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error deleting expense: {e}", "danger")
+
+    return redirect(url_for('finance.monthly_expenses'))
+
 
 
 # ---------------------- ADD EXPENSE ---------------------- #
@@ -510,23 +647,6 @@ def edit_expense(expense_id):
     return render_template('admin/finance/edit_expense.html', form=form, expense=expense)
 
 
-# ---------------------- DELETE EXPENSE ---------------------- #
-@finance_bp.route('/expenses/delete/<int:expense_id>')
-@admin_required
-def delete_expense(expense_id):
-    try:
-        expense = db.session.get(Expense, expense_id)
-        if not expense:
-            flash("Expense not found.", "danger")
-        else:
-            db.session.delete(expense)
-            db.session.commit()
-            flash("Expense deleted successfully.", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error deleting expense: {e}", "danger")
-
-    return redirect(url_for('finance.view_expenses'))
 
 
 # ---------------------- MONTHLY INCOME ---------------------- #

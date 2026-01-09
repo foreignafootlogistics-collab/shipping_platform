@@ -348,23 +348,33 @@ class PaymentForm(FlaskForm):
     submit = SubmitField("Add Payment")
 
 class ExpenseForm(FlaskForm):
-    amount = DecimalField('Amount', places=2, validators=[DataRequired()])
     category = SelectField(
-        'Category',
+        "Category",
         choices=[
-            ('Rent', 'Rent'),
-            ('Salaries', 'Salaries'),
-            ('Promotion', 'Promotion'),
-            ('Utilities', 'Utilities'),
-            ('Supplies', 'Supplies'),
-            ('Other', 'Other')
+            ("Rent", "Rent"),
+            ("Utilities", "Utilities"),
+            ("Salaries", "Salaries"),
+            ("Fuel", "Fuel"),
+            ("Supplies", "Supplies"),
+            ("Marketing", "Marketing"),
+            ("Maintenance", "Maintenance"),
+            ("Invoices", "Invoices"),  # ✅ NEW
+            ("Other", "Other"),
         ],
         validators=[DataRequired()]
     )
-    description = TextAreaField('Description', validators=[Optional()])
-    date = DateField('Date', format='%Y-%m-%d', validators=[DataRequired()])
-    submit = SubmitField('Add Expense')  # ✅ Added
 
+    amount = DecimalField("Amount", places=2, validators=[DataRequired()])
+    date = DateField("Date", validators=[DataRequired()])
+    description = TextAreaField("Description")
+
+    # ✅ NEW: PDF upload
+    attachment = FileField(
+        "Attach PDF (optional)",
+        validators=[FileAllowed(["pdf"], "PDF files only.")]
+    )
+
+    submit = SubmitField("Add Expense")
 class AdminProfileForm(FlaskForm):
     name = StringField('Full Name', validators=[DataRequired()])
     email = StringField('Email', validators=[DataRequired(), Email()])

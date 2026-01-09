@@ -466,17 +466,51 @@ class Expense(db.Model):
     __tablename__ = "expenses"
 
     id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.Date, nullable=False)              # stored as a calendar date
-    category = db.Column(db.String(100), nullable=False)   # e.g. Rent, Fuel, Salaries
+    date = db.Column(db.Date, nullable=False)
+    category = db.Column(db.String(120), nullable=False)
     amount = db.Column(db.Float, nullable=False, default=0.0)
-    description = db.Column(db.String(255))
+    description = db.Column(db.Text)
 
-    def __repr__(self):
-        return f"<Expense {self.id} {self.category} {self.amount}>"
+    # ✅ NEW: optional PDF attachment
+    attachment_name = db.Column(db.String(255))         # original filename
+    attachment_stored = db.Column(db.String(255))       # stored filename on disk
+    attachment_mime = db.Column(db.String(120))
+    attachment_uploaded_at = db.Column(db.DateTime)
 
-# -------------------------------
-# Settings (company / display / rates)
-# -------------------------------
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class ExpenseAuditLog(db.Model):
+    __tablename__ = "expense_audit_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # The expense being acted on (nullable if needed later)
+    expense_id = db.Column(db.Integer, nullable=True, index=True)
+
+    # action: CREATED / UPDATED / DELETED
+    action = db.Column(db.String(20), nullable=False)
+
+    # actor info
+    actor_id = db.Column(db.Integer, nullable=True)
+    actor_email = db.Column(db.String(255))
+    actor_role = db.Column(db.String(50))
+
+    # snapshot of expense at time of action (especially important for deletes)
+    expense_date = db.Column(db.Date)
+    expense_category = db.Column(db.String(120))
+    expense_amount = db.Column(db.Float)
+    expense_description = db.Column(db.Text)
+    expense_attachment_name = db.Column(db.String(255))
+    expense_attachment_stored = db.Column(db.String(255))
+
+    # request metadata
+    ip_address = db.Column(db.String(64))
+    user_agent = db.Column(db.String(255))
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Settings(db.Model):
     __tablename__ = "settings"
 

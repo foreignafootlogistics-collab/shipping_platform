@@ -932,6 +932,13 @@ function hasDataTables() {
   return window.jQuery && $.fn && $.fn.DataTable;
 }
 
+function getShipmentIdFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const sid = params.get('shipment_id');
+  return sid ? Number(sid) : 0;
+}
+
+
 
 /* ============================
    CHARGES MODAL / CALCULATOR
@@ -1450,16 +1457,19 @@ async function handleShipmentApply(e) {
   console.log('handleShipmentApply action=', action, 'ids=', ids);
 
   // ✅ Finance Invoice (Supplier / Shipment totals) → OPTION A entire shipment
+
   if (action === 'finance_invoice') {
-    const shipmentId = "{{ selected_shipment.id if selected_shipment else 0 }}";
-    if (!shipmentId || shipmentId === "0") {
-      alert("⚠️ No shipment selected.");
-      return;
+    const shipmentId = getShipmentIdFromUrl();
+
+    if (!shipmentId) {
+      alert("⚠️ No shipment selected (missing shipment_id in URL).");
+    return;
     }
-    // Entire shipment = no selection needed
+
     await openShipmentFinanceInvoicePreviewJSON(shipmentId, []);
     return;
   }
+
 
   // All other actions require selection
   if (!ids.length) {
@@ -1854,7 +1864,6 @@ function toggleShipmentSelectAll(master) {
   if (!tbody) return;
   tbody.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = master.checked);
   updateShipmentHeaderCheckbox();
-}
 
 function updateShipmentHeaderCheckbox() {
   const header = document.getElementById('selectAll');

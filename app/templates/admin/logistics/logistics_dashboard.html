@@ -1249,7 +1249,8 @@ function openShipmentFinanceInvoiceModalWithHtml(html) {
 // ✅ Entire shipment: POST to preview-json with empty package_ids
 async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
   const url = "{{ url_for('logistics.shipment_finance_invoice_preview_json', shipment_id=0) }}"
-                .replace(/0$/, String(shipmentId));
+              .replace("/0/", `/${shipmentId}/`);
+
 
   try {
     const r = await fetch(url, {
@@ -1853,7 +1854,7 @@ document.getElementById('shipmentSearchForm')?.addEventListener('submit', async 
    ========================== */
 function toggleShipmentSelectAll(master) {
   // If DataTables active: apply to all rows (all pages)
-  if (dt && $.fn.DataTable.isDataTable('#shipmentTable')) {
+  if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
     dt.$('.package-checkbox').prop('checked', master.checked);
     updateShipmentHeaderCheckbox();
     return;
@@ -1862,14 +1863,28 @@ function toggleShipmentSelectAll(master) {
   // fallback: plain DOM
   const tbody = document.querySelector('#shipmentTable tbody');
   if (!tbody) return;
-  tbody.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = master.checked);
+
+  tbody.querySelectorAll('.package-checkbox').forEach(cb => {
+    cb.checked = master.checked;
+  });
+
   updateShipmentHeaderCheckbox();
+}
 
 function updateShipmentHeaderCheckbox() {
   const header = document.getElementById('selectAll');
   const tbody  = document.querySelector('#shipmentTable tbody');
   if (!header || !tbody) return;
 
+  // If DataTables active, measure across all rows/pages
+  if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+    const all = dt.$('.package-checkbox').length;
+    const chk = dt.$('.package-checkbox:checked').length;
+    header.checked = (all > 0 && all === chk);
+    return;
+  }
+
+  // fallback: plain DOM
   const boxes   = tbody.querySelectorAll('.package-checkbox');
   const checked = tbody.querySelectorAll('.package-checkbox:checked');
   header.checked = (boxes.length > 0 && boxes.length === checked.length);

@@ -2111,35 +2111,21 @@ def bulk_shipment_action(shipment_id):
 @logistics_bp.route('/shipmentlog/<int:shipment_id>/finance-invoice/preview-json', methods=['POST'])
 @admin_required
 def shipment_finance_invoice_preview_json(shipment_id):
-    if not shipment_id or shipment_id <= 0:
-        return jsonify({"ok": False, "error": "Invalid shipment id."}), 400
-
     payload = request.get_json(silent=True) or {}
     package_ids = payload.get("package_ids") or []
 
+    if not shipment_id or shipment_id <= 0:
+        return jsonify({"ok": False, "error": "Invalid shipment id."}), 400
+
+    # ensure shipment exists
+    ShipmentLog.query.get_or_404(shipment_id)
+
     USD_TO_JMD = float(current_app.config.get("USD_TO_JMD", 165) or 165)
 
-    # -----------------------------
-    # Build query in a robust way:
-    # 1) direct FK (shipment_id / shipment_log_id), else
-    # 2) relationship join (Package.shipments -> ShipmentLog)
-    # -----------------------------
-    q = Package.query
-
-    # Try common FK names first
-    if hasattr(Package, "shipment_id"):
-        q = q.filter(Package.shipment_id == shipment_id)
-
-    elif hasattr(Package, "shipment_log_id"):
-        q = q.filter(Package.shipment_log_id == shipment_id)
-
-    else:
-        # Relationship-based (many-to-many or relationship property)
-        # Requires: Package.shipments relationship pointing to ShipmentLog
-        # and ShipmentLog model imported.
-        q = (q.join(Package.shipments)          # join via relationship
-               .join(ShipmentLog)               # ensure ShipmentLog is in FROM
-               .filter(ShipmentLog.id == shipment_id))
+    # ✅ join through relationship (Package.shipments)
+    q = (Package.query
+         .join(Package.shipments)
+         .filter(ShipmentLog.id == shipment_id))
 
     if package_ids:
         q = q.filter(Package.id.in_(package_ids))

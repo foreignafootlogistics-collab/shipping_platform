@@ -1,0 +1,139 @@
+{% extends "layout_admin.html" %}
+{% block title %}Expense Audit Logs{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h2 class="mb-0">Expense Audit Logs</h2>
+
+    <a class="btn btn-outline-secondary"
+       href="{{ url_for('finance.monthly_expenses') }}">
+      ← Back to Monthly Expenses
+    </a>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <form method="GET" class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">Start (YYYY-MM-DD)</label>
+          <input name="start" class="form-control" value="{{ start }}">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">End (YYYY-MM-DD)</label>
+          <input name="end" class="form-control" value="{{ end }}">
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label">Action</label>
+          <select name="action" class="form-select">
+            <option value="" {% if not action_selected %}selected{% endif %}>All</option>
+            <option value="CREATED" {% if action_selected == "CREATED" %}selected{% endif %}>CREATED</option>
+            <option value="UPDATED" {% if action_selected == "UPDATED" %}selected{% endif %}>UPDATED</option>
+            <option value="DELETED" {% if action_selected == "DELETED" %}selected{% endif %}>DELETED</option>
+          </select>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Search</label>
+          <input name="q" class="form-control" placeholder="email / role / category / description / expense id"
+                 value="{{ q }}">
+        </div>
+
+        <div class="col-12">
+          <button class="btn btn-primary">Filter</button>
+          <a class="btn btn-outline-secondary" href="{{ url_for('finance.expense_audit_logs') }}">Reset</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th style="white-space:nowrap;">Time</th>
+              <th>Action</th>
+              <th>Actor</th>
+              <th>Role</th>
+              <th>Expense</th>
+              <th>Category</th>
+              <th style="white-space:nowrap;">Amount</th>
+              <th>Description</th>
+              <th>Attachment</th>
+              <th style="white-space:nowrap;">IP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in logs %}
+            <tr>
+              <td style="white-space:nowrap;">
+                {{ l.created_at.strftime("%Y-%m-%d %H:%M") if l.created_at else "" }}
+              </td>
+
+              <td>
+                {% if l.action == "DELETED" %}
+                  <span class="badge bg-danger">{{ l.action }}</span>
+                {% elif l.action == "UPDATED" %}
+                  <span class="badge bg-warning text-dark">{{ l.action }}</span>
+                {% else %}
+                  <span class="badge bg-success">{{ l.action }}</span>
+                {% endif %}
+              </td>
+
+              <td>{{ l.actor_email or "-" }}</td>
+              <td>{{ l.actor_role or "-" }}</td>
+
+              <td>
+                {% if l.expense_id %}
+                  #{{ l.expense_id }}
+                {% else %}
+                  -
+                {% endif %}
+                {% if l.expense_date %}
+                  <div class="text-muted small">{{ l.expense_date }}</div>
+                {% endif %}
+              </td>
+
+              <td>{{ l.expense_category or "-" }}</td>
+              <td style="white-space:nowrap;">
+                {% if l.expense_amount is not none %}
+                  ${{ "%.2f"|format(l.expense_amount) }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="min-width:220px;">
+                {{ l.expense_description or "-" }}
+              </td>
+
+              <td>
+                {% if l.expense_attachment_name %}
+                  <span class="text-muted small">{{ l.expense_attachment_name }}</span>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td style="white-space:nowrap;">{{ l.ip_address or "-" }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="10" class="text-center text-muted">No logs found.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="text-muted small mt-2">
+        Showing up to 500 most recent results for the selected filters.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -5,6 +5,11 @@
 <div class="container mt-4">
   <div class="d-flex align-items-center justify-content-between mb-3">
     <h2 class="mb-0">Monthly Expenses</h2>
+
+    <a class="btn btn-outline-dark"
+       href="{{ url_for('finance.expense_audit_logs') }}">
+      🧾 View Audit Logs
+    </a>
   </div>
 
   <!-- Add Expense Form -->

@@ -18,7 +18,8 @@ from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import USD_TO_JMD
 
 from app.extensions import db
-from app.models import Invoice, Expense, User
+from app.models import Invoice, Expense, User, ExpenseAuditLog
+
 
 finance_bp = Blueprint('finance', __name__, url_prefix='/finance')
 
@@ -647,6 +648,60 @@ def edit_expense(expense_id):
     return render_template('admin/finance/edit_expense.html', form=form, expense=expense)
 
 
+@finance_bp.route("/expense_audit_logs")
+@admin_required(roles=["finance"])
+def expense_audit_logs():
+    # Filters
+    start = request.args.get("start", "").strip()   # YYYY-MM-DD
+    end = request.args.get("end", "").strip()       # YYYY-MM-DD
+    q = request.args.get("q", "").strip()
+    action = request.args.get("action", "").strip().upper()  # CREATED/UPDATED/DELETED
+
+    query = ExpenseAuditLog.query
+
+    # date range filter (created_at)
+    if start:
+        try:
+            start_dt = datetime.fromisoformat(start)
+            query = query.filter(ExpenseAuditLog.created_at >= start_dt)
+        except Exception:
+            pass
+
+    if end:
+        try:
+            # include whole end day
+            end_dt = datetime.fromisoformat(end) + timedelta(days=1)
+            query = query.filter(ExpenseAuditLog.created_at < end_dt)
+        except Exception:
+            pass
+
+    # action filter
+    if action in ("CREATED", "UPDATED", "DELETED"):
+        query = query.filter(ExpenseAuditLog.action == action)
+
+    # text search (actor, category, description, expense_id)
+    if q:
+        like = f"%{q.lower()}%"
+        query = query.filter(
+            or_(
+                func.lower(func.coalesce(ExpenseAuditLog.actor_email, "")).like(like),
+                func.lower(func.coalesce(ExpenseAuditLog.actor_role, "")).like(like),
+                func.lower(func.coalesce(ExpenseAuditLog.expense_category, "")).like(like),
+                func.lower(func.coalesce(ExpenseAuditLog.expense_description, "")).like(like),
+                func.cast(ExpenseAuditLog.expense_id, db.String).like(f"%{q}%"),
+            )
+        )
+
+    logs = query.order_by(ExpenseAuditLog.created_at.desc()).limit(500).all()
+
+    return render_template(
+        "admin/finance/expense_audit_logs.html",
+        logs=logs,
+        start=start,
+        end=end,
+        q=q,
+        action_selected=action,
+    )
 
 
 # ---------------------- MONTHLY INCOME ---------------------- #

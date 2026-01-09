@@ -1926,6 +1926,29 @@ def bulk_shipment_action(shipment_id):
         flash(f"{len(package_ids)} package(s) marked Ready for Pick Up.", "success")
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
+    elif action == "revert_overseas":
+        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
+        now = datetime.utcnow()
+
+        for p in pkgs:
+            # ✅ revert status
+            p.status = "Overseas"
+
+            # ✅ OPTIONAL: clear the "ready" dates so it doesn't look received in JA
+            # (uncomment if that’s how you want it to behave)
+            if hasattr(p, "received_date"):
+                p.received_date = None
+            if hasattr(p, "date_received"):
+                p.date_received = None
+
+        db.session.commit()
+        flash(f"{len(package_ids)} package(s) reverted back to Overseas.", "success")
+        return redirect(url_for(
+            'logistics.logistics_dashboard',
+            shipment_id=shipment_id,
+            tab="shipmentLog"
+        ))
+
     elif action == "notify_ready":
         users = (db.session.query(User)
                  .join(Package, Package.user_id == User.id)

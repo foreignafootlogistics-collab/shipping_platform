@@ -2122,7 +2122,7 @@ def shipment_finance_invoice_preview_json(shipment_id):
 
     USD_TO_JMD = float(current_app.config.get("USD_TO_JMD", 165) or 165)
 
-    # ✅ join through relationship (Package.shipments)
+    # packages in shipment via relationship join
     q = (Package.query
          .join(Package.shipments)
          .filter(ShipmentLog.id == shipment_id))
@@ -2134,16 +2134,21 @@ def shipment_finance_invoice_preview_json(shipment_id):
     if not pkgs:
         return jsonify({"ok": False, "error": "No packages found for this shipment selection."}), 404
 
+    # totals
     total_lbs = sum(float(p.weight or 0) for p in pkgs)
-    total_kg  = total_lbs / 2.2 if total_lbs else 0.0
-    freight_usd = total_kg * 3.0
+    total_kg = (total_lbs / 2.2) if total_lbs else 0.0
 
+    # freight (USD/kg)
+    base_rate_usd_per_kg = 3.0
+    freight_usd = total_kg * base_rate_usd_per_kg
+
+    # service bands (per package by lbs)
     bands = [
         ("0-10",       0.0,   10.0,   1.60),
         ("10.01-25",  10.01,  25.0,   2.15),
         ("25.01-50",  25.01,  50.0,   4.65),
         ("50.01-100", 50.01, 100.0,   7.00),
-        ("100.01+",  100.01, 10**9,   9.00),
+        ("100.01+",  100.01, 10**9,  9.00),
     ]
 
     band_rows = []
@@ -2155,15 +2160,18 @@ def shipment_finance_invoice_preview_json(shipment_id):
             w = float(p.weight or 0)
             if w >= lo and w <= hi:
                 count += 1
+
         line_usd = count * rate_usd
         service_usd_total += line_usd
+
         band_rows.append({
             "band": label,
             "count": count,
-            "rate_usd": rate_usd,
+            "rate_usd": float(rate_usd),
             "line_usd": round(line_usd, 2),
         })
 
+    # fixed extra service charge (JMD)
     extra_service_jmd = 5000.0
 
     subtotal_usd = freight_usd + service_usd_total
@@ -2174,18 +2182,25 @@ def shipment_finance_invoice_preview_json(shipment_id):
         "ok": True,
         "shipment_id": shipment_id,
         "package_count": len(pkgs),
+
         "total_lbs": round(total_lbs, 2),
         "total_kg": round(total_kg, 2),
-        "rate_usd_per_kg": 3.0,
+
+        # ✅ keys the modal JS expects
+        "usd_to_jmd": USD_TO_JMD,
+        "base_rate_usd_per_kg": base_rate_usd_per_kg,
         "freight_usd": round(freight_usd, 2),
+
         "service_bands": band_rows,
         "service_usd_total": round(service_usd_total, 2),
-        "usd_to_jmd": USD_TO_JMD,
+
         "extra_service_jmd": round(extra_service_jmd, 2),
+
         "subtotal_usd": round(subtotal_usd, 2),
         "subtotal_jmd": round(subtotal_jmd, 2),
         "total_jmd": round(total_jmd, 2),
     })
+
 
 
 @logistics_bp.route("/shipmentlog/<int:shipment_id>/finance-invoice/preview", methods=["GET"])
@@ -2242,6 +2257,13 @@ def shipment_finance_invoice_preview_html(shipment_id):
     total_usd = base_freight_usd + extra_usd
     total_jmd = (total_usd * usd_to_jmd) + service_charge_jmd
 
+    service_jmd_total = (service_usd_total or 0) * (usd_to_jmd or 0)
+
+    # --- Total package weight in Jamaica ---
+    # (if your weights are already in lbs, keep as-is; if they are in kg, flip the formulas)
+    total_weight_lbs = sum((p.weight or 0) for p in packages)
+    total_weight_kg  = total_weight_lbs * 0.45359237  # lbs -> kg
+
     return render_template(
         "admin/logistics/_shipment_finance_invoice_preview.html",
         shipment=shipment,
@@ -2262,6 +2284,9 @@ def shipment_finance_invoice_preview_html(shipment_id):
         total_usd=total_usd,
         total_jmd=total_jmd,
         usd_to_jmd=usd_to_jmd,
+
+        service_usd_total=service_usd_total,
+        service_jmd_total=service_jmd_total,
     )
 
 

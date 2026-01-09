@@ -2,11 +2,13 @@
 
 <div class="proforma-wrapper">
 
+  <!-- ================= HEADER ================= -->
   <div class="proforma-header">
     <div class="proforma-company">
       <h2 class="mb-1">Shipment Finance Invoice</h2>
       <small class="text-muted">
-        Shipment: <strong>{{ shipment.sl_id if shipment else ('#' ~ shipment_id) }}</strong>
+        Shipment:
+        <strong>{{ shipment.sl_id if shipment else ('#' ~ shipment_id) }}</strong>
         {% if shipment and shipment.created_at %}
           • Created: {{ shipment.created_at.strftime('%Y-%m-%d %H:%M') }}
         {% endif %}
@@ -16,54 +18,74 @@
     <div class="text-end">
       <div class="badge bg-purple text-white">SUPPLIER / OVERSEAS</div>
       <div class="small text-muted mt-1">
-        FX: <strong>{{ "%.2f"|format(usd_to_jmd or 0) }}</strong> JMD / USD
+        FX:
+        <strong>{{ "%.2f"|format(usd_to_jmd or 0) }}</strong>
+        JMD / USD
       </div>
     </div>
   </div>
 
+  <!-- ================= SUMMARY CARDS ================= -->
   <div class="row g-2 mb-3">
     <div class="col-md-3">
       <div class="border rounded p-2 bg-light">
         <div class="text-muted small">Total Packages</div>
-        <div class="fw-bold">{{ total_packages }}</div>
+        <div class="fw-bold">{{ total_packages or 0 }}</div>
       </div>
     </div>
+
     <div class="col-md-3">
       <div class="border rounded p-2 bg-light">
-        <div class="text-muted small">Total Weight (lbs)</div>
-        <div class="fw-bold">{{ "%.2f"|format(total_weight_lbs or 0) }}</div>
+        <div class="text-muted small">Total Weight (Jamaica)</div>
+        <div class="fw-bold">
+          {{ "%.2f"|format(total_weight_kg or 0) }} kg
+        </div>
+        <div class="small text-muted">
+          {{ "%.2f"|format(total_weight_lbs or 0) }} lbs
+        </div>
       </div>
     </div>
+
     <div class="col-md-3">
       <div class="border rounded p-2 bg-light">
-        <div class="text-muted small">Total Weight (kg)</div>
-        <div class="fw-bold">{{ "%.2f"|format(total_weight_kg or 0) }}</div>
+        <div class="text-muted small">Freight Rate</div>
+        <div class="fw-bold">
+          {{ "%.2f"|format(base_rate_usd_per_kg or 0) }} USD / kg
+        </div>
       </div>
     </div>
+
     <div class="col-md-3">
       <div class="border rounded p-2 bg-light">
-        <div class="text-muted small">Freight Rate (USD/kg)</div>
-        <div class="fw-bold">{{ "%.2f"|format(base_rate_usd_per_kg or 0) }}</div>
+        <div class="text-muted small">Freight (USD)</div>
+        <div class="fw-bold">
+          {{ "%.2f"|format(base_freight_usd or 0) }}
+        </div>
       </div>
     </div>
   </div>
 
+  <!-- ================= DETAILS TABLE ================= -->
   <div class="table-responsive">
     <table class="table table-sm table-bordered align-middle mb-3">
+
       <thead class="table-dark">
         <tr>
           <th>Description</th>
           <th class="text-center" style="width:120px;">Qty</th>
-          <th class="text-end" style="width:140px;">Rate</th>
+          <th class="text-end" style="width:140px;">Rate (USD)</th>
           <th class="text-end" style="width:160px;">Amount (USD)</th>
         </tr>
       </thead>
+
       <tbody>
+        <!-- Freight -->
         <tr>
           <td>
             Freight Charge
             <div class="text-muted small">
-              {{ "%.2f"|format(total_weight_kg or 0) }} kg × {{ "%.2f"|format(base_rate_usd_per_kg or 0) }} USD/kg
+              {{ "%.2f"|format(total_weight_kg or 0) }} kg ×
+              {{ "%.2f"|format(base_rate_usd_per_kg or 0) }} USD/kg
             </div>
           </td>
           <td class="text-center">—</td>
@@ -71,34 +93,42 @@
           <td class="text-end">{{ "%.2f"|format(base_freight_usd or 0) }}</td>
         </tr>
 
+        <!-- Service Header -->
         <tr class="table-light">
-          <td colspan="4" class="fw-semibold">Service Charges (by package weight)</td>
+          <td colspan="4" class="fw-semibold">
+            Service Charges (by package weight)
+          </td>
         </tr>
 
+        <!-- Service Bands -->
         <tr>
           <td>0–10 lbs</td>
           <td class="text-center">{{ c_0_10 or 0 }}</td>
           <td class="text-end">1.60</td>
           <td class="text-end">{{ "%.2f"|format((c_0_10 or 0) * 1.60) }}</td>
         </tr>
+
         <tr>
           <td>10.01–25 lbs</td>
           <td class="text-center">{{ c_10_25 or 0 }}</td>
           <td class="text-end">2.15</td>
           <td class="text-end">{{ "%.2f"|format((c_10_25 or 0) * 2.15) }}</td>
         </tr>
+
         <tr>
           <td>25.01–50 lbs</td>
           <td class="text-center">{{ c_25_50 or 0 }}</td>
           <td class="text-end">4.65</td>
           <td class="text-end">{{ "%.2f"|format((c_25_50 or 0) * 4.65) }}</td>
         </tr>
+
         <tr>
           <td>50.01–100 lbs</td>
           <td class="text-center">{{ c_50_100 or 0 }}</td>
           <td class="text-end">7.00</td>
           <td class="text-end">{{ "%.2f"|format((c_50_100 or 0) * 7.00) }}</td>
         </tr>
+
         <tr>
           <td>100+ lbs</td>
           <td class="text-center">{{ c_100_plus or 0 }}</td>
@@ -107,19 +137,41 @@
         </tr>
       </tbody>
 
+      <!-- ================= TOTALS ================= -->
       <tfoot>
         <tr class="fw-semibold">
+          <td colspan="3" class="text-end">Service Total (USD)</td>
+          <td class="text-end">
+            {{ "%.2f"|format(service_usd_total or 0) }}
+          </td>
+        </tr>
+
+        <tr class="fw-semibold">
+          <td colspan="3" class="text-end">Service Total (JMD)</td>
+          <td class="text-end">
+            {{ "%.2f"|format(service_jmd_total or 0) }}
+          </td>
+        </tr>
+
+        <tr>
           <td colspan="3" class="text-end">Subtotal (USD)</td>
           <td class="text-end">{{ "%.2f"|format(total_usd or 0) }}</td>
         </tr>
+
         <tr>
           <td colspan="3" class="text-end">Subtotal (JMD)</td>
-          <td class="text-end">{{ "%.2f"|format((total_usd or 0) * (usd_to_jmd or 0)) }}</td>
+          <td class="text-end">
+            {{ "%.2f"|format((total_usd or 0) * (usd_to_jmd or 0)) }}
+          </td>
         </tr>
+
         <tr>
           <td colspan="3" class="text-end">Additional Service Charge (JMD)</td>
-          <td class="text-end">{{ "%.2f"|format(service_charge_jmd or 0) }}</td>
+          <td class="text-end">
+            {{ "%.2f"|format(service_charge_jmd or 0) }}
+          </td>
         </tr>
+
         <tr class="table-light fw-bold">
           <td colspan="3" class="text-end">TOTAL (JMD)</td>
           <td class="text-end">{{ "%.2f"|format(total_jmd or 0) }}</td>
@@ -128,24 +180,32 @@
     </table>
   </div>
 
+  <!-- ================= ACTIONS ================= -->
   <div class="d-flex justify-content-end gap-2">
-    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+    <button type="button"
+            class="btn btn-outline-secondary btn-sm"
+            data-bs-dismiss="modal">
       Close
     </button>
-    <button type="button" class="btn btn-purple btn-sm" onclick="window.print()">
+
+    <button type="button"
+            class="btn btn-purple btn-sm"
+            onclick="window.print()">
       Print
     </button>
   </div>
 </div>
 
 <style>
-  .bg-purple{ background:#4a148c !important; }
-  .proforma-wrapper{
+  .bg-purple { background:#4a148c !important; }
+
+  .proforma-wrapper {
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     font-size: .9rem;
     color:#111827;
   }
-  .proforma-header{
+
+  .proforma-header {
     display:flex;
     align-items:flex-start;
     justify-content:space-between;

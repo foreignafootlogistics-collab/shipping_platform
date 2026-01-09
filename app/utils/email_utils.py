@@ -503,6 +503,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
         full_name=full_name,
         invoice=invoice,
         transactions_url=TRANSACTIONS_URL,
+        LOGO_URL=LOGO_URL,
     )
 
     attachments = []

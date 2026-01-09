@@ -7,6 +7,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from flask import current_app
+from flask import render_template
+from email.message import EmailMessage
 
 # If you still want Flask-Mail for some cases:
 try:
@@ -36,7 +38,7 @@ LOGO_URL = os.getenv("FAF_LOGO_URL", "https://app.faflcourier.com/static/logo.pn
 # IMPORTANT: This should be your APP domain (not www.foreignafoot.com)
 DASHBOARD_URL = os.getenv("FAF_DASHBOARD_URL", "https://app.faflcourier.com").rstrip("/")
 DELIVERY_URL = "https://app.faflcourier.com/customer/schedule-delivery"
-
+TRANSACTIONS_URL = "https://app.faflcourier.com/customer/transactions/all"
 
 # ==========================================================
 #  INTERNAL: LOG EMAILS INTO IN-APP MESSAGES
@@ -149,8 +151,21 @@ def send_email(
 
     # Attachments (optional)
     if attachments:
-        for file_bytes, filename, mimetype in attachments:
-            _maintype, subtype = (mimetype.split("/", 1) + ["octet-stream"])[:2]
+        for a in attachments:
+            if isinstance(a, dict):
+                file_bytes = a.get("content", b"")
+                filename   = a.get("filename", "attachment")
+                mimetype   = a.get("mimetype", "application/octet-stream")
+            else:
+                # assume tuple/list
+                file_bytes, filename, mimetype = a
+
+            # safe mimetype split
+            if not mimetype or "/" not in mimetype:
+                mimetype = "application/octet-stream"
+
+            _, subtype = mimetype.split("/", 1)
+
             part = MIMEApplication(file_bytes, _subtype=subtype)
             part.add_header("Content-Disposition", "attachment", filename=filename)
             msg.attach(part)
@@ -452,103 +467,65 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 # ==========================================================
 #  INVOICE EMAIL
 # ==========================================================
-def send_invoice_email(to_email, full_name, invoice_number, amount_due, invoice_link, recipient_user_id=None):
+def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_user_id=None):
     """
-    Sends a clean, branded FAFL invoice email.
+    invoice should be a dict-like object with:
+      number, date, customer_name, customer_code, subtotal, discount_total, total_due, packages[]
+    pdf_bytes: raw bytes for the invoice PDF (optional)
     """
-    plain_body = f"""
-Hello {full_name},
 
-Your invoice from Foreign A Foot Logistics Limited is now available.
+    inv_no = invoice.get("number") or "—"
+    subject = f"📄 Invoice {inv_no} is Ready"
 
-Invoice Number: {invoice_number}
-Amount Due: JMD {amount_due:,.2f}
+    # ---- amounts (safe) ----
+    total_due = invoice.get("total_due") or 0
+    try:
+        total_due_num = float(total_due)
+    except (TypeError, ValueError):
+        total_due_num = 0.0
 
-You may view or download your invoice here:
-{invoice_link}
+    # ---- date (safe) ----
+    inv_date = invoice.get("date")
+    if hasattr(inv_date, "strftime"):
+        inv_date_str = inv_date.strftime("%Y-%m-%d %H:%M")
+    elif isinstance(inv_date, str) and inv_date:
+        inv_date_str = inv_date
+    else:
+        inv_date_str = ""
 
-Thank you for shipping with us!
-Foreign A Foot Logistics Limited
-(876) 210-4291
-"""
-
-    html_body = f"""
-<html>
-  <body style="font-family: Inter, Arial, sans-serif; background:#f8f8fc; padding:0; margin:0;">
-    <div style="max-width:640px; margin:20px auto; background:#ffffff;
-                border-radius:12px; padding:30px; box-shadow:0 4px 20px rgba(0,0,0,0.06);">
-
-      <div style="text-align:center; margin-bottom:20px;">
-        <img src="{LOGO_URL}" alt="FAFL Logo" style="max-width:180px;">
-      </div>
-
-      <h2 style="text-align:center; color:#4a148c; margin-top:0;">
-        Your Invoice is Ready
-      </h2>
-
-      <p style="color:#444; font-size:15px;">
-        Hello <strong>{full_name}</strong>,<br><br>
-        Your invoice from <strong>Foreign A Foot Logistics Limited</strong> has been generated and is now available.
-        You may review the details below and click the button to view or download the full invoice.
-      </p>
-
-      <div style="
-        border:1px solid #e5e0f0;
-        border-radius:10px;
-        padding:18px 22px;
-        background:#faf7ff;
-        margin:25px 0;
-      ">
-        <p style="margin:8px 0; font-size:15px;">
-          <strong style="color:#4a148c;">Invoice Number:</strong><br>
-          {invoice_number}
-        </p>
-
-        <p style="margin:8px 0; font-size:15px;">
-          <strong style="color:#4a148c;">Amount Due:</strong><br>
-          <span style="font-size:22px; font-weight:700; color:#4a148c;">
-            JMD {amount_due:,.2f}
-          </span>
-        </p>
-      </div>
-
-      <div style="text-align:center; margin:25px 0 10px;">
-        <a href="{invoice_link}"
-           style="background:#4a148c; color:#ffffff; padding:14px 28px;
-                  text-decoration:none; border-radius:6px; font-weight:600;
-                  display:inline-block; font-size:16px;">
-          View Invoice
-        </a>
-      </div>
-
-      <p style="color:#666; font-size:14px; margin-top:20px; text-align:center;">
-        Please contact us if you have any questions about this invoice.
-      </p>
-
-      <hr style="border:none; border-top:1px solid #e4e4e4; margin:30px 0;">
-
-      <div style="text-align:center; color:#777; font-size:13px;">
-        <p style="margin:4px 0;"><strong>Foreign A Foot Logistics Limited</strong></p>
-        <p style="margin:4px 0;">Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</p>
-        <p style="margin:4px 0;">
-          ✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c; text-decoration:none;">
-                foreignafootlogistics@gmail.com
-              </a>
-        </p>
-        <p style="margin:4px 0;">☎️ (876) 210-4291</p>
-      </div>
-    </div>
-  </body>
-</html>
-"""
-    return send_email(
-        to_email=to_email,
-        subject=f"📄 Your Invoice #{invoice_number} is Ready",
-        plain_body=plain_body,
-        html_body=html_body,
-        recipient_user_id=recipient_user_id,
+    plain_body = (
+        f"Hi {full_name},\n\n"
+        f"Your invoice from Foreign A Foot Logistics Limited is now available.\n\n"
+        f"Invoice #: {inv_no}\n"
+        f"Date: {inv_date_str}\n"
+        f"Total Due: JMD {total_due_num:,.2f}\n\n"
+        f"View your invoice / payment history here:\n{TRANSACTIONS_URL}\n\n"
+        f"Thank you for shipping with us!\n"
+        f"Foreign A Foot Logistics Limited\n"
     )
 
+    html_body = render_template(
+        "emails/invoice_email.html",
+        full_name=full_name,
+        invoice=invoice,
+        transactions_url=TRANSACTIONS_URL,
+    )
+
+    # Attach only when we truly have bytes
+    attachments = []
+    if isinstance(pdf_bytes, (bytes, bytearray)) and len(pdf_bytes) > 0:
+        attachments = [
+            (bytes(pdf_bytes), f"Invoice_{inv_no}.pdf", "application/pdf")
+        ]
+
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        attachments=attachments,
+        recipient_user_id=recipient_user_id,
+    )
 
 # ==========================================================
 #  NEW MESSAGE EMAIL

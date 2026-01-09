@@ -35,6 +35,7 @@ if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
 LOGO_URL = os.getenv("FAF_LOGO_URL", "https://app.faflcourier.com/static/logo.png")
 # IMPORTANT: This should be your APP domain (not www.foreignafoot.com)
 DASHBOARD_URL = os.getenv("FAF_DASHBOARD_URL", "https://app.faflcourier.com").rstrip("/")
+DELIVERY_URL = "https://app.faflcourier.com/customer/schedule-delivery"
 
 
 # ==========================================================
@@ -379,7 +380,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
         "",
         "Warm regards,",
         "The Foreign A Foot Logistics Team",
-        "📍 Cedar Grove Passage Fort, Portmore",
+        "📍 Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine",
         "🌐 www.faflcourier.com",
         "✉️ foreignafootlogistics@gmail.com",
         "☎️ (876) 560-7764",
@@ -430,7 +431,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
     <hr style="margin:28px 0; border:none; border-top:1px solid #ddd;">
     <footer style="font-size:14px; color:#555;">
       <p style="margin:4px 0;">Warm regards,<br><strong>The Foreign A Foot Logistics Team</strong></p>
-      <p style="margin:4px 0;">📍 Cedar Grove Passage Fort, Portmore</p>
+      <p style="margin:4px 0;">📍 Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</p>
       <p style="margin:4px 0;">🌐 <a href="https://www.faflcourier.com" style="color:#4a148c;text-decoration:none;">www.faflcourier.com</a></p>
       <p style="margin:4px 0;">✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c;text-decoration:none;">foreignafootlogistics@gmail.com</a></p>
       <p style="margin:4px 0;">☎️ (876) 560-7764</p>
@@ -528,7 +529,7 @@ Foreign A Foot Logistics Limited
 
       <div style="text-align:center; color:#777; font-size:13px;">
         <p style="margin:4px 0;"><strong>Foreign A Foot Logistics Limited</strong></p>
-        <p style="margin:4px 0;">Cedar Grove, Passage Fort, Portmore</p>
+        <p style="margin:4px 0;">Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</p>
         <p style="margin:4px 0;">
           ✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c; text-decoration:none;">
                 foreignafootlogistics@gmail.com
@@ -644,7 +645,7 @@ Foreign A Foot Logistics Team
 
         <p style="font-size:0.8rem; color:#777;">
           Foreign A Foot Logistics Limited<br>
-          Cedar Grove Passage Fort, Portmore<br>
+          Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine<br>
           <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c; text-decoration:none;">
             foreignafootlogistics@gmail.com
           </a> · (876) 210-4291
@@ -732,6 +733,7 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
 
     rows_txt = []
     rows_html = []
+
     for p in packages:
         shipper = (p.get("shipper") or p.get("vendor") or "—")
         awb = p.get("house_awb") or p.get("house") or "—"
@@ -753,62 +755,91 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
   <td style="padding:8px; border:1px solid #eee;">{awb}</td>
   <td style="padding:8px; border:1px solid #eee;">{track}</td>
   <td style="padding:8px; border:1px solid #eee; text-align:center;">{w_up}</td>
-  <td style="padding:8px; border:1px solid #eee; color:#16a34a; font-weight:600;">Ready for Pickup/Delivery</td>
+  <td style="padding:8px; border:1px solid #eee; color:#16a34a; font-weight:600;">
+    Ready for Pickup/Delivery
+  </td>
 </tr>
 """)
 
+    # -------------------------
+    # Plain-text email
+    # -------------------------
     plain_body = (
         f"Hi {full_name},\n\n"
-        f"Good news—your package(s) with Foreign A Foot Logistics Limited are ready for pickup/delivery.\n\n"
-        f"Below is a quick summary:\n\n"
+        "Good news—your package(s) with Foreign A Foot Logistics Limited "
+        "are ready for pickup or delivery.\n\n"
+        "Below is a quick summary:\n\n"
         + ("\n".join(rows_txt) if rows_txt else "(No package details)\n")
         + "\n"
-        "Pickup Location: Cedar Grove, Passage Fort, Portmore\n"
+        "Pickup Location:\n"
+        "Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine\n"
         "Hours: Mon–Sat, 9:00 AM – 6:00 PM\n"
         "Contact: (876) 560-7764 | foreignafootlogistics@gmail.com\n\n"
-        "If you need delivery, just reply to this email and we’ll arrange it.\n\n"
+        "🚚 Prefer delivery?\n"
+        f"Log in and schedule delivery here:\n{DELIVERY_URL}\n\n"
         "Thanks for shipping with us,\n"
         "Foreign A Foot Logistics Limited\n"
     )
 
+    # -------------------------
+    # HTML email
+    # -------------------------
     html_body = f"""
 <html>
   <body style="font-family:Arial, sans-serif; color:#222;">
     <div style="max-width:680px; margin:0 auto; padding:16px;">
-      <h2 style="color:#4a148c; margin:0 0 12px;">Great news—your package(s) are ready!</h2>
-      <p>We’ve prepared the following item(s) for pickup/delivery:</p>
+      <h2 style="color:#4a148c; margin-bottom:12px;">
+        Great news—your package(s) are ready!
+      </h2>
+
+      <p>We’ve prepared the following item(s) for pickup or delivery:</p>
+
       <table style="width:100%; border-collapse:collapse; margin:12px 0;">
         <thead>
           <tr style="background:#f3ecff; color:#4a148c;">
-            <th style="text-align:left; padding:8px; border:1px solid #eee;">Shipper</th>
-            <th style="text-align:left; padding:8px; border:1px solid #eee;">Airway Bill</th>
-            <th style="text-align:left; padding:8px; border:1px solid #eee;">Tracking #</th>
-            <th style="text-align:center; padding:8px; border:1px solid #eee;">Weight (lbs)</th>
-            <th style="text-align:left; padding:8px; border:1px solid #eee;">Status</th>
+            <th style="padding:8px; border:1px solid #eee; text-align:left;">Shipper</th>
+            <th style="padding:8px; border:1px solid #eee; text-align:left;">Airway Bill</th>
+            <th style="padding:8px; border:1px solid #eee; text-align:left;">Tracking #</th>
+            <th style="padding:8px; border:1px solid #eee; text-align:center;">Weight (lbs)</th>
+            <th style="padding:8px; border:1px solid #eee; text-align:left;">Status</th>
           </tr>
         </thead>
         <tbody>
-          {''.join(rows_html) if rows_html else '<tr><td colspan="5" style="padding:8px; border:1px solid #eee;">No package details</td></tr>'}
+          {''.join(rows_html) if rows_html else
+            '<tr><td colspan="5" style="padding:8px; border:1px solid #eee;">No package details</td></tr>'}
         </tbody>
       </table>
 
       <div style="margin-top:16px;">
-        <p style="margin:4px 0;"><strong>Pickup Location:</strong> Cedar Grove, Passage Fort, Portmore</p>
-        <p style="margin:4px 0;"><strong>Hours:</strong> Mon–Sat, 9:00 AM – 6:00 PM</p>
-        <p style="margin:4px 0;"><strong>Contact:</strong> (876) 560-7764 · foreignafootlogistics@gmail.com</p>
+        <p><strong>Pickup Location:</strong> Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</p>
+        <p><strong>Hours:</strong> Mon–Sat, 9:00 AM – 6:00 PM</p>
+        <p><strong>Contact:</strong> (876) 560-7764 · foreignafootlogistics@gmail.com</p>
       </div>
 
-      <p style="margin-top:16px;">Prefer delivery? Reply to this email and we’ll set it up.</p>
+      <div style="margin-top:20px; text-align:center;">
+        <a href="{DELIVERY_URL}"
+           style="
+             display:inline-block;
+             background:#4a148c;
+             color:#ffffff;
+             padding:12px 20px;
+             text-decoration:none;
+             border-radius:6px;
+             font-weight:600;
+           ">
+          🚚 Schedule Delivery
+        </a>
+      </div>
 
-      <p style="margin-top:12px; color:#555;">
-        Thanks for choosing <strong>Foreign A Foot Logistics Limited</strong>—we appreciate your business!
+      <p style="margin-top:20px; color:#555;">
+        Thanks for choosing <strong>Foreign A Foot Logistics Limited</strong>.
       </p>
     </div>
   </body>
 </html>
 """
-    return subject, plain_body, html_body
 
+    return subject, plain_body, html_body
 
 def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=None):
     """

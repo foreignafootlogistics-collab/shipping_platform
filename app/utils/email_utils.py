@@ -247,7 +247,7 @@ Thank you for choosing us!
 """
     return send_email(
         to_email=email,
-        subject="Welcome to Foreign A Foot Logistics Limited! �✈️",
+        subject="Welcome to Foreign A Foot Logistics Limited!",
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
@@ -474,6 +474,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
     pdf_bytes: raw bytes for the invoice PDF (optional)
     """
 
+    invoice = invoice or {}
     inv_no = invoice.get("number") or "—"
     subject = f"📄 Invoice {inv_no} is Ready"
 
@@ -526,7 +527,6 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
         attachments=attachments,
         recipient_user_id=recipient_user_id,
     )
-
 # ==========================================================
 #  NEW MESSAGE EMAIL
 # ==========================================================

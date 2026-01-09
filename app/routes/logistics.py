@@ -2111,16 +2111,16 @@ def bulk_shipment_action(shipment_id):
 @logistics_bp.route('/shipmentlog/<int:shipment_id>/finance-invoice/preview-json', methods=['POST'])
 @admin_required
 def shipment_finance_invoice_preview_json(shipment_id):
-    """
-    Finance shipment invoice (supplier cost) preview JSON.
-    Computes totals for selected packages in a shipment.
-    """
     payload = request.get_json(silent=True) or {}
     package_ids = payload.get("package_ids") or []
 
     USD_TO_JMD = float(current_app.config.get("USD_TO_JMD", 165))
 
-    q = Package.query.filter(Package.shipment_id == shipment_id)
+    # ✅ join through relationship (Package.shipments) instead of Package.shipment_id
+    q = (Package.query
+         .join(Package.shipments)
+         .filter(ShipmentLog.id == shipment_id))
+
     if package_ids:
         q = q.filter(Package.id.in_(package_ids))
 

@@ -468,24 +468,17 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 #  INVOICE EMAIL
 # ==========================================================
 def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_user_id=None):
-    """
-    invoice should be a dict-like object with:
-      number, date, customer_name, customer_code, subtotal, discount_total, total_due, packages[]
-    pdf_bytes: raw bytes for the invoice PDF (optional)
-    """
-
     invoice = invoice or {}
+
     inv_no = invoice.get("number") or "—"
     subject = f"📄 Invoice {inv_no} is Ready"
 
-    # ---- amounts (safe) ----
     total_due = invoice.get("total_due") or 0
     try:
         total_due_num = float(total_due)
     except (TypeError, ValueError):
         total_due_num = 0.0
 
-    # ---- date (safe) ----
     inv_date = invoice.get("date")
     if hasattr(inv_date, "strftime"):
         inv_date_str = inv_date.strftime("%Y-%m-%d %H:%M")
@@ -500,7 +493,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
         f"Invoice #: {inv_no}\n"
         f"Date: {inv_date_str}\n"
         f"Total Due: JMD {total_due_num:,.2f}\n\n"
-        f"View your invoice / payment history here:\n{TRANSACTIONS_URL}\n\n"
+        f"View details / pay here:\n{TRANSACTIONS_URL}\n\n"
         f"Thank you for shipping with us!\n"
         f"Foreign A Foot Logistics Limited\n"
     )
@@ -512,12 +505,9 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
         transactions_url=TRANSACTIONS_URL,
     )
 
-    # Attach only when we truly have bytes
     attachments = []
     if isinstance(pdf_bytes, (bytes, bytearray)) and len(pdf_bytes) > 0:
-        attachments = [
-            (bytes(pdf_bytes), f"Invoice_{inv_no}.pdf", "application/pdf")
-        ]
+        attachments = [(bytes(pdf_bytes), f"Invoice_{inv_no}.pdf", "application/pdf")]
 
     return send_email(
         to_email=to_email,

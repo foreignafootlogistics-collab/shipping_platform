@@ -1,66 +1,180 @@
 <!doctype html>
 <html>
   <body style="font-family: Arial, sans-serif; background:#f6f7fb; margin:0; padding:0;">
-    <div style="max-width:640px; margin:0 auto; padding:20px;">
+    <div style="max-width:760px; margin:0 auto; padding:16px;">
 
+      <!-- Card -->
       <div style="background:#ffffff; border:1px solid #e5e7eb; border-radius:14px; overflow:hidden;">
 
         <!-- Header -->
-        <div style="padding:22px; text-align:center; border-bottom:1px solid #e5e7eb;">
-          <img src="{{ LOGO_URL }}"
-               alt="Foreign A Foot Logistics"
-               style="max-width:160px; margin-bottom:12px;">
+        <div style="padding:20px; border-bottom:1px solid #e5e7eb; text-align:center;">
+          <img
+            src="{{ LOGO_URL }}"
+            alt="Foreign A Foot Logistics"
+            style="max-width:160px; height:auto; margin-bottom:12px;"
+          />
 
-          <h2 style="margin:0; color:#4a148c; font-size:22px;">
+          <h2 style="margin:0 0 6px; color:#4a148c; font-size:22px;">
             Invoice {{ invoice.number }} is Ready
           </h2>
 
-          <p style="margin:8px 0 0; color:#6b7280; font-size:14px;">
-            Hi {{ full_name }}, your invoice is attached below.
+          <p style="margin:0; color:#6b7280; font-size:14px;">
+            Hi {{ full_name }}, your invoice is attached and available online.
           </p>
         </div>
 
-        <!-- Amount -->
-        <div style="padding:22px; text-align:center;">
-          <div style="font-size:13px; color:#6b7280;">Total Due</div>
-          <div style="font-size:34px; font-weight:800; color:#4a148c; margin:6px 0;">
-            {{ invoice.total_due|jmd }}
+        <!-- Total Due -->
+        <div style="padding:18px;">
+          <div style="background:#faf7ff; border:1px solid #eadcff; border-radius:12px; padding:16px;">
+            <div style="color:#6b7280; font-size:13px;">Total Due</div>
+            <div style="font-size:30px; font-weight:800; color:#4a148c; margin-top:4px;">
+              {{ invoice.total_due|jmd }}
+            </div>
+
+            <div style="margin-top:8px; font-size:13px; color:#6b7280;">
+              Invoice #: <b style="color:#111827;">{{ invoice.number }}</b>
+              {% if invoice.date %}
+                · Date:
+                <b style="color:#111827;">
+                  {{ invoice.date|datetimeformat('%Y-%m-%d %H:%M') }}
+                </b>
+              {% endif %}
+            </div>
           </div>
 
-          <div style="font-size:13px; color:#6b7280;">
-            Invoice #: <b>{{ invoice.number }}</b>
-            {% if invoice.date %}
-              · {{ invoice.date|datetimeformat('%Y-%m-%d') }}
+          <div style="text-align:center; margin-top:16px;">
+            <a
+              href="{{ transactions_url }}"
+              style="
+                display:inline-block;
+                background:#4a148c;
+                color:#ffffff;
+                text-decoration:none;
+                padding:12px 20px;
+                border-radius:10px;
+                font-weight:700;
+                font-size:14px;
+              "
+            >
+              View Details 
+            </a>
+
+            <div style="margin-top:8px; font-size:12px; color:#6b7280;">
+              Or visit: {{ transactions_url }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Invoice Body -->
+        <div style="padding:0 18px 18px;">
+
+          <!-- Customer -->
+          <div style="border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;">
+            <div style="padding:14px; border-bottom:1px solid #e5e7eb;">
+              <div style="font-weight:700; color:#111827;">Customer</div>
+              <div>{{ invoice.customer_name }}</div>
+              <div style="font-size:12px; color:#6b7280;">
+                {{ invoice.customer_code }}
+              </div>
+            </div>
+
+            <!-- Totals -->
+            <div style="padding:12px 14px; border-bottom:1px solid #e5e7eb;">
+              <div style="display:flex; flex-wrap:wrap; gap:10px; font-size:13px;">
+                <div>Subtotal: <b>{{ invoice.subtotal|jmd }}</b></div>
+                <div>Discounts: <b>- {{ invoice.discount_total|jmd }}</b></div>
+                <div><b>Amount Owed: {{ invoice.total_due|jmd }}</b></div>
+              </div>
+            </div>
+
+            {% set max_items = 5 %}
+            {% set total_pkgs = invoice.packages | length %}
+            {% set show_pkgs = invoice.packages[:max_items] %}
+
+            <!-- Desktop Table -->
+            <div class="desktop-only" style="padding:14px;">
+              <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                <thead>
+                  <tr style="background:#111827; color:#ffffff;">
+                    <th style="padding:8px; border:1px solid #e5e7eb;">AWB</th>
+                    <th style="padding:8px; border:1px solid #e5e7eb;">Info</th>
+                    <th style="padding:8px; border:1px solid #e5e7eb;">Our Fees</th>
+                    <th style="padding:8px; border:1px solid #e5e7eb;">Govt Fees</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for p in show_pkgs %}
+                  <tr>
+                    <td style="padding:8px; border:1px solid #e5e7eb; font-weight:700;">
+                      {{ p.house_awb }}
+                    </td>
+                    <td style="padding:8px; border:1px solid #e5e7eb;">
+                      {{ p.weight }} lbs · ${{ "%.2f"|format(p.value or 0) }}
+                      <div style="color:#6b7280;">{{ p.description }}</div>
+                    </td>
+                    <td style="padding:8px; border:1px solid #e5e7eb;">
+                      Freight {{ (p.freight or 0)|jmd }}<br>
+                      Handling {{ (p.handling or 0)|jmd }}
+                    </td>
+                    <td style="padding:8px; border:1px solid #e5e7eb;">
+                      Duty {{ (p.duty or 0)|jmd }}<br>
+                      GCT {{ (p.gct or 0)|jmd }}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Mobile Cards -->
+            <div class="mobile-only" style="padding:14px;">
+              {% for p in show_pkgs %}
+              <div style="border:1px solid #e5e7eb; border-radius:10px; padding:12px; margin-bottom:12px;">
+                <div style="font-weight:700;">{{ p.house_awb }}</div>
+                <div style="font-size:13px; color:#374151;">
+                  {{ p.weight }} lbs · ${{ "%.2f"|format(p.value or 0) }}
+                </div>
+                <div style="font-size:12px; color:#6b7280;">{{ p.description }}</div>
+
+                <hr style="border:none; border-top:1px solid #e5e7eb; margin:8px 0;">
+
+                <div style="font-size:13px;">
+                  <b>Our Fees:</b> {{ (p.freight or 0)|jmd }}<br>
+                  <b>Govt Fees:</b> {{ (p.duty or 0)|jmd }}
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+
+            {% if total_pkgs > max_items %}
+            <div style="padding:10px; text-align:center; font-size:12px; color:#6b7280;">
+              Showing {{ max_items }} of {{ total_pkgs }} packages ·
+              <a href="{{ transactions_url }}" style="color:#4a148c; font-weight:700; text-decoration:none;">
+                View all online
+              </a>
+            </div>
             {% endif %}
           </div>
+
+          <!-- Footer -->
+          <div style="margin-top:16px; text-align:center; font-size:12px; color:#6b7280;">
+            <b style="color:#111827;">Foreign A Foot Logistics Limited</b><br>
+            Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine<br>
+            (876) 560-7764 · foreignafootlogistics@gmail.com
+          </div>
+
         </div>
-
-        <!-- CTA -->
-        <div style="text-align:center; padding-bottom:10px;">
-          <a href="{{ transactions_url }}"
-             style="display:inline-block; background:#4a148c; color:#ffffff;
-                    padding:12px 22px; text-decoration:none;
-                    border-radius:10px; font-weight:700; font-size:14px;">
-            View / Pay Online
-          </a>
-        </div>
-
-        <!-- Attachment note -->
-        <p style="text-align:center; margin:10px 22px 22px;
-                  font-size:13px; color:#6b7280;">
-          📎 Your invoice PDF is attached to this email.
-        </p>
-
-        <!-- Footer -->
-        <div style="background:#fafafa; border-top:1px solid #e5e7eb;
-                    padding:16px; text-align:center;
-                    font-size:12px; color:#6b7280;">
-          <b style="color:#111827;">Foreign A Foot Logistics Limited</b><br>
-          Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine<br>
-          (876) 560-7764 · foreignafootlogistics@gmail.com
-        </div>
-
       </div>
     </div>
+
+    <style>
+      .mobile-only { display:none; }
+      .desktop-only { display:block; }
+
+      @media screen and (max-width:640px) {
+        .mobile-only { display:block !important; }
+        .desktop-only { display:none !important; }
+      }
+    </style>
   </body>
 </html>

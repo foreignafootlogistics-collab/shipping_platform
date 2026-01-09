@@ -1585,6 +1585,8 @@ def packages_bulk_action():
         epc_only=request.form.get("epc_only") or None,
     ))
 
+
+
 # --------------------------------------------------------------------------------------
 # Simple view (kept for backwards-compat with existing template)
 # --------------------------------------------------------------------------------------
@@ -1808,7 +1810,9 @@ def move_packages_between_shipments():
     return redirect(url_for('logistics.logistics_dashboard',
                             tab='shipmentLog',
                             shipment_id=to_id))
-@logistics_bp.route('/shipmentlog/<int:shipment_id>/bulk-action', methods=['POST'])
+
+
+@logistics_bp.route('/shipmentlog/<int:shipment_id>/bulk-action', methods=['POST']) 
 @admin_required
 def bulk_shipment_action(shipment_id):
     upload_form = UploadPackageForm()
@@ -2081,8 +2085,6 @@ def bulk_shipment_action(shipment_id):
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
 
-        
-
 @logistics_bp.route("/shipmentlog/calc-charges", methods=["GET"])
 @admin_required
 def shipment_calc_charges():
@@ -2181,32 +2183,37 @@ def bulk_invoice_preview():
 # ================================
 def _generate_invoice_number():
     """
-    Generates a globally unique invoice number like:
-    INV-20251201-0001, INV-20251201-0002, ...
+    Generates a globally increasing invoice number with today's date, like:
+      INV-YYYYMMDD-0001, INV-YYYYMMDD-0002, ...
 
-    It looks at ALL invoices for today and uses the next sequence.
+    IMPORTANT:
+    - Date changes every day
+    - Sequence NEVER resets
+      Example:
+        Today last:    INV-20260109-0008
+        Tomorrow next: INV-20260110-0009
     """
     today_str = datetime.utcnow().strftime("%Y%m%d")
     prefix = f"INV-{today_str}-"
 
-    # Make sure any pending invoices in this session are flushed
+    # Ensure any pending invoices are written enough to be query-visible
     db.session.flush()
 
-    # Find the highest existing invoice number for today
+    # Find the last invoice number overall (not just today)
     last = (
         db.session.query(Invoice.invoice_number)
-        .filter(Invoice.invoice_number.like(prefix + "%"))
+        .filter(Invoice.invoice_number.like("INV-%-%"))  # safety: matches your format
         .order_by(Invoice.invoice_number.desc())
         .first()
     )
 
+    last_seq = 0
     if last and last[0]:
         try:
+            # invoice_number looks like INV-YYYYMMDD-#### -> take ####
             last_seq = int(last[0].split("-")[-1])
-        except ValueError:
+        except Exception:
             last_seq = 0
-    else:
-        last_seq = 0
 
     new_seq = last_seq + 1
     return f"{prefix}{new_seq:04d}"

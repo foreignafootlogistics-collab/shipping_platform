@@ -1821,11 +1821,7 @@ def bulk_shipment_action(shipment_id):
 
     if not action or not package_ids:
         flash("⚠️ Please select both an action and at least one package.", "warning")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     # 🔹 Server-side Calculate Outstanding (fallback if JS doesn’t handle it)
     if action == "calc_outstanding":
@@ -1833,7 +1829,6 @@ def bulk_shipment_action(shipment_id):
         updated = 0
 
         for p in pkgs:
-            # try to read from form row; if missing, use DB values
             form_val = (
                 request.form.get(f"value_{p.id}")
                 or request.form.get(f"pricing_value_{p.id}")
@@ -1847,14 +1842,13 @@ def bulk_shipment_action(shipment_id):
 
             # invoice / value
             try:
-                invoice = (
+                invoice_val = (
                     float(form_val)
                     if form_val not in ("", None)
                     else _effective_value(p)
                 )
-
             except ValueError:
-                invoice = float(p.value or 0)
+                invoice_val = float(p.value or 0)
 
             # weight
             try:
@@ -1862,15 +1856,13 @@ def bulk_shipment_action(shipment_id):
             except ValueError:
                 weight = float(p.weight or 0)
 
-            # Package model has no category column → always default to "Other"
             category = "Other"
-
-            breakdown = calculate_charges(category, invoice, weight)
+            breakdown = calculate_charges(category, invoice_val, weight)
 
             # Mirror invoice value
-            p.value = invoice
+            p.value = invoice_val
             if hasattr(p, "declared_value"):
-                p.declared_value = invoice
+                p.declared_value = invoice_val
 
             # Amount due / totals
             if hasattr(p, "amount_due"):
@@ -1908,46 +1900,34 @@ def bulk_shipment_action(shipment_id):
 
         db.session.commit()
         flash(f"Calculated outstanding and updated {updated} package(s).", "success")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     # 🧾 Generate invoice – JS should intercept and open the Invoice Preview modal
     elif action == "generate_invoice":
-        # If we reach here, JS didn’t intercept.
-        # Just quietly reload the page (no scary 'Unknown action').
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "ready":
         pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
         now = datetime.utcnow()
+
         for p in pkgs:
             p.status = "Ready for Pick Up"
-
             # ✅ ensure date exists for invoice display
             if not getattr(p, "received_date", None):
                 p.received_date = now
             if not getattr(p, "date_received", None):
                 p.date_received = p.received_date
+
         db.session.commit()
         flash(f"{len(package_ids)} package(s) marked Ready for Pick Up.", "success")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "notify_ready":
         users = (db.session.query(User)
                  .join(Package, Package.user_id == User.id)
                  .filter(Package.id.in_(package_ids))
                  .distinct(User.id).all())
+
         from app.utils.email_utils import send_email, compose_ready_pickup_email
 
         for u in users:
@@ -1955,12 +1935,14 @@ def bulk_shipment_action(shipment_id):
                 Package.id.in_(package_ids),
                 Package.user_id == u.id
             ).all()
+
             rows = [{
                 "shipper": getattr(p, 'merchant', None) or getattr(p, 'shipper', None),
                 "house_awb": p.house_awb,
                 "tracking_number": p.tracking_number,
                 "weight": p.weight
             } for p in pkgs]
+
             subject, plain, html = compose_ready_pickup_email(u.full_name, rows)
             send_email(u.email, subject, plain, html)
 
@@ -1972,34 +1954,23 @@ def bulk_shipment_action(shipment_id):
 
         db.session.commit()
         flash(f"{len(package_ids)} package(s) marked Ready and notifications sent.", "success")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
+    # ✅ SEND INVOICE EMAILS (NEW SYSTEM)
     elif action == "send_invoices":
-        # 1) Load the selected packages
+        # 1) Load selected packages
         pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
         if not pkgs:
             flash("No matching packages found for the selected items.", "warning")
-            return redirect(url_for(
-                'logistics.logistics_dashboard',
-                shipment_id=shipment_id,
-                tab="shipmentLog"
-            ))
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-        # 2) Collect unique invoice IDs from those packages
+        # 2) Collect unique invoice IDs
         invoice_ids = {p.invoice_id for p in pkgs if p.invoice_id}
         if not invoice_ids:
             flash("The selected packages are not attached to any invoices yet.", "warning")
-            return redirect(url_for(
-                'logistics.logistics_dashboard',
-                shipment_id=shipment_id,
-                tab="shipmentLog"
-            ))
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-        # 3) Load the invoices + their users
+        # 3) Load invoices + users
         rows = (
             db.session.query(Invoice, User)
             .join(User, Invoice.user_id == User.id)
@@ -2008,62 +1979,85 @@ def bulk_shipment_action(shipment_id):
         )
         if not rows:
             flash("No invoices found for the selected packages.", "warning")
-            return redirect(url_for(
-                'logistics.logistics_dashboard',
-                shipment_id=shipment_id,
-                tab="shipmentLog"
-            ))
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
+        from app.utils import email_utils
+
+        TRANSACTIONS_URL = "https://app.faflcourier.com/customer/transactions/all"
 
         sent = 0
         failed = []
 
-        from app.utils import email_utils  # already imported at top, but safe here too
-
         for inv, user in rows:
-            # Amounts
-            amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)            
-
-            # For now, point them to the generic customer invoices page
-            # (you can later swap this for a specific invoice link if you have that route)            
-            invoice_link = f"{DASHBOARD_URL.rstrip('/')}/customer/invoices"
-
             if not user.email:
                 failed.append("(no email on file)")
                 continue
 
+            amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
+
+            # Build dict expected by send_invoice_email + template
+            invoice_dict = {
+                "number": inv.invoice_number or f"INV-{inv.id}",
+                "date": getattr(inv, "date_issued", None) or getattr(inv, "created_at", None),
+                "customer_name": user.full_name or user.email or "Customer",
+                "customer_code": getattr(user, "registration_number", "") or "",
+                "subtotal": float(getattr(inv, "subtotal", 0) or 0),
+                "discount_total": float(getattr(inv, "discount_total", 0) or 0),
+                "total_due": amount_due,
+                "packages": []
+            }
+
+            inv_pkgs = Package.query.filter(Package.invoice_id == inv.id).all()
+            for p in inv_pkgs:
+                invoice_dict["packages"].append({
+                    "house_awb": p.house_awb or "-",
+                    "weight": float(p.weight or 0),
+                    "value": float(getattr(p, "declared_value", None) or p.value or 0),
+                    "description": p.description or "",
+                    "freight": float(getattr(p, "freight_fee", None) or 0),
+                    "handling": float(getattr(p, "storage_fee", None) or 0),
+                    "other_charges": float(getattr(p, "other_charges", None) or 0),
+                    "duty": float(getattr(p, "duty", None) or 0),
+                    "scf": float(getattr(p, "scf", None) or 0),
+                    "envl": float(getattr(p, "envl", None) or 0),
+                    "caf": float(getattr(p, "caf", None) or 0),
+                    "gct": float(getattr(p, "gct", None) or 0),
+                    "discount_due": float(getattr(p, "discount_due", None) or 0),
+                })
+
+            # ✅ attach real PDF later; keep None for now so it doesn't crash
+            pdf_bytes = None
+
             ok = email_utils.send_invoice_email(
                 to_email=user.email,
                 full_name=user.full_name or user.email,
-                invoice_number=inv.invoice_number or f"INV-{inv.id}",
-                amount_due=amount_due,                
-                invoice_link=invoice_link,
+                invoice=invoice_dict,
+                pdf_bytes=pdf_bytes,
+                recipient_user_id=user.id
             )
 
             if ok:
-                subject = f"Invoice Ready: {inv.invoice_number}"
-                body = (
+                sent += 1
+                _log_in_app_message(
+                    user.id,
+                    f"Invoice Ready: {invoice_dict['number']}",
                     f"Hi {user.full_name or user.email},\n\n"
-                    f"Your invoice {inv.invoice_number} is ready.\n"
-                    f"Amount Due: JMD ${amount_due:,.2f}\n\n"
-                    f"Log in to view/pay your invoice:\n{invoice_link}\n\n"
+                    f"Your invoice {invoice_dict['number']} is ready.\n"
+                    f"Total Due: JMD {amount_due:,.2f}\n\n"
+                    f"View details / pay here:\n{TRANSACTIONS_URL}\n\n"
                     "— FAFL Courier"
                 )
-                _log_in_app_message(user.id, subject, body)
-                sent += 1
             else:
-                failed.append(user.email or "(unknown)")
+                failed.append(user.email)
+
+        db.session.commit()
 
         if sent:
-            db.session.commit()
             flash(f"Invoice emails sent for {sent} invoice(s).", "success")
         if failed:
             flash("Some invoice emails failed: " + ", ".join(failed), "danger")
 
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "remove_from_shipment":
         db.session.execute(
@@ -2072,25 +2066,19 @@ def bulk_shipment_action(shipment_id):
                 shipment_packages.c.package_id.in_(package_ids)
             )
         )
+
         pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
         for p in pkgs:
             p.status = "Overseas"
+
         db.session.commit()
         flash(f"Removed {len(package_ids)} package(s) from shipment {shipment_id}.", "success")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-    # Fallback for anything unexpected
+    # Fallback
     else:
         flash("⚠️ Unknown action selected.", "danger")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
 
         

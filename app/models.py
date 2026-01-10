@@ -38,6 +38,7 @@ class User(db.Model, UserMixin):
     referral_code = db.Column(db.String, unique=True)  # <--- unique
     referrer_id = db.Column(db.Integer)
     is_admin = db.Column(db.Boolean, default=False)
+    last_login = db.Column(db.DateTime, nullable=True)
 
     # Relationships
     wallet = db.relationship('Wallet', back_populates='user', uselist=False)

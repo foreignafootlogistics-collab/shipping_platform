@@ -8,7 +8,7 @@ import os
 import uuid
 import json
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import bcrypt
 import re
 import io
@@ -28,6 +28,7 @@ from app.forms import UploadUsersForm, ConfirmUploadForm
 from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import CATEGORIES
+from app.utils.time import to_jamaica
 
 # Models (these exist in your file)
 from app.models import (
@@ -614,6 +615,41 @@ def view_user(id):
     }
     home_address = user.address
 
+    # -------------------------
+    # Live Status + Last Login
+    # -------------------------
+    now = datetime.utcnow()
+    last = getattr(user, "last_login", None)
+
+    # Active if last login within 90 days (~3 months)
+    login_active = bool(last and last >= (now - timedelta(days=90)))
+
+    def fmt_last_login(dt):
+        if not dt:
+            return "Never"
+
+        try:
+            days = (now.date() - dt.date()).days
+        except Exception:
+            return str(dt)
+
+        date_part = dt.strftime("%Y-%m-%d")
+        time_part = dt.strftime("%I:%M %p").lstrip("0")
+
+        if days == 0:
+            return f"Today ({date_part} {time_part})"
+        if days == 1:
+            return f"Yesterday ({date_part} {time_part})"
+        if days == 2:
+            return f"2 days ago ({date_part} {time_part})"
+
+        return f"{date_part} {time_part}"
+
+    activity_status = "Active" if login_active else "Inactive"
+    activity_badge  = "bg-success" if login_active else "bg-secondary"
+    last_login_display = fmt_last_login(last)
+
+
     # Messages (subject, body, created_at)
     try:
         messages = (
@@ -902,6 +938,12 @@ def view_user(id):
     
     categories = list(CATEGORIES.keys())
 
+    jl = to_jamaica(getattr(user, "last_login", None))
+    last_login_display = None
+    if jl:
+        last_login_display = jl.strftime("%Y-%m-%d %I:%M %p")
+
+
     return render_template(
         'admin/accounts_profiles/view_user.html',
         user={
@@ -913,7 +955,20 @@ def view_user(id):
             "mobile": user.mobile or "",
             "trn": user.trn,
             "wallet_balance": wallet_balance,
-            "referral_code": referral_code
+            "referral_code": referral_code,
+
+            "is_active": bool(getattr(user, "is_active", True)),
+
+            # ✅ live status based on last login
+            "activity_status": activity_status,
+            "activity_badge": activity_badge,
+            "last_login": user.last_login,
+            "last_login_display": last_login_display,
+
+            # optional, only if your template uses these
+            "authorized_person": getattr(user, "authorized_person", None),
+            "profile_picture": getattr(user, "profile_picture", None),
+            "referrer": getattr(user, "referrer", None),
         },
         user_id=id,
         prealerts=prealerts,

@@ -192,6 +192,12 @@ def register():
         login_user(user)
         session["role"] = role
 
+        try:
+            user.last_login = datetime.utcnow()
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
         flash("Registration successful! Welcome aboard.", "success")
         return redirect(url_for("customer.customer_dashboard"))
 
@@ -234,6 +240,12 @@ def login():
                 if bcrypt.checkpw(password_bytes, stored_password):
                     login_user(user)
                     session["role"] = getattr(user, "role", "customer")
+
+                    try:
+                        user.last_login = datetime.utcnow()
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
 
                     # If you REALLY ever log admins in through here:
                     if getattr(user, "role", "") == "admin":

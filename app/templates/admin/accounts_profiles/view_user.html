@@ -140,8 +140,15 @@
       <div class="d-flex flex-column ps-4" style="flex:1;">
         <div class="mb-1"><strong>Authorized Person:</strong> {{ user.authorized_person or 'None' }}</div>
         <div class="mb-1"><strong>Branch:</strong> Main</div>
-        <div class="mb-1"><strong>Status:</strong> {{ 'Active' if user.is_active else 'Inactive' }}</div>
-        <div class="mb-1"><strong>Last Login:</strong> {{ user.last_login or 'Never' }}</div>
+        <div class="mb-1">
+          <strong>Status:</strong>
+          <span class="badge {{ user.activity_badge }}">{{ user.activity_status }}</span>
+        </div>
+
+        <div class="mb-1">
+          <strong>Last Login:</strong> {{ user.last_login_display }}
+        </div>
+
 
         <!-- Wallet Icon at the bottom -->
         <div class="position-absolute" style="bottom:1rem; right:1rem;">
@@ -287,7 +294,7 @@
                 <th>House AWB & Status</th>
                 <th>Description</th>
                 <th>Tracking Number</th>
-                <th class="text-end">Weight (lbs)</th>
+                <th class="text-start">Weight (lbs)</th>
                 <th>Date Received</th>
                 <th class="text-end">Declared Value</th>
                 <th class="text-end">Amount Due</th>                
@@ -358,7 +365,7 @@
                   {% endif %}
                 </td>
                 <td>{{ pkg.tracking_number or '-' }}</td>
-                <td class="text-end">{{ pkg.weight }}</td>
+                <td>{{ pkg.weight }}</td>
                 <td>{{ pkg.date_received or 'N/A' }}</td>
                 <td class="text-end">${{ money(pkg.declared_value) }}</td>
                 <td class="text-end">${{ money(pkg.amount_due) }}</td>
@@ -1219,21 +1226,37 @@ function showAddress(type) {
 }
 
 $(document).ready(function () {
-  /* IMPORTANT: Do NOT initialize DataTables for #packagesTable because we use server-side pagination */
-  // $('#packagesTable').DataTable();  // <-- removed
+  /* IMPORTANT: Do NOT initialize DataTables for #packagesTable */
+  // $('#packagesTable').DataTable();  // intentionally removed
 
-  // Other tabs can use DataTables
-  $('#prealertsTable').DataTable({ order: [[0, 'desc']], pageLength: 10 });
+  // Prealerts
+  $('#prealertsTable').DataTable({
+    order: [[0, 'desc']],
+    pageLength: 10
+  });
+
+  // Invoices (NO search bar)
   $('#invoiceTable').DataTable({
+    dom: 'rtip',                // ✅ removes search box
     order: [[0, 'desc']],
     pageLength: 10,
     language: {
       emptyTable: "No invoices yet."
     }
   });
-  $('#paymentsTable').DataTable();
+
+  // Payments (NO search bar)
+  $('#paymentsTable').DataTable({
+    dom: 'rtip'                 // ✅ removes search box
+  });
+
+  // Messages
   $('#messagesTable').DataTable();
+
+  // Scheduled deliveries
   $('#scheduledeliveryTable').DataTable();
+});
+
 
   // Quick add delivery launcher
   document.getElementById("adminAddDeliveryBtn").onclick = () => {
@@ -1775,7 +1798,7 @@ document.getElementById('addSinglePackageForm')
           </td>
           <td><div>${data.pkg.description || '-'}</div></td>
           <td>${data.pkg.tracking_number || '-'}</td>
-          <td class="text-end">${data.pkg.weight}</td>
+          <td class="text-start">${data.pkg.weight}</td>
           <td>${data.pkg.date_received || '—'}</td>
           <td class="text-end">$${parseFloat(data.pkg.declared_value).toFixed(2)}</td>
           <td class="text-end">$${parseFloat(data.pkg.amount_due).toFixed(2)}</td>

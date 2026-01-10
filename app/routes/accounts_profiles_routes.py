@@ -29,6 +29,8 @@ from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import CATEGORIES
 from app.utils.time import to_jamaica
+from app.utils.messages import make_thread_key
+
 
 # Models (these exist in your file)
 from app.models import (
@@ -651,26 +653,55 @@ def view_user(id):
 
 
     # Messages (subject, body, created_at)
+    # -------------------------
+    # Messages (server-side pagination + date filter)
+    # -------------------------
+    msg_page = request.args.get("msg_page", 1, type=int)
+    msg_per_page = request.args.get("msg_per_page", 10, type=int)
+    if msg_per_page not in (10, 20, 50, 100, 500, 1000):
+        msg_per_page = 10
+
+    msg_from = (request.args.get("msg_from") or "").strip()
+    msg_to   = (request.args.get("msg_to") or "").strip()
+
+    messages = []
+    total_messages = 0
+
     try:
-        messages = (
+        q = (
             db.session.query(
                 DBMessage.subject,
                 DBMessage.body,
                 DBMessage.created_at
             )
-            .filter(
-                or_(
-                    DBMessage.recipient_id == id,
-                    DBMessage.sender_id == id
-                )
-            )
-            .order_by(DBMessage.created_at.desc())
-            .all()
+            .filter(or_(DBMessage.recipient_id == id, DBMessage.sender_id == id))
         )
+
+        if msg_from:
+            dt_from = datetime.fromisoformat(msg_from)  # 00:00
+            q = q.filter(DBMessage.created_at >= dt_from)
+
+        if msg_to:
+            dt_to = datetime.fromisoformat(msg_to) + timedelta(days=1)  # next day 00:00
+            q = q.filter(DBMessage.created_at < dt_to)
+
+        total_messages = q.count()
+
+        page_obj = q.order_by(DBMessage.created_at.desc()).paginate(
+            page=msg_page, per_page=msg_per_page, error_out=False
+        )
+        messages = page_obj.items
 
     except Exception:
         db.session.rollback()
         messages = []
+        total_messages = 0
+        msg_from = msg_to = ""
+
+    msg_total_pages = max((total_messages + msg_per_page - 1) // msg_per_page, 1)
+    msg_show_from = 0 if total_messages == 0 else ((msg_page - 1) * msg_per_page + 1)
+    msg_show_to   = min(msg_page * msg_per_page, total_messages)
+
 
     # Prealerts
     try:
@@ -909,27 +940,64 @@ def view_user(id):
     balance = max(total_owed, 0.0)
 
 
-    # Payments (alias fields to keep your template happy)
+    # Payments (server-side pagination + date filter)
+    pay_page = request.args.get("pay_page", 1, type=int)
+    pay_per_page = request.args.get("pay_per_page", 10, type=int)
+    if pay_per_page not in (10, 20, 50, 100, 500, 1000):
+        pay_per_page = 10
+
+    pay_from = (request.args.get("pay_from") or "").strip()
+    pay_to   = (request.args.get("pay_to") or "").strip()
+
     payments = []
+    total_payments = 0
+
     try:
-        payments = (
+        pay_amount_col = getattr(Payment, "amount_jmd", None) or getattr(Payment, "amount", None)
+        if pay_amount_col is None:
+            raise RuntimeError("Payment model has no amount_jmd/amount column")
+
+        q = (
             db.session.query(
                 Payment.id.label("bill_number"),
-                Payment.created_at.label("payment_date"),   # alias
-                Payment.method.label("payment_type"),       # alias
-                Payment.amount_jmd.label("amount"),         # alias
+                Payment.created_at.label("payment_date"),
+                Payment.method.label("payment_type"),
+                pay_amount_col.label("amount"),
                 Payment.invoice_id.label("invoice_id"),
-                db.literal(None).label("authorized_by"),    # not in model
+                db.literal(None).label("authorized_by"),
                 Invoice.invoice_number.label("invoice_number"),
-            )
+             )
             .outerjoin(Invoice, Payment.invoice_id == Invoice.id)
             .filter(Payment.user_id == id)
-            .order_by(Payment.created_at.desc())
-            .all()
         )
+
+        # date filter (created_at is datetime)
+        if pay_from:
+            dt_from = datetime.fromisoformat(pay_from)  # 00:00
+            q = q.filter(Payment.created_at >= dt_from)
+
+        if pay_to:
+            dt_to = datetime.fromisoformat(pay_to) + timedelta(days=1)  # next day 00:00
+            q = q.filter(Payment.created_at < dt_to)
+
+        total_payments = q.count()
+
+        page_obj = q.order_by(Payment.created_at.desc()).paginate(
+            page=pay_page, per_page=pay_per_page, error_out=False
+        )
+
+        payments = page_obj.items
+
     except Exception:
         db.session.rollback()
         payments = []
+        total_payments = 0
+        pay_from = pay_to = ""
+
+    pay_total_pages = max((total_payments + pay_per_page - 1) // pay_per_page, 1)
+    pay_show_from = 0 if total_payments == 0 else ((pay_page - 1) * pay_per_page + 1)
+    pay_show_to   = min(pay_page * pay_per_page, total_payments)
+
 
     wallet_balance = user.wallet_balance or 0.0
     referral_code  = user.referral_code or ''
@@ -975,8 +1043,24 @@ def view_user(id):
         packages=packages,
         invoices_rows=invoices_rows,
         payments=payments,
+        total_payments=total_payments,
+        pay_page=pay_page,
+        pay_per_page=pay_per_page,
+        pay_total_pages=pay_total_pages,
+        pay_show_from=pay_show_from,
+        pay_show_to=pay_show_to,
+        pay_from=pay_from,
+        pay_to=pay_to,
         total_owed=total_owed,
         total_paid=total_paid,
+        msg_page=msg_page,
+        msg_per_page=msg_per_page,
+        msg_total_pages=msg_total_pages,
+        msg_show_from=msg_show_from,
+        msg_show_to=msg_show_to,
+        total_messages=total_messages,
+        msg_from=msg_from,
+        msg_to=msg_to,
         balance=balance,
         messages=messages,
         wallet_balance=wallet_balance,
@@ -1088,6 +1172,40 @@ def bulk_delete_user_packages(id):
 
     return jsonify({"success": True, "deleted": deleted_count})
 
+@accounts_bp.route("/users/<int:id>/messages/send", methods=["POST"])
+@admin_required
+def send_message_to_user(id):
+    other = db.session.get(User, id)
+    if not other:
+        flash("User not found.", "danger")
+        return redirect(url_for("accounts_profiles.manage_users"))
+
+    subject = (request.form.get("subject") or "").strip()
+    body    = (request.form.get("body") or "").strip()
+
+    if not subject or not body:
+        flash("Subject and Body are required.", "warning")
+        return redirect(url_for("accounts_profiles.view_user", id=id, tab="messages"))
+
+    tk = make_thread_key(current_user.id, other.id)
+
+    db.session.add(Message(
+        sender_id=current_user.id,
+        recipient_id=other.id,
+        subject=subject,
+        body=body,
+        thread_key=tk,
+        is_read=False,
+        created_at=datetime.now(timezone.utc),
+    ))
+    db.session.commit()
+
+    # If sent via AJAX (optional), return JSON
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"success": True})
+
+    flash("Message sent.", "success")
+    return redirect(url_for("accounts_profiles.view_user", id=id, tab="messages"))
 
 # -------------------------
 # Change Password
@@ -1165,6 +1283,8 @@ def manage_account(id: int):
         return redirect(url_for('accounts_profiles.view_user', id=id))
 
     return render_template('admin/accounts_profiles/view_user.html', user=user)
+
+
 
 @accounts_bp.route('/users/<int:id>/wallet', methods=['POST'])
 @admin_required

@@ -880,6 +880,22 @@ def view_user(id):
     pkg_show_to   = min(pkg_page * pkg_per_page, total_pkgs)
 
        # ---------------- Invoices for this user ----------------
+
+    # ---------------- Invoices (server-side pagination + date filter) ----------------
+
+    inv_page = request.args.get("inv_page", 1, type=int)
+    inv_per_page = request.args.get("inv_per_page", 10, type=int)
+    if inv_per_page not in (10, 20, 50, 100, 500, 1000):
+        inv_per_page = 10
+
+    inv_from = (request.args.get("inv_from") or "").strip()
+    inv_to   = (request.args.get("inv_to") or "").strip()
+
+    total_invoices = 0
+    inv_total_pages = 1
+    inv_show_from = 0
+    inv_show_to = 0
+
     invoices_rows = []
     total_owed = 0.0
     total_paid = 0.0
@@ -908,14 +924,36 @@ def view_user(id):
 
 
 
-        invoices_rows = (
+        q = (
             db.session.query(Invoice, paid_sum_col)
             .outerjoin(Payment, Payment.invoice_id == Invoice.id)
             .filter(*inv_query._where_criteria)
             .group_by(Invoice.id)
-            .order_by(getattr(Invoice, "date", getattr(Invoice, "date_submitted", Invoice.id)).desc())
-            .all()
         )
+
+        # date filter (use best available invoice date column)
+        date_col = getattr(Invoice, "date", None) or getattr(Invoice, "date_submitted", None) or getattr(Invoice, "created_at", None)
+        if date_col is not None:
+            if inv_from:
+                q = q.filter(date_col >= inv_from)
+            if inv_to:
+                q = q.filter(date_col <= inv_to)
+
+        # total BEFORE pagination
+        total_invoices = q.count()
+
+        # order + paginate
+        order_col = getattr(Invoice, "date", None) or getattr(Invoice, "date_submitted", None) or getattr(Invoice, "created_at", None) or Invoice.id
+        page_obj = q.order_by(order_col.desc()).paginate(
+            page=inv_page, per_page=inv_per_page, error_out=False
+        )
+
+        invoices_rows = page_obj.items
+
+        inv_total_pages = max((total_invoices + inv_per_page - 1) // inv_per_page, 1)
+        inv_show_from = 0 if total_invoices == 0 else ((inv_page - 1) * inv_per_page + 1)
+        inv_show_to   = min(inv_page * inv_per_page, total_invoices)
+
 
         def _inv_due(inv):
             for attr in ("grand_total", "amount_due", "total"):
@@ -926,9 +964,16 @@ def view_user(id):
                         pass
             return 0.0
 
+        all_rows = (
+            db.session.query(Invoice, paid_sum_col)
+            .outerjoin(Payment, Payment.invoice_id == Invoice.id)
+            .filter(*inv_query._where_criteria)
+            .group_by(Invoice.id)
+            .all()
+        )
         # ✅ totals based on money, not status
-        total_owed = sum(max(_inv_due(inv) - float(paid_sum or 0), 0.0) for inv, paid_sum in invoices_rows)
-        total_paid = sum(float(paid_sum or 0) for _, paid_sum in invoices_rows)
+        total_owed = sum(max(_inv_due(inv) - float(paid_sum or 0), 0.0) for inv, paid_sum in all_rows)
+        total_paid = sum(float(paid_sum or 0) for _, paid_sum in all_rows)
 
     except Exception as e:
         current_app.logger.exception("Error loading invoices for user %s: %s", id, e)
@@ -1042,6 +1087,15 @@ def view_user(id):
         prealerts=prealerts,
         packages=packages,
         invoices_rows=invoices_rows,
+        all_rows=all_rows,
+        inv_page=inv_page,
+        inv_per_page=inv_per_page,
+        inv_total_pages=inv_total_pages,
+        inv_show_from=inv_show_from,
+        inv_show_to=inv_show_to,
+        total_invoices=total_invoices,
+        inv_from=inv_from,
+        inv_to=inv_to,
         payments=payments,
         total_payments=total_payments,
         pay_page=pay_page,

@@ -488,6 +488,32 @@
       <div class="tab-pane fade {% if current_tab == 'invoices' %}show active{% endif %}"
            id="invoices" role="tabpanel" aria-labelledby="invoices-tab">
 
+
+        <!-- Top bar: Rows (left) + Filter (right) -->
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <label class="small text-muted mb-0">Rows</label>
+
+            <select class="form-select form-select-sm" style="width:auto;"
+                    onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='invoices', inv_page=1, inv_from=inv_from, inv_to=inv_to) }}&inv_per_page=' + this.value;">
+              {% set current_pp = inv_per_page|default(10) %}
+              {% for n in [10,20,50,100,500,1000] %}
+                <option value="{{ n }}" {% if current_pp|int == n %}selected{% endif %}>{{ n }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="d-flex align-items-center gap-2">
+            <button type="button"
+                    class="btn btn-sm btn-outline-purple"
+                    data-bs-toggle="modal"
+                    data-bs-target="#invoiceFilterModal"
+                    title="Filter invoices">
+              <i class="bi bi-funnel"></i> Filter
+            </button>
+          </div>
+        </div>
+
         <div class="mb-3">
           <strong>Total Owed:</strong>  ${{ money(total_owed) }} |
           <strong>Total Paid:</strong>  ${{ money(total_paid) }} |
@@ -588,6 +614,59 @@
           </table>
         </div>
         <div id="invoiceInlineHost" class="mt-3"></div>
+        <!-- Pagination footer -->
+        <div class="d-flex justify-content-between align-items-center mt-2">
+          <small class="text-muted">
+            Showing {{ inv_show_from }}–{{ inv_show_to }} of {{ total_invoices }}
+          </small>
+
+          <ul class="pagination pagination-sm mb-0">
+            <li class="page-item {% if inv_page == 1 %}disabled{% endif %}">
+              <a class="page-link"
+                 href="{{ url_for('accounts_profiles.view_user',
+                                  id=user_id, tab='invoices',
+                                  inv_page=1,
+                                  inv_per_page=inv_per_page,
+                                  inv_from=inv_from, inv_to=inv_to) }}">
+                &laquo;&laquo;
+              </a>
+            </li>
+
+            <li class="page-item {% if inv_page == 1 %}disabled{% endif %}">
+              <a class="page-link"
+                 href="{{ url_for('accounts_profiles.view_user',
+                                  id=user_id, tab='invoices',
+                                  inv_page=(inv_page-1 if inv_page>1 else 1),
+                                  inv_per_page=inv_per_page,
+                                  inv_from=inv_from, inv_to=inv_to) }}">
+                &laquo;
+              </a>
+            </li>
+
+            <li class="page-item {% if inv_page == inv_total_pages %}disabled{% endif %}">
+              <a class="page-link"
+                 href="{{ url_for('accounts_profiles.view_user',
+                                  id=user_id, tab='invoices',
+                                  inv_page=(inv_page+1 if inv_page < inv_total_pages else inv_total_pages),
+                                  inv_per_page=inv_per_page,
+                                  inv_from=inv_from, inv_to=inv_to) }}">
+                &raquo;
+              </a>
+            </li>
+
+            <li class="page-item {% if inv_page == inv_total_pages %}disabled{% endif %}">
+              <a class="page-link"
+                 href="{{ url_for('accounts_profiles.view_user',
+                                  id=user_id, tab='invoices',
+                                  inv_page=inv_total_pages,
+                                  inv_per_page=inv_per_page,
+                                  inv_from=inv_from, inv_to=inv_to) }}">
+                &raquo;&raquo;
+              </a>
+            </li>
+          </ul>
+        </div>
+
       </div>
 
       <!-- Payments Tab -->
@@ -733,7 +812,9 @@
           </div>
 
           <!-- Middle: Search -->
-          <div style="min-width:260px; max-width:360px; width:100%;">
+          <div class="d-flex align-items-center gap-2" style="min-width:260px; max-width:420px; width:100%;">
+            <span class="small text-muted mb-0">Search</span>
+
             <input id="msgSearchInput"
                    type="text"
                    class="form-control form-control-sm"
@@ -1534,34 +1615,32 @@ $(document).ready(function () {
   // $('#packagesTable').DataTable();  // intentionally removed
 
   // Prealerts
-  $('#prealertsTable').DataTable({
-    order: [[0, 'desc']],
-    pageLength: 10
-  });
+  if ($('#prealertsTable').length) {
+    $('#prealertsTable').DataTable({
+      order: [[0, 'desc']],
+      pageLength: 10
+    });
+  } 
 
-  // Invoices (NO search bar)
-  $('#invoiceTable').DataTable({
-    dom: 'rtip',                // ✅ removes search box
-    order: [[0, 'desc']],
-    pageLength: 10,
-    language: {
-      emptyTable: "No invoices yet."
-    }
-  }); 
+  // Messages: ONLY use DataTables if you are NOT doing server-side pagination for messages
+  // If you ARE doing server-side pagination, remove this whole block and rely on your backend search.
+  let msgTable = null;
+  if ($('#messagesTable').length) {
+    msgTable = $('#messagesTable').DataTable({
+      dom: 'rtip' // hide built-in search box
+    });
 
-  // Messages (NO search bar; we use our own input)
-  const msgTable = $('#messagesTable').DataTable({
-    dom: 'rtip'
-  });
+ // hook custom search input
+    $('#msgSearchInput').on('input', function () {
+      msgTable.search(this.value).draw();
+    });
+  }
 
-  // hook custom search input
-  $('#msgSearchInput').on('input', function () {
-    msgTable.search(this.value).draw();
-  });
-  '#messagesTable').DataTable();
 
-  // Scheduled deliveries
-  $('#scheduledeliveryTable').DataTable();
+  // Scheduled deliveries (client-side ok)
+  if ($('#scheduledeliveryTable').length) {
+    $('#scheduledeliveryTable').DataTable();
+  }
 });
 
 

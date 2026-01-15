@@ -287,6 +287,7 @@ def create_app():
     app.register_blueprint(settings_bp)
     app.register_blueprint(legacy_api_bp)   # your existing api routes
     app.register_blueprint(mobile_api_bp)   # /api/auth/login for Flutter
+    csrf.exempt(mobile_api_bp)
     app.register_blueprint(analytics_bp, url_prefix='/analytics')
     app.register_blueprint(public_api_bp)
     app.jinja_env.globals["to_jamaica"] = to_jamaica

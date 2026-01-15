@@ -271,6 +271,8 @@ def create_app():
     from .routes.analytics_routes import analytics_bp
     from app.routes.public_api import public_api_bp
     from app.utils.time import to_jamaica
+    from app.api import api_bp
+
 
 
     app.register_blueprint(customer_bp, url_prefix='/customer')
@@ -287,6 +289,8 @@ def create_app():
     app.register_blueprint(analytics_bp, url_prefix='/analytics')
     app.register_blueprint(public_api_bp)
     app.jinja_env.globals["to_jamaica"] = to_jamaica
+    app.register_blueprint(api_bp)
+
 
 
     # Basic routes

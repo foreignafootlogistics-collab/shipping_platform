@@ -636,20 +636,33 @@ def messages():
         subject = (form.subject.data or "").strip()
         body = (form.message.data or "").strip()
 
-        for uid in ids:
-            tk = make_thread_key(current_user.id, uid)
+        recipients = User.query.filter(User.id.in_(ids)).all()
+
+        now = datetime.now(timezone.utc)
+
+        for u in recipients:
+            tk = make_thread_key(current_user.id, u.id)
+
             db.session.add(Message(
                 sender_id=current_user.id,
-                recipient_id=uid,
+                recipient_id=u.id,
                 subject=subject,
                 body=body,
                 thread_key=tk,
                 is_read=False,
-                created_at=datetime.now(timezone.utc),
+                created_at=now,
             ))
 
+            send_bulk_email_with_logo(
+                to_email=u.email,
+                to_name=(u.full_name or "Customer"),
+                subject=subject,
+                message=body
+            )
+
+
         db.session.commit()
-        flash(f"Message sent to {len(ids)} customer(s).", "success")
+        flash(f"Message + Email sent to {len(recipients)} customer(s).", "success")
         return redirect(url_for("admin.messages"))
 
     # ---- Thread list ----

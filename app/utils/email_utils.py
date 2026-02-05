@@ -41,6 +41,171 @@ DELIVERY_URL = "https://app.faflcourier.com/customer/schedule-delivery"
 TRANSACTIONS_URL = "https://app.faflcourier.com/customer/transactions/all"
 
 # ==========================================================
+#  FAFL BRANDED BASE EMAIL (SINGLE SOURCE OF TRUTH)
+# ==========================================================
+def render_fafl_email(full_name: str, main_message: str,
+                      action_url: str | None = None,
+                      action_text: str | None = None) -> str:
+    """
+    Returns a fully branded HTML email using your FAFL template.
+    """
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {{
+      margin: 0;
+      padding: 0;
+      background: #f3f4f6;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #111827;
+    }}
+    .wrapper {{
+      width: 100%;
+      padding: 24px 0;
+    }}
+    .container {{
+      max-width: 640px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }}
+    .header {{
+      background: #4A148C;
+      padding: 20px;
+      text-align: center;
+    }}
+    .logo {{
+      max-width: 160px;
+      height: auto;
+    }}
+    .body {{
+      padding: 24px 28px;
+      line-height: 1.6;
+    }}
+    .title {{
+      font-size: 20px;
+      font-weight: 700;
+      color: #4A148C;
+      margin-bottom: 12px;
+    }}
+    .btn {{
+      display: inline-block;
+      background: #4A148C;
+      color: #ffffff;
+      padding: 12px 22px;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 600;
+      margin-top: 16px;
+    }}
+    .footer {{
+      background: #f5f2fb;
+      padding: 18px 24px;
+      font-size: 13px;
+      color: #555;
+      text-align: center;
+    }}
+    .footer a {{
+      color: #4A148C;
+      text-decoration: none;
+    }}
+  </style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="container">
+
+    <div class="header">
+      <img src="{LOGO_URL}" alt="Foreign A Foot Logistics" class="logo">
+    </div>
+
+    <div class="body">
+      <div class="title">Hello {full_name},</div>
+
+      <p>{main_message}</p>
+
+      {f'''
+      <p style="text-align:center;">
+        <a href="{action_url}" class="btn">{action_text}</a>
+      </p>
+      ''' if action_url and action_text else ""}
+
+      <p>
+        Best regards,<br>
+        <strong>Foreign A Foot Logistics Team</strong>
+      </p>
+    </div>
+
+    <div class="footer">
+      <div><strong>Foreign A Foot Logistics Limited</strong></div>
+      <div>Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica</div>
+      <div>
+        📞 (876) 560-7764 ·
+        ✉️ <a href="mailto:foreignafootlogistics@gmail.com">foreignafootlogistics@gmail.com</a> ·
+        🌐 <a href="https://app.faflcourier.com">www.faflcourier.com</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+def wrap_fafl_email_html(title: str, body_html: str) -> str:
+    """
+    Reusable FAFL branded email shell with logo header.
+    Pass in already-formatted HTML content for the body.
+    """
+    return f"""
+    <html>
+    <body style="font-family:Inter,Arial,sans-serif; background:#f6f7fb; margin:0; padding:0;">
+      <div style="padding:24px;">
+        <div style="max-width:680px; margin:0 auto; background:#ffffff; border-radius:12px;
+                    overflow:hidden; border:1px solid #e5e7eb;">
+
+          <!-- Header -->
+          <div style="background:#4A148C; padding:16px 20px;">
+            <img src="{LOGO_URL}" alt="Foreign A Foot Logistics"
+                 style="height:52px; display:block;">
+          </div>
+
+          <!-- Content -->
+          <div style="padding:22px 20px;">
+            <div style="font-size:18px; font-weight:700; color:#111827; margin:0 0 12px 0;">
+              {title}
+            </div>
+
+            {body_html}
+
+            <div style="margin-top:18px; padding-top:14px; border-top:1px solid #e5e7eb;
+                        color:#6b7280; font-size:12px; line-height:1.4;">
+              <div><b>Foreign A Foot Logistics Limited</b></div>
+              <div>Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</div>
+              <div>(876) 560-7764 • foreignafootlogistics@gmail.com</div>
+              <div style="margin-top:6px;">
+                <a href="{DASHBOARD_URL}" style="color:#4A148C; text-decoration:none;">
+                  Open Customer Dashboard
+                </a>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+
+# ==========================================================
 #  INTERNAL: LOG EMAILS INTO IN-APP MESSAGES
 # ==========================================================
 def _get_admin_sender_id() -> int | None:
@@ -213,38 +378,47 @@ You can now log in at {DASHBOARD_URL} using your email and password.
 📦 Your U.S. Shipping Address:
 Air Standard
 {full_name}
-4652 N Hiatus Rd
-{reg_number} A
-Sunrise, Florida 33351
+3200 112th Ave
+KCDA-{reg_number} A
+Doral, Florida 33172
 
 Thank you for choosing us!
 
 - Foreign A Foot Logistics Limited Team
-"""
-    html_body = f"""
-<html>
-<body style="font-family: Arial, sans-serif;">
-  <div style="background:#f9f9f9;padding:20px;">
-    <div style="max-width:600px;margin:auto;background:#fff;padding:20px;border-radius:8px;">
-      <img src="{LOGO_URL}" alt="Logo" style="max-width:180px;">
-      <h2>Welcome, {full_name}!</h2>
-      <p>Your registration number is <b>{reg_number}</b>.</p>
-      <p><b>U.S. Shipping Address:</b><br>
-      Air Standard<br>
-      {full_name}<br>
-      4652 N Hiatus Rd<br>
-      {reg_number} A<br>
-      Sunrise, Florida 33351</p>
-      <p>
-        <a href="{DASHBOARD_URL}" style="background:#5c3d91;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;">
+""".strip()
+
+    body_html = f"""
+      <p style="margin:0 0 12px 0; color:#374151;">Hi {full_name},</p>
+
+      <p style="margin:0 0 12px 0; color:#111827; line-height:1.6;">
+        Welcome to <b>Foreign A Foot Logistics Limited</b> — your trusted partner in shipping and logistics!
+      </p>
+
+      <div style="margin:14px 0; color:#111827; line-height:1.6;">
+        <div><b>Registration Number:</b> {reg_number}</div>
+        <div style="margin-top:10px;"><b>U.S. Shipping Address:</b></div>
+        <div>Air Standard</div>
+        <div>{full_name}</div>
+        <div>3200 NW 112th Ave</div>
+        <div>KCDA-{reg_number} A</div>
+        <div>Doral, Florida 33172</div>
+      </div>
+
+      <p style="margin:14px 0 0 0; color:#374151;">
+        You can now log in and manage shipments, invoices, and deliveries.
+      </p>
+
+      <div style="text-align:center; margin-top:16px;">
+        <a href="{DASHBOARD_URL}"
+           style="display:inline-block; background:#4A148C; color:#fff; padding:12px 18px;
+                  border-radius:10px; text-decoration:none; font-weight:700;">
           Login to Dashboard
         </a>
-      </p>
-    </div>
-  </div>
-</body>
-</html>
-"""
+      </div>
+    """
+
+    html_body = wrap_fafl_email_html(title="Welcome to Foreign A Foot Logistics", body_html=body_html)
+
     return send_email(
         to_email=email,
         subject="Welcome to Foreign A Foot Logistics Limited!",
@@ -269,21 +443,34 @@ We received a request to reset your password.
 This link will expire in 10 minutes for your security.
 
 If you didn’t request a password reset, simply ignore this email.
-"""
-    html_body = f"""
-<html>
-<body>
-  <p>Dear {full_name},</p>
-  <p>We received a request to reset your password.</p>
-  <p>
-    <a href="{reset_link}" style="background:#5c3d91;color:#fff;padding:10px 20px;text-decoration:none;">
-      Reset Password
-    </a>
-  </p>
-  <p>This link will expire in 10 minutes.</p>
-</body>
-</html>
-"""
+""".strip()
+
+    body_html = f"""
+      <p style="margin:0 0 12px 0; color:#374151;">Hi {full_name},</p>
+
+      <p style="margin:0 0 12px 0; color:#111827; line-height:1.6;">
+        We received a request to reset your password.
+      </p>
+
+      <p style="margin:0 0 12px 0; color:#111827; line-height:1.6;">
+        Click the button below to reset it. This link expires in <b>10 minutes</b>.
+      </p>
+
+      <div style="text-align:center; margin-top:16px;">
+        <a href="{reset_link}"
+           style="display:inline-block; background:#4A148C; color:#fff; padding:12px 18px;
+                  border-radius:10px; text-decoration:none; font-weight:700;">
+          Reset Password
+        </a>
+      </div>
+
+      <p style="margin:14px 0 0 0; color:#6b7280; font-size:13px;">
+        If you didn’t request this, you can ignore this email.
+      </p>
+    """
+
+    html_body = wrap_fafl_email_html(title="Password Reset Request", body_html=body_html)
+
     return send_email(
         to_email=to_email,
         subject="Reset Your Password - Foreign A Foot Logistics",
@@ -297,35 +484,46 @@ If you didn’t request a password reset, simply ignore this email.
 #  BULK MESSAGE EMAIL
 # ==========================================================
 def send_bulk_message_email(to_email, full_name, subject, message_body, recipient_user_id=None):
+    subject = (subject or "").strip()
+    message_body = (message_body or "").strip()
+
     plain_body = f"""
 Dear {full_name},
 
 {message_body}
 
-Thanks,
+Best regards,
 Foreign A Foot Logistics Team
-"""
-    html_body = f"""
-<html>
-<body style="font-family: Arial, sans-serif;">
-  <div style="background:#f9f9f9; padding:20px;">
-    <div style="background:#fff; padding:30px; border-radius:8px;">
-      <h3>Dear {full_name},</h3>
-      <p>{(message_body or "").replace("\n", "<br>")}</p>
-      <p>Best regards,<br>Foreign A Foot Logistics Team</p>
-    </div>
-  </div>
-</body>
-</html>
-"""
+""".strip()
+
+    safe_msg = message_body.replace("\n", "<br>")
+
+    body_html = f"""
+      <p style="margin:0 0 12px 0; color:#374151;">Hi {full_name},</p>
+
+      <div style="white-space:normal; line-height:1.6; color:#111827;">
+        {safe_msg}
+      </div>
+
+      <p style="margin:16px 0 0 0; color:#374151;">
+        Best regards,<br>
+        <b>Foreign A Foot Logistics Team</b>
+      </p>
+    """
+
+    html_body = wrap_fafl_email_html(title=subject or "Announcement", body_html=body_html)
+
+    email_subject = subject or "Announcement"
+    if "foreign a foot" not in email_subject.lower():
+        email_subject = f"{email_subject} - Foreign A Foot Logistics"
+
     return send_email(
         to_email=to_email,
-        subject=f"{subject} - Foreign A Foot Logistics",
+        subject=email_subject,
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
     )
-
 
 # ==========================================================
 #  PACKAGE OVERSEAS RECEIVED EMAIL
@@ -396,7 +594,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
         "Warm regards,",
         "The Foreign A Foot Logistics Team",
         "📍 Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine",
-        "🌐 www.faflcourier.com",
+        "🌐 app.faflcourier.com",
         "✉️ foreignafootlogistics@gmail.com",
         "☎️ (876) 560-7764",
     ]
@@ -523,18 +721,47 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
 # ==========================================================
 def send_new_message_email(user_email, user_name, message_subject, message_body, recipient_user_id=None):
     subject = f"New Message: {message_subject}"
-    body = (
+
+    plain_body = (
         f"Hello {user_name},\n\n"
         f"You have received a new message:\n\n"
         f"{message_body}\n\n"
         f"Please log in to your account to reply or view details."
     )
+
+    safe_msg = (message_body or "").replace("\n", "<br>")
+    messages_url = f"{DASHBOARD_URL}/customer/messages"
+
+    body_html = f"""
+      <p style="margin:0 0 12px 0; color:#374151;">Hi {user_name},</p>
+
+      <p style="margin:0 0 12px 0; color:#111827; line-height:1.6;">
+        You have received a new message:
+      </p>
+
+      <div style="white-space:normal; line-height:1.6; color:#111827;">
+        {safe_msg}
+      </div>
+
+      <div style="text-align:center; margin-top:16px;">
+        <a href="{messages_url}"
+           style="display:inline-block; background:#4A148C; color:#fff; padding:12px 18px;
+                  border-radius:10px; text-decoration:none; font-weight:700;">
+          Open Messages
+        </a>
+      </div>
+    """
+
+    html_body = wrap_fafl_email_html(title=subject, body_html=body_html)
+
     return send_email(
         to_email=user_email,
         subject=subject,
-        plain_body=body,
+        plain_body=plain_body,
+        html_body=html_body,
         recipient_user_id=recipient_user_id,
     )
+
 
 
 # ==========================================================
@@ -548,7 +775,7 @@ def send_referral_email(to_email: str, referral_code: str, referrer_name: str) -
     except Exception:
         base = None
 
-    base_url = (base or "https://www.faflcourier.com").rstrip("/")
+    base_url = (base or "https://app.faflcourier.com").rstrip("/")
     register_link = f"{base_url}/register?ref={referral_code}"
     subject = "You've been invited to join Foreign A Foot Logistics!"
 
@@ -637,26 +864,50 @@ def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict]
         f"Hi {full_name},\n\n"
         f"The following package(s) are now READY FOR PICK UP:\n"
         f"{rows}\n\n"
+        f"Prefer delivery? Schedule it here: {DELIVERY_URL}\n\n"
         f"Thanks,\nForeign A Foot Logistics"
     )
 
-    html = f"""
-<html><body>
-  <p>Hi {full_name},</p>
-  <p>The following package(s) are now <b>READY FOR PICK UP</b>:</p>
-  <ul>
-    {''.join(f"<li>{it.get('tracking_number','-')} — {it.get('description','-')} — ${it.get('amount_due',0):.2f}</li>" for it in items)}
-  </ul>
-  <p>Thanks,<br>Foreign A Foot Logistics</p>
-</body></html>
-"""
+    items_html = "<br>".join(
+        f"• <b>{it.get('tracking_number','-')}</b> — {it.get('description','-')} — "
+        f"<b>${it.get('amount_due',0):.2f}</b>"
+        for it in items
+    ) or "• (no details)"
+
+    body_html = f"""
+      <p style="margin:0 0 12px 0; color:#374151;">Hi {full_name},</p>
+
+      <p style="margin:0 0 12px 0; color:#111827; line-height:1.6;">
+        <b>Your package(s) are READY FOR PICKUP:</b>
+      </p>
+
+      <div style="margin:0 0 12px 0; color:#111827; line-height:1.6;">
+        {items_html}
+      </div>
+
+      <p style="margin:0 0 12px 0; color:#374151;">
+        Prefer delivery? Schedule it below.
+      </p>
+
+      <div style="text-align:center; margin-top:16px;">
+        <a href="{DELIVERY_URL}"
+           style="display:inline-block; background:#4A148C; color:#fff; padding:12px 18px;
+                  border-radius:10px; text-decoration:none; font-weight:700;">
+          Schedule Delivery
+        </a>
+      </div>
+    """
+
+    html_body = wrap_fafl_email_html(title="Ready for Pickup", body_html=body_html)
+
     return send_email(
         to_email=to_email,
         subject="Your package is Ready for Pick Up",
         plain_body=plain,
-        html_body=html,
+        html_body=html_body,
         recipient_user_id=recipient_user_id,
     )
+
 
 
 # --- Shipment invoice notice (no attachments; link/button only) ----
@@ -669,24 +920,33 @@ def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: f
         f"Thanks,\nForeign A Foot Logistics"
     )
 
-    html = f"""
-<html><body>
-  <p>Hi {full_name},</p>
-  <p>Your invoice for the recent shipment is ready.</p>
-  <p><b>Total Amount Due:</b> ${total_due:.2f}</p>
-  <p>
-    <a href="{invoice_link}" style="background:#5c3d91;color:#fff;padding:10px 16px;text-decoration:none;border-radius:4px;">
-      View / Pay Invoice
-    </a>
-  </p>
-  <p>Thanks,<br>Foreign A Foot Logistics</p>
-</body></html>
-"""
+    body_html = f"""
+      <p style="margin:0 0 12px 0; color:#374151;">Hi {full_name},</p>
+
+      <p style="margin:0 0 12px 0; color:#111827; line-height:1.6;">
+        Your shipment invoice is ready.
+      </p>
+
+      <p style="margin:0 0 12px 0; color:#111827; line-height:1.6;">
+        <b>Total Due:</b> ${total_due:.2f}
+      </p>
+
+      <div style="text-align:center; margin-top:16px;">
+        <a href="{invoice_link}"
+           style="display:inline-block; background:#4A148C; color:#fff; padding:12px 18px;
+                  border-radius:10px; text-decoration:none; font-weight:700;">
+          View / Pay Invoice
+        </a>
+      </div>
+    """
+
+    html_body = wrap_fafl_email_html(title="Shipment Invoice", body_html=body_html)
+
     return send_email(
         to_email=to_email,
         subject="Your Shipment Invoice",
         plain_body=plain,
-        html_body=html,
+        html_body=html_body,
         recipient_user_id=recipient_user_id,
     )
 

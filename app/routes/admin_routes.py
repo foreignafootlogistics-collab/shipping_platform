@@ -653,13 +653,13 @@ def messages():
                 created_at=now,
             ))
 
-            send_bulk_email_with_logo(
-                to_email=u.email,
-                to_name=(u.full_name or "Customer"),
+            send_bulk_message_email(
+                to_email=user.email,
+                full_name=user.full_name,
                 subject=subject,
-                message=body
+                message_body=body,
+                recipient_user_id=None
             )
-
 
         db.session.commit()
         flash(f"Message + Email sent to {len(recipients)} customer(s).", "success")

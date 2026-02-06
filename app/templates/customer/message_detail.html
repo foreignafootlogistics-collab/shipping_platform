@@ -100,11 +100,10 @@
           <form method="POST" action="{{ url_for('customer.customer_message_reply', msg_id=msg.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-            {% set subj = (msg.subject or "Message") %}
-            <div class="mb-2">
-              <input type="text" name="subject" class="form-control form-control-sm"
-                     placeholder="Subject (optional)"
-                     value="{{ subj if subj|lower.startswith('re:') else 'Re: ' ~ subj }}">
+            {% set subj = (msg.subject or '') %}
+            <input type="text" name="subject" class="form-control form-control-sm"
+                   placeholder="Subject (optional)"
+                   value="{{ subj if (subj|lower).startswith('re:') else 'Re: ' ~ subj }}">
             </div>
 
             <div class="mb-2">

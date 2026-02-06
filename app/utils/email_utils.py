@@ -94,6 +94,28 @@ def _get_admin_sender_id() -> int | None:
     except Exception:
         return None
 
+def pick_admin_recipient():
+    """
+    Pick an admin recipient safely:
+    1) is_superadmin True (if column exists)
+    2) role == 'admin'
+    3) first user
+    """
+    from app.models import User
+
+    admin = None
+
+    if hasattr(User, "is_superadmin"):
+        admin = User.query.filter(User.is_superadmin.is_(True)).order_by(User.id.asc()).first()
+
+    if not admin and hasattr(User, "role"):
+        admin = User.query.filter(User.role == "admin").order_by(User.id.asc()).first()
+
+    if not admin:
+        admin = User.query.order_by(User.id.asc()).first()
+
+    return admin
+
 
 def log_email_to_messages(
     recipient_user_id: int,

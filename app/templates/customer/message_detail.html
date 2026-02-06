@@ -17,7 +17,6 @@
     </div>
 
     <div class="d-flex align-items-center gap-2">
-      {# Optional: wire up later if you add customer archive/delete routes #}
       <button type="button" class="btn btn-sm btn-outline-secondary" disabled>
         <i class="bi bi-archive"></i>
       </button>
@@ -101,10 +100,11 @@
           <form method="POST" action="{{ url_for('customer.customer_message_reply', msg_id=msg.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+            {% set subj = (msg.subject or "Message") %}
             <div class="mb-2">
               <input type="text" name="subject" class="form-control form-control-sm"
                      placeholder="Subject (optional)"
-                     value="{{ msg.subject if (msg.subject or '').lower().startswith('re:') else 'Re: ' ~ (msg.subject or '') }}">
+                     value="{{ subj if subj|lower.startswith('re:') else 'Re: ' ~ subj }}">
             </div>
 
             <div class="mb-2">
@@ -124,7 +124,7 @@
           </form>
 
           <div class="small text-muted mt-2">
-            Tip: Your reply will be sent as a new message (Gmail style — no threads).
+            Tip: Your reply will be sent as a new message.
           </div>
         </div>
       </div>
@@ -137,10 +137,15 @@
           <i class="bi bi-info-circle me-2"></i>Message Details
         </div>
         <div class="card-body small">
+
           <div class="mb-2">
             <div class="text-muted">Conversation With</div>
             <div class="fw-semibold">
-              {{ other.full_name if other else "Administrator" }}
+              {% if msg.sender_id == current_user.id %}
+                {{ other.full_name if other else "Administrator" }}
+              {% else %}
+                Administrator
+              {% endif %}
             </div>
           </div>
 
@@ -178,3 +183,4 @@
   .message-body { font-size: 0.98rem; color:#111827; }
 </style>
 {% endblock %}
+

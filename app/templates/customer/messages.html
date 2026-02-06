@@ -4,13 +4,13 @@
 {% block content %}
 <div class="container mt-4">
 
-  <div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-2">
     <div>
-      <h3 class="mb-0">Messages</h3>
-      <div class="text-muted small">Inbox & Sent • Click a message to open</div>
+      <h3 class="mb-0">Messages</h3>    
     </div>
 
-    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('customer.view_messages') }}">
+    <a class="btn btn-sm btn-outline-secondary"
+       href="{{ url_for('customer.view_messages', box=box, q=q, per_page=per_page) }}">
       <i class="bi bi-arrow-clockwise"></i> Refresh
     </a>
   </div>
@@ -29,113 +29,127 @@
 
   <div class="row g-3">
 
-    <!-- LEFT: Inbox + Sent (gmail-ish list) -->
+    <!-- LEFT: Mailbox -->
     <div class="col-lg-7">
-
-      <!-- Inbox -->
       <div class="card shadow-sm mb-3">
-        <div class="card-header text-white d-flex align-items-center justify-content-between"
-             style="background:#4A148C;">
-          <div class="fw-bold"><i class="bi bi-inbox me-2"></i>Inbox</div>
+
+        <!-- Header -->
+        <div class="card-header text-white" style="background:#4A148C;">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+
+            <div class="d-flex align-items-center gap-2">
+              <div class="fw-bold">
+                <i class="bi bi-envelope me-2"></i>
+                {{ "Inbox" if box=="inbox" else ("Sent" if box=="sent" else "All") }}
+              </div>
+
+              <!-- Tabs -->
+              <div class="btn-group btn-group-sm ms-2" role="group">
+                <a class="btn btn-outline-light {% if box=='inbox' %}active{% endif %}"
+                   href="{{ url_for('customer.view_messages', box='inbox', q=q, per_page=per_page) }}">
+                  <i class="bi bi-inbox"></i> Inbox
+                </a>
+                <a class="btn btn-outline-light {% if box=='sent' %}active{% endif %}"
+                   href="{{ url_for('customer.view_messages', box='sent', q=q, per_page=per_page) }}">
+                  <i class="bi bi-send"></i> Sent
+                </a>
+                <a class="btn btn-outline-light {% if box=='all' %}active{% endif %}"
+                   href="{{ url_for('customer.view_messages', box='all', q=q, per_page=per_page) }}">
+                  <i class="bi bi-collection"></i> All
+                </a>
+              </div>
+            </div>
+
+            <!-- Search + rows -->
+            <form class="d-flex align-items-center gap-2" method="GET"
+                  action="{{ url_for('customer.view_messages') }}">
+              <input type="hidden" name="box" value="{{ box }}">
+              <input type="hidden" name="per_page" value="{{ per_page }}">
+
+              <div class="input-group input-group-sm" style="min-width:260px;">
+                <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                <input type="text" class="form-control" name="q" value="{{ q }}"
+                       placeholder="Search subject/body...">
+                <button class="btn btn-dark" type="submit">Search</button>
+              </div>
+
+              <div class="d-flex align-items-center gap-2 text-white small">
+                <span class="opacity-75">Rows</span>
+                <select class="form-select form-select-sm"
+                        style="width:auto;"
+                        onchange="location.href='{{ url_for('customer.view_messages', box=box, q=q) }}&per_page=' + this.value;">
+                  {% for n in [10,20,50,100] %}
+                    <option value="{{ n }}" {% if per_page==n %}selected{% endif %}>{{ n }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </form>
+
+          </div>
         </div>
 
+        <!-- List -->
         <div class="card-body p-0">
-          {% if inbox|length == 0 %}
-            <div class="p-3 text-muted">No messages.</div>
+          {% if rows|length == 0 %}
+            <p class="text-muted m-3 mb-0">No messages found.</p>
           {% else %}
-            <div class="list-group list-group-flush">
-              {% for m in inbox %}
-                {% set is_unread = (not m.is_read) %}
-                <a class="list-group-item list-group-item-action d-flex align-items-start gap-2"
-                   href="{{ url_for('customer.customer_message_detail', msg_id=m.id) }}"
-                   style="{% if is_unread %}background:#fff7d6;{% endif %}">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0 align-middle">
+                <tbody>
+                {% for m, other in rows %}
+                  {% set is_unread = (m.recipient_id == current_user.id and not m.is_read) %}
+                  <tr style="cursor:pointer; {% if is_unread %}background:#fff7d6;{% endif %}"
+                      onclick="window.location='{{ url_for('customer.customer_message_detail', msg_id=m.id) }}'">
 
-                  <div style="width:14px; padding-top:6px;">
-                    {% if is_unread %}
-                      <span class="d-inline-block rounded-circle" style="width:10px; height:10px; background:#2563EB;"></span>
-                    {% else %}
-                      <span class="d-inline-block rounded-circle" style="width:10px; height:10px; background:#E5E7EB;"></span>
-                    {% endif %}
-                  </div>
+                    <td style="width:34px;" class="text-center">
+                      <span class="dot {% if is_unread %}dot-unread{% else %}dot-read{% endif %}"></span>
+                    </td>
 
-                  <div class="flex-grow-1 overflow-hidden">
-                    <div class="d-flex justify-content-between gap-2">
-                      <div class="text-truncate {% if is_unread %}fw-bold{% else %}fw-semibold{% endif %}">
-                        Administrator
+                    <td>
+                      <div class="d-flex justify-content-between gap-2">
+                        <div class="{% if is_unread %}fw-bold{% else %}fw-semibold{% endif %}">
+                          {% if m.sender_id == current_user.id %}
+                            To: Administrator
+                          {% else %}
+                            Administrator
+                          {% endif %}
+                        </div>
+                        <div class="text-muted small">
+                          {{ to_jamaica(m.created_at).strftime('%Y-%m-%d %I:%M %p') if m.created_at else '' }}
+                        </div>
                       </div>
-                      <div class="small text-muted flex-shrink-0">
-                        {{ to_jamaica(m.created_at).strftime('%Y-%m-%d %I:%M %p') if m.created_at else '' }}
+
+                      <div class="{% if is_unread %}fw-bold{% else %}fw-semibold{% endif %}">
+                        {{ m.subject or "Message" }}
+                        <span class="text-muted fw-normal">
+                          — {{ (m.body or '')[:80] }}{% if (m.body or '')|length > 80 %}…{% endif %}
+                        </span>
                       </div>
-                    </div>
 
-                    <div class="text-truncate {% if is_unread %}fw-bold{% else %}fw-normal{% endif %}">
-                      {{ m.subject or "Message" }}
-                      <span class="text-muted fw-normal">— {{ (m.body or '')[:90] }}{% if m.body and m.body|length > 90 %}…{% endif %}</span>
-                    </div>
+                      <div class="mt-1">
+                        {% if m.sender_id == current_user.id %}
+                          <span class="badge bg-secondary">Sent</span>
+                        {% else %}
+                          <span class="badge bg-primary">Received</span>
+                        {% endif %}
 
-                    <div class="mt-1">
-                      {% if is_unread %}
-                        <span class="badge" style="background:#FACC15; color:#111827;">Unread</span>
-                      {% else %}
-                        <span class="badge" style="background:#15803D;">Read</span>
-                      {% endif %}
-                    </div>
-                  </div>
+                        {% if is_unread %}
+                          <span class="badge ms-1" style="background:#FACC15; color:#111827;">Unread</span>
+                        {% else %}
+                          <span class="badge ms-1" style="background:#15803D;">Read</span>
+                        {% endif %}
+                      </div>
+                    </td>
 
-                </a>
-              {% endfor %}
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
             </div>
           {% endif %}
         </div>
+
       </div>
-
-      <!-- Sent -->
-      <div class="card shadow-sm">
-        <div class="card-header text-white d-flex align-items-center justify-content-between"
-             style="background:#15803D;">
-          <div class="fw-bold"><i class="bi bi-send me-2"></i>Sent</div>
-        </div>
-
-        <div class="card-body p-0">
-          {% if sent|length == 0 %}
-            <div class="p-3 text-muted">No sent messages.</div>
-          {% else %}
-            <div class="list-group list-group-flush">
-              {% for m in sent %}
-                <a class="list-group-item list-group-item-action d-flex align-items-start gap-2"
-                   href="{{ url_for('customer.customer_message_detail', msg_id=m.id) }}">
-
-                  <div style="width:14px; padding-top:6px;">
-                    <span class="d-inline-block rounded-circle" style="width:10px; height:10px; background:#E5E7EB;"></span>
-                  </div>
-
-                  <div class="flex-grow-1 overflow-hidden">
-                    <div class="d-flex justify-content-between gap-2">
-                      <div class="text-truncate fw-semibold">
-                        <span class="text-muted">To:</span> Administrator
-                      </div>
-                      <div class="small text-muted flex-shrink-0">
-                        {{ to_jamaica(m.created_at).strftime('%Y-%m-%d %I:%M %p') if m.created_at else '' }}
-                      </div>
-                    </div>
-
-                    <div class="text-truncate">
-                      {{ m.subject or "Message" }}
-                      <span class="text-muted">— {{ (m.body or '')[:90] }}{% if m.body and m.body|length > 90 %}…{% endif %}</span>
-                    </div>
-
-                    <div class="mt-1">
-                      <span class="badge bg-secondary">Sent</span>
-                    </div>
-                  </div>
-
-                </a>
-              {% endfor %}
-            </div>
-          {% endif %}
-        </div>
-      </div>
-
     </div>
 
     <!-- RIGHT: Compose -->
@@ -146,7 +160,7 @@
         </div>
 
         <div class="card-body">
-          <form method="POST" action="{{ url_for('customer.view_messages') }}">
+          <form method="POST" action="{{ url_for('customer.view_messages', box=box, q=q, per_page=per_page) }}">
             {{ form.hidden_tag() }}
 
             <div class="mb-3">
@@ -159,7 +173,7 @@
 
             <div class="mb-3">
               {{ form.body.label(class="form-label") }}
-              {{ form.body(class="form-control", rows=6, placeholder="Write your message...") }}
+              {{ form.body(class="form-control", rows=7, placeholder="Write your message...") }}
               {% for e in form.body.errors %}
                 <div class="text-danger small">{{ e }}</div>
               {% endfor %}
@@ -172,7 +186,7 @@
 
           <hr>
           <div class="small text-muted">
-            Tip: Click a message to open it and reply.
+            Tip: Click any message to open it and reply.
           </div>
         </div>
       </div>
@@ -183,6 +197,12 @@
 
 <style>
   .card { border-radius: 12px; }
+  .table td { padding: 0.9rem 0.9rem; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; }
+  .dot-unread { background:#2563eb; }
+  .dot-read { background:#d1d5db; }
+  .btn-group .btn.active { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.35); }
 </style>
 {% endblock %}
+
 

@@ -11,7 +11,7 @@
         <h4 class="mb-0">Message</h4>
         <div class="text-muted small">
           Conversation with:
-          <strong>{{ other.full_name or "Customer" }}</strong>
+          <strong>{{ other.full_name if other else "Customer" }}</strong>
           {% if other and other.email %}
             <span class="ms-2">• {{ other.email }}</span>
           {% endif %}
@@ -51,7 +51,7 @@
               {% if m.sender_id == current_user.id %}
                 <span>Sent by <b>You</b></span>
               {% else %}
-                <span>Received from <b>{{ other.full_name or "Customer" }}</b></span>
+                <span>Received from <b>{{ other.full_name if other else "Customer" }}</b></span>
               {% endif %}
             </div>
           </div>
@@ -117,5 +117,6 @@
   .card { border-radius: 12px; }
 </style>
 {% endblock %}
+
 
 

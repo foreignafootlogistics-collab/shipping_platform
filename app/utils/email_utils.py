@@ -225,23 +225,77 @@ def send_email(
       <!-- FOOTER -->
       <div style="background:#f5f2fb;padding:16px 22px;font-size:12.5px;color:#555;text-align:left;">
 
-        <div style="display:flex;justify-content:flex-start;align-items:center;gap:10px;margin-bottom:6px;">
+        <div style="display:flex;justify-content:flex-start;align-items:center;gap:10px;margin-bottom:8px;">
           {_logo_img(20)}
           <strong>Foreign A Foot Logistics Limited</strong>
         </div>
-        <div>Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica</div>
-        <div style="margin-top:6px;">
-          📞 (876) 560-7764<br>
-          ✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4A148C;text-decoration:none;">
+
+        <!-- Address -->
+        <div style="margin-top:6px; line-height:1.6;">
+          <img src="https://cdn-icons-png.flaticon.com/512/684/684908.png"
+               alt="Location"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica
+        </div>
+
+        <!-- Contact links -->
+        <div style="margin-top:8px; line-height:1.8;">
+
+          <img src="https://cdn-icons-png.flaticon.com/512/724/724664.png"
+               alt="Phone"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="tel:18765607764"
+             style="color:#4A148C;text-decoration:none;">
+             (876) 560-7764
+          </a>
+          <br>
+
+          <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png"
+               alt="WhatsApp"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="https://wa.me/18762104291"
+             style="color:#4A148C;text-decoration:none;">
+             WhatsApp: (876) 210-4291
+          </a>
+          <br>
+
+          <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png"
+               alt="WhatsApp"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="https://wa.me/18765607764"
+             style="color:#4A148C;text-decoration:none;">
+             WhatsApp: (876) 560-7764
+          </a>
+          <br>
+
+          <img src="https://cdn-icons-png.flaticon.com/512/561/561127.png"
+               alt="Email"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="mailto:foreignafootlogistics@gmail.com"
+             style="color:#4A148C;text-decoration:none;">
             foreignafootlogistics@gmail.com
-          </a><br>
-          🌐 <a href="{DASHBOARD_URL}" style="color:#4A148C;text-decoration:none;">
-            app.faflcourier.com
+          </a>
+          <br>
+
+          <img src="https://cdn-icons-png.flaticon.com/512/1006/1006771.png"
+               alt="Website"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="{DASHBOARD_URL}"
+             style="color:#4A148C;text-decoration:none;">
+            https://app.faflcourier.com
           </a>
         </div>
-      </div>
 
-    </div>
+        <!-- Dashboard Button -->
+        <div style="margin-top:12px;">
+          <a href="{DASHBOARD_URL}"
+             style="display:inline-block;background:#4A148C;color:#ffffff;text-decoration:none;
+                    padding:10px 14px;border-radius:8px;font-weight:700;font-size:13px;">
+            Open Customer Dashboard
+          </a>
+        </div>
+
+      </div>    
   </div>
 </body>
 </html>""".strip()

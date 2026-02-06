@@ -178,7 +178,13 @@ def wrap_fafl_email_html(title: str, body_html: str) -> str:
             </div>
 
             {body_html}
+            <div style="text-align:center; margin-bottom:10px;">
+              <img src="cid:fafl_logo" alt="Foreign A Foot Logistics"
+                   height="10"
+                   style="height:10px !important; max-height:10px !important; width:auto !important; display:inline-block; border:0;">
+            </div>
 
+  
             <div style="margin-top:18px; padding-top:14px; border-top:1px solid #e5e7eb;
                         color:#6b7280; font-size:12px; line-height:1.4;">
               <div><b>Foreign A Foot Logistics Limited</b></div>
@@ -671,7 +677,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 <html>
 <body style="font-family:Inter,Arial,sans-serif; line-height:1.6; color:#222;">
   <div style="max-width:700px;margin:0 auto;padding:16px;">
-    <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:16px;width:auto;display:block;border:0;">
+    <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:10px;width:auto;display:block;border:0;">
     <p>Hello {full_name},</p>
     <p>Great news – we’ve received a new package overseas for you. Package details:</p>
 

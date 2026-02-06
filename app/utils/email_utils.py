@@ -194,8 +194,9 @@ def send_email(
         inner_html = (inner_html or "").strip()
 
         # Don't double-wrap
-        if _BRAND_WRAPPER_MARKER in inner_html:
+        if f'{_BRAND_WRAPPER_MARKER}="1"' in inner_html or _BRAND_WRAPPER_MARKER in inner_html:
             return inner_html
+
 
         return f"""<!doctype html>
 <html>
@@ -203,7 +204,7 @@ def send_email(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;">
   <div style="width:100%;padding:24px 0;">
     <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;
                 box-shadow:0 4px 12px rgba(0,0,0,0.05);" {_BRAND_WRAPPER_MARKER}="1">
@@ -217,22 +218,23 @@ def send_email(
       </div>
 
       <!-- BODY -->
-      <div style="padding:22px 22px;line-height:1.6;">
+      <div style="padding:26px 24px;line-height:1.65;">
         {inner_html}
       </div>
 
       <!-- FOOTER -->
-      <div style="background:#f5f2fb;padding:16px 22px;font-size:12.5px;color:#555;text-align:center;">
-        <div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:6px;">
-          {_logo_img(18)}
+      <div style="background:#f5f2fb;padding:16px 22px;font-size:12.5px;color:#555;text-align:left;">
+
+        <div style="display:flex;justify-content:flex-start;align-items:center;gap:10px;margin-bottom:6px;">
+          {_logo_img(20)}
           <strong>Foreign A Foot Logistics Limited</strong>
         </div>
         <div>Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica</div>
         <div style="margin-top:6px;">
-          📞 (876) 560-7764 ·
+          📞 (876) 560-7764<br>
           ✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4A148C;text-decoration:none;">
             foreignafootlogistics@gmail.com
-          </a> ·
+          </a><br>
           🌐 <a href="{DASHBOARD_URL}" style="color:#4A148C;text-decoration:none;">
             app.faflcourier.com
           </a>

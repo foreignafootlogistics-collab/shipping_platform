@@ -48,7 +48,8 @@ def render_fafl_email(full_name: str, main_message: str,
                       action_url: str | None = None,
                       action_text: str | None = None) -> str:
     """
-    Returns a fully branded HTML email using your FAFL template.
+    Returns a fully branded HTML email using your FAFL template
+    — logo beside header (no purple bar) and logo again in footer.
     """
     return f"""
 <!DOCTYPE html>
@@ -56,105 +57,72 @@ def render_fafl_email(full_name: str, main_message: str,
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body {{
-      margin: 0;
-      padding: 0;
-      background: #f3f4f6;
-      font-family: Arial, Helvetica, sans-serif;
-      color: #111827;
-    }}
-    .wrapper {{
-      width: 100%;
-      padding: 24px 0;
-    }}
-    .container {{
-      max-width: 640px;
-      margin: 0 auto;
-      background: #ffffff;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    }}
-    .header {{
-      background: #4A148C;
-      padding: 20px;
-      text-align: center;
-    }}
-    .logo {{
-      max-width: 160px;
-      height: auto;
-    }}
-    .body {{
-      padding: 24px 28px;
-      line-height: 1.6;
-    }}
-    .title {{
-      font-size: 20px;
-      font-weight: 700;
-      color: #4A148C;
-      margin-bottom: 12px;
-    }}
-    .btn {{
-      display: inline-block;
-      background: #4A148C;
-      color: #ffffff;
-      padding: 12px 22px;
-      text-decoration: none;
-      border-radius: 8px;
-      font-weight: 600;
-      margin-top: 16px;
-    }}
-    .footer {{
-      background: #f5f2fb;
-      padding: 18px 24px;
-      font-size: 13px;
-      color: #555;
-      text-align: center;
-    }}
-    .footer a {{
-      color: #4A148C;
-      text-decoration: none;
-    }}
-  </style>
 </head>
-<body>
-<div class="wrapper">
-  <div class="container">
+<body style="margin:0; padding:0; background:#f3f4f6; font-family:Arial, Helvetica, sans-serif; color:#111827;">
 
-    <div class="header">
-      <img src="{LOGO_URL}" alt="Foreign A Foot Logistics" class="logo">
-    </div>
+  <div style="width:100%; padding:24px 0;">
+    <div style="max-width:640px; margin:0 auto; background:#ffffff; border-radius:12px;
+                overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.05);">
 
-    <div class="body">
-      <div class="title">Hello {full_name},</div>
+      <!-- HEADER (logo + title on same line) -->
+      <div style="padding:20px 24px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #e5e7eb;">
+        <img src="{LOGO_URL}" alt="Foreign A Foot Logistics"
+             style="height:48px; width:auto; display:block;">
 
-      <p>{main_message}</p>
-
-      {f'''
-      <p style="text-align:center;">
-        <a href="{action_url}" class="btn">{action_text}</a>
-      </p>
-      ''' if action_url and action_text else ""}
-
-      <p>
-        Best regards,<br>
-        <strong>Foreign A Foot Logistics Team</strong>
-      </p>
-    </div>
-
-    <div class="footer">
-      <div><strong>Foreign A Foot Logistics Limited</strong></div>
-      <div>Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica</div>
-      <div>
-        📞 (876) 560-7764 ·
-        ✉️ <a href="mailto:foreignafootlogistics@gmail.com">foreignafootlogistics@gmail.com</a> ·
-        🌐 <a href="https://app.faflcourier.com">app.faflcourier.com</a>
+        <div style="font-size:18px; font-weight:700; color:#4A148C;">
+          Foreign A Foot Logistics Limited
+        </div>
       </div>
-    </div>
 
+      <!-- BODY -->
+      <div style="padding:24px 28px; line-height:1.6;">
+        <div style="font-size:20px; font-weight:700; color:#4A148C; margin-bottom:12px;">
+          Hello {full_name},
+        </div>
+
+        <p>{main_message}</p>
+
+        {f'''
+        <p style="text-align:center; margin-top:16px;">
+          <a href="{action_url}"
+             style="display:inline-block; background:#4A148C; color:#ffffff;
+                    padding:12px 22px; text-decoration:none; border-radius:8px;
+                    font-weight:600;">
+            {action_text}
+          </a>
+        </p>
+        ''' if action_url and action_text else ""}
+
+        <p>
+          Best regards,<br>
+          <strong>Foreign A Foot Logistics Team</strong>
+        </p>
+      </div>
+
+      <!-- FOOTER (logo + details) -->
+      <div style="background:#f5f2fb; padding:18px 24px; font-size:13px; color:#555; text-align:center;">
+
+        <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-bottom:8px;">
+          <img src="{LOGO_URL}" alt="FAFL Logo"
+               style="height:32px; width:auto; display:block;">
+          <strong>Foreign A Foot Logistics Limited</strong>
+        </div>
+
+        <div>Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica</div>
+
+        <div style="margin-top:6px;">
+          📞 (876) 560-7764 ·
+          ✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4A148C; text-decoration:none;">
+            foreignafootlogistics@gmail.com
+          </a> ·
+          🌐 <a href="https://app.faflcourier.com" style="color:#4A148C; text-decoration:none;">
+            app.faflcourier.com
+          </a>
+        </div>
+      </div>
+
+    </div>
   </div>
-</div>
 </body>
 </html>
 """

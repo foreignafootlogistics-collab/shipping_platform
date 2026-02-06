@@ -638,7 +638,6 @@ def messages():
         body = (form.message.data or "").strip()
 
         recipients = User.query.filter(User.id.in_(ids)).all()
-
         now = datetime.now(timezone.utc)
 
         for u in recipients:
@@ -655,11 +654,11 @@ def messages():
             ))
 
             send_bulk_message_email(
-                to_email=user.email,
-                full_name=user.full_name,
+                to_email=u.email,
+                full_name=u.full_name,
                 subject=subject,
                 message_body=body,
-                recipient_user_id=None
+                recipient_user_id=u.id,
             )
 
         db.session.commit()

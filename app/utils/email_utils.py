@@ -9,6 +9,8 @@ from email.mime.application import MIMEApplication
 from flask import current_app
 from flask import render_template
 from markupsafe import escape
+from pathlib import Path
+from email.mime.image import MIMEImage
 
 
 # If you still want Flask-Mail for some cases:
@@ -44,6 +46,20 @@ TRANSACTIONS_URL = "https://app.faflcourier.com/customer/transactions/all"
 # ==========================================================
 #  FAFL BRANDED BASE EMAIL (SINGLE SOURCE OF TRUTH)
 # ==========================================================
+def _load_logo_bytes() -> bytes | None:
+    """
+    Load logo bytes from your repo so we can embed inline (CID).
+    Path assumes: app/static/logo.png
+    """
+    try:
+        here = Path(__file__).resolve()
+        logo_path = here.parents[1] / "static" / "logo.png"   # app/utils -> app/static
+        if logo_path.exists():
+            return logo_path.read_bytes()
+    except Exception:
+        pass
+    return None
+
 def render_fafl_email(full_name: str, main_message: str,
                       action_url: str | None = None,
                       action_text: str | None = None) -> str:
@@ -66,8 +82,8 @@ def render_fafl_email(full_name: str, main_message: str,
 
       <!-- HEADER (logo + title on same line) -->
       <div style="padding:20px 24px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #e5e7eb;">
-        <img src="{LOGO_URL}" alt="Foreign A Foot Logistics"
-             style="height:48px; width:auto; display:block;">
+        <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:48px;width:auto;display:block;border:0;">
+
 
         <div style="font-size:18px; font-weight:700; color:#4A148C;">
           Foreign A Foot Logistics Limited
@@ -103,8 +119,8 @@ def render_fafl_email(full_name: str, main_message: str,
       <div style="background:#f5f2fb; padding:18px 24px; font-size:13px; color:#555; text-align:center;">
 
         <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-bottom:8px;">
-          <img src="{LOGO_URL}" alt="FAFL Logo"
-               style="height:32px; width:auto; display:block;">
+          <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:48px;width:auto;display:block;border:0;">
+
           <strong>Foreign A Foot Logistics Limited</strong>
         </div>
 
@@ -126,6 +142,7 @@ def render_fafl_email(full_name: str, main_message: str,
 </body>
 </html>
 """
+    
 
 
 def wrap_fafl_email_html(title: str, body_html: str) -> str:
@@ -141,11 +158,10 @@ def wrap_fafl_email_html(title: str, body_html: str) -> str:
                     overflow:hidden; border:1px solid #e5e7eb;">
 
           <!-- Header -->
-          <div style="background:#4A148C; padding:16px 20px;">
-            <img src="{LOGO_URL}" alt="Foreign A Foot Logistics"
-                 style="height:52px; display:block;">
-          </div>
-
+          <div style="padding:16px 20px; border-bottom:1px solid #e5e7eb; display:flex; gap:12px; align-items:center;">
+            <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:40px; width:auto; display:block;">
+            <div style="font-weight:700; color:#111827;">Foreign A Foot Logistics Limited</div>
+          </div>            
           <!-- Content -->
           <div style="padding:22px 20px;">
             <div style="font-size:18px; font-weight:700; color:#111827; margin:0 0 12px 0;">
@@ -277,6 +293,7 @@ def log_email_to_messages(
 # ==========================================================
 #  CORE EMAIL FUNCTION (SMTP)
 # ==========================================================
+
 def send_email(
     to_email: str,
     subject: str,
@@ -284,29 +301,53 @@ def send_email(
     html_body: str | None = None,
     attachments: list[tuple[bytes, str, str]] | None = None,
     recipient_user_id: int | None = None,
-    log_to_messages: bool = False,  # ✅ NEW: only log when True
+    log_to_messages: bool = False,
+    inline_images: list[tuple[bytes, str, str]] | None = None,  # (bytes, cid, mimetype)
 ) -> bool:
-    """
-    attachments: list of (file_bytes, filename, mimetype)
-      e.g. [(pdf_bytes, "Invoice.pdf", "application/pdf")]
-    """
-
     # ✅ Fail fast if creds missing
     if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
         print("❌ Cannot send email: SMTP_USER / SMTP_PASS not set.")
         return False
 
+    # Root container: mixed (allows attachments)
     msg = MIMEMultipart("mixed")
     msg["From"] = EMAIL_FROM or EMAIL_ADDRESS
     msg["To"] = to_email
     msg["Subject"] = subject
 
-    # Body (plain + optional html)
-    body = MIMEMultipart("alternative")
-    body.attach(MIMEText(plain_body or "", "plain"))
+    # ✅ related container = HTML + inline images must live together
+    related = MIMEMultipart("related")
+
+    # alternative container = plain + html
+    alternative = MIMEMultipart("alternative")
+    alternative.attach(MIMEText(plain_body or "", "plain"))
+
     if html_body:
-        body.attach(MIMEText(html_body, "html"))
-    msg.attach(body)
+        alternative.attach(MIMEText(html_body, "html"))
+
+    related.attach(alternative)
+
+    # ✅ Attach inline images INSIDE related
+    if inline_images:
+        for file_bytes, cid, mimetype in inline_images:
+            if not file_bytes:
+                continue
+            if not mimetype:
+                mimetype = "image/png"
+
+            maintype, subtype = mimetype.split("/", 1)
+
+            if maintype == "image":
+                img = MIMEImage(file_bytes, _subtype=subtype)
+            else:
+                img = MIMEApplication(file_bytes, _subtype=subtype)
+
+            img.add_header("Content-ID", f"<{cid}>")
+            img.add_header("Content-Disposition", "inline", filename=f"{cid}.{subtype}")
+            related.attach(img)
+
+    # Add related into mixed
+    msg.attach(related)
 
     # Attachments (optional)
     if attachments:
@@ -342,7 +383,7 @@ def send_email(
 
         print(f"✅ Email sent to {to_email}")
 
-        # ✅ Mirror into in-app Messages ONLY when explicitly requested
+        # Mirror into in-app Messages ONLY when requested
         if log_to_messages and recipient_user_id:
             log_email_to_messages(recipient_user_id, subject, plain_body)
 
@@ -411,6 +452,9 @@ Thank you for choosing us!
     """
 
     html_body = wrap_fafl_email_html(title="Welcome to Foreign A Foot Logistics", body_html=body_html)
+    logo_bytes = _load_logo_bytes()
+    inline = [(logo_bytes, "fafl_logo", "image/png")] if logo_bytes else []
+
 
     return send_email(
         to_email=email,
@@ -419,6 +463,7 @@ Thank you for choosing us!
         html_body=html_body,
         recipient_user_id=recipient_user_id,
         log_to_messages=False,
+        inline_images=inline,
     )
 
 
@@ -464,6 +509,9 @@ If you didn’t request a password reset, simply ignore this email.
     """
 
     html_body = wrap_fafl_email_html(title="Password Reset Request", body_html=body_html)
+    logo_bytes = _load_logo_bytes()
+    inline = [(logo_bytes, "fafl_logo", "image/png")] if logo_bytes else []
+
 
     return send_email(
         to_email=to_email,
@@ -472,6 +520,7 @@ If you didn’t request a password reset, simply ignore this email.
         html_body=html_body,
         recipient_user_id=recipient_user_id,
         log_to_messages=False,
+        inline_images=inline,
     )
 
 
@@ -507,6 +556,9 @@ Foreign A Foot Logistics Team
     """
 
     html_body = wrap_fafl_email_html(title=subject or "Announcement", body_html=body_html)
+    logo_bytes = _load_logo_bytes()
+    inline = [(logo_bytes, "fafl_logo", "image/png")] if logo_bytes else []
+
 
     email_subject = subject or "Announcement"
     if "foreign a foot" not in email_subject.lower():
@@ -519,6 +571,7 @@ Foreign A Foot Logistics Team
         html_body=html_body,
         recipient_user_id=recipient_user_id,
         log_to_messages=True,  # ✅ this IS a real message
+        inline_images=inline,
     )
 # ==========================================================
 #  PACKAGE OVERSEAS RECEIVED EMAIL
@@ -599,7 +652,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 <html>
 <body style="font-family:Inter,Arial,sans-serif; line-height:1.6; color:#222;">
   <div style="max-width:700px;margin:0 auto;padding:16px;">
-    <img src="{LOGO_URL}" alt="Foreign A Foot Logistics" style="max-width:180px; margin-bottom:16px;">
+    <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:48px;width:auto;display:block;border:0;">
     <p>Hello {full_name},</p>
     <p>Great news – we’ve received a new package overseas for you. Package details:</p>
 
@@ -648,6 +701,9 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 </body>
 </html>
 """
+    logo_bytes = _load_logo_bytes()
+    inline = [(logo_bytes, "fafl_logo", "image/png")] if logo_bytes else []
+
     return send_email(
         to_email=to_email,
         subject=subject,
@@ -655,6 +711,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
         html_body=html_body,
         recipient_user_id=recipient_user_id,
         log_to_messages=False,
+        inline_images=inline,
     )
 
 
@@ -704,6 +761,10 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
     if isinstance(pdf_bytes, (bytes, bytearray)) and len(pdf_bytes) > 0:
         attachments = [(bytes(pdf_bytes), f"Invoice_{inv_no}.pdf", "application/pdf")]
 
+    logo_bytes = _load_logo_bytes()
+    inline = [(logo_bytes, "fafl_logo", "image/png")] if logo_bytes else []
+
+
     return send_email(
         to_email=to_email,
         subject=subject,
@@ -712,6 +773,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
         attachments=attachments,
         recipient_user_id=recipient_user_id,
         log_to_messages=False,
+        inline_images=inline,
     )
 # ==========================================================
 #  NEW MESSAGE EMAIL
@@ -760,6 +822,10 @@ def send_new_message_email(user_email, user_name, message_subject, message_body,
     """
 
     html_body = wrap_fafl_email_html(title=subject, body_html=body_html)
+    logo_bytes = _load_logo_bytes()
+    inline = []
+    if logo_bytes:
+        inline = [(logo_bytes, "fafl_logo", "image/png")]
 
     return send_email(
         to_email=user_email,
@@ -768,6 +834,7 @@ def send_new_message_email(user_email, user_name, message_subject, message_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
         log_to_messages=False,  # ✅ notification email only
+        inline_images=inline,
     )
 
 
@@ -907,6 +974,9 @@ def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict]
     """
 
     html_body = wrap_fafl_email_html(title="Ready for Pickup", body_html=body_html)
+    logo_bytes = _load_logo_bytes()
+    inline = [(logo_bytes, "fafl_logo", "image/png")] if logo_bytes else []
+
 
     return send_email(
         to_email=to_email,
@@ -915,6 +985,7 @@ def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict]
         html_body=html_body,
         recipient_user_id=recipient_user_id,
         log_to_messages=False,
+        inline_images=inline,
     )
 
 
@@ -950,6 +1021,9 @@ def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: f
     """
 
     html_body = wrap_fafl_email_html(title="Shipment Invoice", body_html=body_html)
+    logo_bytes = _load_logo_bytes()
+    inline = [(logo_bytes, "fafl_logo", "image/png")] if logo_bytes else []
+
 
     return send_email(
         to_email=to_email,
@@ -958,6 +1032,7 @@ def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: f
         html_body=html_body,
         recipient_user_id=recipient_user_id,
         log_to_messages=False,
+        inline_images=inline,
     )
 
 
@@ -1165,12 +1240,15 @@ def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=
       </a>
 
       <div style="margin-top:28px;">
-        <img src="{LOGO_URL}" alt="FAFL" style="width:26px; height:auto;">
+        <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:48px;width:auto;display:block;border:0;">
       </div>
     </div>
   </body>
 </html>
 """
+
+    logo_bytes = _load_logo_bytes()
+    inline = [(logo_bytes, "fafl_logo", "image/png")] if logo_bytes else []
 
     return send_email(
         to_email=to_email,
@@ -1178,6 +1256,7 @@ def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
-        log_to_messages=False,        
+        log_to_messages=False,       
+        inline_images=inline, 
     )
 

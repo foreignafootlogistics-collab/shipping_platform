@@ -91,7 +91,7 @@ def render_fafl_email(full_name: str, main_message: str,
 
       <!-- HEADER (logo + title on same line) -->
       <div style="padding:20px 24px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #e5e7eb;">
-        <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:48px;width:auto;display:block;border:0;">
+        <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:28px;width:auto;display:block;border:0;">
 
 
         <div style="font-size:18px; font-weight:700; color:#4A148C;">
@@ -128,7 +128,7 @@ def render_fafl_email(full_name: str, main_message: str,
       <div style="background:#f5f2fb; padding:18px 24px; font-size:13px; color:#555; text-align:center;">
 
         <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-bottom:8px;">
-          <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:48px;width:auto;display:block;border:0;">
+          <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:28px;width:auto;display:block;border:0;">
 
           <strong>Foreign A Foot Logistics Limited</strong>
         </div>
@@ -168,7 +168,7 @@ def wrap_fafl_email_html(title: str, body_html: str) -> str:
 
           <!-- Header -->
           <div style="padding:16px 20px; border-bottom:1px solid #e5e7eb; display:flex; gap:12px; align-items:center;">
-            <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:40px; width:auto; display:block;">
+            <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:28px; width:auto; display:block;">
             <div style="font-weight:700; color:#111827;">Foreign A Foot Logistics Limited</div>
           </div>            
           <!-- Content -->
@@ -671,7 +671,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 <html>
 <body style="font-family:Inter,Arial,sans-serif; line-height:1.6; color:#222;">
   <div style="max-width:700px;margin:0 auto;padding:16px;">
-    <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:48px;width:auto;display:block;border:0;">
+    <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:28px;width:auto;display:block;border:0;">
     <p>Hello {full_name},</p>
     <p>Great news – we’ve received a new package overseas for you. Package details:</p>
 
@@ -1259,7 +1259,7 @@ def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=
       </a>
 
       <div style="margin-top:28px;">
-        <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:48px;width:auto;display:block;border:0;">
+        <img src="cid:fafl_logo" alt="Foreign A Foot Logistics" style="height:28px;width:auto;display:block;border:0;">
       </div>
     </div>
   </body>

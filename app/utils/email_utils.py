@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 import smtplib
 from math import ceil
 from typing import Iterable
@@ -8,7 +8,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from flask import current_app
 from flask import render_template
-from email.message import EmailMessage
+from markupsafe import escape
+
 
 # If you still want Flask-Mail for some cases:
 try:
@@ -148,7 +149,7 @@ def render_fafl_email(full_name: str, main_message: str,
       <div>
         📞 (876) 560-7764 ·
         ✉️ <a href="mailto:foreignafootlogistics@gmail.com">foreignafootlogistics@gmail.com</a> ·
-        🌐 <a href="https://app.faflcourier.com">www.faflcourier.com</a>
+        🌐 <a href="https://app.faflcourier.com">app.faflcourier.com</a>
       </div>
     </div>
 
@@ -242,6 +243,30 @@ def _get_admin_sender_id() -> int | None:
         return None
 
 
+def pick_admin_recipient():
+    """
+    Pick an admin recipient safely:
+    1) is_superadmin True (if column exists)
+    2) role == 'admin'
+    3) first user
+    """
+    from app.models import User
+
+    admin = None
+
+    if hasattr(User, "is_superadmin"):
+        admin = User.query.filter(User.is_superadmin.is_(True)).order_by(User.id.asc()).first()
+
+    if not admin and hasattr(User, "role"):
+        admin = User.query.filter(User.role == "admin").order_by(User.id.asc()).first()
+
+    if not admin:
+        admin = User.query.order_by(User.id.asc()).first()
+
+    return admin
+
+
+
 def log_email_to_messages(
     recipient_user_id: int,
     subject: str,
@@ -267,7 +292,7 @@ def log_email_to_messages(
             recipient_id=int(recipient_user_id),
             subject=(subject or "").strip()[:255],
             body=(plain_body or "").strip(),
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             is_read=False,
         )
         db.session.add(m)
@@ -290,7 +315,8 @@ def send_email(
     plain_body: str,
     html_body: str | None = None,
     attachments: list[tuple[bytes, str, str]] | None = None,
-    recipient_user_id: int | None = None,   # ✅ logs to Messages when provided
+    recipient_user_id: int | None = None,
+    log_to_messages: bool = False,  # ✅ NEW: only log when True
 ) -> bool:
     """
     attachments: list of (file_bytes, filename, mimetype)
@@ -319,13 +345,11 @@ def send_email(
         for a in attachments:
             if isinstance(a, dict):
                 file_bytes = a.get("content", b"")
-                filename   = a.get("filename", "attachment")
-                mimetype   = a.get("mimetype", "application/octet-stream")
+                filename = a.get("filename", "attachment")
+                mimetype = a.get("mimetype", "application/octet-stream")
             else:
-                # assume tuple/list
                 file_bytes, filename, mimetype = a
 
-            # safe mimetype split
             if not mimetype or "/" not in mimetype:
                 mimetype = "application/octet-stream"
 
@@ -350,8 +374,8 @@ def send_email(
 
         print(f"✅ Email sent to {to_email}")
 
-        # ✅ Mirror into in-app Messages
-        if recipient_user_id:
+        # ✅ Mirror into in-app Messages ONLY when explicitly requested
+        if log_to_messages and recipient_user_id:
             log_email_to_messages(recipient_user_id, subject, plain_body)
 
         return True
@@ -359,6 +383,7 @@ def send_email(
     except Exception as e:
         print(f"❌ Email sending failed to {to_email}: {e}")
         return False
+
 
 
 # ==========================================================
@@ -425,6 +450,7 @@ Thank you for choosing us!
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
+        log_to_messages=False,
     )
 
 
@@ -477,6 +503,7 @@ If you didn’t request a password reset, simply ignore this email.
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
+        log_to_messages=False,
     )
 
 
@@ -496,7 +523,7 @@ Best regards,
 Foreign A Foot Logistics Team
 """.strip()
 
-    safe_msg = message_body.replace("\n", "<br>")
+    safe_msg = escape(message_body or "").replace("\n", "<br>")
 
     body_html = f"""
       <p style="margin:0 0 12px 0; color:#374151;">Hi {full_name},</p>
@@ -523,8 +550,8 @@ Foreign A Foot Logistics Team
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
+        log_to_messages=True,  # ✅ this IS a real message
     )
-
 # ==========================================================
 #  PACKAGE OVERSEAS RECEIVED EMAIL
 # ==========================================================
@@ -659,6 +686,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
+        log_to_messages=False,
     )
 
 
@@ -715,12 +743,23 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
         html_body=html_body,
         attachments=attachments,
         recipient_user_id=recipient_user_id,
+        log_to_messages=False,
     )
 # ==========================================================
 #  NEW MESSAGE EMAIL
 # ==========================================================
 def send_new_message_email(user_email, user_name, message_subject, message_body, recipient_user_id=None):
-    subject = f"New Message: {message_subject}"
+    base = (message_subject or "Message").strip()
+
+    # avoid duplicate prefix
+    if base.lower().startswith("new message:"):
+        subject = base
+    else:
+        subject = f"New Message: {base}"
+
+    # add branding
+    if "foreign a foot" not in subject.lower():
+        subject = f"{subject} - Foreign A Foot Logistics"
 
     plain_body = (
         f"Hello {user_name},\n\n"
@@ -729,7 +768,7 @@ def send_new_message_email(user_email, user_name, message_subject, message_body,
         f"Please log in to your account to reply or view details."
     )
 
-    safe_msg = (message_body or "").replace("\n", "<br>")
+    safe_msg = escape(message_body or "").replace("\n", "<br>")
     messages_url = f"{DASHBOARD_URL}/customer/messages"
 
     body_html = f"""
@@ -760,6 +799,7 @@ def send_new_message_email(user_email, user_name, message_subject, message_body,
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
+        log_to_messages=False,  # ✅ notification email only
     )
 
 
@@ -906,6 +946,7 @@ def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict]
         plain_body=plain,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
+        log_to_messages=False,
     )
 
 
@@ -948,6 +989,7 @@ def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: f
         plain_body=plain,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
+        log_to_messages=False,
     )
 
 
@@ -1168,5 +1210,6 @@ def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
+        log_to_messages=False,        
     )
 

@@ -28,6 +28,7 @@ from app.utils.invoice_utils import generate_invoice
 from app.utils.invoice_pdf import generate_invoice_pdf
 from app.utils.messages import make_thread_key
 from app.utils.message_notify import send_new_message_email
+from app.utils.email_utils import pick_admin_recipient
 from app.calculator_data import categories
 from app import allowed_file, mail
 from app.extensions import db
@@ -1041,144 +1042,144 @@ def invoice_pdf(invoice_id):
 # -----------------------------
 # Messaging
 # -----------------------------
+
 @customer_bp.route("/messages", methods=["GET", "POST"])
 @login_required
 def view_messages():
     form = SendMessageForm()
 
-    # Choose an admin recipient (first admin, else first user)
-    admin = (
-        User.query.filter(User.role == "admin").order_by(User.id.asc()).first()
-        or User.query.filter(User.is_superadmin.is_(True)).order_by(User.id.asc()).first()
-        or User.query.order_by(User.id.asc()).first()
-    )
+    # Choose an admin recipient (prefer superadmin, then admin, then first user)
+    admin = pick_admin_recipient()
 
-
+    # ---- Send new message to admin ----
     if request.method == "POST" and form.validate_on_submit():
         if not admin:
             flash("No admin user found to receive messages.", "danger")
             return redirect(url_for("customer.view_messages"))
 
-        msg = DBMessage(  # 👈 use DBMessage (your ORM model)
+        subject = (form.subject.data or "").strip() or "Message"
+        body = (form.body.data or "").strip()
+
+        msg = DBMessage(
             sender_id=current_user.id,
             recipient_id=admin.id,
-            subject=form.subject.data.strip(),
-            body=form.body.data.strip(),
+            subject=subject,
+            body=body,
+            is_read=False,
             created_at=datetime.now(timezone.utc),
         )
         db.session.add(msg)
         db.session.commit()
+
+        # ✅ Email notify admin
+        if admin.email:
+            preview = (body[:120] + "…") if len(body) > 120 else body
+            send_new_message_email(
+                user_email=admin.email,
+                user_name=admin.full_name or "Admin",
+                message_subject=subject,
+                message_body=preview,
+                recipient_user_id=admin.id
+            )
+
         flash("Message sent!", "success")
         return redirect(url_for("customer.view_messages"))
 
+    # ---- Inbox / Sent lists ----
     inbox = (
         DBMessage.query
-        .filter_by(recipient_id=current_user.id)
+        .filter(DBMessage.recipient_id == current_user.id)
         .order_by(DBMessage.created_at.desc())
         .all()
     )
     sent = (
         DBMessage.query
-        .filter_by(sender_id=current_user.id)
+        .filter(DBMessage.sender_id == current_user.id)
         .order_by(DBMessage.created_at.desc())
         .all()
     )
-    return render_template("customer/messages.html", form=form, inbox=inbox, sent=sent, admin=admin)
+
+    return render_template(
+        "customer/messages.html",
+        form=form,
+        inbox=inbox,
+        sent=sent,
+        admin=admin,
+    )
 
 
-@customer_bp.route("/messages/mark_read/<int:msg_id>", methods=["POST"])
+@customer_bp.route("/messages/<int:msg_id>", methods=["GET"])
 @login_required
-def mark_message_read(msg_id):
-    msg = DBMessage.query.get_or_404(msg_id)  # 👈 use DBMessage
-    if msg.recipient_id != current_user.id:
+def customer_message_detail(msg_id):
+    msg = DBMessage.query.get_or_404(msg_id)
+
+    # ✅ Authorization: customer must be sender or recipient
+    if msg.sender_id != current_user.id and msg.recipient_id != current_user.id:
         flash("Not authorized.", "danger")
         return redirect(url_for("customer.view_messages"))
 
-    msg.is_read = True
-    db.session.commit()
-    flash("Message marked as read.", "success")
-    return redirect(url_for("customer.view_messages"))
+    # ✅ Mark as read when OPENED (Gmail behavior)
+    if msg.recipient_id == current_user.id and not msg.is_read:
+        msg.is_read = True
+        db.session.commit()
+
+    # figure out the "other" person for display
+    other_id = msg.recipient_id if msg.sender_id == current_user.id else msg.sender_id
+    other = User.query.get(other_id)
+
+    return render_template(
+        "customer/message_detail.html",
+        msg=msg,
+        other=other,
+    )
 
 
-@customer_bp.app_context_processor
-def inject_message_counts():
-    count = 0
-    try:
-        if current_user.is_authenticated:
-            count = (
-                db.session.scalar(
-                    sa.select(sa.func.count())
-                    .select_from(DBMessage)
-                    .where(
-                        DBMessage.recipient_id == current_user.id,
-                        DBMessage.is_read.is_(False),
-                    )
-                )
-                or 0
-            )
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.warning("inject_message_counts failed: %s", e)
-        count = 0
-    return dict(unread_messages_count=int(count))
-
-@customer_bp.route("/messages/thread/<int:admin_id>", methods=["GET"])
+@customer_bp.route("/messages/<int:msg_id>/reply", methods=["POST"])
 @login_required
-def customer_message_thread(admin_id):
-    admin_user = User.query.get_or_404(admin_id)
+def customer_message_reply(msg_id):
+    original = DBMessage.query.get_or_404(msg_id)
 
-    tk = make_thread_key(current_user.id, admin_user.id)
-
-    msgs = (DBMessage.query
-            .filter(DBMessage.thread_key == tk)
-            .filter(
-                sa.and_(
-                    sa.or_(DBMessage.sender_id != current_user.id, DBMessage.deleted_by_sender.is_(False)),
-                    sa.or_(DBMessage.recipient_id != current_user.id, DBMessage.deleted_by_recipient.is_(False)),
-                )
-            )
-            .order_by(DBMessage.created_at.asc())
-            .all())
-
-    for m in msgs:
-        if m.recipient_id == current_user.id and not m.is_read:
-            m.is_read = True
-    db.session.commit()
-
-    return render_template("customer/message_thread.html", admin_user=admin_user, msgs=msgs)
-
-
-@customer_bp.route("/messages/thread/<int:admin_id>/reply", methods=["POST"])
-@login_required
-def customer_message_thread_reply(admin_id):
-    admin_user = User.query.get_or_404(admin_id)
+    # ✅ Authorization
+    if original.sender_id != current_user.id and original.recipient_id != current_user.id:
+        flash("Not authorized.", "danger")
+        return redirect(url_for("customer.view_messages"))
 
     body = (request.form.get("body") or "").strip()
     if not body:
         flash("Message can't be empty.", "warning")
-        return redirect(url_for("customer.customer_message_thread", admin_id=admin_user.id))
+        return redirect(url_for("customer.customer_message_detail", msg_id=msg_id))
 
-    tk = make_thread_key(current_user.id, admin_user.id)
-    subject = (request.form.get("subject") or "").strip() or "Message"
+    subject = (request.form.get("subject") or "").strip() or f"Re: {original.subject or 'Message'}"
+
+    # reply goes to the other person
+    recipient_id = original.sender_id if original.sender_id != current_user.id else original.recipient_id
+    recipient = User.query.get(recipient_id)
 
     msg = DBMessage(
         sender_id=current_user.id,
-        recipient_id=admin_user.id,
+        recipient_id=recipient_id,
         subject=subject,
         body=body,
-        thread_key=tk,
         is_read=False,
         created_at=datetime.now(timezone.utc),
     )
     db.session.add(msg)
     db.session.commit()
 
-    # ✅ email notify admin (send to admin_user.email)
-    preview = (body[:120] + "…") if len(body) > 120 else body
-    send_new_message_email(admin_user.email, subject, preview)
+    # ✅ Email notify admin (or other recipient)
+    if recipient and recipient.email:
+        preview = (body[:120] + "…") if len(body) > 120 else body
+        send_new_message_email(
+            user_email=recipient.email,
+            user_name=recipient.full_name or "User",
+            message_subject=subject,
+            message_body=preview,
+            recipient_user_id=recipient.id
+        )
 
-    flash("Message sent.", "success")
-    return redirect(url_for("customer.customer_message_thread", admin_id=admin_user.id))
+    flash("Reply sent.", "success")
+    return redirect(url_for("customer.customer_message_detail", msg_id=msg.id))
+
 
 # -----------------------------
 # Notifications

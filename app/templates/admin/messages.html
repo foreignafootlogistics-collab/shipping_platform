@@ -3,20 +3,24 @@
 
 {% block content %}
 <div class="container mt-4">
-  <div class="d-flex align-items-center justify-content-between mb-3">
-    <h3 class="mb-0">Admin Messages</h3>
 
-    <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.messages') }}">
-        <i class="bi bi-arrow-clockwise"></i> Refresh
-      </a>
+  <!-- Header -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h3 class="mb-0">Messages</h3>
+      <div class="text-muted small">Gmail-style mailbox • No threads</div>
     </div>
+
+    <a class="btn btn-sm btn-outline-secondary"
+       href="{{ url_for('admin.messages', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.page if pagination else 1) }}">
+      <i class="bi bi-arrow-clockwise"></i> Refresh
+    </a>
   </div>
 
   <!-- Flash -->
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
+  {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+      {% for category, message in msgs %}
         <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
           {{ message }}
           <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
@@ -27,86 +31,186 @@
 
   <div class="row g-3">
 
-    <!-- LEFT: Threads (like customer inbox) -->
+    <!-- LEFT: Gmail-style mailbox -->
     <div class="col-lg-6">
-      <div class="card shadow-sm mb-3">
-        <div class="card-header d-flex align-items-center justify-content-between text-white"
-             style="background:#4A148C;">
-          <div class="fw-bold"><i class="bi bi-inbox me-2"></i>Threads</div>
+      <div class="card shadow-sm">
 
-          <div class="d-flex align-items-center gap-3">
-            <a class="text-white text-decoration-none small"
-               href="{{ url_for('admin.messages', unread='1' if not unread_only else None, archived='1' if include_archived else None) }}">
-              <input type="checkbox" class="form-check-input me-1" {% if unread_only %}checked{% endif %} onclick="return false;">
-              Unread only
-            </a>
+        <!-- Top bar (toolbar + search) -->
+        <div class="card-header text-white" style="background:#4A148C;">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
 
-            <a class="text-white text-decoration-none small"
-               href="{{ url_for('admin.messages', archived='1' if not include_archived else None, unread='1' if unread_only else None) }}">
-              <input type="checkbox" class="form-check-input me-1" {% if include_archived %}checked{% endif %} onclick="return false;">
-              Archived
-            </a>
+            <!-- Mailbox title -->
+            <div class="fw-bold">
+              <i class="bi bi-envelope me-2"></i>
+              {% if box == 'sent' %}Sent{% elif box == 'all' %}All Mail{% else %}Inbox{% endif %}
+            </div>
+
+            <!-- Search -->
+            <form class="d-flex gap-2" method="GET" action="{{ url_for('admin.messages') }}">
+              <input type="hidden" name="box" value="{{ box }}">
+              {% if unread_only %}<input type="hidden" name="unread" value="1">{% endif %}
+              {% if include_archived %}<input type="hidden" name="archived" value="1">{% endif %}
+              <input type="hidden" name="per_page" value="{{ per_page }}">
+
+              <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                <input class="form-control"
+                       name="q"
+                       value="{{ q or '' }}"
+                       placeholder="Search subject/body…">
+                <button class="btn btn-dark" type="submit">Search</button>
+              </div>
+            </form>
+
+          </div>
+
+          <!-- Tabs + filters -->
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-2">
+
+            <!-- Tabs -->
+            <div class="btn-group btn-group-sm" role="group">
+              <a class="btn {% if box=='inbox' %}btn-light{% else %}btn-outline-light{% endif %}"
+                 href="{{ url_for('admin.messages', box='inbox', q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page) }}">
+                <i class="bi bi-inbox"></i> Inbox
+              </a>
+              <a class="btn {% if box=='sent' %}btn-light{% else %}btn-outline-light{% endif %}"
+                 href="{{ url_for('admin.messages', box='sent', q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page) }}">
+                <i class="bi bi-send"></i> Sent
+              </a>
+              <a class="btn {% if box=='all' %}btn-light{% else %}btn-outline-light{% endif %}"
+                 href="{{ url_for('admin.messages', box='all', q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page) }}">
+                <i class="bi bi-collection"></i> All
+              </a>
+            </div>
+
+            <!-- Filters -->
+            <div class="d-flex align-items-center gap-3 small">
+              <a class="text-white text-decoration-none"
+                 href="{{ url_for('admin.messages', box=box, q=q, unread='1' if not unread_only else None, archived='1' if include_archived else None, per_page=per_page) }}">
+                <i class="bi bi-dot {% if unread_only %}text-warning{% else %}text-white{% endif %}"></i>
+                Unread
+              </a>
+
+              <a class="text-white text-decoration-none"
+                 href="{{ url_for('admin.messages', box=box, q=q, archived='1' if not include_archived else None, unread='1' if unread_only else None, per_page=per_page) }}">
+                <i class="bi bi-archive {% if include_archived %}text-warning{% else %}text-white{% endif %}"></i>
+                Archived
+              </a>
+
+              <div class="d-flex align-items-center gap-1">
+                <span class="text-white-50">Rows</span>
+                <select class="form-select form-select-sm"
+                        style="width:auto;"
+                        onchange="location.href='{{ url_for('admin.messages', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, page=1) }}&per_page=' + this.value;">
+                  {% for n in [10,20,50,100] %}
+                    <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
           </div>
         </div>
 
+        <!-- Message list -->
         <div class="card-body p-0">
-          {% if thread_rows|length == 0 %}
-            <p class="text-muted m-3 mb-0">No threads yet.</p>
-          {% else %}
-            <div class="table-responsive">
-              <table class="table table-hover mb-0 align-middle">
-                <thead class="table-light">
-                  <tr>
-                    <th>Customer</th>
-                    <th>Preview</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                {% for last, other in thread_rows %}
-                  {% set is_unread = (last.recipient_id == current_user.id and not last.is_read) %}
-                  <tr style="cursor:pointer"
-                      onclick="window.location='{{ url_for('admin.message_thread', user_id=other.id) }}'">
-                    <td class="fw-semibold">
-                      {{ other.full_name or "Customer" }}
-                      <div class="text-muted small">{{ other.registration_number or "" }}</div>
-                    </td>
-                    <td class="text-muted">
-                      <div class="fw-semibold text-dark">{{ last.subject or "Message" }}</div>
-                      <div class="small">{{ (last.body or "")[:60] }}{% if (last.body or "")|length > 60 %}…{% endif %}</div>
-                    </td>
-                    <td class="small">
-                      {{ to_jamaica(last.created_at).strftime('%Y-%m-%d %I:%M %p') if last.created_at else "" }}
 
-                    </td>
-                    <td>
-                      {% if not last.is_read %}
+          {% if rows|length == 0 %}
+            <div class="p-3 text-muted">No messages found.</div>
+          {% else %}
+            <div class="list-group list-group-flush">
+
+              {% for row in rows %}
+                {% set m = row.m %}
+                {% set other = row.other %}
+                {% set is_sent = row.is_sent %}
+                {% set is_unread = (m.recipient_id == current_user.id and not m.is_read) %}
+
+                <a class="list-group-item list-group-item-action d-flex align-items-start gap-2"
+                   href="{{ url_for('admin.message_detail', message_id=m.id) }}"
+                   style="{% if is_unread %}background:#fff7d6;{% endif %}">
+                  <!-- Unread dot -->
+                  <div style="width:14px; padding-top:6px;">
+                    {% if is_unread %}
+                      <span class="d-inline-block rounded-circle"
+                            style="width:10px; height:10px; background:#2563EB;"></span>
+                    {% else %}
+                      <span class="d-inline-block rounded-circle"
+                            style="width:10px; height:10px; background:#E5E7EB;"></span>
+                    {% endif %}
+                  </div>
+
+                  <!-- Main content -->
+                  <div class="flex-grow-1 overflow-hidden">
+                    <div class="d-flex align-items-center justify-content-between gap-2">
+                      <div class="text-truncate {% if is_unread %}fw-bold{% else %}fw-semibold{% endif %}">
+                        {% if is_sent %}
+                          <span class="text-muted">To:</span>
+                          {{ other.full_name if other else "Customer" }}
+                        {% else %}
+                          {{ other.full_name if other else "Customer" }}
+                        {% endif %}
+                        <span class="text-muted fw-normal small">
+                          {% if other and other.registration_number %} • {{ other.registration_number }}{% endif %}
+                        </span>
+                      </div>
+
+                      <div class="small text-muted flex-shrink-0">
+                        {{ to_jamaica(m.created_at).strftime('%Y-%m-%d %I:%M %p') if m.created_at else "" }}
+                      </div>
+                    </div>
+
+                    <div class="text-truncate {% if is_unread %}fw-bold{% else %}fw-normal{% endif %}">
+                      {{ m.subject or "Message" }}
+                      <span class="text-muted fw-normal">— {{ (m.body or "")[:90] }}{% if (m.body or "")|length > 90 %}…{% endif %}</span>
+                    </div>
+
+                    <div class="mt-1">
+                      {% if is_sent %}
+                        <span class="badge bg-secondary">Sent</span>
+                      {% else %}
+                        <span class="badge bg-primary">Received</span>
+                      {% endif %}
+
+                      {% if is_unread %}
                         <span class="badge" style="background:#FACC15; color:#111827;">Unread</span>
                       {% else %}
                         <span class="badge" style="background:#15803D;">Read</span>
                       {% endif %}
+                    </div>
+                  </div>
+                </a>
 
-                    </td>
-                    <td class="text-end">
-                      <a class="btn btn-sm btn-outline-primary"
-                         href="{{ url_for('admin.message_thread', user_id=other.id) }}"
-                         onclick="event.stopPropagation();">
-                        Open
-                      </a>
-                    </td>
-                  </tr>
-                {% endfor %}
-                </tbody>
-              </table>
+              {% endfor %}
             </div>
           {% endif %}
         </div>
+
+        <!-- Pagination footer -->
+        {% if pagination %}
+          <div class="card-footer d-flex align-items-center justify-content-between">
+            <div class="small text-muted">
+              Page {{ pagination.page }} of {{ pagination.pages }} • {{ pagination.total }} total
+            </div>
+
+            <div class="btn-group btn-group-sm">
+              <a class="btn btn-outline-secondary {% if not pagination.has_prev %}disabled{% endif %}"
+                 href="{{ url_for('admin.messages', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.prev_num) }}">
+                <i class="bi bi-chevron-left"></i>
+              </a>
+
+              <a class="btn btn-outline-secondary {% if not pagination.has_next %}disabled{% endif %}"
+                 href="{{ url_for('admin.messages', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.next_num) }}">
+                <i class="bi bi-chevron-right"></i>
+              </a>
+            </div>
+          </div>
+        {% endif %}
+
       </div>
     </div>
 
-    <!-- RIGHT: Bulk message (like your current compose) -->
+    <!-- RIGHT: Bulk message -->
     <div class="col-lg-6">
       <div class="card shadow-sm">
         <div class="card-header text-white fw-bold" style="background:#111827;">
@@ -193,3 +297,4 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 {% endblock %}
+

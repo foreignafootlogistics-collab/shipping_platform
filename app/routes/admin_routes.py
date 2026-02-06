@@ -614,17 +614,25 @@ def edit_rate(rate_id):
 
 
 
-# ----- Admin Inbox / Sent + Bulk Messaging -----
+from datetime import datetime, timezone
+import sqlalchemy as sa
+from flask import request, render_template, redirect, url_for, flash
+from flask_login import current_user
+
+# ----- Admin Inbox / Sent + Bulk Messaging (Gmail-style, NO THREADS) -----
+
 @admin_bp.route("/messages", methods=["GET", "POST"])
 @admin_required
 def messages():
     form = BulkMessageForm()
 
     # recipients for bulk send
-    customers = (User.query
-                 .filter(User.role == "customer")
-                 .order_by(User.full_name.asc())
-                 .all())
+    customers = (
+        User.query
+        .filter(User.role == "customer")
+        .order_by(User.full_name.asc())
+        .all()
+    )
     form.user_ids.choices = [(u.id, f"{u.full_name} ({u.email})") for u in customers]
 
     # ---- Bulk send ----
@@ -634,189 +642,231 @@ def messages():
             flash("Please select at least one recipient.", "warning")
             return redirect(url_for("admin.messages"))
 
-        subject = (form.subject.data or "").strip()
+        subject = (form.subject.data or "").strip() or "Announcement"
         body = (form.message.data or "").strip()
+        if not body:
+            flash("Message can't be empty.", "warning")
+            return redirect(url_for("admin.messages"))
 
         recipients = User.query.filter(User.id.in_(ids)).all()
         now = datetime.now(timezone.utc)
 
         for u in recipients:
-            tk = make_thread_key(current_user.id, u.id)
-
             db.session.add(Message(
                 sender_id=current_user.id,
                 recipient_id=u.id,
                 subject=subject,
                 body=body,
-                thread_key=tk,
+                thread_key=None,  # ✅ ALWAYS None (no threads)
                 is_read=False,
                 created_at=now,
             ))
 
-            send_bulk_message_email(
-                to_email=u.email,
-                full_name=u.full_name,
-                subject=subject,
-                message_body=body,
-                recipient_user_id=u.id,
-            )
+            # email notify
+            if u.email:
+                send_bulk_message_email(
+                    to_email=u.email,
+                    full_name=u.full_name,
+                    subject=subject,
+                    message_body=body,
+                    recipient_user_id=u.id,
+                )
 
         db.session.commit()
         flash(f"Message + Email sent to {len(recipients)} customer(s).", "success")
-        return redirect(url_for("admin.messages"))
+        return redirect(url_for("admin.messages", box="sent"))
 
-    # ---- Thread list ----
+    # ---- Mailbox controls (Gmail-like) ----
+    box = (request.args.get("box") or "inbox").lower()   # inbox | sent | all
+    q = (request.args.get("q") or "").strip()
     unread_only = request.args.get("unread") == "1"
     include_archived = request.args.get("archived") == "1"
 
-    base = Message.query.filter(
-        sa.or_(Message.sender_id == current_user.id,
-               Message.recipient_id == current_user.id)
-    ).filter(Message.thread_key.isnot(None))
+    page = request.args.get("page", type=int) or 1
+    per_page = request.args.get("per_page", type=int) or 20
+    per_page = max(10, min(per_page, 200))
+
+    base = Message.query
+
+    # mailbox filter (this is the BIG Gmail feel)
+    if box == "sent":
+        base = base.filter(Message.sender_id == current_user.id)
+    elif box == "all":
+        base = base.filter(sa.or_(
+            Message.sender_id == current_user.id,
+            Message.recipient_id == current_user.id
+        ))
+    else:  # inbox default
+        base = base.filter(Message.recipient_id == current_user.id)
 
     # hide deleted for THIS admin
-    base = base.filter(
-        sa.and_(
-            sa.or_(Message.sender_id != current_user.id, Message.deleted_by_sender.is_(False)),
-            sa.or_(Message.recipient_id != current_user.id, Message.deleted_by_recipient.is_(False)),
-        )
-    )
+    base = base.filter(sa.and_(
+        sa.or_(Message.sender_id != current_user.id, Message.deleted_by_sender.is_(False)),
+        sa.or_(Message.recipient_id != current_user.id, Message.deleted_by_recipient.is_(False)),
+    ))
 
     # hide archived unless explicitly included
     if not include_archived:
+        base = base.filter(sa.and_(
+            sa.or_(Message.sender_id != current_user.id, Message.archived_by_sender.is_(False)),
+            sa.or_(Message.recipient_id != current_user.id, Message.archived_by_recipient.is_(False)),
+        ))
+
+    # unread only makes sense for inbox; if they click it in other boxes, it’ll just return none
+    if unread_only:
         base = base.filter(
-            sa.and_(
-                sa.or_(Message.sender_id != current_user.id, Message.archived_by_sender.is_(False)),
-                sa.or_(Message.recipient_id != current_user.id, Message.archived_by_recipient.is_(False)),
-            )
+            Message.recipient_id == current_user.id,
+            Message.is_read.is_(False)
         )
 
-    if unread_only:
-        base = base.filter(Message.recipient_id == current_user.id,
-                           Message.is_read.is_(False))
+    # Search: subject/body + other user's name/email
+    if q:
+        # join "other user" safely depending on mailbox
+        # We'll just filter message content first (fast/simple)
+        base = base.filter(sa.or_(
+            Message.subject.ilike(f"%{q}%"),
+            Message.body.ilike(f"%{q}%"),
+        ))
 
-    # latest message per thread_key (IMPORTANT: built from base)
-    sub = (base.with_entities(
-                Message.thread_key.label("tk"),
-                func.max(Message.id).label("max_id")
-           )
-           .group_by(Message.thread_key)
-           ).subquery()
+    base = base.order_by(Message.created_at.desc())
 
-    threads = (db.session.query(Message)
-               .join(sub, Message.id == sub.c.max_id)
-               .order_by(Message.created_at.desc())
-               .all())
+    pagination = base.paginate(page=page, per_page=per_page, error_out=False)
+    messages_list = pagination.items
 
-    # Build display rows with "other user" + preview
-    thread_rows = []
-    for last in threads:
-        other_id = last.recipient_id if last.sender_id == current_user.id else last.sender_id
+    # for display: figure out "other user" + label from/to like Gmail
+    rows = []
+    for m in messages_list:
+        is_sent = (m.sender_id == current_user.id)
+        other_id = m.recipient_id if is_sent else m.sender_id
         other = User.query.get(other_id)
-        thread_rows.append((last, other))
+        rows.append({
+            "m": m,
+            "other": other,
+            "is_sent": is_sent,
+        })
 
-    return render_template("admin/messages.html",
-                           form=form,
-                           thread_rows=thread_rows,
-                           unread_only=unread_only,
-                           include_archived=include_archived)
+    return render_template(
+        "admin/messages.html",
+        form=form,
+        rows=rows,
+        pagination=pagination,
+        box=box,
+        q=q,
+        unread_only=unread_only,
+        include_archived=include_archived,
+        per_page=per_page,
+    )
 
 
-@admin_bp.route("/messages/thread/<int:user_id>", methods=["GET"])
+# ✅ View a single message (marks read like Gmail)
+@admin_bp.route("/messages/<int:message_id>", methods=["GET"])
 @admin_required
-def message_thread(user_id):
-    other = User.query.get_or_404(user_id)
-    tk = make_thread_key(current_user.id, other.id)
+def message_detail(message_id):
+    m = Message.query.get_or_404(message_id)
 
-    msgs = (Message.query
-            .filter(Message.thread_key == tk)
-            .filter(
-                sa.and_(
-                    sa.or_(Message.sender_id != current_user.id, Message.deleted_by_sender.is_(False)),
-                    sa.or_(Message.recipient_id != current_user.id, Message.deleted_by_recipient.is_(False)),
-                )
-            )
-            .order_by(Message.created_at.asc())
-            .all())
+    # MUST belong to admin mailbox
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        flash("You do not have access to that message.", "danger")
+        return redirect(url_for("admin.messages"))
 
-    # mark as read when admin receives
-    for m in msgs:
-        if m.recipient_id == current_user.id and not m.is_read:
-            m.is_read = True
-    db.session.commit()
+    # hide if deleted for THIS admin
+    if m.sender_id == current_user.id and m.deleted_by_sender:
+        flash("That message was deleted.", "warning")
+        return redirect(url_for("admin.messages"))
+    if m.recipient_id == current_user.id and m.deleted_by_recipient:
+        flash("That message was deleted.", "warning")
+        return redirect(url_for("admin.messages"))
 
-    return render_template("admin/message_thread.html", other=other, msgs=msgs)
+    # who is the "other" person?
+    other_id = m.recipient_id if m.sender_id == current_user.id else m.sender_id
+    other = User.query.get(other_id)
+
+    # ✅ mark as read when ADMIN opens inbox mail
+    if m.recipient_id == current_user.id and not m.is_read:
+        m.is_read = True
+        db.session.commit()
+
+    return render_template("admin/message_detail.html", m=m, other=other)
 
 
-@admin_bp.route("/messages/thread/<int:user_id>/reply", methods=["POST"])
+@admin_bp.route("/messages/<int:message_id>/reply", methods=["POST"])
 @admin_required
-def message_thread_reply(user_id):
-    other = User.query.get_or_404(user_id)
+def message_reply(message_id):
+    original = Message.query.get_or_404(message_id)
+
+    if original.sender_id != current_user.id and original.recipient_id != current_user.id:
+        flash("You do not have access to that message.", "danger")
+        return redirect(url_for("admin.messages"))
 
     body = (request.form.get("body") or "").strip()
     if not body:
         flash("Message can't be empty.", "warning")
-        return redirect(url_for("admin.message_thread", user_id=other.id))
+        return redirect(url_for("admin.message_detail", message_id=message_id))
 
-    subject = (request.form.get("subject") or "").strip() or "Message"
-    tk = make_thread_key(current_user.id, other.id)
+    subject = (request.form.get("subject") or "").strip() or f"Re: {original.subject}"
+
+    # reply goes to the other party
+    recipient_id = original.sender_id if original.sender_id != current_user.id else original.recipient_id
 
     msg = Message(
         sender_id=current_user.id,
-        recipient_id=other.id,
+        recipient_id=recipient_id,
         subject=subject,
         body=body,
-        thread_key=tk,
+        thread_key=None,  # ✅ ALWAYS None
         is_read=False,
         created_at=datetime.now(timezone.utc),
     )
     db.session.add(msg)
     db.session.commit()
 
-    # notify customer
-    preview = (body[:120] + "…") if len(body) > 120 else body
-    if other.email:
-        send_new_message_email(other.email, subject, preview)
+    # Email notification to customer
+    other = User.query.get(recipient_id)
+    if other and other.email:
+        preview = (body[:120] + "…") if len(body) > 120 else body
+        send_new_message_email(other.email, other.full_name, subject, preview, other.id)
 
-    flash("Sent.", "success")
-    return redirect(url_for("admin.message_thread", user_id=other.id))
+    flash("Reply sent.", "success")
+    return redirect(url_for("admin.message_detail", message_id=msg.id))
 
 
-@admin_bp.route("/messages/thread/<int:user_id>/archive", methods=["POST"])
+# (Optional but very Gmail) archive/delete a SINGLE message
+@admin_bp.route("/messages/<int:message_id>/archive", methods=["POST"])
 @admin_required
-def archive_thread(user_id):
-    other = User.query.get_or_404(user_id)
-    tk = make_thread_key(current_user.id, other.id)
+def message_archive(message_id):
+    m = Message.query.get_or_404(message_id)
 
-    msgs = Message.query.filter(Message.thread_key == tk).all()
-    for m in msgs:
-        if m.sender_id == current_user.id:
-            m.archived_by_sender = True
-        if m.recipient_id == current_user.id:
-            m.archived_by_recipient = True
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        flash("You do not have access to that message.", "danger")
+        return redirect(url_for("admin.messages"))
+
+    if m.sender_id == current_user.id:
+        m.archived_by_sender = True
+    if m.recipient_id == current_user.id:
+        m.archived_by_recipient = True
 
     db.session.commit()
-    flash("Thread archived.", "success")
+    flash("Message archived.", "success")
     return redirect(url_for("admin.messages"))
 
 
-@admin_bp.route("/messages/thread/<int:user_id>/delete", methods=["POST"])
+@admin_bp.route("/messages/<int:message_id>/delete", methods=["POST"])
 @admin_required
-def delete_thread(user_id):
-    other = User.query.get_or_404(user_id)
-    tk = make_thread_key(current_user.id, other.id)
+def message_delete(message_id):
+    m = Message.query.get_or_404(message_id)
 
-    msgs = Message.query.filter(Message.thread_key == tk).all()
-    for m in msgs:
-        if m.sender_id == current_user.id:
-            m.deleted_by_sender = True
-        if m.recipient_id == current_user.id:
-            m.deleted_by_recipient = True
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        flash("You do not have access to that message.", "danger")
+        return redirect(url_for("admin.messages"))
+
+    if m.sender_id == current_user.id:
+        m.deleted_by_sender = True
+    if m.recipient_id == current_user.id:
+        m.deleted_by_recipient = True
 
     db.session.commit()
-    flash("Thread deleted.", "success")
+    flash("Message deleted.", "success")
     return redirect(url_for("admin.messages"))
-
 
 # --- Admin Notifications: list + broadcast ---
 @admin_bp.route("/notifications", methods=["GET", "POST"])

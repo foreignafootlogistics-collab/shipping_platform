@@ -166,22 +166,18 @@ def send_email(
     plain_body: str,
     html_body: str | None = None,
     attachments: list[tuple[bytes, str, str]] | None = None,
-    recipient_user_id: int | None = None,   # ✅ logs to Messages when provided
+    recipient_user_id: int | None = None,   # logs to Messages when provided
     reply_to: str | None = None,
 ) -> bool:
     """
     Sends email via SMTP.
 
-    ✅ Auto-wraps ANY html_body with FAFL header + footer (logo via PUBLIC URL).
-    ✅ If you pass a FULL HTML document, this will still wrap it—so pass BODY html only where possible.
+    ✅ Auto-wraps html_body with FAFL header + footer (logo via PUBLIC URL).
     ✅ Attachments supported.
-
-    attachments: list of (file_bytes, filename, mimetype)
-      e.g. [(pdf_bytes, "Invoice.pdf", "application/pdf")]
     """
 
     # ---- helpers ----
-    def _logo_img(height: int = 14) -> str:
+    def _logo_img(height: int = 16) -> str:
         h = int(height)
         return (
             f'<img src="{LOGO_URL}" alt="Foreign A Foot Logistics" '
@@ -191,6 +187,11 @@ def send_email(
 
     def _wrap_with_branding(inner_html: str) -> str:
         inner_html = inner_html or ""
+
+        # If it already looks like our wrapper, don’t double-wrap
+        if "Foreign A Foot Logistics Limited" in inner_html and "app.faflcourier.com" in inner_html:
+            return inner_html
+
         return f"""
 <!doctype html>
 <html>
@@ -205,8 +206,10 @@ def send_email(
 
       <!-- HEADER -->
       <div style="padding:18px 22px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #e5e7eb;">
-        {_logo_img(14)}
-        <div style="font-size:16px;font-weight:700;color:#4A148C;">Foreign A Foot Logistics Limited</div>
+        {_logo_img(16)}
+        <div style="font-size:16px;font-weight:700;color:#4A148C;">
+          Foreign A Foot Logistics Limited
+        </div>
       </div>
 
       <!-- BODY -->
@@ -217,7 +220,7 @@ def send_email(
       <!-- FOOTER -->
       <div style="background:#f5f2fb;padding:16px 22px;font-size:12.5px;color:#555;text-align:center;">
         <div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:6px;">
-          {_logo_img(12)}
+          {_logo_img(14)}
           <strong>Foreign A Foot Logistics Limited</strong>
         </div>
         <div>Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica</div>
@@ -238,13 +241,12 @@ def send_email(
 </html>
 """.strip()
 
-    # ✅ Fail fast if creds missing
+    # ---- Fail fast if creds missing ----
     if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
         print("❌ Cannot send email: SMTP_USER / SMTP_PASS not set.")
         return False
 
     # ---- Build root container ----
-    # If attachments exist -> mixed, else alternative is enough
     has_attachments = bool(attachments)
     msg = MIMEMultipart("mixed" if has_attachments else "alternative")
 
@@ -259,17 +261,15 @@ def send_email(
         alt = MIMEMultipart("alternative")
         msg.attach(alt)
     else:
-        alt = msg  # root is alternative
+        alt = msg
 
-    alt.attach(MIMEText(plain_body or "", "plain", "utf-8"))
+    alt.attach(MIMEText((plain_body or "").strip(), "plain", "utf-8"))
 
     if html_body:
-        # If caller passed a full HTML doc, we still wrap it for consistent branding.
-        # Best practice: pass body fragment only.
         branded_html = _wrap_with_branding(html_body)
         alt.attach(MIMEText(branded_html, "html", "utf-8"))
 
-    # ---- Attachments (optional) ----
+    # ---- Attachments ----
     if has_attachments:
         for a in attachments:
             if isinstance(a, dict):
@@ -302,15 +302,15 @@ def send_email(
 
         print(f"✅ Email sent to {to_email}")
 
-        # ✅ Mirror into in-app Messages
         if recipient_user_id:
-            log_email_to_messages(recipient_user_id, subject, plain_body)
+            log_email_to_messages(recipient_user_id, subject, (plain_body or "").strip())
 
         return True
 
     except Exception as e:
         print(f"❌ Email sending failed to {to_email}: {e}")
         return False
+
 # ==========================================================
 #  WELCOME EMAIL
 # ==========================================================
@@ -428,25 +428,68 @@ Dear {full_name},
 
 Best regards,
 Foreign A Foot Logistics Team
-""".strip()
+"""
 
     html_body = f"""
 <html>
-<body style="font-family: Arial, sans-serif;">
-  <div style="background:#f9f9f9; padding:20px;">
-    <div style="background:#fff; padding:30px; border-radius:8px; max-width:700px; margin:auto;">
-      {logo_img(height=14, margin_bottom=12)}
-      <h3 style="margin:0 0 10px 0;">Dear {full_name},</h3>
-      <p style="line-height:1.6;">{(message_body or "").replace("\n", "<br>")}</p>
-      <p>Best regards,<br>Foreign A Foot Logistics Team</p>
+<body style="font-family: Arial, sans-serif; background:#f3f4f6; margin:0; padding:0;">
+  <div style="max-width:640px; margin:20px auto; background:#ffffff; border-radius:10px;
+              box-shadow:0 2px 10px rgba(0,0,0,0.08); overflow:hidden;">
+
+    <!-- HEADER (bigger, cleaner logo) -->
+    <div style="padding:18px 22px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #e5e7eb;">
+      <img src="{LOGO_URL}" alt="Foreign A Foot Logistics"
+           style="height:32px; width:auto; display:block; border:0;">
+      <div style="font-size:18px; font-weight:700; color:#4A148C;">
+        Foreign A Foot Logistics Limited
+      </div>
     </div>
+
+    <!-- BODY (NO logo here anymore) -->
+    <div style="padding:22px 26px; line-height:1.6; color:#111827;">
+      <p style="margin:0 0 12px 0;"><strong>Dear {full_name},</strong></p>
+
+      <div style="white-space:normal; line-height:1.6; margin-bottom:16px;">
+        {(message_body or "").replace("\n", "<br>")}
+      </div>
+
+      <p style="margin:0;">
+        Best regards,<br>
+        <strong>Foreign A Foot Logistics Team</strong>
+      </p>
+    </div>
+
+    <!-- POLISHED FOOTER -->
+    <div style="background:#f5f2fb; padding:16px 22px; font-size:13px; color:#555; text-align:center;">
+      <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-bottom:6px;">
+        <img src="{LOGO_URL}" alt="FAFL"
+             style="height:18px; width:auto; display:block; border:0;">
+        <strong>Foreign A Foot Logistics Limited</strong>
+      </div>
+
+      <div style="font-size:12px; color:#666;">
+        Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica
+      </div>
+
+      <div style="margin-top:6px;">
+        📞 (876) 560-7764 ·
+        ✉️ <a href="mailto:foreignafootlogistics@gmail.com"
+             style="color:#4A148C; text-decoration:none;">
+             foreignafootlogistics@gmail.com
+           </a> ·
+        🌐 <a href="https://app.faflcourier.com"
+             style="color:#4A148C; text-decoration:none;">
+             app.faflcourier.com
+           </a>
+      </div>
+    </div>
+
   </div>
 </body>
 </html>
 """
-    email_subject = subject or "Message"
-    if "foreign a foot" not in email_subject.lower():
-        email_subject = f"{email_subject} - Foreign A Foot Logistics"
+
+    email_subject = f"{subject} - Foreign A Foot Logistics"
 
     return send_email(
         to_email=to_email,
@@ -454,9 +497,7 @@ Foreign A Foot Logistics Team
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
-        reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )
-
 
 # ==========================================================
 #  PACKAGE OVERSEAS RECEIVED EMAIL

@@ -37,6 +37,7 @@ from app.utils.rates import get_rate_for_weight
 from app.utils.invoice_pdf import generate_invoice_pdf
 from app.utils.messages import make_thread_key
 from app.utils.message_notify import send_new_message_email
+from app.utils.email_utils import send_bulk_message_email
 from app.calculator import calculate_charges
 from app.calculator_data import CATEGORIES, USD_TO_JMD
 

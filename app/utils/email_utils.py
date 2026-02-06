@@ -3,16 +3,17 @@ from datetime import datetime
 import smtplib
 from math import ceil
 from typing import Iterable
+
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+
 from flask import current_app, render_template
-from email.message import EmailMessage
 
 # If you still want Flask-Mail for some cases:
 try:
-    from flask_mail import Message
-    from app import mail  # only used in send_referral_email fallback (kept for compatibility)
+    from flask_mail import Message  # noqa: F401
+    from app import mail  # noqa: F401  (kept for compatibility)
     _HAS_FLASK_MAIL = True
 except Exception:
     _HAS_FLASK_MAIL = False
@@ -33,30 +34,41 @@ if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
 # ==========================================================
 #  EMAIL CONFIG (use environment variables in production)
 # ==========================================================
-# ✅ Using PUBLIC URL (NO CID)
+# ✅ PUBLIC URL (NO CID)
 LOGO_URL = os.getenv("FAF_LOGO_URL", "https://app.faflcourier.com/static/logo.png")
 
 # IMPORTANT: This should be your APP domain
 DASHBOARD_URL = os.getenv("FAF_DASHBOARD_URL", "https://app.faflcourier.com").rstrip("/")
-DELIVERY_URL = "https://app.faflcourier.com/customer/schedule-delivery"
-TRANSACTIONS_URL = "https://app.faflcourier.com/customer/transactions/all"
-
+DELIVERY_URL = f"{DASHBOARD_URL}/customer/schedule-delivery"
+TRANSACTIONS_URL = f"{DASHBOARD_URL}/customer/transactions/all"
 
 # ==========================================================
-#  RECOMMENDATION: Logo helper (consistent size everywhere)
-#  - Some email clients ignore CSS sizing; "height" attribute is safer.
+#  BRAND HELPERS
 # ==========================================================
-def logo_img(height: int = 14, margin_bottom: int = 12, center: bool = False) -> str:
-    align = "display:block;margin-left:auto;margin-right:auto;" if center else "display:block;"
+_BRAND_WRAPPER_MARKER = "data-fafl-wrapper"
+
+def _logo_img(height: int = 22) -> str:
+    """
+    Email-client-safe logo. Uses the `height` attribute (more reliable than CSS).
+    """
     h = int(height)
-    mb = int(margin_bottom)
     return (
         f'<img src="{LOGO_URL}" alt="Foreign A Foot Logistics" '
-        f'height="{h}" '
-        f'style="height:{h}px;max-height:{h}px;width:auto;border:0;outline:none;'
-        f'text-decoration:none;{align}margin-bottom:{mb}px;">'
+        f'height="{h}" style="height:{h}px;max-height:{h}px;width:auto;'
+        f'display:block;border:0;outline:none;text-decoration:none;">'
     )
 
+# Backwards-compatible alias (some templates may still call logo_img)
+def logo_img(height: int = 22, margin_bottom: int = 12, center: bool = False) -> str:
+    h = int(height)
+    mb = int(margin_bottom)
+    align = "margin-left:auto;margin-right:auto;" if center else ""
+    return (
+        f'<img src="{LOGO_URL}" alt="Foreign A Foot Logistics" '
+        f'height="{h}" style="height:{h}px;max-height:{h}px;width:auto;'
+        f'display:block;{align}border:0;outline:none;text-decoration:none;'
+        f'margin:0 0 {mb}px 0;">'
+    )
 
 # ==========================================================
 #  INTERNAL: LOG EMAILS INTO IN-APP MESSAGES
@@ -93,6 +105,7 @@ def _get_admin_sender_id() -> int | None:
 
     except Exception:
         return None
+
 
 def pick_admin_recipient():
     """
@@ -158,7 +171,7 @@ def log_email_to_messages(
 
 # ==========================================================
 #  CORE EMAIL FUNCTION (SMTP)
-#  ✅ Adds: utf-8 + safer headers + optional reply-to
+#  ✅ Branding wrapper + utf-8 + attachments + reply-to
 # ==========================================================
 def send_email(
     to_email: str,
@@ -172,28 +185,19 @@ def send_email(
     """
     Sends email via SMTP.
 
-    ✅ Auto-wraps html_body with FAFL header + footer (logo via PUBLIC URL).
-    ✅ Attachments supported.
+    ✅ IMPORTANT:
+    - Pass html_body as BODY CONTENT ONLY (no <html>, no header/logo, no footer).
+    - This function will wrap it with FAFL header + footer automatically.
     """
 
-    # ---- helpers ----
-    def _logo_img(height: int = 16) -> str:
-        h = int(height)
-        return (
-            f'<img src="{LOGO_URL}" alt="Foreign A Foot Logistics" '
-            f'height="{h}" style="height:{h}px;max-height:{h}px;width:auto;'
-            f'display:block;border:0;outline:none;text-decoration:none;">'
-        )
-
     def _wrap_with_branding(inner_html: str) -> str:
-        inner_html = inner_html or ""
+        inner_html = (inner_html or "").strip()
 
-        # If it already looks like our wrapper, don’t double-wrap
-        if "Foreign A Foot Logistics Limited" in inner_html and "app.faflcourier.com" in inner_html:
+        # Don't double-wrap
+        if _BRAND_WRAPPER_MARKER in inner_html:
             return inner_html
 
-        return f"""
-<!doctype html>
+        return f"""<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -202,11 +206,11 @@ def send_email(
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;">
   <div style="width:100%;padding:24px 0;">
     <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;
-                box-shadow:0 4px 12px rgba(0,0,0,0.05);">
+                box-shadow:0 4px 12px rgba(0,0,0,0.05);" {_BRAND_WRAPPER_MARKER}="1">
 
       <!-- HEADER -->
       <div style="padding:18px 22px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #e5e7eb;">
-        {_logo_img(16)}
+        {_logo_img(22)}
         <div style="font-size:16px;font-weight:700;color:#4A148C;">
           Foreign A Foot Logistics Limited
         </div>
@@ -220,7 +224,7 @@ def send_email(
       <!-- FOOTER -->
       <div style="background:#f5f2fb;padding:16px 22px;font-size:12.5px;color:#555;text-align:center;">
         <div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-bottom:6px;">
-          {_logo_img(14)}
+          {_logo_img(18)}
           <strong>Foreign A Foot Logistics Limited</strong>
         </div>
         <div>Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica</div>
@@ -238,15 +242,13 @@ def send_email(
     </div>
   </div>
 </body>
-</html>
-""".strip()
+</html>""".strip()
 
-    # ---- Fail fast if creds missing ----
+    # Fail fast if creds missing
     if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
         print("❌ Cannot send email: SMTP_USER / SMTP_PASS not set.")
         return False
 
-    # ---- Build root container ----
     has_attachments = bool(attachments)
     msg = MIMEMultipart("mixed" if has_attachments else "alternative")
 
@@ -256,7 +258,7 @@ def send_email(
     if reply_to:
         msg["Reply-To"] = reply_to
 
-    # ---- Plain + HTML ----
+    # Plain + HTML (alternative part)
     if has_attachments:
         alt = MIMEMultipart("alternative")
         msg.attach(alt)
@@ -269,13 +271,13 @@ def send_email(
         branded_html = _wrap_with_branding(html_body)
         alt.attach(MIMEText(branded_html, "html", "utf-8"))
 
-    # ---- Attachments ----
+    # Attachments
     if has_attachments:
         for a in attachments:
             if isinstance(a, dict):
                 file_bytes = a.get("content", b"")
-                filename   = a.get("filename", "attachment")
-                mimetype   = a.get("mimetype", "application/octet-stream")
+                filename = a.get("filename", "attachment")
+                mimetype = a.get("mimetype", "application/octet-stream")
             else:
                 file_bytes, filename, mimetype = a
 
@@ -287,7 +289,7 @@ def send_email(
             part.add_header("Content-Disposition", "attachment", filename=filename)
             msg.attach(part)
 
-    # ---- SEND ----
+    # SEND
     try:
         if SMTP_PORT == 465:
             with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
@@ -302,6 +304,7 @@ def send_email(
 
         print(f"✅ Email sent to {to_email}")
 
+        # Mirror into in-app Messages
         if recipient_user_id:
             log_email_to_messages(recipient_user_id, subject, (plain_body or "").strip())
 
@@ -311,8 +314,9 @@ def send_email(
         print(f"❌ Email sending failed to {to_email}: {e}")
         return False
 
+
 # ==========================================================
-#  WELCOME EMAIL
+#  WELCOME EMAIL (BODY ONLY)
 # ==========================================================
 def send_welcome_email(email, full_name, reg_number, recipient_user_id=None):
     plain_body = f"""
@@ -338,29 +342,23 @@ Thank you for choosing us!
 """.strip()
 
     html_body = f"""
-<html>
-<body style="font-family: Arial, sans-serif;">
-  <div style="background:#f9f9f9;padding:20px;">
-    <div style="max-width:600px;margin:auto;background:#fff;padding:20px;border-radius:8px;">
-      {logo_img(height=16, margin_bottom=14)}
-      <h2 style="margin:0 0 10px 0;">Welcome, {full_name}!</h2>
-      <p>Your registration number is <b>{reg_number}</b>.</p>
-      <p><b>U.S. Shipping Address:</b><br>
-      Air Standard<br>
-      {full_name}<br>
-      3200 NW 112th Ave<br>
-      KCDA-{reg_number} A<br>
-      Doral, Florida 33172</p>
-      <p>
-        <a href="{DASHBOARD_URL}" style="background:#5c3d91;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block;">
-          Login to Dashboard
-        </a>
-      </p>
-    </div>
-  </div>
-</body>
-</html>
-"""
+<h2 style="margin:0 0 10px 0;">Welcome, {full_name}!</h2>
+<p style="margin:0 0 10px 0;">Your registration number is <b>{reg_number}</b>.</p>
+
+<p style="margin:0 0 10px 0;"><b>U.S. Shipping Address:</b><br>
+Air Standard<br>
+{full_name}<br>
+3200 NW 112th Ave<br>
+KCDA-{reg_number} A<br>
+Doral, Florida 33172</p>
+
+<p style="margin:14px 0 0 0;">
+  <a href="{DASHBOARD_URL}" style="background:#4A148C;color:#fff;padding:10px 18px;text-decoration:none;border-radius:6px;display:inline-block;">
+    Login to Dashboard
+  </a>
+</p>
+""".strip()
+
     return send_email(
         to_email=email,
         subject="Welcome to Foreign A Foot Logistics Limited!",
@@ -372,7 +370,7 @@ Thank you for choosing us!
 
 
 # ==========================================================
-#  PASSWORD RESET EMAIL
+#  PASSWORD RESET EMAIL (BODY ONLY)
 # ==========================================================
 def send_password_reset_email(to_email, full_name, reset_link, recipient_user_id=None):
     plain_body = f"""
@@ -389,24 +387,19 @@ If you didn’t request a password reset, simply ignore this email.
 """.strip()
 
     html_body = f"""
-<html>
-<body style="font-family: Arial, sans-serif;">
-  <div style="background:#f9f9f9;padding:20px;">
-    <div style="max-width:600px;margin:auto;background:#fff;padding:20px;border-radius:8px;">
-      {logo_img(height=14, margin_bottom=12)}
-      <p>Dear {full_name},</p>
-      <p>We received a request to reset your password.</p>
-      <p>
-        <a href="{reset_link}" style="background:#5c3d91;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block;">
-          Reset Password
-        </a>
-      </p>
-      <p style="color:#666;">This link will expire in 10 minutes.</p>
-    </div>
-  </div>
-</body>
-</html>
-"""
+<p style="margin:0 0 10px 0;">Dear {full_name},</p>
+<p style="margin:0 0 12px 0;">We received a request to reset your password.</p>
+
+<p style="margin:14px 0;">
+  <a href="{reset_link}" style="background:#4A148C;color:#fff;padding:10px 18px;text-decoration:none;border-radius:6px;display:inline-block;">
+    Reset Password
+  </a>
+</p>
+
+<p style="margin:0;color:#6b7280;font-size:13px;">This link will expire in 10 minutes.</p>
+<p style="margin:12px 0 0;color:#6b7280;font-size:13px;">If you didn’t request a password reset, you can ignore this email.</p>
+""".strip()
+
     return send_email(
         to_email=to_email,
         subject="Reset Your Password - Foreign A Foot Logistics",
@@ -418,9 +411,16 @@ If you didn’t request a password reset, simply ignore this email.
 
 
 # ==========================================================
-#  BULK MESSAGE EMAIL
+#  BULK MESSAGE EMAIL (BODY ONLY)
 # ==========================================================
 def send_bulk_message_email(to_email, full_name, subject, message_body, recipient_user_id=None):
+    """
+    Bulk message email (BODY ONLY).
+    NOTE: send_email() wraps this with FAFL header + footer automatically.
+    """
+    subject = (subject or "").strip()
+    message_body = (message_body or "").strip()
+
     plain_body = f"""
 Dear {full_name},
 
@@ -428,68 +428,28 @@ Dear {full_name},
 
 Best regards,
 Foreign A Foot Logistics Team
-"""
+""".strip()
+
+    safe_msg = message_body.replace("\n", "<br>")
 
     html_body = f"""
-<html>
-<body style="font-family: Arial, sans-serif; background:#f3f4f6; margin:0; padding:0;">
-  <div style="max-width:640px; margin:20px auto; background:#ffffff; border-radius:10px;
-              box-shadow:0 2px 10px rgba(0,0,0,0.08); overflow:hidden;">
+<p style="margin:0 0 12px 0; color:#111827;">
+  <strong>Dear {full_name},</strong>
+</p>
 
-    <!-- HEADER (bigger, cleaner logo) -->
-    <div style="padding:18px 22px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #e5e7eb;">
-      <img src="{LOGO_URL}" alt="Foreign A Foot Logistics"
-           style="height:32px; width:auto; display:block; border:0;">
-      <div style="font-size:18px; font-weight:700; color:#4A148C;">
-        Foreign A Foot Logistics Limited
-      </div>
-    </div>
+<div style="white-space:normal; line-height:1.6; color:#111827; margin-bottom:16px;">
+  {safe_msg}
+</div>
 
-    <!-- BODY (NO logo here anymore) -->
-    <div style="padding:22px 26px; line-height:1.6; color:#111827;">
-      <p style="margin:0 0 12px 0;"><strong>Dear {full_name},</strong></p>
+<p style="margin:0; color:#111827;">
+  Best regards,<br>
+  <strong>Foreign A Foot Logistics Team</strong>
+</p>
+""".strip()
 
-      <div style="white-space:normal; line-height:1.6; margin-bottom:16px;">
-        {(message_body or "").replace("\n", "<br>")}
-      </div>
-
-      <p style="margin:0;">
-        Best regards,<br>
-        <strong>Foreign A Foot Logistics Team</strong>
-      </p>
-    </div>
-
-    <!-- POLISHED FOOTER -->
-    <div style="background:#f5f2fb; padding:16px 22px; font-size:13px; color:#555; text-align:center;">
-      <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-bottom:6px;">
-        <img src="{LOGO_URL}" alt="FAFL"
-             style="height:18px; width:auto; display:block; border:0;">
-        <strong>Foreign A Foot Logistics Limited</strong>
-      </div>
-
-      <div style="font-size:12px; color:#666;">
-        Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica
-      </div>
-
-      <div style="margin-top:6px;">
-        📞 (876) 560-7764 ·
-        ✉️ <a href="mailto:foreignafootlogistics@gmail.com"
-             style="color:#4A148C; text-decoration:none;">
-             foreignafootlogistics@gmail.com
-           </a> ·
-        🌐 <a href="https://app.faflcourier.com"
-             style="color:#4A148C; text-decoration:none;">
-             app.faflcourier.com
-           </a>
-      </div>
-    </div>
-
-  </div>
-</body>
-</html>
-"""
-
-    email_subject = f"{subject} - Foreign A Foot Logistics"
+    email_subject = subject or "Announcement"
+    if "foreign a foot" not in email_subject.lower():
+        email_subject = f"{email_subject} - Foreign A Foot Logistics"
 
     return send_email(
         to_email=to_email,
@@ -497,10 +457,12 @@ Foreign A Foot Logistics Team
         plain_body=plain_body,
         html_body=html_body,
         recipient_user_id=recipient_user_id,
+        reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )
 
+
 # ==========================================================
-#  PACKAGE OVERSEAS RECEIVED EMAIL
+#  PACKAGE OVERSEAS RECEIVED EMAIL (BODY ONLY)
 # ==========================================================
 def send_overseas_received_email(to_email, full_name, reg_number, packages, recipient_user_id=None):
     """
@@ -510,6 +472,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
     subject = f"Foreign A Foot Logistics Limited received a new package overseas for FAFL #{reg_number}"
     upload_url = f"{DASHBOARD_URL}/customer/packages"
 
+    # Build table rows (HTML)
     rows_html = []
     for p in packages:
         house = getattr(p, "house_awb", None) if not isinstance(p, dict) else p.get("house_awb")
@@ -520,15 +483,16 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
         rounded = ceil(weight or 0)
 
         rows_html.append(f"""
-          <tr>
-            <td style="padding:8px;border:1px solid #eee;">{house or '-'}</td>
-            <td style="padding:8px;border:1px solid #eee; text-align:center;">{rounded}</td>
-            <td style="padding:8px;border:1px solid #eee;">{tracking or '-'}</td>
-            <td style="padding:8px;border:1px solid #eee;">{desc or '-'}</td>
-            <td style="padding:8px;border:1px solid #eee; color:#d97706; font-weight:bold;">{status or 'Overseas'}</td>
-          </tr>
-        """)
+<tr>
+  <td style="padding:8px;border:1px solid #eee;">{house or '-'}</td>
+  <td style="padding:8px;border:1px solid #eee; text-align:center;">{rounded}</td>
+  <td style="padding:8px;border:1px solid #eee;">{tracking or '-'}</td>
+  <td style="padding:8px;border:1px solid #eee;">{desc or '-'}</td>
+  <td style="padding:8px;border:1px solid #eee; color:#d97706; font-weight:bold;">{status or 'Overseas'}</td>
+</tr>
+""")
 
+    # Plain-text fallback
     plain_lines = [
         f"Dear {full_name},",
         "",
@@ -559,70 +523,49 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
         "",
         f"Upload your invoice here: {upload_url}",
         "",
-        "Thank you for choosing Foreign A Foot Logistics Limited — your trusted logistics partner!",
-        "",
         "Warm regards,",
         "The Foreign A Foot Logistics Team",
-        "📍 Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine",
-        "🌐 app.faflcourier.com",
-        "✉️ foreignafootlogistics@gmail.com",
-        "☎️ (876) 560-7764",
     ]
     plain_body = "\n".join(plain_lines)
 
     html_body = f"""
-<html>
-<body style="font-family:Inter,Arial,sans-serif; line-height:1.6; color:#222;">
-  <div style="max-width:700px;margin:0 auto;padding:16px;">
-    {logo_img(height=14, margin_bottom=14)}
-    <p>Hello {full_name},</p>
-    <p>Great news – we’ve received a new package overseas for you. Package details:</p>
+<p style="margin:0 0 10px 0;">Hello {full_name},</p>
+<p style="margin:0 0 14px 0;">Great news – we’ve received a new package overseas for you. Package details:</p>
 
-    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; margin:16px 0;">
-      <thead>
-        <tr style="background:#f5f2fb; color:#4a148c;">
-          <th style="padding:8px; text-align:left; border:1px solid #eee;">House AWB/Control #</th>
-          <th style="padding:8px; text-align:center; border:1px solid #eee;">Rounded Weight (lbs)</th>
-          <th style="padding:8px; text-align:left; border:1px solid #eee;">Tracking #</th>
-          <th style="padding:8px; text-align:left; border:1px solid #eee;">Description</th>
-          <th style="padding:8px; text-align:left; border:1px solid #eee;">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {''.join(rows_html)}
-      </tbody>
-    </table>
+<table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; margin:16px 0;">
+  <thead>
+    <tr style="background:#f5f2fb; color:#4a148c;">
+      <th style="padding:8px; text-align:left; border:1px solid #eee;">House AWB/Control #</th>
+      <th style="padding:8px; text-align:center; border:1px solid #eee;">Rounded Weight (lbs)</th>
+      <th style="padding:8px; text-align:left; border:1px solid #eee;">Tracking #</th>
+      <th style="padding:8px; text-align:left; border:1px solid #eee;">Description</th>
+      <th style="padding:8px; text-align:left; border:1px solid #eee;">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {''.join(rows_html)}
+  </tbody>
+</table>
 
-    <p style="margin-top:20px; color:#333;">
-      Customs requires a proper invoice for all packages.<br>
-      To avoid any delays, please upload or send your invoice as soon as possible.
-    </p>
+<p style="margin:16px 0 0 0; color:#111827;">
+  Customs requires a proper invoice for all packages.<br>
+  To avoid any delays, please upload or send your invoice as soon as possible.
+</p>
 
-    <p style="margin-top:18px;">
-      <a href="{upload_url}"
-         style="display:inline-block; padding:10px 22px; background:#4a148c; color:#ffffff;
-                text-decoration:none; border-radius:6px; font-weight:600;">
-        Upload / Add Your Invoice
-      </a>
-    </p>
+<p style="margin:16px 0 0 0;">
+  <a href="{upload_url}"
+     style="display:inline-block; padding:10px 18px; background:#4a148c; color:#ffffff;
+            text-decoration:none; border-radius:6px; font-weight:600;">
+    Upload / Add Your Invoice
+  </a>
+</p>
 
-    <p style="font-size:13px; color:#555; margin-top:6px;">
-      Or visit <a href="{upload_url}" style="color:#4a148c; text-decoration:none;">{upload_url}</a>
-      and locate this package by tracking number.
-    </p>
+<p style="font-size:13px; color:#6b7280; margin-top:10px;">
+  Or visit <a href="{upload_url}" style="color:#4a148c; text-decoration:none;">{upload_url}</a>
+  and locate this package by tracking number.
+</p>
+""".strip()
 
-    <hr style="margin:28px 0; border:none; border-top:1px solid #ddd;">
-    <footer style="font-size:14px; color:#555;">
-      <p style="margin:4px 0;">Warm regards,<br><strong>The Foreign A Foot Logistics Team</strong></p>
-      <p style="margin:4px 0;">📍 Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</p>
-      <p style="margin:4px 0;">🌐 <a href="https://app.faflcourier.com" style="color:#4a148c;text-decoration:none;">app.faflcourier.com</a></p>
-      <p style="margin:4px 0;">✉️ <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c;text-decoration:none;">foreignafootlogistics@gmail.com</a></p>
-      <p style="margin:4px 0;">☎️ (876) 560-7764</p>
-    </footer>
-  </div>
-</body>
-</html>
-"""
     return send_email(
         to_email=to_email,
         subject=subject,
@@ -667,12 +610,13 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
         f"Foreign A Foot Logistics Limited\n"
     )
 
+    # IMPORTANT: invoice_email.html should be BODY ONLY (no logo/header/footer/html tags)
     html_body = render_template(
         "emails/invoice_email.html",
         full_name=full_name,
         invoice=invoice,
         transactions_url=TRANSACTIONS_URL,
-        LOGO_URL=LOGO_URL,
+        DASHBOARD_URL=DASHBOARD_URL,
     )
 
     attachments = []
@@ -691,7 +635,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
 
 
 # ==========================================================
-#  NEW MESSAGE EMAIL
+#  NEW MESSAGE EMAIL (BODY ONLY)
 # ==========================================================
 def send_new_message_email(user_email, user_name, message_subject, message_body, recipient_user_id=None):
     subject = f"New Message: {message_subject}"
@@ -701,17 +645,34 @@ def send_new_message_email(user_email, user_name, message_subject, message_body,
         f"{message_body}\n\n"
         f"Please log in to your account to reply or view details."
     )
+
+    safe_msg = (message_body or "").replace("\n", "<br>")
+
+    html_body = f"""
+<p style="margin:0 0 10px 0;">Hello {user_name},</p>
+<p style="margin:0 0 12px 0;">
+  You have received a new message:
+</p>
+<div style="margin:0 0 14px 0; line-height:1.6;">
+  {safe_msg}
+</div>
+<p style="margin:0;">
+  Please log in to your account to reply or view details.
+</p>
+""".strip()
+
     return send_email(
         to_email=user_email,
         subject=subject,
         plain_body=body,
+        html_body=html_body,
         recipient_user_id=recipient_user_id,
         reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )
 
 
 # ==========================================================
-#  REFERRAL EMAIL
+#  REFERRAL EMAIL (BODY ONLY)
 # ==========================================================
 def send_referral_email(to_email: str, referral_code: str, referrer_name: str) -> bool:
     base = None
@@ -720,7 +681,7 @@ def send_referral_email(to_email: str, referral_code: str, referrer_name: str) -
     except Exception:
         base = None
 
-    base_url = (base or "https://app.faflcourier.com").rstrip("/")
+    base_url = (base or DASHBOARD_URL).rstrip("/")
     register_link = f"{base_url}/register?ref={referral_code}"
     subject = "You've been invited to join Foreign A Foot Logistics!"
 
@@ -741,61 +702,41 @@ Foreign A Foot Logistics Team
 """.strip()
 
     html_body = f"""
-<html>
-  <body style="font-family: Inter, Arial, sans-serif; background:#f4f4f7; margin:0; padding:0;">
-    <div style="max-width:640px; margin:0 auto; padding:24px;">
-      <div style="background:#ffffff; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.05);">
-        {logo_img(height=14, margin_bottom=12, center=False)}
+<h2 style="margin:0 0 10px 0; color:#4a148c;">
+  {referrer_name} invited you to Foreign A Foot Logistics 🚚✈️
+</h2>
 
-        <h2 style="margin-top:0; color:#4a148c;">
-          {referrer_name} invited you to Foreign A Foot Logistics 🚚✈️
-        </h2>
+<p style="margin:0 0 10px 0; line-height:1.6;">
+  Your friend <strong>{referrer_name}</strong> wants you to start shipping smarter with
+  <strong>Foreign A Foot Logistics</strong>.
+</p>
 
-        <p style="color:#333333; line-height:1.6;">
-          Your friend <strong>{referrer_name}</strong> wants you to start shipping smarter with
-          <strong>Foreign A Foot Logistics</strong>.
-        </p>
+<p style="margin:0 0 14px 0; line-height:1.6;">
+  Use their referral code at signup and you'll receive a <strong>$100 bonus credit</strong> on your account.
+</p>
 
-        <p style="color:#333333; line-height:1.6;">
-          Use their referral code at signup and you'll receive a
-          <strong>$100 bonus credit</strong> on your account.
-        </p>
+<div style="margin:16px 0; padding:14px; border-radius:10px; background:#f5f2ff; text-align:center;">
+  <div style="font-size:12px; text-transform:uppercase; letter-spacing:0.08em; color:#6b21a8;">
+    Your Referral Code
+  </div>
+  <div style="font-size:26px; font-weight:800; margin-top:6px; color:#4a148c;">
+    {referral_code}
+  </div>
+</div>
 
-        <div style="margin:20px 0; padding:16px; border-radius:10px; background:#f5f2ff; text-align:center;">
-          <div style="font-size:0.9rem; text-transform:uppercase; letter-spacing:0.08em; color:#6b21a8;">
-            Your Referral Code
-          </div>
-          <div style="font-size:1.8rem; font-weight:700; margin-top:6px; color:#4a148c;">
-            {referral_code}
-          </div>
-        </div>
+<div style="text-align:center; margin:18px 0 10px 0;">
+  <a href="{register_link}"
+     style="display:inline-block; padding:12px 22px; background:#4A148C; color:#ffffff;
+            text-decoration:none; border-radius:999px; font-weight:700;">
+    Sign Up & Claim Your $100
+  </a>
+</div>
 
-        <div style="text-align:center; margin-bottom:24px;">
-          <a href="{register_link}"
-             style="display:inline-block; padding:12px 26px; background:#6f42c1; color:#ffffff;
-                    text-decoration:none; border-radius:999px; font-weight:600;">
-            Sign Up & Claim Your $100
-          </a>
-        </div>
+<p style="margin:0; font-size:13px; color:#6b7280;">
+  Just enter the code above when creating your account.
+</p>
+""".strip()
 
-        <p style="font-size:0.9rem; color:#555; line-height:1.5;">
-          Just enter the code above when creating your account.
-        </p>
-
-        <hr style="border:none; border-top:1px solid #e5e5e5; margin:24px 0;">
-
-        <p style="font-size:0.8rem; color:#777;">
-          Foreign A Foot Logistics Limited<br>
-          Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine<br>
-          <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4a148c; text-decoration:none;">
-            foreignafootlogistics@gmail.com
-          </a> · (876) 210-4291
-        </p>
-      </div>
-    </div>
-  </body>
-</html>
-"""
     return send_email(
         to_email=to_email,
         subject=subject,
@@ -805,7 +746,9 @@ Foreign A Foot Logistics Team
     )
 
 
-# --- Ready for Pick Up (no attachments) -------------------
+# ==========================================================
+#  READY FOR PICK UP (BODY ONLY)
+# ==========================================================
 def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict], recipient_user_id=None) -> bool:
     rows = "\n".join(
         f"- {it.get('tracking_number','-')} | {it.get('description','-')} | Amount Due: ${it.get('amount_due',0):.2f}"
@@ -820,24 +763,25 @@ def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict]
         f"Thanks,\nForeign A Foot Logistics"
     )
 
+    html_list = "".join(
+        f"<li>{it.get('tracking_number','-')} — {it.get('description','-')} — ${it.get('amount_due',0):.2f}</li>"
+        for it in items
+    ) or "<li>(no details)</li>"
+
     html = f"""
-<html><body style="font-family:Arial,sans-serif;">
-  <div style="max-width:680px;margin:auto;padding:18px;background:#fff;border-radius:10px;">
-    {logo_img(height=14, margin_bottom=10)}
-    <p>Hi {full_name},</p>
-    <p>The following package(s) are now <b>READY FOR PICK UP</b>:</p>
-    <ul>
-      {''.join(f"<li>{it.get('tracking_number','-')} — {it.get('description','-')} — ${it.get('amount_due',0):.2f}</li>" for it in items)}
-    </ul>
-    <p>
-      <a href="{DELIVERY_URL}" style="background:#4A148C;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;display:inline-block;">
-        Schedule Delivery
-      </a>
-    </p>
-    <p>Thanks,<br>Foreign A Foot Logistics</p>
-  </div>
-</body></html>
-"""
+<p style="margin:0 0 10px 0;">Hi {full_name},</p>
+<p style="margin:0 0 10px 0;">The following package(s) are now <b>READY FOR PICK UP</b>:</p>
+<ul style="margin:0 0 14px 18px; padding:0;">
+  {html_list}
+</ul>
+<p style="margin:0 0 14px 0;">
+  <a href="{DELIVERY_URL}" style="background:#4A148C;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;display:inline-block;">
+    Schedule Delivery
+  </a>
+</p>
+<p style="margin:0;">Thanks,<br>Foreign A Foot Logistics</p>
+""".strip()
+
     return send_email(
         to_email=to_email,
         subject="Your package is Ready for Pick Up",
@@ -848,7 +792,9 @@ def send_ready_for_pickup_email(to_email: str, full_name: str, items: list[dict]
     )
 
 
-# --- Shipment invoice notice (no attachments; link/button only) ----
+# ==========================================================
+#  SHIPMENT INVOICE NOTICE (BODY ONLY)
+# ==========================================================
 def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: float, invoice_link: str, recipient_user_id=None) -> bool:
     plain = (
         f"Hi {full_name},\n\n"
@@ -859,21 +805,17 @@ def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: f
     )
 
     html = f"""
-<html><body style="font-family:Arial,sans-serif;">
-  <div style="max-width:680px;margin:auto;padding:18px;background:#fff;border-radius:10px;">
-    {logo_img(height=14, margin_bottom=10)}
-    <p>Hi {full_name},</p>
-    <p>Your invoice for the recent shipment is ready.</p>
-    <p><b>Total Amount Due:</b> ${total_due:.2f}</p>
-    <p>
-      <a href="{invoice_link}" style="background:#5c3d91;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;display:inline-block;">
-        View / Pay Invoice
-      </a>
-    </p>
-    <p>Thanks,<br>Foreign A Foot Logistics</p>
-  </div>
-</body></html>
-"""
+<p style="margin:0 0 10px 0;">Hi {full_name},</p>
+<p style="margin:0 0 10px 0;">Your invoice for the recent shipment is ready.</p>
+<p style="margin:0 0 14px 0;"><b>Total Amount Due:</b> ${total_due:.2f}</p>
+<p style="margin:0 0 14px 0;">
+  <a href="{invoice_link}" style="background:#4A148C;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;display:inline-block;">
+    View / Pay Invoice
+  </a>
+</p>
+<p style="margin:0;">Thanks,<br>Foreign A Foot Logistics</p>
+""".strip()
+
     return send_email(
         to_email=to_email,
         subject="Your Shipment Invoice",
@@ -884,11 +826,14 @@ def send_shipment_invoice_link_email(to_email: str, full_name: str, total_due: f
     )
 
 
+# ==========================================================
+#  COMPOSE READY PICKUP (subject, plain, html BODY ONLY)
+# ==========================================================
 def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
     """
     packages: iterable of dicts with keys:
-      shipper, house_awb, tracking_number, weight
-    Returns: (subject, plain_body, html_body)
+      shipper/vendor, house_awb, tracking_number, weight
+    Returns: (subject, plain_body, html_body_body_only)
     """
     subject = "Your package(s) are ready for pickup 🎉"
 
@@ -916,7 +861,7 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
   <td style="padding:8px; border:1px solid #eee;">{awb}</td>
   <td style="padding:8px; border:1px solid #eee;">{track}</td>
   <td style="padding:8px; border:1px solid #eee; text-align:center;">{w_up}</td>
-  <td style="padding:8px; border:1px solid #eee; color:#16a34a; font-weight:600;">
+  <td style="padding:8px; border:1px solid #eee; color:#16a34a; font-weight:700;">
     Ready for Pickup/Delivery
   </td>
 </tr>
@@ -940,61 +885,49 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
     )
 
     html_body = f"""
-<html>
-  <body style="font-family:Arial, sans-serif; color:#222;">
-    <div style="max-width:680px; margin:0 auto; padding:16px;">
-      {logo_img(height=14, margin_bottom=10)}
-      <h2 style="color:#4a148c; margin-bottom:12px;">
-        Great news—your package(s) are ready!
-      </h2>
+<h2 style="color:#4a148c; margin:0 0 12px 0;">Great news—your package(s) are ready!</h2>
 
-      <p>We’ve prepared the following item(s) for pickup or delivery:</p>
+<p style="margin:0 0 10px 0;">We’ve prepared the following item(s) for pickup or delivery:</p>
 
-      <table style="width:100%; border-collapse:collapse; margin:12px 0;">
-        <thead>
-          <tr style="background:#f3ecff; color:#4a148c;">
-            <th style="padding:8px; border:1px solid #eee; text-align:left;">Shipper</th>
-            <th style="padding:8px; border:1px solid #eee; text-align:left;">Airway Bill</th>
-            <th style="padding:8px; border:1px solid #eee; text-align:left;">Tracking #</th>
-            <th style="padding:8px; border:1px solid #eee; text-align:center;">Weight (lbs)</th>
-            <th style="padding:8px; border:1px solid #eee; text-align:left;">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {''.join(rows_html) if rows_html else
-            '<tr><td colspan="5" style="padding:8px; border:1px solid #eee;">No package details</td></tr>'}
-        </tbody>
-      </table>
+<table style="width:100%; border-collapse:collapse; margin:12px 0;">
+  <thead>
+    <tr style="background:#f3ecff; color:#4a148c;">
+      <th style="padding:8px; border:1px solid #eee; text-align:left;">Shipper</th>
+      <th style="padding:8px; border:1px solid #eee; text-align:left;">Airway Bill</th>
+      <th style="padding:8px; border:1px solid #eee; text-align:left;">Tracking #</th>
+      <th style="padding:8px; border:1px solid #eee; text-align:center;">Weight (lbs)</th>
+      <th style="padding:8px; border:1px solid #eee; text-align:left;">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {''.join(rows_html) if rows_html else '<tr><td colspan="5" style="padding:8px; border:1px solid #eee;">No package details</td></tr>'}
+  </tbody>
+</table>
 
-      <div style="margin-top:16px;">
-        <p><strong>Pickup Location:</strong> Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</p>
-        <p><strong>Hours:</strong> Mon–Sat, 9:00 AM – 6:00 PM</p>
-        <p><strong>Contact:</strong> (876) 560-7764 · foreignafootlogistics@gmail.com</p>
-      </div>
+<div style="margin-top:14px;">
+  <p style="margin:0 0 6px 0;"><strong>Pickup Location:</strong> Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</p>
+  <p style="margin:0 0 6px 0;"><strong>Hours:</strong> Mon–Sat, 9:00 AM – 6:00 PM</p>
+  <p style="margin:0;"><strong>Contact:</strong> (876) 560-7764 · foreignafootlogistics@gmail.com</p>
+</div>
 
-      <div style="margin-top:20px; text-align:center;">
-        <a href="{DELIVERY_URL}"
-           style="display:inline-block; background:#4a148c; color:#ffffff; padding:12px 20px;
-                  text-decoration:none; border-radius:6px; font-weight:600;">
-          🚚 Schedule Delivery
-        </a>
-      </div>
-
-      <p style="margin-top:20px; color:#555;">
-        Thanks for choosing <strong>Foreign A Foot Logistics Limited</strong>.
-      </p>
-    </div>
-  </body>
-</html>
-"""
+<div style="margin-top:18px; text-align:center;">
+  <a href="{DELIVERY_URL}"
+     style="display:inline-block; background:#4a148c; color:#ffffff; padding:12px 20px;
+            text-decoration:none; border-radius:6px; font-weight:700;">
+    🚚 Schedule Delivery
+  </a>
+</div>
+""".strip()
 
     return subject, plain_body, html_body
 
 
+# ==========================================================
+#  INVOICE REQUEST (BODY ONLY)
+# ==========================================================
 def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=None):
     """
     Email: "Please provide invoices for the following packages"
-    Matches your screenshot style: simple blocks + customs note + red button.
     packages: list[dict] or list[ORM] with keys/attrs:
       shipper/vendor, house_awb, tracking_number, weight, status
     """
@@ -1008,12 +941,14 @@ def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=
         return getattr(p, key, default)
 
     blocks_txt = []
+    blocks_html = []
+
     for p in packages:
-        shipper  = getp(p, "shipper") or getp(p, "vendor") or "-"
-        house    = getp(p, "house_awb") or getp(p, "house") or "-"
+        shipper = getp(p, "shipper") or getp(p, "vendor") or "-"
+        house = getp(p, "house_awb") or getp(p, "house") or "-"
         tracking = getp(p, "tracking_number") or getp(p, "tracking") or "-"
-        weight   = getp(p, "weight") or 0
-        status   = getp(p, "status") or "At Overseas Warehouse"
+        weight = getp(p, "weight") or 0
+        status = getp(p, "status") or "At Overseas Warehouse"
 
         blocks_txt.append(
             f"Shipper: {shipper}\n"
@@ -1023,63 +958,47 @@ def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=
             f"Status: {status}\n"
         )
 
+        blocks_html.append(f"""
+<div style="margin:14px 0; padding:12px; border:1px solid #e5e7eb; border-radius:10px; background:#ffffff;">
+  <div><b>Shipper:</b> {shipper}</div>
+  <div><b>Airway Bill:</b> {house}</div>
+  <div><b>Tracking Number:</b> {tracking}</div>
+  <div><b>Weight:</b> {weight}</div>
+  <div><b>Status:</b> {status}</div>
+</div>
+""")
+
     plain_body = (
         f"Hi {first_name},\n\n"
-        f"Please provide Foreign a Foot Logistics Limited with invoices for the following packages.\n\n"
+        f"Please provide Foreign A Foot Logistics Limited with invoices for the following packages.\n\n"
         + "\n\n".join(blocks_txt)
         + "\n\n"
-        "Customs requires a proper invoice for all packages. Packages without a proper invoices will result in delays and/or additional storage costs.\n\n"
+        "Customs requires a proper invoice for all packages. Packages without a proper invoice may result in delays and/or additional storage costs.\n\n"
         f"Provide Invoice(s) Now: {upload_url}\n"
     )
 
-    blocks_html = []
-    for p in packages:
-        shipper  = getp(p, "shipper") or getp(p, "vendor") or "-"
-        house    = getp(p, "house_awb") or getp(p, "house") or "-"
-        tracking = getp(p, "tracking_number") or getp(p, "tracking") or "-"
-        weight   = getp(p, "weight") or 0
-        status   = getp(p, "status") or "At Overseas Warehouse"
-
-        blocks_html.append(f"""
-          <div style="margin:18px 0;">
-            <div><b>Shipper:</b> {shipper}</div>
-            <div><b>Airway Bill:</b> {house}</div>
-            <div><b>Tracking Number:</b> {tracking}</div>
-            <div><b>Weight:</b> {weight}</div>
-            <div><b>Status:</b> {status}</div>
-          </div>
-        """)
-
     html_body = f"""
-<html>
-  <body style="font-family: Arial, sans-serif; color:#111; background:#fff; margin:0; padding:0;">
-    <div style="max-width:900px; padding:24px 28px;">
-      {logo_img(height=14, margin_bottom=14)}
-      <p style="margin:0 0 14px;">Hi {first_name},</p>
+<p style="margin:0 0 12px 0;">Hi {first_name},</p>
 
-      <p style="margin:0 0 18px;">
-        Please provide Foreign a Foot Logistics Limited with invoices for the following packages.
-      </p>
+<p style="margin:0 0 14px 0;">
+  Please provide <b>Foreign A Foot Logistics Limited</b> with invoices for the following packages:
+</p>
 
-      {''.join(blocks_html)}
+{''.join(blocks_html)}
 
-      <p style="margin:18px 0 22px;">
-        <b>Customs requires a proper invoice for all packages. Packages without a proper invoices will result in delays and/or additional storage costs.</b>
-      </p>
+<p style="margin:14px 0 16px 0; color:#111827;">
+  <b>Customs requires a proper invoice for all packages.</b>
+  Packages without a proper invoice may result in delays and/or additional storage costs.
+</p>
 
-      <a href="{upload_url}"
-         style="display:inline-block; background:#ef4444; color:#fff; text-decoration:none;
-                padding:12px 18px; font-weight:700; border-radius:2px;">
-        Provide Invoice(s) Now
-      </a>
-
-      <div style="margin-top:28px;">
-        {logo_img(height=10, margin_bottom=0)}
-      </div>
-    </div>
-  </body>
-</html>
-"""
+<p style="margin:0;">
+  <a href="{upload_url}"
+     style="display:inline-block; background:#ef4444; color:#fff; text-decoration:none;
+            padding:12px 18px; font-weight:800; border-radius:8px;">
+    Provide Invoice(s) Now
+  </a>
+</p>
+""".strip()
 
     return send_email(
         to_email=to_email,
@@ -1089,4 +1008,5 @@ def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=
         recipient_user_id=recipient_user_id,
         reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )
+
 

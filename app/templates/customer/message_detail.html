@@ -26,7 +26,7 @@
     </div>
   </div>
 
-  <!-- Flash -->
+  <!-- Flash messages -->
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       {% for category, message in messages %}
@@ -38,10 +38,11 @@
     {% endif %}
   {% endwith %}
 
-  <div class="row g-3">
-    <!-- LEFT: message panel -->
-    <div class="col-lg-8">
-      <div class="card shadow-sm">
+  <div class="row g-3 align-items-start">
+
+    <!-- LEFT: MAIN MESSAGE PANEL -->
+    <div class="col-lg-8 order-lg-1 order-2">
+      <div class="card shadow-sm h-100">
 
         <!-- Header -->
         <div class="card-body border-bottom">
@@ -97,25 +98,34 @@
 
         <!-- Reply (NO THREADS) -->
         <div class="card-footer bg-white">
-          <form method="POST" action="{{ url_for('customer.customer_message_reply', msg_id=msg.id) }}">
+          <form method="POST"
+                action="{{ url_for('customer.customer_message_reply', msg_id=msg.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             {% set subj = (msg.subject or '') %}
-            <input type="text" name="subject" class="form-control form-control-sm"
-                   placeholder="Subject (optional)"
-                   value="{{ subj if (subj|lower).startswith('re:') else 'Re: ' ~ subj }}">
+            <div class="mb-2">
+              <input type="text"
+                     name="subject"
+                     class="form-control form-control-sm"
+                     placeholder="Subject (optional)"
+                     value="{{ subj if (subj|lower).startswith('re:') else 'Re: ' ~ subj }}">
             </div>
 
             <div class="mb-2">
-              <textarea name="body" class="form-control" rows="4"
-                        placeholder="Write your reply..." required></textarea>
+              <textarea name="body"
+                        class="form-control"
+                        rows="4"
+                        placeholder="Write your reply..."
+                        required></textarea>
             </div>
 
             <div class="d-flex justify-content-end gap-2">
-              <button class="btn btn-sm" type="submit" style="background:#4A148C; color:#fff;">
+              <button class="btn btn-sm" type="submit"
+                      style="background:#4A148C; color:#fff;">
                 <i class="bi bi-send"></i> Send
               </button>
-              <button type="button" class="btn btn-sm btn-outline-secondary"
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary"
                       onclick="this.closest('form').reset();">
                 Cancel
               </button>
@@ -129,9 +139,9 @@
       </div>
     </div>
 
-    <!-- RIGHT: meta sidebar -->
-    <div class="col-lg-4">
-      <div class="card shadow-sm">
+    <!-- RIGHT: MESSAGE DETAILS SIDEBAR -->
+    <div class="col-lg-4 order-lg-2 order-1">
+      <div class="card shadow-sm sticky-top" style="top: 80px;">
         <div class="card-header text-white fw-bold" style="background:#111827;">
           <i class="bi bi-info-circle me-2"></i>Message Details
         </div>
@@ -140,11 +150,7 @@
           <div class="mb-2">
             <div class="text-muted">Conversation With</div>
             <div class="fw-semibold">
-              {% if msg.sender_id == current_user.id %}
-                {{ other.full_name if other else "Administrator" }}
-              {% else %}
-                Administrator
-              {% endif %}
+              {{ other.full_name if other else "Administrator" }}
             </div>
           </div>
 
@@ -162,7 +168,8 @@
           <div class="mb-2">
             <div class="text-muted">Date</div>
             <div class="fw-semibold">
-              {{ to_jamaica(msg.created_at).strftime('%A, %B %d, %Y • %I:%M %p') if msg.created_at else '' }}
+              {{ to_jamaica(msg.created_at).strftime('%A, %B %d, %Y • %I:%M %p')
+                 if msg.created_at else '' }}
             </div>
           </div>
 
@@ -174,7 +181,7 @@
       </div>
     </div>
 
-  </div>
+  </div> {# end row #}
 </div>
 
 <style>
@@ -182,4 +189,3 @@
   .message-body { font-size: 0.98rem; color:#111827; }
 </style>
 {% endblock %}
-

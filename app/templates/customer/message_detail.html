@@ -1,0 +1,180 @@
+{# app/templates/customer/message_detail.html #}
+{% extends "layout_customer.html" %}
+{% block title %}Message{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <!-- Top bar -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div class="d-flex align-items-center gap-2">
+      <a href="{{ url_for('customer.view_messages') }}" class="btn btn-sm btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back
+      </a>
+      <span class="text-muted small">
+        {% if msg.sender_id == current_user.id %}Sent{% else %}Inbox{% endif %}
+      </span>
+    </div>
+
+    <div class="d-flex align-items-center gap-2">
+      {# Optional: wire up later if you add customer archive/delete routes #}
+      <button type="button" class="btn btn-sm btn-outline-secondary" disabled>
+        <i class="bi bi-archive"></i>
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-danger" disabled>
+        <i class="bi bi-trash"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Flash -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="row g-3">
+    <!-- LEFT: message panel -->
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+
+        <!-- Header -->
+        <div class="card-body border-bottom">
+          <div class="d-flex align-items-start justify-content-between gap-3">
+            <div class="flex-grow-1">
+              <h4 class="mb-1">{{ msg.subject or "Message" }}</h4>
+
+              <div class="d-flex flex-wrap align-items-center gap-2 small text-muted">
+                {% set is_unread = (msg.recipient_id == current_user.id and not msg.is_read) %}
+                <span class="badge rounded-pill"
+                      style="background:{{ '#FACC15' if is_unread else '#15803D' }};
+                             color:{{ '#111827' if is_unread else '#ffffff' }};">
+                  {{ "Unread" if is_unread else "Read" }}
+                </span>
+
+                <span>•</span>
+
+                <span>
+                  {{ to_jamaica(msg.created_at).strftime('%Y-%m-%d %I:%M %p') if msg.created_at else '' }}
+                </span>
+              </div>
+            </div>
+
+            <div class="text-end small">
+              <div class="text-muted">From</div>
+              <div class="fw-semibold">
+                {% if msg.sender_id == current_user.id %}
+                  You
+                {% else %}
+                  {{ other.full_name if other else "Administrator" }}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- “To” line -->
+          <div class="mt-2 small text-muted">
+            <b>To:</b>
+            {% if msg.recipient_id == current_user.id %}
+              You
+            {% else %}
+              {{ other.full_name if other else "Administrator" }}
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Body -->
+        <div class="card-body">
+          <div class="message-body" style="white-space: pre-wrap; line-height:1.65;">
+            {{ msg.body or "" }}
+          </div>
+        </div>
+
+        <!-- Reply (NO THREADS) -->
+        <div class="card-footer bg-white">
+          <form method="POST" action="{{ url_for('customer.customer_message_reply', msg_id=msg.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="mb-2">
+              <input type="text" name="subject" class="form-control form-control-sm"
+                     placeholder="Subject (optional)"
+                     value="{{ msg.subject if (msg.subject or '').lower().startswith('re:') else 'Re: ' ~ (msg.subject or '') }}">
+            </div>
+
+            <div class="mb-2">
+              <textarea name="body" class="form-control" rows="4"
+                        placeholder="Write your reply..." required></textarea>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2">
+              <button class="btn btn-sm" type="submit" style="background:#4A148C; color:#fff;">
+                <i class="bi bi-send"></i> Send
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary"
+                      onclick="this.closest('form').reset();">
+                Cancel
+              </button>
+            </div>
+          </form>
+
+          <div class="small text-muted mt-2">
+            Tip: Your reply will be sent as a new message (Gmail style — no threads).
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: meta sidebar -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm">
+        <div class="card-header text-white fw-bold" style="background:#111827;">
+          <i class="bi bi-info-circle me-2"></i>Message Details
+        </div>
+        <div class="card-body small">
+          <div class="mb-2">
+            <div class="text-muted">Conversation With</div>
+            <div class="fw-semibold">
+              {{ other.full_name if other else "Administrator" }}
+            </div>
+          </div>
+
+          <div class="mb-2">
+            <div class="text-muted">Status</div>
+            <div class="fw-semibold">
+              {% if msg.recipient_id == current_user.id and not msg.is_read %}
+                Unread
+              {% else %}
+                Read
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="mb-2">
+            <div class="text-muted">Date</div>
+            <div class="fw-semibold">
+              {{ to_jamaica(msg.created_at).strftime('%A, %B %d, %Y • %I:%M %p') if msg.created_at else '' }}
+            </div>
+          </div>
+
+          <hr>
+          <div class="text-muted">
+            Foreign A Foot Logistics • Customer Portal
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+  .card { border-radius: 12px; }
+  .message-body { font-size: 0.98rem; color:#111827; }
+</style>
+{% endblock %}

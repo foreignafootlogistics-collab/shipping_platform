@@ -5,11 +5,12 @@
 <div class="container mt-4">
   <div class="page-narrow">
 
+    <!-- Top bar -->
     <div class="d-flex align-items-center justify-content-between mb-3">
       <div>
         <h4 class="mb-0">Message</h4>
         <div class="text-muted small">
-          From/To:
+          Conversation with:
           <strong>{{ other.full_name or "Customer" }}</strong>
           {% if other and other.email %}
             <span class="ms-2">• {{ other.email }}</span>
@@ -17,37 +18,9 @@
         </div>
       </div>
 
-      <div class="d-flex align-items-center gap-2">
-        {# Optional Gmail-style actions (only works if you added these routes) #}
-        {% if 'admin.message_archive' in (current_app.view_functions or {}) %}
-          <form method="POST" action="{{ url_for('admin.message_archive', message_id=m.id) }}" class="d-inline">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-outline-secondary" type="submit" title="Archive">
-              <i class="bi bi-archive"></i>
-            </button>
-          </form>
-        {% endif %}
-
-        {% if 'admin.message_delete' in (current_app.view_functions or {}) %}
-          <form method="POST" action="{{ url_for('admin.message_delete', message_id=m.id) }}" class="d-inline"
-                onsubmit="return confirm('Delete this message?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete">
-              <i class="bi bi-trash"></i>
-            </button>
-          </form>
-        {% endif %}
-
-        {# Back button preserves mailbox state (box/search/page/etc) #}
-        <a href="{{ url_for('admin.messages',
-                            box=request.args.get('box', 'inbox'),
-                            q=request.args.get('q'),
-                            unread=request.args.get('unread'),
-                            archived=request.args.get('archived'),
-                            per_page=request.args.get('per_page'),
-                            page=request.args.get('page')) }}"
-           class="btn btn-sm btn-outline-secondary">
-          <i class="bi bi-arrow-left"></i> Back
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('admin.messages') }}" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-arrow-left"></i> Back to Inbox
         </a>
       </div>
     </div>
@@ -64,23 +37,28 @@
       {% endif %}
     {% endwith %}
 
+    <!-- Message card -->
     <div class="card shadow-sm">
       <div class="card-header bg-white">
-        <div class="d-flex justify-content-between align-items-start gap-2">
+        <div class="d-flex justify-content-between align-items-start gap-3">
           <div class="flex-grow-1">
-            <div class="fw-bold">{{ m.subject or "Message" }}</div>
-            <div class="text-muted small">
-              {{ to_jamaica(m.created_at).strftime('%Y-%m-%d %I:%M %p') if m.created_at else "" }}
+            <div class="fw-bold fs-5">{{ m.subject or "Message" }}</div>
+
+            <div class="text-muted small mt-1">
+              {{ to_jamaica(m.created_at).strftime('%A, %B %d, %Y • %I:%M %p') if m.created_at else "" }}
+              <span class="mx-2">•</span>
+
               {% if m.sender_id == current_user.id %}
-                <span class="ms-2 badge bg-secondary">Sent</span>
+                <span>Sent by <b>You</b></span>
               {% else %}
-                <span class="ms-2 badge bg-primary">Received</span>
+                <span>Received from <b>{{ other.full_name or "Customer" }}</b></span>
               {% endif %}
             </div>
           </div>
 
           <div class="text-end">
-            {% if m.recipient_id == current_user.id and not m.is_read %}
+            {% set is_unread = (m.recipient_id == current_user.id and not m.is_read) %}
+            {% if is_unread %}
               <span class="badge" style="background:#FACC15; color:#111827;">Unread</span>
             {% else %}
               <span class="badge" style="background:#15803D;">Read</span>
@@ -90,33 +68,32 @@
       </div>
 
       <div class="card-body">
-        <div style="white-space: pre-wrap; line-height:1.6;">
-          {{ m.body }}
+        <div style="white-space: pre-wrap; line-height:1.65;">
+          {{ m.body or "" }}
         </div>
       </div>
 
       <hr class="m-0">
 
+      <!-- Reply box -->
       <div class="card-body bg-light">
-        <form method="POST"
-              action="{{ url_for('admin.message_reply', message_id=m.id,
-                                 box=request.args.get('box', 'inbox'),
-                                 q=request.args.get('q'),
-                                 unread=request.args.get('unread'),
-                                 archived=request.args.get('archived'),
-                                 per_page=request.args.get('per_page'),
-                                 page=request.args.get('page')) }}">
+        <form method="POST" action="{{ url_for('admin.message_reply', message_id=m.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
           <div class="mb-2">
-            <input type="text" name="subject" class="form-control"
+            <input type="text"
+                   name="subject"
+                   class="form-control"
                    placeholder="Subject (optional)"
-                   value="{{ m.subject if (m.subject or '').lower().startswith('re:') else 'Re: ' ~ (m.subject or '') }}">
+                   value="Re: {{ m.subject or '' }}">
           </div>
 
           <div class="mb-2">
-            <textarea name="body" class="form-control" rows="4"
-                      placeholder="Write your reply..." required></textarea>
+            <textarea name="body"
+                      class="form-control"
+                      rows="4"
+                      placeholder="Write your reply..."
+                      required></textarea>
           </div>
 
           <div class="d-flex justify-content-end gap-2">
@@ -124,14 +101,7 @@
               <i class="bi bi-send"></i> Send Reply
             </button>
 
-            <a href="{{ url_for('admin.messages',
-                                box=request.args.get('box', 'inbox'),
-                                q=request.args.get('q'),
-                                unread=request.args.get('unread'),
-                                archived=request.args.get('archived'),
-                                per_page=request.args.get('per_page'),
-                                page=request.args.get('page')) }}"
-               class="btn btn-outline-secondary">
+            <a href="{{ url_for('admin.messages') }}" class="btn btn-outline-secondary">
               Cancel
             </a>
           </div>
@@ -141,5 +111,11 @@
 
   </div>
 </div>
+
+<style>
+  .page-narrow { max-width: 980px; margin: 0 auto; }
+  .card { border-radius: 12px; }
+</style>
 {% endblock %}
+
 

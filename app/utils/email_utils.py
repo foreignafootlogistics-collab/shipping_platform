@@ -48,17 +48,26 @@ TRANSACTIONS_URL = "https://app.faflcourier.com/customer/transactions/all"
 # ==========================================================
 def _load_logo_bytes() -> bytes | None:
     """
-    Load logo bytes from your repo so we can embed inline (CID).
-    Path assumes: app/static/logo.png
+    Load logo bytes so we can embed inline (CID).
+    Tries app/static/logo.png first (matches your working URL),
+    then app/static/img/logo.png.
     """
     try:
-        here = Path(__file__).resolve()
-        logo_path = here.parents[1] / "static" / "logo.png"   # app/utils -> app/static
-        if logo_path.exists():
-            return logo_path.read_bytes()
-    except Exception:
-        pass
+        root = Path(current_app.root_path)  # /app/app on Render
+        candidates = [
+            root / "static" / "logo.png",
+            root / "static" / "img" / "logo.png",
+        ]
+        for p in candidates:
+            if p.exists():
+                data = p.read_bytes()
+                print("✅ LOGO FOUND:", p, "bytes=", len(data))
+                return data
+    except Exception as e:
+        print("❌ LOGO LOAD ERROR:", e)
+
     return None
+
 
 def render_fafl_email(full_name: str, main_message: str,
                       action_url: str | None = None,
@@ -304,53 +313,64 @@ def send_email(
     log_to_messages: bool = False,
     inline_images: list[tuple[bytes, str, str]] | None = None,  # (bytes, cid, mimetype)
 ) -> bool:
-    # ✅ Fail fast if creds missing
+
     if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
         print("❌ Cannot send email: SMTP_USER / SMTP_PASS not set.")
         return False
 
-    # Root container: mixed (allows attachments)
-    msg = MIMEMultipart("mixed")
+    has_attachments = bool(attachments)
+
+    # ✅ KEY FIX (STEP 2):
+    # - If NO attachments → make "related" the ROOT (best for inline images)
+    # - If attachments exist → root = mixed, and "related" goes inside it
+    if has_attachments:
+        msg = MIMEMultipart("mixed")
+        related = MIMEMultipart("related")
+        msg.attach(related)
+    else:
+        msg = MIMEMultipart("related")
+        related = msg  # root is related
+
     msg["From"] = EMAIL_FROM or EMAIL_ADDRESS
     msg["To"] = to_email
     msg["Subject"] = subject
 
-    # ✅ related container = HTML + inline images must live together
-    related = MIMEMultipart("related")
-
-    # alternative container = plain + html
+    # Plain + HTML container
     alternative = MIMEMultipart("alternative")
-    alternative.attach(MIMEText(plain_body or "", "plain"))
+    alternative.attach(MIMEText(plain_body or "", "plain", "utf-8"))
 
+    # If HTML uses cid but logo failed to load, fallback to public URL
     if html_body:
-        alternative.attach(MIMEText(html_body, "html"))
+        if ("cid:fafl_logo" in html_body) and (not inline_images or not inline_images[0][0]):
+            html_body = html_body.replace(
+                'src="cid:fafl_logo"',
+                f'src="{LOGO_URL}"'
+            )
+
+        alternative.attach(MIMEText(html_body, "html", "utf-8"))
 
     related.attach(alternative)
 
-    # ✅ Attach inline images INSIDE related
+    # ✅ Attach inline images inside "related"
     if inline_images:
         for file_bytes, cid, mimetype in inline_images:
             if not file_bytes:
                 continue
-            if not mimetype:
-                mimetype = "image/png"
 
+            mimetype = mimetype or "image/png"
             maintype, subtype = mimetype.split("/", 1)
 
             if maintype == "image":
-                img = MIMEImage(file_bytes, _subtype=subtype)
+                part = MIMEImage(file_bytes, _subtype=subtype)
             else:
-                img = MIMEApplication(file_bytes, _subtype=subtype)
+                part = MIMEApplication(file_bytes, _subtype=subtype)
 
-            img.add_header("Content-ID", f"<{cid}>")
-            img.add_header("Content-Disposition", "inline", filename=f"{cid}.{subtype}")
-            related.attach(img)
+            part.add_header("Content-ID", f"<{cid}>")
+            part.add_header("Content-Disposition", "inline", filename=f"{cid}.{subtype}")
+            related.attach(part)
 
-    # Add related into mixed
-    msg.attach(related)
-
-    # Attachments (optional)
-    if attachments:
+    # Attachments (if any) go on ROOT (mixed)
+    if has_attachments:
         for a in attachments:
             if isinstance(a, dict):
                 file_bytes = a.get("content", b"")
@@ -363,12 +383,11 @@ def send_email(
                 mimetype = "application/octet-stream"
 
             _, subtype = mimetype.split("/", 1)
-
             part = MIMEApplication(file_bytes, _subtype=subtype)
             part.add_header("Content-Disposition", "attachment", filename=filename)
             msg.attach(part)
 
-    # SEND
+    # --- SEND ---
     try:
         if SMTP_PORT == 465:
             with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
@@ -383,7 +402,6 @@ def send_email(
 
         print(f"✅ Email sent to {to_email}")
 
-        # Mirror into in-app Messages ONLY when requested
         if log_to_messages and recipient_user_id:
             log_email_to_messages(recipient_user_id, subject, plain_body)
 
@@ -392,6 +410,7 @@ def send_email(
     except Exception as e:
         print(f"❌ Email sending failed to {to_email}: {e}")
         return False
+
 
 
 

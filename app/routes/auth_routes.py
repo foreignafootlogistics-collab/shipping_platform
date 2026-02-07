@@ -279,7 +279,11 @@ def logout():
 @auth_bp.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
-        email = request.form["email"].strip()
+        email = (request.form.get("email") or "").strip()
+        if not email:
+            flash("Please enter your email address.", "danger")
+            return redirect(url_for("auth.forgot_password"))
+
 
         user = User.query.filter_by(email=email).first()
         if not user:
@@ -329,8 +333,9 @@ def reset_password(token):
         return redirect(url_for("auth.forgot_password"))
 
     if request.method == "POST":
-        new_password = request.form["password"]
-        confirm_password = request.form.get("confirm_password")
+        new_password = request.form.get("password") or ""
+        confirm_password = request.form.get("confirm_password") or ""
+
 
         # Validate password match
         if new_password != confirm_password:

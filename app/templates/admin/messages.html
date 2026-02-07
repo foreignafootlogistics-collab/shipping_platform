@@ -144,31 +144,30 @@
                           type="button"
                           id="bulkActionsDropdown"
                           data-bs-toggle="dropdown"
-                          aria-expanded="false"
-                          disabled>
+                          aria-expanded="false">
                     <i class="bi bi-three-dots-vertical"></i> Actions
                   </button>
 
                   <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="bulkActionsDropdown">
                     <li>
-                      <button type="button" class="dropdown-item" id="bulkMarkRead">
+                      <button type="button" class="dropdown-item" id="bulkMarkRead" disabled>
                         <i class="bi bi-envelope-open me-2"></i> Mark as read
                       </button>
                     </li>
                     <li>
-                      <button type="button" class="dropdown-item" id="bulkMarkUnread">
+                      <button type="button" class="dropdown-item" id="bulkMarkUnread" disabled>
                         <i class="bi bi-envelope me-2"></i> Mark as unread
                       </button>
                     </li>
                     <li><hr class="dropdown-divider"></li>
 
                     <li>
-                      <button type="button" class="dropdown-item" id="bulkArchive">
+                      <button type="button" class="dropdown-item" id="bulkArchive" disabled>
                         <i class="bi bi-archive me-2"></i> Archive
                       </button>
                     </li>
                     <li>
-                      <button type="button" class="dropdown-item" id="bulkUnarchive">
+                      <button type="button" class="dropdown-item" id="bulkUnarchive" disabled>
                         <i class="bi bi-inbox me-2"></i> Move to inbox
                       </button>
                     </li>
@@ -176,7 +175,7 @@
                     <li><hr class="dropdown-divider"></li>
                     <li>
                       <button type="submit" class="dropdown-item text-danger" id="bulkDelete"
-                              onclick="return confirm('Delete selected message(s)?');">
+                              onclick="return confirm('Delete selected message(s)?');" disabled>
                         <i class="bi bi-trash me-2"></i> Delete
                       </button>
                     </li>
@@ -366,61 +365,78 @@
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   // ---------------------------
-  // BULK LIST CONTROLS
+  // BULK LIST CONTROLS (MAILBOX)
   // ---------------------------
+  const bulkForm  = document.getElementById("bulkActionForm");
   const selectAll = document.getElementById("selectAllMessages");
-  const checks = Array.from(document.querySelectorAll(".message-checkbox"));
-  const bulkForm = document.getElementById("bulkActionForm");
+  const checks    = Array.from(document.querySelectorAll(".message-checkbox"));
 
-  const dropdownBtn = document.getElementById("bulkActionsDropdown");
-  const countLabel = document.getElementById("selectedCountLabel");
+  const countLabel   = document.getElementById("selectedCountLabel");
+  const dropdownBtn  = document.getElementById("bulkActionsDropdown"); // can exist, but we won't disable it
+  const actionItems  = Array.from(document.querySelectorAll(".bulk-action-item"));
 
-  const btnMarkRead = document.getElementById("bulkMarkRead");
+  const btnMarkRead   = document.getElementById("bulkMarkRead");
   const btnMarkUnread = document.getElementById("bulkMarkUnread");
-  const btnArchive = document.getElementById("bulkArchive");
-  const btnUnarchive = document.getElementById("bulkUnarchive");
+  const btnArchive    = document.getElementById("bulkArchive");
+  const btnUnarchive  = document.getElementById("bulkUnarchive");
+  const btnDelete     = document.getElementById("bulkDelete");
 
   function selectedCount() {
     return checks.filter(c => c.checked).length;
   }
 
-  function updateBulkUI() {
-    if (!selectAll || checks.length === 0) return;
-
-    const selected = selectedCount();
-
-    if (dropdownBtn) dropdownBtn.disabled = selected === 0;
-
-    if (countLabel) {
-      countLabel.style.display = selected ? "" : "none";
-      countLabel.textContent = `(${selected} selected)`;
-    }
-
-    const allChecked = selected === checks.length;
-    const noneChecked = selected === 0;
-    selectAll.checked = allChecked;
-    selectAll.indeterminate = !allChecked && !noneChecked;
+  function setItemsEnabled(enabled) {
+    // enable/disable each dropdown menu item, NOT the dropdown toggle
+    actionItems.forEach(btn => (btn.disabled = !enabled));
   }
 
-  if (selectAll && checks.length) {
-    selectAll.addEventListener("change", () => {
-      checks.forEach(c => c.checked = selectAll.checked);
-      updateBulkUI();
-    });
+  function updateBulkUI() {
+    if (!checks.length) return;
 
-    checks.forEach(c => c.addEventListener("change", updateBulkUI));
-    updateBulkUI();
+    const n = selectedCount();
+
+    // keep dropdown always clickable/openable
+    if (dropdownBtn) dropdownBtn.disabled = false;
+
+    // show (n selected)
+    if (countLabel) {
+      countLabel.style.display = n ? "" : "none";
+      countLabel.textContent = `(${n} selected)`;
+    }
+
+    // enable actions only if n>0
+    setItemsEnabled(n > 0);
+
+    // update select-all checkbox
+    if (selectAll) {
+      const allChecked  = n === checks.length;
+      const noneChecked = n === 0;
+      selectAll.checked = allChecked;
+      selectAll.indeterminate = !allChecked && !noneChecked;
+    }
   }
 
   function submitTo(actionUrl, confirmText) {
     if (!bulkForm) return;
     if (selectedCount() === 0) return;
     if (confirmText && !confirm(confirmText)) return;
+
     bulkForm.action = actionUrl;
     bulkForm.submit();
   }
 
-  // Swap form action and submit
+  // Select all toggle
+  if (selectAll && checks.length) {
+    selectAll.addEventListener("change", () => {
+      checks.forEach(c => (c.checked = selectAll.checked));
+      updateBulkUI();
+    });
+  }
+
+  // Individual checks
+  checks.forEach(c => c.addEventListener("change", updateBulkUI));
+
+  // Bulk actions
   if (btnArchive) {
     btnArchive.addEventListener("click", () => {
       submitTo(
@@ -457,8 +473,20 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  if (btnDelete) {
+    btnDelete.addEventListener("click", () => {
+      submitTo(
+        "{{ url_for('admin.messages_bulk_delete', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.page if pagination else 1) }}",
+        "Delete selected message(s)?"
+      );
+    });
+  }
+
+  // Init bulk UI state
+  updateBulkUI();
+
   // ---------------------------
-  // RECIPIENT PICKER CONTROLS (your existing)
+  // RECIPIENT PICKER CONTROLS (unchanged)
   // ---------------------------
   const container = document.getElementById("recipientsBox");
   const items = Array.from(document.querySelectorAll(".recipient-item"));
@@ -566,4 +594,5 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 </script>
+
 {% endblock %}

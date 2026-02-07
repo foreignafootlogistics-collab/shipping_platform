@@ -283,8 +283,8 @@ def forgot_password():
 
         user = User.query.filter_by(email=email).first()
         if not user:
-            flash("No account found with that email.", "danger")
-            return render_template("auth/forgot_password.html")
+            flash("If that email exists, we sent a password reset link.", "success")
+            return redirect(url_for("auth.login"))
 
         full_name = user.full_name or ""
 

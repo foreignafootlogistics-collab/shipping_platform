@@ -147,7 +147,7 @@ def customer_dashboard():
 
     # Graceful defaults if settings row or fields are missing
     us_street       = getattr(settings, "us_street", None)       or "3200 NW 112th Avenue"
-    us_suite_prefix = getattr(settings, "us_suite_prefix", None) or "KCDA-"
+    us_suite_prefix = getattr(settings, "us_suite_prefix", None) or "KCDA-FAFL# "
     us_city         = getattr(settings, "us_city", None)         or "Doral"
     us_state        = getattr(settings, "us_state", None)        or "Florida"
     us_zip          = getattr(settings, "us_zip", None)          or "33172"
@@ -1048,14 +1048,8 @@ def invoice_pdf(invoice_id):
 def view_messages():
     form = SendMessageForm()
 
-    # Pick an admin recipient (prefer superadmin, then admin, then first user)
-    admin = (
-        (User.query.filter(User.is_superadmin.is_(True)).order_by(User.id.asc()).first()
-         if hasattr(User, "is_superadmin") else None)
-        or (User.query.filter(User.role == "admin").order_by(User.id.asc()).first()
-            if hasattr(User, "role") else None)
-        or User.query.order_by(User.id.asc()).first()
-    )
+    # Choose an admin recipient (prefer superadmin, then admin, then first user)
+    admin = pick_admin_recipient()
 
     # ---- Send new message to admin ----
     if request.method == "POST" and form.validate_on_submit():
@@ -1065,10 +1059,6 @@ def view_messages():
 
         subject = (form.subject.data or "").strip() or "Message"
         body = (form.body.data or "").strip()
-
-        if not body:
-            flash("Message can't be empty.", "warning")
-            return redirect(url_for("customer.view_messages"))
 
         msg = DBMessage(
             sender_id=current_user.id,
@@ -1081,7 +1071,7 @@ def view_messages():
         db.session.add(msg)
         db.session.commit()
 
-        # Email notify admin (notification only)
+        # ✅ Email notify admin
         if admin.email:
             preview = (body[:120] + "…") if len(body) > 120 else body
             send_new_message_email(
@@ -1093,60 +1083,28 @@ def view_messages():
             )
 
         flash("Message sent!", "success")
-        return redirect(url_for("customer.view_messages", box="sent"))
+        return redirect(url_for("customer.view_messages"))
 
-    # ---- Gmail-style mailbox controls ----
-    box = (request.args.get("box") or "inbox").lower()   # inbox | sent | all
-    q = (request.args.get("q") or "").strip()
-    try:
-        per_page = int(request.args.get("per_page") or 20)
-    except Exception:
-        per_page = 20
-    per_page = per_page if per_page in (10, 20, 50, 100) else 20
-
-    # Base: customer mailbox messages only (no threads)
-    base = DBMessage.query.filter(
-        sa.or_(
-            DBMessage.sender_id == current_user.id,
-            DBMessage.recipient_id == current_user.id
-        )
+    # ---- Inbox / Sent lists ----
+    inbox = (
+        DBMessage.query
+        .filter(DBMessage.recipient_id == current_user.id)
+        .order_by(DBMessage.created_at.desc())
+        .all()
     )
-
-    # Box filter
-    if box == "inbox":
-        base = base.filter(DBMessage.recipient_id == current_user.id)
-    elif box == "sent":
-        base = base.filter(DBMessage.sender_id == current_user.id)
-    else:
-        box = "all"  # normalize
-
-    # Search (subject/body)
-    if q:
-        like = f"%{q}%"
-        base = base.filter(
-            sa.or_(
-                DBMessage.subject.ilike(like),
-                DBMessage.body.ilike(like),
-            )
-        )
-
-    messages_list = base.order_by(DBMessage.created_at.desc()).limit(per_page).all()
-
-    # For display (always show "Administrator" as the other side)
-    rows = []
-    for m in messages_list:
-        other_id = m.recipient_id if m.sender_id == current_user.id else m.sender_id
-        other = User.query.get(other_id)
-        rows.append((m, other))
+    sent = (
+        DBMessage.query
+        .filter(DBMessage.sender_id == current_user.id)
+        .order_by(DBMessage.created_at.desc())
+        .all()
+    )
 
     return render_template(
         "customer/messages.html",
         form=form,
+        inbox=inbox,
+        sent=sent,
         admin=admin,
-        rows=rows,
-        box=box,
-        q=q,
-        per_page=per_page,
     )
 
 

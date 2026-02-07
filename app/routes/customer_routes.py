@@ -147,7 +147,7 @@ def customer_dashboard():
 
     # Graceful defaults if settings row or fields are missing
     us_street       = getattr(settings, "us_street", None)       or "3200 NW 112th Avenue"
-    us_suite_prefix = getattr(settings, "us_suite_prefix", None) or "KCDA-FAFL# "
+    us_suite_prefix = getattr(settings, "us_suite_prefix", None) or "KCDA-"
     us_city         = getattr(settings, "us_city", None)         or "Doral"
     us_state        = getattr(settings, "us_state", None)        or "Florida"
     us_zip          = getattr(settings, "us_zip", None)          or "33172"

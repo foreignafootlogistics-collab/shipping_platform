@@ -237,12 +237,20 @@
               <input type="text" id="recipientSearch" class="form-control mb-2"
                      placeholder="Search customers by name or email...">
 
-              <div class="mb-2">
-                <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllBtn">Select All</button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllBtn">Deselect All</button>
+              <div class="mb-2 d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllBtn">Select All</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllBtn">Deselect All</button>
+                </div>
+
+                <div class="small">
+                  <span class="text-muted me-2">Selected</span>
+                  <span id="selectedCountBadge" class="badge selected-badge zero">0</span>
+                </div>
               </div>
 
-              <div style="max-height: 240px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:8px; padding:10px;">
+
+              <div id="recipientsBox" style="max-height: 240px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:8px; padding:10px;">
                 {% for value, label in form.user_ids.choices %}
                   <div class="form-check recipient-item" data-label="{{ label|lower }}">
                     <input class="form-check-input user-checkbox"
@@ -273,26 +281,153 @@
   </div>
 </div>
 
+<style>
+.selected-badge {
+  transition: all 0.2s ease;
+  font-weight: 600;
+}
+
+/* Default (0 selected) */
+.selected-badge.zero {
+  background: #e5e7eb;      /* light gray */
+  color: #374151;           /* dark gray text */
+}
+
+/* When 1+ selected → FAFL purple */
+.selected-badge.active {
+  background: #4A148C;      /* your brand purple */
+  color: #ffffff;
+}
+</style>
 <script>
-document.addEventListener("DOMContentLoaded", function() {
-  const checkboxes = document.querySelectorAll(".user-checkbox");
+document.addEventListener("DOMContentLoaded", function () {
+  const container = document.getElementById("recipientsBox");
+  const items = Array.from(document.querySelectorAll(".recipient-item"));
+  const checkboxes = Array.from(document.querySelectorAll(".user-checkbox"));
+
   const selectAllBtn = document.getElementById("selectAllBtn");
   const deselectAllBtn = document.getElementById("deselectAllBtn");
-
-  if (selectAllBtn) selectAllBtn.addEventListener("click", () => checkboxes.forEach(cb => cb.checked = true));
-  if (deselectAllBtn) deselectAllBtn.addEventListener("click", () => checkboxes.forEach(cb => cb.checked = false));
-
   const search = document.getElementById("recipientSearch");
-  const items = document.querySelectorAll(".recipient-item");
-  if (search) {
-    search.addEventListener("input", () => {
-      const q = search.value.toLowerCase().trim();
-      items.forEach(item => {
-        const text = item.getAttribute("data-label") || "";
-        item.style.display = text.includes(q) ? "" : "none";
-      });
+
+  const selectedCountBadge = document.getElementById("selectedCountBadge");
+
+  if (!container || items.length === 0) return;
+
+  // Keep original server order (A-Z)
+  const originalOrder = items.slice();
+  const idx = new Map(originalOrder.map((el, i) => [el, i]));
+
+  // If Select All was used, we DON'T reorder
+  let selectAllMode = false;
+
+  function isVisible(el) {
+    return el.style.display !== "none";
+  }
+
+  function countSelected() {
+    return checkboxes.filter(cb => cb.checked).length;
+  }
+
+  function updateSelectedBadge() {
+    if (!selectedCountBadge) return;
+
+    const n = countSelected();
+    selectedCountBadge.textContent = String(n);
+
+    if (n > 0) {
+      selectedCountBadge.classList.add("active");
+      selectedCountBadge.classList.remove("zero");
+    } else {
+      selectedCountBadge.classList.add("zero");
+      selectedCountBadge.classList.remove("active");
+    }
+  }
+
+  function applySearchFilter() {
+    const q = (search?.value || "").toLowerCase().trim();
+    items.forEach(item => {
+      const text = item.getAttribute("data-label") || "";
+      item.style.display = text.includes(q) ? "" : "none";
     });
   }
+
+  function restoreOriginalOrder() {
+    originalOrder.forEach(el => container.appendChild(el));
+  }
+
+  function anyUnchecked() {
+    return checkboxes.some(cb => !cb.checked);
+  }
+
+  function reorderSelectedToTop() {
+    if (selectAllMode) return; // ✅ do nothing when Select All mode is active
+
+    // Only reorder visible items (keeps search behavior clean)
+    const visibleItems = items.filter(isVisible);
+
+    const selected = [];
+    const unselected = [];
+
+    visibleItems.forEach(item => {
+      const cb = item.querySelector(".user-checkbox");
+      if (cb && cb.checked) selected.push(item);
+      else unselected.push(item);
+    });
+
+    // preserve original relative ordering
+    selected.sort((a, b) => (idx.get(a) ?? 0) - (idx.get(b) ?? 0));
+    unselected.sort((a, b) => (idx.get(a) ?? 0) - (idx.get(b) ?? 0));
+
+    // hidden items stay after visible items, also in original order
+    const hiddenItems = items
+      .filter(el => !isVisible(el))
+      .sort((a, b) => (idx.get(a) ?? 0) - (idx.get(b) ?? 0));
+
+    [...selected, ...unselected, ...hiddenItems].forEach(el => container.appendChild(el));
+  }
+
+  // ---- Select All ----
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener("click", () => {
+      selectAllMode = true;
+      checkboxes.forEach(cb => (cb.checked = true));
+      restoreOriginalOrder(); // ✅ keep original order
+      updateSelectedBadge();
+    });
+  }
+
+  // ---- Deselect All ----
+  if (deselectAllBtn) {
+    deselectAllBtn.addEventListener("click", () => {
+      selectAllMode = false;
+      checkboxes.forEach(cb => (cb.checked = false));
+      restoreOriginalOrder();
+      updateSelectedBadge();
+    });
+  }
+
+  // ---- Individual checkbox toggles ----
+  checkboxes.forEach(cb => {
+    cb.addEventListener("change", () => {
+      // If they start unchecking after Select All, disable selectAllMode
+      if (selectAllMode && anyUnchecked()) {
+        selectAllMode = false;
+      }
+      reorderSelectedToTop();
+      updateSelectedBadge();
+    });
+  });
+
+  // ---- Search ----
+  if (search) {
+    search.addEventListener("input", () => {
+      applySearchFilter();
+      reorderSelectedToTop();
+    });
+  }
+
+  // Init badge on load (handles server-side pre-checks if any)
+  updateSelectedBadge();
 });
 </script>
 {% endblock %}

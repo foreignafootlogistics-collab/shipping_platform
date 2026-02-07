@@ -65,6 +65,36 @@
             {% endif %}
           </div>
         </div>
+
+        <!-- Gmail-like actions -->
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <!-- Forward (modal) -->
+          <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#forwardModal">
+            <i class="bi bi-forward"></i> Forward
+          </button>
+
+          <!-- Archive -->
+          <form method="POST"
+                action="{{ url_for('admin.message_archive', message_id=m.id) }}"
+                class="d-inline"
+                onsubmit="return confirm('Archive this message?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-warning" type="submit">
+              <i class="bi bi-archive"></i> Archive
+            </button>
+          </form>
+
+          <!-- Delete -->
+          <form method="POST"
+                action="{{ url_for('admin.message_delete', message_id=m.id) }}"
+                class="d-inline"
+                onsubmit="return confirm('Delete this message?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-sm btn-outline-danger" type="submit">
+              <i class="bi bi-trash"></i> Delete
+            </button>
+          </form>
+        </div>
       </div>
 
       <div class="card-body">
@@ -112,11 +142,84 @@
   </div>
 </div>
 
+<!-- Forward Modal -->
+<div class="modal fade" id="forwardModal" tabindex="-1" aria-labelledby="forwardModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius:14px;">
+      <div class="modal-header">
+        <h5 class="modal-title" id="forwardModalLabel">
+          <i class="bi bi-forward me-1"></i> Forward Message
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <form method="POST" action="{{ url_for('admin.message_forward', message_id=m.id) }}">
+        <div class="modal-body">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="row g-3">
+            <div class="col-md-7">
+              <label class="form-label">Forward to customer (optional)</label>
+              <select name="to_user_id" class="form-select" id="forwardUserSelect">
+                <option value="">— Select customer —</option>
+                {% for u in customers %}
+                  <option value="{{ u.id }}">{{ u.full_name }} ({{ u.email }})</option>
+                {% endfor %}
+              </select>
+              <div class="form-text">Choose a customer, OR type an email to forward to.</div>
+            </div>
+
+            <div class="col-md-5">
+              <label class="form-label">Or forward to email</label>
+              <input type="email" name="to_email" class="form-control" placeholder="name@example.com" id="forwardEmailInput">
+              <div class="form-text">If customer is selected, email field is ignored.</div>
+            </div>
+
+            <div class="col-12">
+              <label class="form-label">Optional note</label>
+              <textarea name="note" class="form-control" rows="3" placeholder="Add a short note..."></textarea>
+            </div>
+
+            <div class="col-12">
+              <div class="p-3 rounded" style="background:#f8fafc; border:1px solid #e5e7eb;">
+                <div class="small text-muted mb-2"><b>Forwarded message preview</b></div>
+                <div class="small text-muted">
+                  <div><b>Subject:</b> {{ m.subject or "Message" }}</div>
+                  <div><b>Date:</b> {{ to_jamaica(m.created_at).strftime('%A, %B %d, %Y • %I:%M %p') if m.created_at else "" }}</div>
+                </div>
+                <hr class="my-2">
+                <div style="white-space:pre-wrap; line-height:1.6;">{{ m.body or "" }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-forward me-1"></i> Forward
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  // nice UX: if user selects a customer, clear manual email field
+  (function(){
+    const sel = document.getElementById("forwardUserSelect");
+    const email = document.getElementById("forwardEmailInput");
+    if (sel && email) {
+      sel.addEventListener("change", () => {
+        if (sel.value) email.value = "";
+      });
+    }
+  })();
+</script>
+
 <style>
   .page-narrow { max-width: 980px; margin: 0 auto; }
   .card { border-radius: 12px; }
 </style>
 {% endblock %}
-
-
-

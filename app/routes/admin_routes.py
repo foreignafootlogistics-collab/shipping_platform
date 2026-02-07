@@ -20,6 +20,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
+from markupsafe import escape
 
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField
@@ -614,10 +615,6 @@ def edit_rate(rate_id):
 
 
 
-from datetime import datetime, timezone
-import sqlalchemy as sa
-from flask import request, render_template, redirect, url_for, flash
-from flask_login import current_user
 
 # ----- Admin Inbox / Sent + Bulk Messaging (Gmail-style, NO THREADS) -----
 
@@ -758,18 +755,15 @@ def messages():
     )
 
 
-# ✅ View a single message (marks read like Gmail)
 @admin_bp.route("/messages/<int:message_id>", methods=["GET"])
 @admin_required
 def message_detail(message_id):
     m = Message.query.get_or_404(message_id)
 
-    # MUST belong to admin mailbox
     if m.sender_id != current_user.id and m.recipient_id != current_user.id:
         flash("You do not have access to that message.", "danger")
         return redirect(url_for("admin.messages"))
 
-    # hide if deleted for THIS admin
     if m.sender_id == current_user.id and m.deleted_by_sender:
         flash("That message was deleted.", "warning")
         return redirect(url_for("admin.messages"))
@@ -777,16 +771,19 @@ def message_detail(message_id):
         flash("That message was deleted.", "warning")
         return redirect(url_for("admin.messages"))
 
-    # who is the "other" person?
     other_id = m.recipient_id if m.sender_id == current_user.id else m.sender_id
     other = User.query.get(other_id)
 
-    # ✅ mark as read when ADMIN opens inbox mail
     if m.recipient_id == current_user.id and not m.is_read:
         m.is_read = True
         db.session.commit()
 
-    return render_template("admin/message_detail.html", m=m, other=other)
+    customers = (User.query
+                 .filter(User.role == "customer")
+                 .order_by(User.full_name.asc())
+                 .all())
+
+    return render_template("admin/message_detail.html", m=m, other=other, customers=customers)
 
 
 @admin_bp.route("/messages/<int:message_id>/reply", methods=["POST"])
@@ -830,7 +827,6 @@ def message_reply(message_id):
     return redirect(url_for("admin.message_detail", message_id=msg.id))
 
 
-# (Optional but very Gmail) archive/delete a SINGLE message
 @admin_bp.route("/messages/<int:message_id>/archive", methods=["POST"])
 @admin_required
 def message_archive(message_id):
@@ -847,7 +843,7 @@ def message_archive(message_id):
 
     db.session.commit()
     flash("Message archived.", "success")
-    return redirect(url_for("admin.messages"))
+    return redirect(request.referrer or url_for("admin.messages"))
 
 
 @admin_bp.route("/messages/<int:message_id>/delete", methods=["POST"])
@@ -866,7 +862,104 @@ def message_delete(message_id):
 
     db.session.commit()
     flash("Message deleted.", "success")
-    return redirect(url_for("admin.messages"))
+    return redirect(request.referrer or url_for("admin.messages"))
+
+
+@admin_bp.route("/messages/<int:message_id>/forward", methods=["POST"])
+@admin_required
+def message_forward(message_id):
+    m = Message.query.get_or_404(message_id)
+
+    # Must belong to admin mailbox
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        flash("You do not have access to that message.", "danger")
+        return redirect(url_for("admin.messages"))
+
+    # Forward to: customer dropdown OR manual email
+    raw_user_id = (request.form.get("to_user_id") or "").strip()
+    to_user_id = int(raw_user_id) if raw_user_id.isdigit() else None
+
+    to_email = (request.form.get("to_email") or "").strip()
+    note = (request.form.get("note") or "").strip()
+
+    # Resolve email by user_id if provided
+    if to_user_id:
+        to_user = User.query.get(to_user_id)
+        if to_user and to_user.email:
+            to_email = to_user.email
+
+    if not to_email:
+        flash("Please select a customer or enter an email address to forward to.", "warning")
+        return redirect(url_for("admin.message_detail", message_id=message_id))
+
+    # Date label
+    created_label = ""
+    try:
+        created_label = to_jamaica(m.created_at).strftime("%A, %B %d, %Y • %I:%M %p") if m.created_at else ""
+    except Exception:
+        created_label = str(m.created_at or "")
+
+    original_subject = (m.subject or "Message").strip()
+
+    # Avoid double "Fwd:"
+    if original_subject.lower().startswith("fwd:"):
+        email_subject = f"{original_subject} - Foreign A Foot Logistics"
+    else:
+        email_subject = f"Fwd: {original_subject} - Foreign A Foot Logistics"
+
+    # Plain
+    forwarded_plain = (
+        (note + "\n\n" if note else "")
+        + "---- Forwarded message ----\n"
+        + f"Subject: {original_subject}\n"
+        + (f"Date: {created_label}\n" if created_label else "")
+        + "\n"
+        + (m.body or "")
+    )
+
+    # ✅ HTML BODY ONLY (send_email wraps it with your FAFL header/footer/logo URL)
+    note_html = ""
+    if note:
+        note_html = f"""
+        <p style="margin:0 0 12px 0;">
+          <b>Note:</b><br>
+          {escape(note).replace("\\n", "<br>")}
+        </p>
+        """
+
+    forwarded_html_body_only = f"""
+{note_html}
+
+<div style="border:1px solid #e5e7eb; border-radius:12px; padding:14px; background:#f9fafb;">
+  <div style="font-size:13px; color:#6b7280; margin-bottom:10px;">
+    <b>Forwarded message</b><br>
+    <b>Subject:</b> {escape(original_subject)}<br>
+    {"<b>Date:</b> " + escape(created_label) + "<br>" if created_label else ""}
+  </div>
+
+  <div style="white-space:pre-wrap; line-height:1.6; color:#111827;">
+    {escape(m.body or "")}
+  </div>
+</div>
+""".strip()
+
+    ok = send_email(
+        to_email=to_email,
+        subject=email_subject,
+        plain_body=forwarded_plain,
+        html_body=forwarded_html_body_only,
+        reply_to=EMAIL_FROM or EMAIL_ADDRESS,  # optional but good
+        recipient_user_id=None,               # forwarding should NOT log into messages
+    )
+
+    if ok:
+        flash("Message forwarded successfully.", "success")
+    else:
+        flash("Forward failed. Please try again.", "danger")
+
+    return redirect(url_for("admin.message_detail", message_id=message_id))
+
+
 
 # --- Admin Notifications: list + broadcast ---
 @admin_bp.route("/notifications", methods=["GET", "POST"])

@@ -22,7 +22,7 @@ except Exception:
 #  SMTP CREDENTIALS (Render / Production compatible)
 # ==========================================================
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 
 EMAIL_ADDRESS = os.getenv("SMTP_USER")
 EMAIL_PASSWORD = os.getenv("SMTP_PASS")

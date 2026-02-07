@@ -258,6 +258,13 @@ def add_user():
     # store as bytes (LargeBinary)
     hashed = bcrypt.hashpw(raw_password.encode('utf-8'), bcrypt.gensalt())
 
+    # ✅ generate unique referral code
+    referral_code = User.generate_referral_code(full_name)
+    for _ in range(10):
+        if not User.query.filter_by(referral_code=referral_code).first():
+            break
+        referral_code = User.generate_referral_code(full_name)
+
     u = User(
         full_name=full_name,
         email=email,
@@ -265,13 +272,15 @@ def add_user():
         mobile=mobile,
         password=hashed,
         registration_number=reg_no,
-        date_registered=date_registered
+        date_registered=date_registered,
+        referral_code=referral_code,
     )
     db.session.add(u)
     _safe_commit()
 
     flash(f"User {full_name} added with registration number {reg_no}.", "success")
     return redirect(url_for('accounts_profiles.manage_users'))
+)
 
 # -------------------------
 # Upload Users (Excel) -> Preview
@@ -437,9 +446,24 @@ def confirm_upload_users():
                 existing.password = hashed_pw
                 existing.date_registered = date_registered
                 existing.email = email
+                # ✅ ADD THIS BLOCK HERE — give old users a referral code if missing
+                if not (existing.referral_code or "").strip():
+                    ref_code = User.generate_referral_code(full_name)
+                    for _ in range(10):
+                        if not User.query.filter_by(referral_code=ref_code).first():
+                            break
+                        ref_code = User.generate_referral_code(full_name)
+                    existing.referral_code = ref_code
+
                 _safe_commit()
                 updated += 1
             else:
+                ref_code = User.generate_referral_code(full_name)
+                for _ in range(10):
+                    if not User.query.filter_by(referral_code=ref_code).first():
+                        break
+                    ref_code = User.generate_referral_code(full_name)
+
                 u = User(
                     full_name=full_name,
                     email=email,
@@ -447,7 +471,8 @@ def confirm_upload_users():
                     mobile=mobile,
                     password=hashed_pw,
                     date_registered=date_registered,
-                    registration_number=assigned_reg
+                    registration_number=assigned_reg,
+                    referral_code=ref_code,
                 )
                 db.session.add(u)
                 try:

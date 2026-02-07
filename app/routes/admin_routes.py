@@ -827,6 +827,7 @@ def message_reply(message_id):
     return redirect(url_for("admin.message_detail", message_id=msg.id))
 
 
+
 @admin_bp.route("/messages/<int:message_id>/archive", methods=["POST"])
 @admin_required
 def message_archive(message_id):
@@ -960,6 +961,165 @@ def message_forward(message_id):
     return redirect(url_for("admin.message_detail", message_id=message_id))
 
 
+# -------------------------
+# BULK ACTION HELPERS
+# -------------------------
+def _bulk_ids_from_form():
+    ids = request.form.getlist("message_ids")
+    try:
+        return [int(x) for x in ids if str(x).isdigit()]
+    except Exception:
+        return []
+
+def _redirect_back_to_mailbox(default_box="inbox"):
+    return redirect(url_for(
+        "admin.messages",
+        box=(request.args.get("box") or default_box),
+        q=(request.args.get("q") or None),
+        unread=(request.args.get("unread") or None),
+        archived=(request.args.get("archived") or None),
+        per_page=(request.args.get("per_page") or None),
+        page=(request.args.get("page") or None),
+    ))
+
+
+# -------------------------
+# BULK: DELETE
+# -------------------------
+@admin_bp.route("/messages/bulk-delete", methods=["POST"])
+@admin_required
+def messages_bulk_delete():
+    ids = _bulk_ids_from_form()
+    if not ids:
+        flash("Select at least one message to delete.", "warning")
+        return _redirect_back_to_mailbox()
+
+    msgs = Message.query.filter(Message.id.in_(ids)).all()
+
+    changed = 0
+    for m in msgs:
+        if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+            continue
+
+        if m.sender_id == current_user.id:
+            m.deleted_by_sender = True
+        if m.recipient_id == current_user.id:
+            m.deleted_by_recipient = True
+
+        changed += 1
+
+    db.session.commit()
+    flash(f"Deleted {changed} message(s).", "success")
+    return _redirect_back_to_mailbox()
+
+
+# -------------------------
+# BULK: ARCHIVE
+# -------------------------
+@admin_bp.route("/messages/bulk-archive", methods=["POST"])
+@admin_required
+def messages_bulk_archive():
+    ids = _bulk_ids_from_form()
+    if not ids:
+        flash("Select at least one message to archive.", "warning")
+        return _redirect_back_to_mailbox()
+
+    msgs = Message.query.filter(Message.id.in_(ids)).all()
+
+    changed = 0
+    for m in msgs:
+        if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+            continue
+
+        if m.sender_id == current_user.id:
+            m.archived_by_sender = True
+        if m.recipient_id == current_user.id:
+            m.archived_by_recipient = True
+
+        changed += 1
+
+    db.session.commit()
+    flash(f"Archived {changed} message(s).", "success")
+    return _redirect_back_to_mailbox()
+
+
+# -------------------------
+# BULK: UNARCHIVE (Move to Inbox)
+# -------------------------
+@admin_bp.route("/messages/bulk-unarchive", methods=["POST"])
+@admin_required
+def messages_bulk_unarchive():
+    ids = _bulk_ids_from_form()
+    if not ids:
+        flash("Select at least one message to move to inbox.", "warning")
+        return _redirect_back_to_mailbox()
+
+    msgs = Message.query.filter(Message.id.in_(ids)).all()
+
+    changed = 0
+    for m in msgs:
+        if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+            continue
+
+        if m.sender_id == current_user.id:
+            m.archived_by_sender = False
+        if m.recipient_id == current_user.id:
+            m.archived_by_recipient = False
+
+        changed += 1
+
+    db.session.commit()
+    flash(f"Moved {changed} message(s) to inbox.", "success")
+    return _redirect_back_to_mailbox()
+
+
+# -------------------------
+# BULK: MARK READ
+# (Only meaningful when you are recipient)
+# -------------------------
+@admin_bp.route("/messages/bulk-mark-read", methods=["POST"])
+@admin_required
+def messages_bulk_mark_read():
+    ids = _bulk_ids_from_form()
+    if not ids:
+        flash("Select at least one message.", "warning")
+        return _redirect_back_to_mailbox()
+
+    msgs = Message.query.filter(Message.id.in_(ids)).all()
+
+    changed = 0
+    for m in msgs:
+        if m.recipient_id == current_user.id and not m.is_read:
+            m.is_read = True
+            changed += 1
+
+    db.session.commit()
+    flash(f"Marked {changed} message(s) as read.", "success")
+    return _redirect_back_to_mailbox()
+
+
+# -------------------------
+# BULK: MARK UNREAD
+# -------------------------
+@admin_bp.route("/messages/bulk-mark-unread", methods=["POST"])
+@admin_required
+def messages_bulk_mark_unread():
+    ids = _bulk_ids_from_form()
+    if not ids:
+        flash("Select at least one message.", "warning")
+        return _redirect_back_to_mailbox()
+
+    msgs = Message.query.filter(Message.id.in_(ids)).all()
+
+    changed = 0
+    for m in msgs:
+        if m.recipient_id == current_user.id and m.is_read:
+            m.is_read = False
+            changed += 1
+
+    db.session.commit()
+    flash(f"Marked {changed} message(s) as unread.", "success")
+    return _redirect_back_to_mailbox()
 
 # --- Admin Notifications: list + broadcast ---
 @admin_bp.route("/notifications", methods=["GET", "POST"])

@@ -7,7 +7,7 @@
   <!-- Header -->
   <div class="d-flex align-items-center justify-content-between mb-3">
     <div>
-      <h3 class="mb-0">Messages</h3>      
+      <h3 class="mb-0">Messages</h3>
     </div>
 
     <a class="btn btn-sm btn-outline-secondary"
@@ -117,71 +117,148 @@
           {% if rows|length == 0 %}
             <div class="p-3 text-muted">No messages found.</div>
           {% else %}
-            <div class="list-group list-group-flush">
 
-              {% for row in rows %}
-                {% set m = row.m %}
-                {% set other = row.other %}
-                {% set is_sent = row.is_sent %}
-                {% set is_unread = (m.recipient_id == current_user.id and not m.is_read) %}
+            <!-- BULK ACTIONS FORM (one form, action swapped by JS) -->
+            <form id="bulkActionForm"
+                  method="POST"
+                  action="{{ url_for('admin.messages_bulk_delete',
+                                    box=box, q=q,
+                                    unread='1' if unread_only else None,
+                                    archived='1' if include_archived else None,
+                                    per_page=per_page,
+                                    page=pagination.page if pagination else 1) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                <a class="list-group-item list-group-item-action d-flex align-items-start gap-2"
-                   href="{{ url_for('admin.message_detail', message_id=m.id) }}"
-                   style="{% if is_unread %}background:#fff7d6;{% endif %}">
-                  <!-- Unread dot -->
-                  <div style="width:14px; padding-top:6px;">
-                    {% if is_unread %}
-                      <span class="d-inline-block rounded-circle"
-                            style="width:10px; height:10px; background:#2563EB;"></span>
-                    {% else %}
-                      <span class="d-inline-block rounded-circle"
-                            style="width:10px; height:10px; background:#E5E7EB;"></span>
-                    {% endif %}
-                  </div>
+              <!-- Bulk toolbar -->
+              <div class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom"
+                   style="background:#f9fafb;">
+                <div class="d-flex align-items-center gap-2">
+                  <input class="form-check-input" type="checkbox" id="selectAllMessages">
+                  <label class="small text-muted" for="selectAllMessages">Select all</label>
+                  <span class="small text-muted" id="selectedCountLabel" style="display:none;">(0 selected)</span>
+                </div>
 
-                  <!-- Main content -->
-                  <div class="flex-grow-1 overflow-hidden">
-                    <div class="d-flex align-items-center justify-content-between gap-2">
-                      <div class="text-truncate {% if is_unread %}fw-bold{% else %}fw-semibold{% endif %}">
-                        {% if is_sent %}
-                          <span class="text-muted">To:</span>
-                          {{ other.full_name if other else "Customer" }}
-                        {% else %}
-                          {{ other.full_name if other else "Customer" }}
-                        {% endif %}
-                        <span class="text-muted fw-normal small">
-                          {% if other and other.registration_number %} • {{ other.registration_number }}{% endif %}
-                        </span>
-                      </div>
+                <!-- Dropdown bulk actions -->
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-outline-dark dropdown-toggle"
+                          type="button"
+                          id="bulkActionsDropdown"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                          disabled>
+                    <i class="bi bi-three-dots-vertical"></i> Actions
+                  </button>
 
-                      <div class="small text-muted flex-shrink-0">
-                        {{ to_jamaica(m.created_at).strftime('%Y-%m-%d %I:%M %p') if m.created_at else "" }}
-                      </div>
+                  <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="bulkActionsDropdown">
+                    <li>
+                      <button type="button" class="dropdown-item" id="bulkMarkRead">
+                        <i class="bi bi-envelope-open me-2"></i> Mark as read
+                      </button>
+                    </li>
+                    <li>
+                      <button type="button" class="dropdown-item" id="bulkMarkUnread">
+                        <i class="bi bi-envelope me-2"></i> Mark as unread
+                      </button>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+
+                    <li>
+                      <button type="button" class="dropdown-item" id="bulkArchive">
+                        <i class="bi bi-archive me-2"></i> Archive
+                      </button>
+                    </li>
+                    <li>
+                      <button type="button" class="dropdown-item" id="bulkUnarchive">
+                        <i class="bi bi-inbox me-2"></i> Move to inbox
+                      </button>
+                    </li>
+
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                      <button type="submit" class="dropdown-item text-danger" id="bulkDelete"
+                              onclick="return confirm('Delete selected message(s)?');">
+                        <i class="bi bi-trash me-2"></i> Delete
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="list-group list-group-flush">
+                {% for row in rows %}
+                  {% set m = row.m %}
+                  {% set other = row.other %}
+                  {% set is_sent = row.is_sent %}
+                  {% set is_unread = (m.recipient_id == current_user.id and not m.is_read) %}
+
+                  <div class="list-group-item d-flex align-items-start gap-2"
+                       style="{% if is_unread %}background:#fff7d6;{% endif %}">
+
+                    <!-- Checkbox -->
+                    <div style="padding-top:10px;">
+                      <input class="form-check-input message-checkbox"
+                             type="checkbox"
+                             name="message_ids"
+                             value="{{ m.id }}">
                     </div>
 
-                    <div class="text-truncate {% if is_unread %}fw-bold{% else %}fw-normal{% endif %}">
-                      {{ m.subject or "Message" }}
-                      <span class="text-muted fw-normal">— {{ (m.body or "")[:90] }}{% if (m.body or "")|length > 90 %}…{% endif %}</span>
-                    </div>
-
-                    <div class="mt-1">
-                      {% if is_sent %}
-                        <span class="badge bg-secondary">Sent</span>
-                      {% else %}
-                        <span class="badge bg-primary">Received</span>
-                      {% endif %}
-
+                    <!-- Unread dot -->
+                    <div style="width:14px; padding-top:12px;">
                       {% if is_unread %}
-                        <span class="badge" style="background:#FACC15; color:#111827;">Unread</span>
+                        <span class="d-inline-block rounded-circle"
+                              style="width:10px; height:10px; background:#2563EB;"></span>
                       {% else %}
-                        <span class="badge" style="background:#15803D;">Read</span>
+                        <span class="d-inline-block rounded-circle"
+                              style="width:10px; height:10px; background:#E5E7EB;"></span>
                       {% endif %}
                     </div>
-                  </div>
-                </a>
 
-              {% endfor %}
-            </div>
+                    <!-- Clickable message content -->
+                    <a class="flex-grow-1 text-decoration-none text-reset overflow-hidden"
+                       href="{{ url_for('admin.message_detail', message_id=m.id) }}">
+                      <div class="d-flex align-items-center justify-content-between gap-2">
+                        <div class="text-truncate {% if is_unread %}fw-bold{% else %}fw-semibold{% endif %}">
+                          {% if is_sent %}
+                            <span class="text-muted">To:</span>
+                            {{ other.full_name if other else "Customer" }}
+                          {% else %}
+                            {{ other.full_name if other else "Customer" }}
+                          {% endif %}
+                          <span class="text-muted fw-normal small">
+                            {% if other and other.registration_number %} • {{ other.registration_number }}{% endif %}
+                          </span>
+                        </div>
+
+                        <div class="small text-muted flex-shrink-0">
+                          {{ to_jamaica(m.created_at).strftime('%Y-%m-%d %I:%M %p') if m.created_at else "" }}
+                        </div>
+                      </div>
+
+                      <div class="text-truncate {% if is_unread %}fw-bold{% else %}fw-normal{% endif %}">
+                        {{ m.subject or "Message" }}
+                        <span class="text-muted fw-normal">— {{ (m.body or "")[:90] }}{% if (m.body or "")|length > 90 %}…{% endif %}</span>
+                      </div>
+
+                      <div class="mt-1">
+                        {% if is_sent %}
+                          <span class="badge bg-secondary">Sent</span>
+                        {% else %}
+                          <span class="badge bg-primary">Received</span>
+                        {% endif %}
+
+                        {% if is_unread %}
+                          <span class="badge" style="background:#FACC15; color:#111827;">Unread</span>
+                        {% else %}
+                          <span class="badge" style="background:#15803D;">Read</span>
+                        {% endif %}
+                      </div>
+                    </a>
+
+                  </div>
+                {% endfor %}
+              </div>
+            </form>
+
           {% endif %}
         </div>
 
@@ -209,7 +286,7 @@
       </div>
     </div>
 
-    <!-- RIGHT: Bulk message -->
+    <!-- RIGHT: Bulk message (your existing section unchanged) -->
     <div class="col-lg-6">
       <div class="card shadow-sm">
         <div class="card-header text-white fw-bold" style="background:#111827;">
@@ -249,7 +326,6 @@
                 </div>
               </div>
 
-
               <div id="recipientsBox" style="max-height: 240px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:8px; padding:10px;">
                 {% for value, label in form.user_ids.choices %}
                   <div class="form-check recipient-item" data-label="{{ label|lower }}">
@@ -282,25 +358,108 @@
 </div>
 
 <style>
-.selected-badge {
-  transition: all 0.2s ease;
-  font-weight: 600;
-}
-
-/* Default (0 selected) */
-.selected-badge.zero {
-  background: #e5e7eb;      /* light gray */
-  color: #374151;           /* dark gray text */
-}
-
-/* When 1+ selected → FAFL purple */
-.selected-badge.active {
-  background: #4A148C;      /* your brand purple */
-  color: #ffffff;
-}
+.selected-badge { transition: all 0.2s ease; font-weight: 600; }
+.selected-badge.zero { background: #e5e7eb; color: #374151; }
+.selected-badge.active { background: #4A148C; color: #ffffff; }
 </style>
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+  // ---------------------------
+  // BULK LIST CONTROLS
+  // ---------------------------
+  const selectAll = document.getElementById("selectAllMessages");
+  const checks = Array.from(document.querySelectorAll(".message-checkbox"));
+  const bulkForm = document.getElementById("bulkActionForm");
+
+  const dropdownBtn = document.getElementById("bulkActionsDropdown");
+  const countLabel = document.getElementById("selectedCountLabel");
+
+  const btnMarkRead = document.getElementById("bulkMarkRead");
+  const btnMarkUnread = document.getElementById("bulkMarkUnread");
+  const btnArchive = document.getElementById("bulkArchive");
+  const btnUnarchive = document.getElementById("bulkUnarchive");
+
+  function selectedCount() {
+    return checks.filter(c => c.checked).length;
+  }
+
+  function updateBulkUI() {
+    if (!selectAll || checks.length === 0) return;
+
+    const selected = selectedCount();
+
+    if (dropdownBtn) dropdownBtn.disabled = selected === 0;
+
+    if (countLabel) {
+      countLabel.style.display = selected ? "" : "none";
+      countLabel.textContent = `(${selected} selected)`;
+    }
+
+    const allChecked = selected === checks.length;
+    const noneChecked = selected === 0;
+    selectAll.checked = allChecked;
+    selectAll.indeterminate = !allChecked && !noneChecked;
+  }
+
+  if (selectAll && checks.length) {
+    selectAll.addEventListener("change", () => {
+      checks.forEach(c => c.checked = selectAll.checked);
+      updateBulkUI();
+    });
+
+    checks.forEach(c => c.addEventListener("change", updateBulkUI));
+    updateBulkUI();
+  }
+
+  function submitTo(actionUrl, confirmText) {
+    if (!bulkForm) return;
+    if (selectedCount() === 0) return;
+    if (confirmText && !confirm(confirmText)) return;
+    bulkForm.action = actionUrl;
+    bulkForm.submit();
+  }
+
+  // Swap form action and submit
+  if (btnArchive) {
+    btnArchive.addEventListener("click", () => {
+      submitTo(
+        "{{ url_for('admin.messages_bulk_archive', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.page if pagination else 1) }}",
+        "Archive selected message(s)?"
+      );
+    });
+  }
+
+  if (btnUnarchive) {
+    btnUnarchive.addEventListener("click", () => {
+      submitTo(
+        "{{ url_for('admin.messages_bulk_unarchive', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.page if pagination else 1) }}",
+        "Move selected message(s) to Inbox?"
+      );
+    });
+  }
+
+  if (btnMarkRead) {
+    btnMarkRead.addEventListener("click", () => {
+      submitTo(
+        "{{ url_for('admin.messages_bulk_mark_read', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.page if pagination else 1) }}",
+        null
+      );
+    });
+  }
+
+  if (btnMarkUnread) {
+    btnMarkUnread.addEventListener("click", () => {
+      submitTo(
+        "{{ url_for('admin.messages_bulk_mark_unread', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.page if pagination else 1) }}",
+        null
+      );
+    });
+  }
+
+  // ---------------------------
+  // RECIPIENT PICKER CONTROLS (your existing)
+  // ---------------------------
   const container = document.getElementById("recipientsBox");
   const items = Array.from(document.querySelectorAll(".recipient-item"));
   const checkboxes = Array.from(document.querySelectorAll(".user-checkbox"));
@@ -308,127 +467,103 @@ document.addEventListener("DOMContentLoaded", function () {
   const selectAllBtn = document.getElementById("selectAllBtn");
   const deselectAllBtn = document.getElementById("deselectAllBtn");
   const search = document.getElementById("recipientSearch");
-
   const selectedCountBadge = document.getElementById("selectedCountBadge");
 
-  if (!container || items.length === 0) return;
+  if (container && items.length) {
+    const originalOrder = items.slice();
+    const idx = new Map(originalOrder.map((el, i) => [el, i]));
+    let selectAllMode = false;
 
-  // Keep original server order (A-Z)
-  const originalOrder = items.slice();
-  const idx = new Map(originalOrder.map((el, i) => [el, i]));
+    function isVisible(el) { return el.style.display !== "none"; }
+    function countSelectedRecipients() { return checkboxes.filter(cb => cb.checked).length; }
 
-  // If Select All was used, we DON'T reorder
-  let selectAllMode = false;
-
-  function isVisible(el) {
-    return el.style.display !== "none";
-  }
-
-  function countSelected() {
-    return checkboxes.filter(cb => cb.checked).length;
-  }
-
-  function updateSelectedBadge() {
-    if (!selectedCountBadge) return;
-
-    const n = countSelected();
-    selectedCountBadge.textContent = String(n);
-
-    if (n > 0) {
-      selectedCountBadge.classList.add("active");
-      selectedCountBadge.classList.remove("zero");
-    } else {
-      selectedCountBadge.classList.add("zero");
-      selectedCountBadge.classList.remove("active");
-    }
-  }
-
-  function applySearchFilter() {
-    const q = (search?.value || "").toLowerCase().trim();
-    items.forEach(item => {
-      const text = item.getAttribute("data-label") || "";
-      item.style.display = text.includes(q) ? "" : "none";
-    });
-  }
-
-  function restoreOriginalOrder() {
-    originalOrder.forEach(el => container.appendChild(el));
-  }
-
-  function anyUnchecked() {
-    return checkboxes.some(cb => !cb.checked);
-  }
-
-  function reorderSelectedToTop() {
-    if (selectAllMode) return; // ✅ do nothing when Select All mode is active
-
-    // Only reorder visible items (keeps search behavior clean)
-    const visibleItems = items.filter(isVisible);
-
-    const selected = [];
-    const unselected = [];
-
-    visibleItems.forEach(item => {
-      const cb = item.querySelector(".user-checkbox");
-      if (cb && cb.checked) selected.push(item);
-      else unselected.push(item);
-    });
-
-    // preserve original relative ordering
-    selected.sort((a, b) => (idx.get(a) ?? 0) - (idx.get(b) ?? 0));
-    unselected.sort((a, b) => (idx.get(a) ?? 0) - (idx.get(b) ?? 0));
-
-    // hidden items stay after visible items, also in original order
-    const hiddenItems = items
-      .filter(el => !isVisible(el))
-      .sort((a, b) => (idx.get(a) ?? 0) - (idx.get(b) ?? 0));
-
-    [...selected, ...unselected, ...hiddenItems].forEach(el => container.appendChild(el));
-  }
-
-  // ---- Select All ----
-  if (selectAllBtn) {
-    selectAllBtn.addEventListener("click", () => {
-      selectAllMode = true;
-      checkboxes.forEach(cb => (cb.checked = true));
-      restoreOriginalOrder(); // ✅ keep original order
-      updateSelectedBadge();
-    });
-  }
-
-  // ---- Deselect All ----
-  if (deselectAllBtn) {
-    deselectAllBtn.addEventListener("click", () => {
-      selectAllMode = false;
-      checkboxes.forEach(cb => (cb.checked = false));
-      restoreOriginalOrder();
-      updateSelectedBadge();
-    });
-  }
-
-  // ---- Individual checkbox toggles ----
-  checkboxes.forEach(cb => {
-    cb.addEventListener("change", () => {
-      // If they start unchecking after Select All, disable selectAllMode
-      if (selectAllMode && anyUnchecked()) {
-        selectAllMode = false;
+    function updateSelectedBadge() {
+      if (!selectedCountBadge) return;
+      const n = countSelectedRecipients();
+      selectedCountBadge.textContent = String(n);
+      if (n > 0) {
+        selectedCountBadge.classList.add("active");
+        selectedCountBadge.classList.remove("zero");
+      } else {
+        selectedCountBadge.classList.add("zero");
+        selectedCountBadge.classList.remove("active");
       }
-      reorderSelectedToTop();
-      updateSelectedBadge();
-    });
-  });
+    }
 
-  // ---- Search ----
-  if (search) {
-    search.addEventListener("input", () => {
-      applySearchFilter();
-      reorderSelectedToTop();
+    function applySearchFilter() {
+      const q = (search?.value || "").toLowerCase().trim();
+      items.forEach(item => {
+        const text = item.getAttribute("data-label") || "";
+        item.style.display = text.includes(q) ? "" : "none";
+      });
+    }
+
+    function restoreOriginalOrder() {
+      originalOrder.forEach(el => container.appendChild(el));
+    }
+
+    function anyUnchecked() {
+      return checkboxes.some(cb => !cb.checked);
+    }
+
+    function reorderSelectedToTop() {
+      if (selectAllMode) return;
+
+      const visibleItems = items.filter(isVisible);
+      const selected = [];
+      const unselected = [];
+
+      visibleItems.forEach(item => {
+        const cb = item.querySelector(".user-checkbox");
+        if (cb && cb.checked) selected.push(item);
+        else unselected.push(item);
+      });
+
+      selected.sort((a, b) => (idx.get(a) ?? 0) - (idx.get(b) ?? 0));
+      unselected.sort((a, b) => (idx.get(a) ?? 0) - (idx.get(b) ?? 0));
+
+      const hiddenItems = items
+        .filter(el => !isVisible(el))
+        .sort((a, b) => (idx.get(a) ?? 0) - (idx.get(b) ?? 0));
+
+      [...selected, ...unselected, ...hiddenItems].forEach(el => container.appendChild(el));
+    }
+
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener("click", () => {
+        selectAllMode = true;
+        checkboxes.forEach(cb => (cb.checked = true));
+        restoreOriginalOrder();
+        updateSelectedBadge();
+      });
+    }
+
+    if (deselectAllBtn) {
+      deselectAllBtn.addEventListener("click", () => {
+        selectAllMode = false;
+        checkboxes.forEach(cb => (cb.checked = false));
+        restoreOriginalOrder();
+        updateSelectedBadge();
+      });
+    }
+
+    checkboxes.forEach(cb => {
+      cb.addEventListener("change", () => {
+        if (selectAllMode && anyUnchecked()) selectAllMode = false;
+        reorderSelectedToTop();
+        updateSelectedBadge();
+      });
     });
+
+    if (search) {
+      search.addEventListener("input", () => {
+        applySearchFilter();
+        reorderSelectedToTop();
+      });
+    }
+
+    updateSelectedBadge();
   }
-
-  // Init badge on load (handles server-side pre-checks if any)
-  updateSelectedBadge();
 });
 </script>
 {% endblock %}
-

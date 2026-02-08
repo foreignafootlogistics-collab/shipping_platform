@@ -241,12 +241,24 @@
             {% set aname = (a.original_name if a.original_name is defined else a.get('original_name')) %}
             {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
 
-            <a class="pkg-attachment"
-               target="_blank"
-               href="{{ url_for('customer.view_package_attachment', attachment_id=aid) }}"
-               title="{{ aname or fname }}">
-              <i class="fas fa-file-alt"></i>
-            </a>
+            {% set f = (fname or '')|string %}
+            {% if f.startswith("http://") or f.startswith("https://") %}
+              <a class="pkg-attachment"
+                 target="_blank"
+                 rel="noopener"
+                 href="{{ f }}"
+                 title="{{ aname or fname }}">
+                <i class="fas fa-file-alt"></i>
+              </a>
+            {% else %}
+              <a class="pkg-attachment"
+                 target="_blank"
+                 rel="noopener"
+                 href="{{ url_for('customer.view_package_attachment', attachment_id=aid) }}"
+                 title="{{ aname or fname }}">
+                <i class="fas fa-file-alt"></i>
+              </a>
+            {% endif %}
           {% endfor %}
         </div>
       {% endif %}

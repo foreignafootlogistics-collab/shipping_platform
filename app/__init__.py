@@ -80,6 +80,10 @@ def _ensure_first_admin():
 def create_app():
     app = Flask(__name__)
 
+    from dotenv import load_dotenv
+    load_dotenv()
+
+
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
     # Folders
@@ -97,6 +101,21 @@ def create_app():
     # Invoice/attachment uploads (single source of truth)
     app.config["INVOICE_UPLOAD_FOLDER"] = cfg.INVOICE_UPLOAD_FOLDER
     app.config["PACKAGE_ATTACHMENT_FOLDER"] = cfg.PACKAGE_ATTACHMENT_FOLDER
+
+    # ------------------------------------------------------
+    # ✅ CLOUDINARY CONFIG + INIT (PUT IT HERE)
+    # ------------------------------------------------------
+    app.config["CLOUDINARY_CLOUD_NAME"] = cfg.CLOUDINARY_CLOUD_NAME
+    app.config["CLOUDINARY_API_KEY"] = cfg.CLOUDINARY_API_KEY
+    app.config["CLOUDINARY_API_SECRET"] = cfg.CLOUDINARY_API_SECRET
+
+    from app.utils.cloudinary_storage import init_cloudinary
+    init_cloudinary(app)
+
+    if not (app.config["CLOUDINARY_CLOUD_NAME"] and 
+            app.config["CLOUDINARY_API_KEY"] and 
+            app.config["CLOUDINARY_API_SECRET"]):
+        app.logger.warning("Cloudinary env vars missing - invoice uploads will not work.")
 
     # ✅ ENSURE FOLDERS EXIST AT RUNTIME (Render disk + local)
     try:

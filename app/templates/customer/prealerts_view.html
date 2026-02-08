@@ -82,11 +82,12 @@
 
               <!-- Invoice -->
               <td>
-                {% if p.invoice_filename %}
-                  <a href="{{ url_for('uploads.invoice_file', filename=p.invoice_filename) }}"
-       target="_blank" rel="noopener">
-                    View
-                  </a>
+                {% set f = p.invoice_filename|string %}
+                  {% if f.startswith("http://") or f.startswith("https://") %}
+                    <a href="{{ f }}" target="_blank" rel="noopener">View</a>
+                  {% else %}
+                    <a href="{{ url_for('uploads.invoice_file', filename=f) }}" target="_blank" rel="noopener">View</a>
+                  {% endif %}
                 {% else %}
                   N/A
                 {% endif %}

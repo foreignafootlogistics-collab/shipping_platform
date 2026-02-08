@@ -231,11 +231,11 @@ def prealerts_create():
         filename = None
         if form.invoice.data:
             file = form.invoice.data
-            if allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                upload_folder = _invoice_folder()
-                os.makedirs(upload_folder, exist_ok=True)
-                file.save(os.path.join(upload_folder, filename))
+            if file and getattr(file, "filename", "") and allowed_file(file.filename):
+                # Upload to Cloudinary instead of saving to disk
+                from app.utils.cloudinary_storage import upload_invoice_image
+                filename = upload_invoice_image(file)   # store URL in invoice_filename
+
 
 
         prealert_number = generate_prealert_number()
@@ -388,12 +388,10 @@ def package_detail(pkg_id):
         declared_value = form.declared_value.data or 65
         invoice_file = form.invoice_file.data
 
-        if invoice_file and allowed_file(invoice_file.filename):
-            filename = secure_filename(invoice_file.filename)
-            upload_folder = current_app.config["INVOICE_UPLOAD_FOLDER"]
-            os.makedirs(upload_folder, exist_ok=True)
-            invoice_file.save(os.path.join(upload_folder, filename))
-            pkg.invoice_file = filename
+        if invoice_file and getattr(invoice_file, "filename", "") and allowed_file(invoice_file.filename):
+            from app.utils.cloudinary_storage import upload_invoice_image
+            pkg.invoice_file = upload_invoice_image(invoice_file)  # store URL
+
 
         declared_value = float(declared_value or 65)
 
@@ -481,6 +479,11 @@ def view_package_attachment(attachment_id):
     if attachment.package.user_id != current_user.id:
         abort(403)
 
+    # ✅ NEW: if stored as a Cloudinary URL, redirect to it
+    if attachment.file_name and str(attachment.file_name).startswith(("http://", "https://")):
+        return redirect(attachment.file_name)
+
+    # otherwise: legacy disk file
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
     if not upload_folder:
         current_app.logger.error("INVOICE_UPLOAD_FOLDER not configured")
@@ -876,11 +879,8 @@ def submit_invoice():
             flash("Invalid file type. Please upload PDF, JPG, or PNG.", "danger")
             return redirect(request.url)
 
-        # save the file
-        filename = secure_filename(invoice_file.filename)
-        upload_folder = current_app.config["INVOICE_UPLOAD_FOLDER"]
-        os.makedirs(upload_folder, exist_ok=True)
-        invoice_file.save(os.path.join(upload_folder, filename))
+        from app.utils.cloudinary_storage import upload_invoice_image
+        filename = upload_invoice_image(invoice_file)
 
         # persist to this package
         try:

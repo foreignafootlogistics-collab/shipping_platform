@@ -119,6 +119,8 @@ class Invoice(db.Model):
     invoice_number = db.Column(db.String, unique=True, nullable=False, index=True)
     description = db.Column(db.String)
 
+    image_url = db.Column(db.Text, nullable=True)
+
     # Totals
     total_weight = db.Column(db.Float, default=0)
     invoice_value = db.Column(db.Float, default=0)

@@ -42,6 +42,13 @@ LOGO_URL = os.environ.get("LOGO_URL", f"{BASE_URL.rstrip('/')}/static/logo.png")
 DASHBOARD_URL = BASE_URL
 
 # =======================
+# Cloudinary (Invoice Images)
+# =======================
+CLOUDINARY_CLOUD_NAME = os.environ.get("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = os.environ.get("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = os.environ.get("CLOUDINARY_API_SECRET")
+
+# =======================
 # DATABASE CONFIG
 # =======================
 DATABASE_URL = os.environ.get("DATABASE_URL")

@@ -7,7 +7,13 @@
 <ul class="list-unstyled">
   <li><strong>Invoice:</strong>
     {% if pkg.invoice_file %}
-      <a href="{{ url_for('static', filename='invoices/' ~ pkg.invoice_file) }}" target="_blank">View Invoice</a>
+      {% set f = (pkg.invoice_file or '')|string %}
+      {% if f.startswith("http://") or f.startswith("https://") %}
+        <a href="{{ f }}" target="_blank" rel="noopener">View Invoice</a>
+      {% else %}
+        {# legacy disk file (if you still have it) #}
+        <a href="{{ url_for('uploads.invoice_file', filename=f) }}" target="_blank" rel="noopener">View Invoice</a>
+      {% endif %}
     {% else %}
       <span class="text-muted">Not uploaded</span>
     {% endif %}

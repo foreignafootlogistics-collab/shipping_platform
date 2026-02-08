@@ -1,3 +1,4 @@
+import time
 import os
 from datetime import datetime
 import smtplib
@@ -181,6 +182,7 @@ def send_email(
     attachments: list[tuple[bytes, str, str]] | None = None,
     recipient_user_id: int | None = None,   # logs to Messages when provided
     reply_to: str | None = None,
+    force_new_connection: bool = False,
 ) -> bool:
     """
     Sends email via SMTP.
@@ -344,31 +346,70 @@ def send_email(
             part = MIMEApplication(file_bytes, _subtype=subtype)
             part.add_header("Content-Disposition", "attachment", filename=filename)
             msg.attach(part)
+    
+    # SEND (robust SMTP: timeouts + STARTTLS context + retries)
+    import ssl
 
-    # SEND
-    try:
-        if SMTP_PORT == 465:
-            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
-                smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-                smtp.send_message(msg)
-        else:
-            with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
-                smtp.ehlo()
-                smtp.starttls()
-                smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-                smtp.send_message(msg)
+    MAX_RETRIES = 3
+    BACKOFF_BASE = 2  # seconds
 
-        print(f"✅ Email sent to {to_email}")
+    last_err = None
 
-        # Mirror into in-app Messages
-        if recipient_user_id:
-            log_email_to_messages(recipient_user_id, subject, (plain_body or "").strip())
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            timeout = 30
+            context = ssl.create_default_context()
 
-        return True
+            if SMTP_PORT == 465:
+                with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=timeout, context=context) as smtp:
+                    smtp.ehlo()
+                    smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                    smtp.send_message(msg)
 
-    except Exception as e:
-        print(f"❌ Email sending failed to {to_email}: {e}")
-        return False
+            else:
+                with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=timeout) as smtp:
+                    smtp.ehlo()
+                    smtp.starttls(context=context)
+                    smtp.ehlo()
+                    smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                    smtp.send_message(msg)
+
+            print(f"✅ Email sent to {to_email}")
+
+            # Mirror into in-app Messages
+            if recipient_user_id:
+                log_email_to_messages(recipient_user_id, subject, (plain_body or "").strip())
+
+            return True
+
+        except smtplib.SMTPResponseException as e:
+            # e.smtp_code, e.smtp_error are available
+            last_err = f"{e.smtp_code} {e.smtp_error}"
+
+            # Provider limit (SendGrid/Gmail/etc.) -> pause longer
+            if e.smtp_code == 451:
+                print(f"⏸️ SMTP 451 limit hit. Pausing 30 minutes... ({to_email})")
+                time.sleep(60 * 30)
+            else:
+                sleep_for = BACKOFF_BASE * attempt
+                print(f"⚠️ SMTP error attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
+                time.sleep(sleep_for)
+
+        except (smtplib.SMTPServerDisconnected, ConnectionResetError, TimeoutError, OSError) as e:
+            last_err = str(e)
+            sleep_for = BACKOFF_BASE * attempt
+            print(f"⚠️ Connection issue attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
+            time.sleep(sleep_for)
+
+        except Exception as e:
+            last_err = str(e)
+            sleep_for = BACKOFF_BASE * attempt
+            print(f"⚠️ Unknown error attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
+            time.sleep(sleep_for)
+
+    print(f"❌ Email sending failed to {to_email}: {last_err}")
+    return False
+
 
 
 # ==========================================================

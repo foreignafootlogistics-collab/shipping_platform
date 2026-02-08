@@ -627,7 +627,7 @@ def view_user(id):
     else:
         # Fallback defaults if settings row missing
         street       = "3200 NW 112th Avenue"
-        suite_prefix = "KCDA-FAFL# "
+        suite_prefix = "KCDA- "
         city         = "Doral"
         state        = "Florida"
         zip_code     = "33172"

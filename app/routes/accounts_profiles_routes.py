@@ -280,7 +280,7 @@ def add_user():
 
     flash(f"User {full_name} added with registration number {reg_no}.", "success")
     return redirect(url_for('accounts_profiles.manage_users'))
-)
+
 
 # -------------------------
 # Upload Users (Excel) -> Preview

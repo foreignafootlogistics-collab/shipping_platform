@@ -380,15 +380,18 @@
       <div class="modal fade" id="moveShipmentModal" tabindex="-1" aria-labelledby="moveShipmentLabel" aria-hidden="true">
         <div class="modal-dialog modal-sm modal-dialog-centered">
           <div class="modal-content">
-            <form method="POST" action="{{ url_for('logistics.move_packages_between_shipments') }}" id="moveShipmentForm">
+            <form method="POST" 
+                  action="{{ url_for('logistics.move_packages_between_shipments') }}" 
+                  id="moveShipmentForm"
+                  onsubmit="return validateMoveShipmentForm();">
               <div class="modal-header">
                 <h5 class="modal-title" id="moveShipmentLabel">Move Packages</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
               </div>
               <div class="modal-body">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="from_shipment_id" value="{{ selected_shipment_id or 0 }}">
-                <input type="hidden" name="package_ids" id="move_package_ids" value="">
+                <input type="hidden" name="from_shipment_id" value="{{ selected_shipment.id if selected_shipment else 0 }}">
+                <div id="movePackageIdsContainer"></div>
 
                 <label class="form-label small">Destination Shipment</label>
                 <select class="form-select form-select-sm" name="to_shipment_id" required>
@@ -938,6 +941,16 @@ function getShipmentIdFromUrl() {
   return sid ? Number(sid) : 0;
 }
 
+function validateMoveShipmentForm() {
+  const holder = document.getElementById('movePackageIdsContainer');
+  const count = holder ? holder.querySelectorAll('input[name="package_ids"]').length : 0;
+
+  if (!count) {
+    alert("⚠️ Please select at least one package before moving.");
+    return false;
+  }
+  return true;
+}
 
 
 /* ============================
@@ -1575,19 +1588,35 @@ async function handleShipmentApply(e) {
     }
     return;
   }
-
+  
   // 🔹 Move to another shipment → open "Move" modal
   if (action === 'move') {
-    const hiddenIds = document.getElementById('move_package_ids');
-    if (hiddenIds) hiddenIds.value = ids.join(',');
+    // 1) Clear previous injected inputs
+    const holder = document.getElementById('movePackageIdsContainer');
+    if (holder) holder.innerHTML = '';
 
-    const modalEl = document.getElementById('moveShipmentModal');
-    if (modalEl) {
-      const modal = new bootstrap.Modal(modalEl);
-      modal.show();
+    // 2) Inject one hidden input per selected pkg
+    ids.forEach(id => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'package_ids';   // IMPORTANT: matches getlist('package_ids')
+      input.value = id;
+      holder.appendChild(input);
+    });
+
+    // 3) Also ensure from_shipment_id is correct (optional safety)
+    const fromInput = document.querySelector('#moveShipmentForm input[name="from_shipment_id"]');
+    if (fromInput) {
+      fromInput.value = getShipmentIdFromUrl() || fromInput.value || 0;
     }
-    return; // no form submit
+
+    // 4) Show modal
+    const modalEl = document.getElementById('moveShipmentModal');
+    if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+    return; // do not submit shipmentForm
   }
+
 
   // For all other actions, attach hidden inputs then POST to /bulk-action as before
   const oldHolder = document.getElementById('selectedIdsContainer');

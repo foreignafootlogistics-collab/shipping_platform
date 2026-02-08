@@ -9,7 +9,7 @@ from flask_migrate import Migrate
 from flask_login import LoginManager
 from sqlalchemy import text
 from werkzeug.middleware.proxy_fix import ProxyFix
-
+from pathlib import Path
 
 from . import config as cfg
 from .config import PROFILE_UPLOAD_FOLDER
@@ -280,7 +280,7 @@ def create_app():
     from .routes.analytics_routes import analytics_bp
     from app.routes.public_api import public_api_bp
     from app.utils.time import to_jamaica
-    from app.routes.uploads_routes import uploads_bp
+    from app.routes.uploads_route import uploads_bp
 
     app.register_blueprint(customer_bp, url_prefix='/customer')
     app.register_blueprint(admin_bp, url_prefix='/admin')

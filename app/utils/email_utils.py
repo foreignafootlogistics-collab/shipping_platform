@@ -1107,3 +1107,97 @@ def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=
     )
 
 
+import os
+import requests
+
+def send_email_sendgrid_api(
+    to_email: str,
+    subject: str,
+    plain_body: str,
+    html_body: str | None = None,
+    from_email: str | None = None,
+    from_name: str = "Foreign A Foot Logistics Limited",
+    reply_to: str = "support@faflcourier.com",
+    category: str = "customer-portal",
+):
+    """
+    Send email using SendGrid Web API (bulk-friendly).
+    Notes:
+      - Uses SENDGRID_API_KEY (preferred) or SMTP_PASS fallback.
+      - Adds List-Unsubscribe (mailto) header.
+      - Disables click tracking (often helps deliverability for reset-link campaigns).
+    Returns:
+      - True on success
+      - False on failure (prints reason)
+    """
+
+    api_key = (os.getenv("SENDGRID_API_KEY") or os.getenv("SMTP_PASS") or "").strip()
+    if not api_key:
+        print("❌ SendGrid API key missing. Set SENDGRID_API_KEY (or SMTP_PASS fallback).")
+        return False
+
+    to_email = (to_email or "").strip().lower()
+    if not to_email:
+        return False
+
+    resolved_from_email = (
+        (from_email or "").strip()
+        or (os.getenv("SMTP_FROM") or "").strip()
+        or (os.getenv("SMTP_USER") or "").strip()
+        or "support@faflcourier.com"
+    )
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    list_unsub = f"<mailto:{reply_to}?subject=Unsubscribe>"
+
+    payload = {
+        "personalizations": [
+            {
+                "to": [{"email": to_email}],
+                "subject": (subject or "").strip(),
+                "custom_args": {"app": "fafl", "category": category},
+            }
+        ],
+        "from": {"email": resolved_from_email, "name": from_name},
+        "reply_to": {"email": reply_to, "name": "FAFL Support"},
+        "headers": {"List-Unsubscribe": list_unsub},
+        "categories": [category],
+        "tracking_settings": {
+            "click_tracking": {"enable": False, "enable_text": False},
+            "open_tracking": {"enable": True},
+        },
+        "content": [
+            {"type": "text/plain", "value": (plain_body or "").strip()},
+        ],
+    }
+
+    if html_body:
+        payload["content"].append({"type": "text/html", "value": (html_body or "").strip()})
+
+    try:
+        r = requests.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            headers=headers,
+            json=payload,
+            timeout=30,
+        )
+
+        if r.status_code in (200, 202):
+            print(f"✅ SendGrid API sent to {to_email}")
+            return True
+
+        # IMPORTANT: if auth fails, DO NOT keep retrying in your bulk script
+        if r.status_code in (401, 403):
+            print(f"❌ SendGrid AUTH error {r.status_code}: {r.text}")
+            return False
+
+        print(f"❌ SendGrid API error {r.status_code}: {r.text}")
+        return False
+
+    except Exception as e:
+        print(f"❌ SendGrid API exception for {to_email}: {e}")
+        return False

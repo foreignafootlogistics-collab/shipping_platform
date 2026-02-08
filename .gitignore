@@ -29,7 +29,6 @@ app/static/invoices/*.pdf
 app/templates/customer/change_email.html
 
 app/utils/email.py
-send_password_setup_bulk.py
 test_sendgrid.py
 
  

@@ -96,7 +96,15 @@ def create_app():
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = cfg.SQLALCHEMY_TRACK_MODIFICATIONS
     # Invoice/attachment uploads (single source of truth)
     app.config["INVOICE_UPLOAD_FOLDER"] = cfg.INVOICE_UPLOAD_FOLDER
-    app.config["PACKAGE_ATTACHMENT_FOLDER"] = cfg.PACKAGE_ATTACHMENT_FOLDER    
+    app.config["PACKAGE_ATTACHMENT_FOLDER"] = cfg.PACKAGE_ATTACHMENT_FOLDER
+
+    # ✅ ENSURE FOLDERS EXIST AT RUNTIME (Render disk + local)
+    try:
+            Path(app.config["INVOICE_UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
+            Path(app.config["PACKAGE_ATTACHMENT_FOLDER"]).mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        app.logger.warning(f"Could not create upload folders: {e}")  
+  
     app.config['PROFILE_UPLOAD_FOLDER'] = str(PROFILE_UPLOAD_FOLDER)
     app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
     app.config.update(
@@ -272,8 +280,7 @@ def create_app():
     from .routes.analytics_routes import analytics_bp
     from app.routes.public_api import public_api_bp
     from app.utils.time import to_jamaica
-    
-
+    from app.routes.uploads_routes import uploads_bp
 
     app.register_blueprint(customer_bp, url_prefix='/customer')
     app.register_blueprint(admin_bp, url_prefix='/admin')
@@ -291,8 +298,7 @@ def create_app():
     app.register_blueprint(analytics_bp, url_prefix='/analytics')
     app.register_blueprint(public_api_bp)
     app.jinja_env.globals["to_jamaica"] = to_jamaica
-    
-
+    app.register_blueprint(uploads_bp)
 
     # Basic routes
     @app.route("/", methods=["GET"])

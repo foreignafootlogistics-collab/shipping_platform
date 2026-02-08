@@ -83,8 +83,8 @@
               <!-- Invoice -->
               <td>
                 {% if p.invoice_filename %}
-                  <a href="{{ url_for('static', filename='uploads/invoices/' ~ p.invoice_filename) }}"
-                     target="_blank">
+                  <a href="{{ url_for('uploads.invoice_file', filename=p.invoice_filename) }}"
+       target="_blank" rel="noopener">
                     View
                   </a>
                 {% else %}

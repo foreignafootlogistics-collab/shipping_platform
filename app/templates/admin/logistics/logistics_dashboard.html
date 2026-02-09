@@ -330,7 +330,8 @@
 
                     <td>
                       {% set status = pkg.status %}
-                      {% include 'partials/status_tracker.html' with context %}
+                      {% include 'partials/status_vars.html' %}
+                      {% include 'partials/status_tracker.html' %}
                       <br>
                       <small class="text-muted">{{ pkg.tracking_number }}</small>
                     </td>

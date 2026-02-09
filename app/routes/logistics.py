@@ -1454,10 +1454,7 @@ def packages_bulk_action():
             now = datetime.utcnow()
             for p in pkgs:
                 p.status = "Received"
-                if not getattr(p, "received_date", None):
-                    p.received_date = now
-                if not getattr(p, "date_received", None):
-                    p.date_received = p.received_date
+                
             db.session.commit()
             flash(f"Marked {len(pkgs)} package(s) as Received.", "success")
 
@@ -1911,16 +1908,10 @@ def bulk_shipment_action(shipment_id):
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "ready":
-        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
-        now = datetime.utcnow()
+        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()        
 
         for p in pkgs:
-            p.status = "Ready for Pick Up"
-            # ✅ ensure date exists for invoice display
-            if not getattr(p, "received_date", None):
-                p.received_date = now
-            if not getattr(p, "date_received", None):
-                p.date_received = p.received_date
+            p.status = "Ready for Pick Up"            
 
         db.session.commit()
         flash(f"{len(package_ids)} package(s) marked Ready for Pick Up.", "success")

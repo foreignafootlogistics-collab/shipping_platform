@@ -1,6 +1,6 @@
 {# partials/status_tracker.html #}
 
-{% include 'partials/status_vars.html' %}
+{# expects: status, progress_color, progress_width #}
 
 <span class="badge
   {% if progress_color == 'danger' %}bg-danger
@@ -8,9 +8,10 @@
   {% elif progress_color == 'success' %}bg-success
   {% elif progress_color == 'warning' %}bg-warning text-dark
   {% else %}bg-secondary{% endif %}">
-  {{ (status or 'Unknown')|trim }}
+  {{ status if status else 'Unknown' }}
 </span>
 
 <div class="status-progress mt-1 {{ progress_color }}">
   <div class="fill" style="width: {{ progress_width }}%;"></div>
 </div>
+

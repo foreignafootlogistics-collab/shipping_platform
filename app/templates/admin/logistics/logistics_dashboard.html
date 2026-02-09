@@ -241,39 +241,45 @@
             <input type="hidden" name="tab" value="shipmentLog">
 
             <!-- Bulk action bar -->
-            <div class="d-flex justify-content-between align-items-center gap-2 mb-3">
+            <div class="d-flex justify-content-between align-items-center gap-2 mb-3 w-100">
 
-              <!-- LEFT SIDE: Page length selector -->
-              <select id="shipmentLengthSelect" class="form-select form-select-sm w-auto">
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-                <option value="500">500</option>
-                <option value="1000">1000</option>
-              </select>
-            <div class="d-flex align-items-center gap-2">
-              <select name="action" class="form-select w-auto" required>
-                <option value="" selected disabled>Select Action</option>
-                <option value="calc_outstanding">🧮 Calculate Outstanding</option>
-                <option value="move">🔁 Move to Shipment…</option>
-                <option value="ready">✅ Mark Ready for Pick Up</option>
-                <option value="revert_overseas">↩️ Revert to Overseas</option>
-                <option value="generate_invoice">🧾 Generate Invoice</option>
-                <option value="finance_invoice">💼 Finance Invoice</option>
-                <option value="notify_ready">📣 Email: Ready for Pick-Up</option>
-                <option value="send_invoices">📧 Email: Invoices (Totals)</option>
-                <option value="remove_from_shipment">🗑 Remove from this Shipment</option>
-              </select>
+              <!-- LEFT: Page length selector -->
+              <div class="d-flex align-items-center gap-2">
+                <label for="shipmentLengthSelect" class="small text-muted mb-0">Show</label>
+                <select id="shipmentLengthSelect" class="form-select form-select-sm w-auto">
+                  <option value="10" selected>10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="500">500</option>
+                  <option value="1000">1000</option>
+                </select>
+              </div>
 
-              <button type="button"
-                      id="shipmentApplyBtn"
-                      class="btn btn-purple btn-sm"
-                      onclick="handleShipmentApply(event)">
-                Apply
-              </button>
+              <!-- RIGHT: Action + Apply -->
+              <div class="d-flex align-items-center gap-2">
+                <select name="action" class="form-select form-select-sm w-auto" required>
+                  <option value="" selected disabled>Select Action</option>
+                  <option value="calc_outstanding">🧮 Calculate Outstanding</option>
+                  <option value="move">🔁 Move to Shipment…</option>
+                  <option value="ready">✅ Mark Ready for Pick Up</option>
+                  <option value="revert_overseas">↩️ Revert to Overseas</option>
+                  <option value="generate_invoice">🧾 Generate Invoice</option>
+                  <option value="finance_invoice">💼 Finance Invoice</option>
+                  <option value="notify_ready">📣 Email: Ready for Pick-Up</option>
+                  <option value="send_invoices">📧 Email: Invoices (Totals)</option>
+                  <option value="remove_from_shipment">🗑 Remove from this Shipment</option>
+                </select>
+
+                <button type="button"
+                        id="shipmentApplyBtn"
+                        class="btn btn-purple btn-sm"
+                        onclick="handleShipmentApply(event)">
+                  Apply
+                </button>
+              </div>
+
             </div>
-
             {% if shipment_packages %}
             <div class="table-responsive shadow-sm">
               <table id="shipmentTable" class="table table-bordered table-striped table-hover align-middle table-sm">
@@ -1488,7 +1494,7 @@ function initShipmentTable() {
   dt = $table.DataTable({
     pageLength: 10,
     lengthChange: true,
-    lengthMenu: [[10, 25, 50, 100, 500], [10, 25, 50, 100, 500]],
+    lengthMenu: [[10, 25, 50, 100, 500, 1000], [10, 25, 50, 100, 500, 1000]],
     dom:
       "<'row g-2 align-items-center mb-2'<'col-md-12 text-md-end'B>>" +
   "rt" +
@@ -2058,6 +2064,7 @@ function updateShipmentHeaderCheckbox() {
   .badge-purple { background-color: #4a148c; color: #fff; }
   #previewTable td, #previewTable th { vertical-align: middle; }
   #shipmentTable thead th * { pointer-events: auto !important; }
+  #shipmentLengthSelect { min-width: 85px; }
   /* 🔑 Force Bootstrap tab behaviour in case theme CSS broke it */
   .tab-content > .tab-pane { display: none; }
   .tab-content > .tab-pane.active,

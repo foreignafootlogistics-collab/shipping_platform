@@ -5,27 +5,31 @@
 {% set progress_width = 0 %}
 {% set progress_color = 'secondary' %}
 
-{# 1) Overseas → RED (33%) #}
-{% if s_lc == 'overseas' %}
+{# 0) Delivered / Out for Delivery should win FIRST #}
+{% if 'delivered' in s_lc %}
+  {% set progress_width = 100 %}
+  {% set progress_color = 'success' %}
+
+{% elif 'out for delivery' in s_lc %}
+  {% set progress_width = 90 %}
+  {% set progress_color = 'primary' %}
+
+{# 1) Overseas #}
+{% elif s_lc == 'overseas' %}
   {% set progress_width = 33 %}
   {% set progress_color = 'danger' %}
 
-{# 2) Local Port → YELLOW (66%) #}
+{# 2) Local Port #}
 {% elif 'local port' in s_lc or 'received at local port' in s_lc or 'arrived' in s_lc %}
   {% set progress_width = 66 %}
   {% set progress_color = 'warning' %}
 
-{# 3) Ready/Pickup → BLUE (80%) #}
+{# 3) Ready / Pickup #}
 {% elif 'ready' in s_lc or 'pick up' in s_lc or 'pickup' in s_lc %}
   {% set progress_width = 80 %}
   {% set progress_color = 'primary' %}
 
-{# 4) Delivered → GREEN (100%) #}
-{% elif 'deliver' in s_lc or s_lc in ['delivery', 'delivered', 'out for delivery'] %}
-  {% set progress_width = 100 %}
-  {% set progress_color = 'success' %}
-
-{# 5) Unassigned → YELLOW-ish (0%) #}
+{# 4) Unassigned #}
 {% elif s_lc == 'unassigned' %}
   {% set progress_width = 0 %}
   {% set progress_color = 'warning' %}

@@ -197,11 +197,10 @@
   <td class="pkg-cell">
     {% set status = _status %}
     {% include "partials/status_vars.html" %}
-    <div class="pkg-status-bar bar-{{ progress_color }}"></div>
 
-    <strong>{{ _house or "-" }}</strong><br>
+    {% include "partials/status_tracker.html" with context %}    
 
-    {% include "partials/status_tracker.html" with context %}
+    <strong class="d-block mt-1">{{ _house or "-" }}</strong>    
 
     <div class="small text-muted mt-1">VAL: ${{ "%.2f"|format(dv or 0) }}</div>
   </td>

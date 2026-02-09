@@ -7,27 +7,39 @@
 {% set progress_width = 0 %}
 {% set progress_color = 'secondary' %}
 
-{# Normalize status rules #}
+{# =========================
+   NORMALIZED STATUS RULES
+   ========================= #}
+
+{# 1) Overseas → RED (33%) #}
 {% if s_lc == 'overseas' %}
   {% set progress_width = 33 %}
   {% set progress_color = 'danger' %}
 
-{# “Ready” bucket: covers ready, ready for pickup, ready for pick up #}
-{% elif 'ready' in s_lc or 'pick up' in s_lc or 'pickup' in s_lc %}
+{# 2) Received at Local Port → YELLOW (66%) #}
+{% elif 'local port' in s_lc or 'received at local port' in s_lc or 'arrived' in s_lc %}
   {% set progress_width = 66 %}
+  {% set progress_color = 'warning' %}
+
+{# 3) “Ready” bucket → BLUE (80%) #}
+{% elif 'ready' in s_lc or 'pick up' in s_lc or 'pickup' in s_lc %}
+  {% set progress_width = 80 %}
   {% set progress_color = 'primary' %}
 
-{# “Delivered” bucket: covers delivered, delivery, out for delivery, delivering #}
+{# 4) Delivered bucket → GREEN (100%) #}
 {% elif 'deliver' in s_lc or s_lc in ['delivery', 'delivered', 'out for delivery'] %}
   {% set progress_width = 100 %}
   {% set progress_color = 'success' %}
 
+{# 5) Unassigned → ORANGE/YELLOW-ish (0%) #}
 {% elif s_lc == 'unassigned' %}
   {% set progress_width = 0 %}
   {% set progress_color = 'warning' %}
 {% endif %}
 
-{# Status Badge #}
+{# ==============
+   STATUS BADGE
+   ============== #}
 <span class="badge
   {% if progress_color == 'danger' %}bg-danger
   {% elif progress_color == 'primary' %}bg-primary
@@ -37,7 +49,9 @@
   {{ s if s else 'Unknown' }}
 </span>
 
-{# Progress Bar #}
+{# ==============
+   PROGRESS BAR
+   ============== #}
 <div class="status-progress mt-1 {{ progress_color }}">
   <div class="fill" style="width: {{ progress_width }}%;"></div>
 </div>

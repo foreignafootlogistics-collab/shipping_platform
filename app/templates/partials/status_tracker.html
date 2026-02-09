@@ -1,12 +1,28 @@
 {# partials/status_tracker.html #}
-{# expects: status, progress_key, progress_width #}
+{# expects: status, progress_width, bar_color, text_dark #}
 
-<span class="badge status-badge status-{{ progress_key }}">
+<span class="badge"
+      style="
+        background: {{ bar_color }};
+        color: {{ '#111' if text_dark else '#fff' }};
+        font-weight: 600;
+      ">
   {{ status if status else 'Unknown' }}
 </span>
 
-<div class="status-progress status-{{ progress_key }}">
-  <div class="fill" style="width: {{ progress_width }}%;"></div>
+<div class="mt-1"
+     style="
+       height: 6px;
+       border-radius: 999px;
+       background: #E5E7EB;
+       overflow: hidden;
+     ">
+  <div style="
+       height: 100%;
+       width: {{ progress_width }}%;
+       background: {{ bar_color }};
+       border-radius: 999px;
+     "></div>
 </div>
 
 

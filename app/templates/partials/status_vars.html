@@ -2,37 +2,39 @@
 {% set s = (status or '')|trim %}
 {% set s_lc = s|lower %}
 
-{# defaults #}
 {% set progress_width = 0 %}
-{% set progress_key = 'other' %}
+{% set bar_color = '#9CA3AF' %}   {# default gray #}
+{% set text_dark = false %}
 
-{# Delivered #}
+{# Delivered = green #}
 {% if 'delivered' in s_lc %}
   {% set progress_width = 100 %}
-  {% set progress_key = 'delivered' %}
+  {% set bar_color = '#16A34A' %}
 
-{# Out for delivery (optional, treat as "ready/blue" unless you want another color) #}
+{# Out for delivery = blue (optional) #}
 {% elif 'out for delivery' in s_lc %}
   {% set progress_width = 90 %}
-  {% set progress_key = 'ready' %}
+  {% set bar_color = '#2563EB' %}
 
-{# Overseas #}
+{# Overseas = red #}
 {% elif s_lc == 'overseas' %}
   {% set progress_width = 33 %}
-  {% set progress_key = 'overseas' %}
+  {% set bar_color = '#DC2626' %}
 
-{# Local Port #}
+{# Local port = yellow #}
 {% elif 'local port' in s_lc or 'received at local port' in s_lc or 'arrived' in s_lc %}
   {% set progress_width = 66 %}
-  {% set progress_key = 'local_port' %}
+  {% set bar_color = '#FACC15' %}
+  {% set text_dark = true %}
 
-{# Ready / Pickup #}
+{# Ready for pick up = blue #}
 {% elif 'ready' in s_lc or 'pick up' in s_lc or 'pickup' in s_lc %}
   {% set progress_width = 80 %}
-  {% set progress_key = 'ready' %}
+  {% set bar_color = '#2563EB' %}
 
-{# Unassigned #}
+{# Unassigned = purple #}
 {% elif s_lc == 'unassigned' %}
-  {% set progress_width = 10 %}
-  {% set progress_key = 'unassigned' %}
+  {% set progress_width = 0 %}
+  {% set bar_color = '#4A148C' %}
+
 {% endif %}

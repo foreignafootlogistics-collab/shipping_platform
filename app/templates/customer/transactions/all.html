@@ -5,301 +5,271 @@
 {% block content %}
 <div class="container my-4 txn-wrap">
 
-  <!-- Header row: title left, show dropdown right -->
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h3 class="mb-0">Transactions</h3>
+<!-- ================= HEADER ================= -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="fw-bold mb-0">Transactions</h3>
 
-    <form method="GET" class="d-flex align-items-center gap-2">
-      <span class="small text-muted">Show</span>
-
-      <select name="per_page"
-              class="form-select form-select-sm txn-perpage"
-              onchange="this.form.submit()">
-        {% for opt in per_page_options %}
-          <option value="{{ opt }}" {% if opt == per_page %}selected{% endif %}>{{ opt }}</option>
-        {% endfor %}
-      </select>
-
-      {# always reset to page 1 when changing per_page #}
-      <input type="hidden" name="page" value="1">
-    </form>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('customer.transactions_all', q=q, status=status, days=days, per_page=per_page, page=1) }}?export=csv"
+       class="btn btn-outline-secondary btn-sm">
+      ⬇ CSV
+    </a>
+    <a href="{{ url_for('customer.transactions_all', q=q, status=status, days=days, per_page=per_page, page=1) }}?export=pdf"
+       class="btn btn-outline-danger btn-sm">
+      📄 PDF
+    </a>
   </div>
+</div>
 
-  <div class="card shadow-sm txn-card">
-    <div class="table-responsive">
-      <table class="table table-sm table-hover table-bordered align-middle mb-0 txn-table">
-        <thead class="table-dark">
-          <tr>
-            <th style="width:120px;">Type</th>
-            <th>Reference</th>
-            <th style="width:220px;">Date</th>
-            <th style="width:160px;">Status</th>
-            <th style="width:140px;">Method</th>
-            <th style="width:170px;" class="text-end">Amount (JMD)</th>
-          </tr>
-        </thead>
+<!-- ================= SUMMARY CARDS ================= -->
+<div class="row g-3 mb-4">
 
-        <tbody>
-        {% for r in rows %}
-          <tr>
-            <td>
-              {% if r.type == "payment" %}
-                <span class="badge rounded-pill bg-success">Payment</span>
-              {% else %}
-                <span class="badge rounded-pill bg-primary">Bill</span>
-              {% endif %}
-            </td>
-
-            <td>
-              <div class="ref-main">{{ r.reference_main }}</div>
-              {% if r.reference_sub %}
-                <div class="ref-sub">{{ r.reference_sub }}</div>
-              {% endif %}
-
-              {# View icon/link under reference #}
-              <a href="#"
-                 class="txn-view d-inline-flex align-items-center gap-1 mt-1"
-                 data-url="{{ r.view_modal_url }}"
-                 title="View details">
-                <i class="bi bi-eye-fill"></i>
-                <span class="small">View</span>
-              </a>
-            </td>
-
-            <td class="text-nowrap">
-              {{ r.date.strftime("%Y-%m-%d %H:%M") if r.date else "" }}
-            </td>
-
-            <td class="text-nowrap">
-              <span class="badge bg-success">{{ r.status or "—" }}</span>
-
-              {# PDF icon beside status (only when available) #}
-              {% if r.pdf_url %}
-                <a href="#"
-                   class="txn-pdf ms-2"
-                   data-url="{{ r.pdf_url }}"
-                   title="Open PDF">
-                  <i class="bi bi-file-earmark-pdf-fill text-danger"></i>
-                </a>
-              {% endif %}
-            </td>
-
-            <td class="text-nowrap">
-              {{ r.method or "—" }}
-            </td>
-
-            <td class="text-end">
-              {{ "{:,.2f}".format(r.amount or 0) }}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-
-      </table>
+  <div class="col-md-3 col-6">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body d-flex align-items-center">
+        <div class="me-3 bg-purple rounded p-3 text-white">📦</div>
+        <div>
+          <small class="text-muted">Total Shipments</small>
+          <h4 class="fw-bold mb-0">{{ total_shipments }}</h4>
+        </div>
+      </div>
     </div>
   </div>
 
-  {# Pagination bottom-center #}
-  {% if total_pages > 1 %}
-  <nav class="d-flex justify-content-center mt-3" aria-label="Transactions pagination">
-    <ul class="pagination pagination-sm mb-0">
-
-      <li class="page-item {% if page <= 1 %}disabled{% endif %}">
-        <a class="page-link"
-           href="{{ url_for('customer.transactions_all', page=page-1, per_page=per_page) }}"
-           aria-label="Previous">
-          <span aria-hidden="true">&laquo;</span>
-        </a>
-      </li>
-
-      <li class="page-item disabled">
-        <span class="page-link">Page {{ page }} of {{ total_pages }}</span>
-      </li>
-
-      <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
-        <a class="page-link"
-           href="{{ url_for('customer.transactions_all', page=page+1, per_page=per_page) }}"
-           aria-label="Next">
-          <span aria-hidden="true">&raquo;</span>
-        </a>
-      </li>
-
-    </ul>
-  </nav>
-  {% endif %}
-
-</div>
-
-{# =========================
-   VIEW MODAL (Receipt/Invoice)
-   ========================= #}
-<div class="modal fade" id="txnViewModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-receipt"></i> Details</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  <div class="col-md-3 col-6">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body d-flex align-items-center">
+        <div class="me-3 bg-warning rounded p-3 text-white">💸</div>
+        <div>
+          <small class="text-muted">Total Owed (JMD)</small>
+          <h4 class="fw-bold mb-0">{{ "{:,.2f}".format(total_owed) }}</h4>
+        </div>
       </div>
-      <div class="modal-body" id="txnViewBody">
-        <div class="text-center py-4 text-muted">Loading…</div>
+    </div>
+  </div>
+
+  <div class="col-md-3 col-6">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body d-flex align-items-center">
+        <div class="me-3 bg-success rounded p-3 text-white">📑</div>
+        <div>
+          <small class="text-muted">Billing Records</small>
+          <h4 class="fw-bold mb-0">{{ billing_records }}</h4>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-3 col-6">
+    <div class="card shadow-sm border-0 h-100">
+      <div class="card-body d-flex align-items-center">
+        <div class="me-3 bg-danger rounded p-3 text-white">⚠️</div>
+        <div>
+          <small class="text-muted">Pending</small>
+          <h4 class="fw-bold mb-0">{{ pending_count }}</h4>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
-{# =========================
-   PDF MODAL (iframe preview)
-   ========================= #}
-<div class="modal fade" id="txnPdfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-xl">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-file-earmark-pdf"></i> PDF Preview</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+<!-- ================= FILTERS (WORKING) ================= -->
+<form method="GET" class="card shadow-sm border-0 mb-4">
+  <div class="card-body">
+    <div class="row g-2 align-items-center">
+
+      <div class="col-md-5">
+        <input name="q" value="{{ q }}" class="form-control"
+               placeholder="Search by Reference or Invoice ID...">
       </div>
 
-      <div class="modal-body p-0" style="height:75vh;">
-        <iframe id="txnPdfFrame" src="" style="width:100%; height:100%; border:0;"></iframe>
+      <div class="col-md-3">
+        <select name="status" class="form-select">
+          <option value="">All Status</option>
+          <option value="paid" {% if status=='paid' %}selected{% endif %}>Paid</option>
+          <option value="pending" {% if status=='pending' %}selected{% endif %}>Pending</option>
+        </select>
       </div>
 
-      <div class="modal-footer">
-        <a id="txnPdfOpenNew" class="btn btn-outline-secondary" href="#" target="_blank" rel="noopener">
-          <i class="bi bi-box-arrow-up-right"></i> Open in new tab
-        </a>
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      <div class="col-md-3">
+        <select name="days" class="form-select">
+          <option value="">All time</option>
+          <option value="7" {% if days==7 %}selected{% endif %}>Last 7 days</option>
+          <option value="30" {% if days==30 %}selected{% endif %}>Last 30 days</option>
+        </select>
+      </div>
+
+      <div class="col-md-1 text-end">
+        <select name="per_page" class="form-select" onchange="this.form.submit()">
+          {% for opt in per_page_options %}
+            <option value="{{ opt }}" {% if opt==per_page %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
       </div>
     </div>
   </div>
+</form>
+
+<!-- ================= TABLE (DESKTOP) ================= -->
+<div class="card shadow-sm txn-card d-none d-md-block">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0 txn-table">
+      <thead class="table-purple text-white">
+        <tr>
+          <th>Type</th>
+          <th>Reference</th>
+          <th>Date</th>
+          <th>Status</th>
+          <th>Method</th>
+          <th class="text-end">Amount (JMD)</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr class="transaction-row" data-url="{{ r.view_url }}">
+          <td>
+            {% if r.type=='payment' %}
+              <span class="badge rounded-pill bg-success">Payment</span>
+            {% else %}
+              <span class="badge rounded-pill bg-purple">Invoice</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="ref-main">{{ r.reference_main }}</div>
+            {% if r.reference_sub %}<div class="ref-sub">{{ r.reference_sub }}</div>{% endif %}
+            <a href="#" class="txn-view small text-primary">👁 View</a>
+            {% if r.pdf_url %}
+              <a href="{{ r.pdf_url }}" target="_blank" class="small text-danger ms-2">📄 PDF</a>
+            {% endif %}
+          </td>
+          <td>{{ r.date.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td>
+            {% if r.status|lower=='paid' %}
+              <span class="badge bg-success">PAID</span>
+            {% else %}
+              <span class="badge bg-warning text-dark">PENDING</span>
+            {% endif %}
+          </td>
+          <td>{{ r.method or "—" }}</td>
+          <td class="text-end fw-bold">{{ "{:,.2f}".format(r.amount) }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="text-center py-4 text-muted">No transactions found</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 
+<!-- ================= MOBILE CARD VIEW ================= -->
+<div class="d-md-none">
+  {% for r in rows %}
+  <div class="card mb-3 shadow-sm transaction-card" data-url="{{ r.view_url }}">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="badge {% if r.type=='payment' %}bg-success{% else %}bg-purple{% endif %}">
+          {{ r.type|title }}
+        </span>
+        {% if r.status|lower=='paid' %}
+          <span class="badge bg-success">PAID</span>
+        {% else %}
+          <span class="badge bg-warning text-dark">PENDING</span>
+        {% endif %}
+      </div>
+
+      <h6 class="fw-bold mb-1">{{ r.reference_main }}</h6>
+      {% if r.reference_sub %}<div class="small text-muted">{{ r.reference_sub }}</div>{% endif %}
+
+      <div class="small text-muted mt-2">
+        {{ r.date.strftime("%Y-%m-%d %H:%M") }}
+      </div>
+
+      <div class="d-flex justify-content-between mt-2">
+        <strong>J$ {{ "{:,.2f}".format(r.amount) }}</strong>
+        <span>{{ r.method or "—" }}</span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ================= PAGINATION ================= -->
+{% if total_pages > 1 %}
+<nav class="d-flex justify-content-center mt-3">
+  <ul class="pagination pagination-sm mb-0">
+    <li class="page-item {% if page<=1 %}disabled{% endif %}">
+      <a class="page-link"
+         href="{{ url_for('customer.transactions_all', page=page-1, per_page=per_page, q=q, status=status, days=days) }}">
+        &laquo;
+      </a>
+    </li>
+    <li class="page-item disabled">
+      <span class="page-link">Page {{ page }} of {{ total_pages }}</span>
+    </li>
+    <li class="page-item {% if page>=total_pages %}disabled{% endif %}">
+      <a class="page-link"
+         href="{{ url_for('customer.transactions_all', page=page+1, per_page=per_page, q=q, status=status, days=days) }}">
+        &raquo;
+      </a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+
+</div>
+
+<!-- ================= RIGHT SLIDE PANEL ================= -->
+<div id="txnSidePanel" class="txn-side-panel">
+  <div class="panel-header bg-purple text-white">
+    <strong>Invoice Details</strong>
+    <button class="btn-close btn-close-white" id="closePanel"></button>
+  </div>
+  <div id="panelBody" class="p-3">
+    <div class="text-center text-muted py-5">Select a transaction to view details</div>
+  </div>
+</div>
+
+<!-- ================= JS FOR PANEL + CLICK ================= -->
 <script>
-(function () {
-  function ensureBootstrap() {
-    if (!window.bootstrap || !bootstrap.Modal) {
-      console.error("Bootstrap Modal not available. Ensure bootstrap.bundle.min.js is loaded.");
-      alert("Bootstrap JS not loaded. Add bootstrap.bundle.min.js in layout_customer.html.");
-      return false;
-    }
-    return true;
+document.addEventListener("click", async (e) => {
+  const row = e.target.closest(".transaction-row, .transaction-card");
+  if (!row) return;
+
+  const url = row.dataset.url;
+  const panel = document.getElementById("txnSidePanel");
+  const body = document.getElementById("panelBody");
+
+  panel.classList.add("open");
+  body.innerHTML = `<div class="text-center text-muted py-5">Loading…</div>`;
+
+  try {
+    const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" }});
+    body.innerHTML = await res.text();
+  } catch (err) {
+    body.innerHTML = `<div class="alert alert-danger">Failed to load.</div>`;
   }
+});
 
-  const viewModalEl = document.getElementById("txnViewModal");
-  const viewBody = document.getElementById("txnViewBody");
-
-  const pdfModalEl = document.getElementById("txnPdfModal");
-  const pdfFrame = document.getElementById("txnPdfFrame");
-  const pdfOpenNew = document.getElementById("txnPdfOpenNew");
-
-  let viewModal = null;
-  let pdfModal = null;
-
-  document.addEventListener("click", async (e) => {
-    const viewLink = e.target.closest(".txn-view");
-    const pdfLink  = e.target.closest(".txn-pdf");
-
-    if (viewLink) {
-      e.preventDefault();
-      if (!ensureBootstrap()) return;
-
-      if (!viewModal) viewModal = new bootstrap.Modal(viewModalEl);
-
-      const url = viewLink.getAttribute("data-url");
-      if (!url) return;
-
-      viewBody.innerHTML = `<div class="text-center py-4 text-muted">Loading…</div>`;
-      viewModal.show();
-
-      try {
-        const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } });
-        if (!res.ok) {
-          viewBody.innerHTML = `<div class="alert alert-danger mb-0">Failed to load (HTTP ${res.status}).</div>`;
-          return;
-        }
-        viewBody.innerHTML = await res.text();
-      } catch (err) {
-        console.error(err);
-        viewBody.innerHTML = `<div class="alert alert-danger mb-0">Failed to load details.</div>`;
-      }
-    }
-
-    if (pdfLink) {
-      e.preventDefault();
-      if (!ensureBootstrap()) return;
-
-      if (!pdfModal) pdfModal = new bootstrap.Modal(pdfModalEl);
-
-      const url = pdfLink.getAttribute("data-url");
-      if (!url) return;
-
-      pdfFrame.src = url;
-      pdfOpenNew.href = url;
-      pdfModal.show();
-    }
-  });
-
-  if (pdfModalEl) {
-    pdfModalEl.addEventListener("hidden.bs.modal", () => {
-      if (pdfFrame) pdfFrame.src = "";
-    });
-  }
-})();
+document.getElementById("closePanel").addEventListener("click", () => {
+  document.getElementById("txnSidePanel").classList.remove("open");
+});
 </script>
 
 <style>
-  .txn-wrap { max-width: 1050px; }
+.bg-purple{background:#4A148C!important;}
+.table-purple th{background:#4A148C;color:white;}
+.txn-wrap{max-width:1100px;}
 
-  .txn-card {
-    border-radius: 0;
-    overflow: hidden;
-    border: 1px solid #d1d5db;
-  }
+.txn-side-panel{
+  position:fixed; top:0; right:-420px; width:420px; height:100vh;
+  background:white; box-shadow:-3px 0 10px rgba(0,0,0,.15);
+  transition:.3s ease; z-index:1050; overflow-y:auto;
+}
+.txn-side-panel.open{ right:0; }
+.panel-header{padding:.75rem 1rem; display:flex; justify-content:space-between; align-items:center;}
 
-  .txn-table {
-    border-collapse: separate;
-    border-spacing: 0;
-  }
-
-  .txn-table thead th {
-    padding: .65rem .75rem;
-    border-right: 1px solid #d1d5db;
-    border-bottom: 1px solid #d1d5db;
-    white-space: nowrap;
-  }
-  .txn-table thead th:last-child { border-right: none; }
-
-  .txn-table tbody td {
-    padding: .6rem .75rem;
-    vertical-align: middle;
-    border-right: 1px solid #e5e7eb;
-    border-bottom: 1px solid #e5e7eb;
-    background-color: #fff;
-  }
-  .txn-table tbody tr:last-child td { border-bottom: none; }
-  .txn-table tbody td:last-child { border-right: none; }
-
-  .txn-table tbody tr:hover td { background-color: #f9fafb; }
-
-  .ref-main { font-weight: 700; }
-  .ref-sub { font-size: .82rem; color: #6b7280; }
-
-  .txn-view, .txn-pdf {
-    text-decoration: none;
-    font-size: .92rem;
-  }
-  .txn-view:hover, .txn-pdf:hover { text-decoration: underline; }
-
-  .txn-perpage { width: 110px; }
-
-  @media (max-width: 576px) {
-    .txn-wrap { max-width: 100%; }
-    .txn-table thead th,
-    .txn-table tbody td { padding: .55rem .6rem; }
-  }
-  .pagination .page-link {
-    border-radius: 0 !important;
-  }
-
+.transaction-row:hover,.transaction-card:hover{cursor:pointer;background:#f6f3fb;}
+.ref-main{font-weight:700;}
+.ref-sub{font-size:.82rem;color:#6b7280;}
 </style>
 {% endblock %}
-
-

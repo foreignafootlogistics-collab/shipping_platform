@@ -565,9 +565,13 @@ def update_declared_value():
 @customer_bp.route("/transactions/all", methods=["GET"])
 @customer_required
 def transactions_all():
-    # pagination inputs
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=10)
+
+    # NEW FILTER INPUTS
+    q = (request.args.get("q") or "").strip()
+    status = (request.args.get("status") or "").lower()
+    days = request.args.get("days", type=int)  # 7 or 30
 
     allowed = [10, 25, 50, 100, 500]
     if per_page not in allowed:
@@ -575,19 +579,22 @@ def transactions_all():
     if page < 1:
         page = 1
 
-    invoices = (
-        Invoice.query
-        .filter(Invoice.user_id == current_user.id)
-        .order_by(Invoice.date_submitted.desc().nullslast(), Invoice.id.desc())
-        .all()
-    )
+    invoices = Invoice.query.filter(Invoice.user_id == current_user.id)
+    payments = Payment.query.filter(Payment.user_id == current_user.id)
 
-    payments = (
-        Payment.query
-        .filter(Payment.user_id == current_user.id)
-        .order_by(Payment.created_at.desc().nullslast(), Payment.id.desc())
-        .all()
-    )
+    # ---- APPLY DATE FILTER ----
+    if days in (7, 30):
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        invoices = invoices.filter(Invoice.date_submitted >= cutoff)
+        payments = payments.filter(Payment.created_at >= cutoff)
+
+    invoices = invoices.order_by(
+        Invoice.date_submitted.desc().nullslast(), Invoice.id.desc()
+    ).all()
+
+    payments = payments.order_by(
+        Payment.created_at.desc().nullslast(), Payment.id.desc()
+    ).all()
 
     rows = []
 
@@ -600,25 +607,26 @@ def transactions_all():
         except Exception:
             return 0.0
 
-    # Bills
+    # -------- BILLS --------
     for inv in invoices:
         amount = _num(getattr(inv, "amount_due", None))
         if amount <= 0:
             amount = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
 
         rows.append({
-            "type": "bill",
+            "type": "invoice",
             "date": _dt(inv.date_issued or inv.date_submitted or getattr(inv, "created_at", None)),
-            "reference_main": inv.invoice_number or f"Invoice #{inv.id}",
+            "reference_main": inv.invoice_number or f"INV-{inv.id}",
             "reference_sub": "",
-            "status": (getattr(inv, "status", "") or "").strip(),
+            "status": (getattr(inv, "status", "") or "").strip() or "Pending",
             "method": "—",
             "amount": amount,
-            "view_modal_url": url_for("customer.bill_invoice_modal", invoice_id=inv.id),
-            "pdf_url": "",  # (optional later)
+            "view_url": url_for("customer.bill_invoice_modal", invoice_id=inv.id),
+            "pdf_url": url_for("customer.invoice_pdf", invoice_id=inv.id),
+            "invoice_id": inv.id,
         })
 
-    # Payments
+    # -------- PAYMENTS --------
     for p in payments:
         rows.append({
             "type": "payment",
@@ -628,9 +636,23 @@ def transactions_all():
             "status": "Paid",
             "method": (p.method or "Cash"),
             "amount": _num(getattr(p, "amount_jmd", 0)),
-            "view_modal_url": url_for("customer.receipt_modal", payment_id=p.id),
+            "view_url": url_for("customer.receipt_modal", payment_id=p.id),
             "pdf_url": url_for("customer.receipt_pdf_inline", payment_id=p.id),
+            "invoice_id": p.invoice_id,
         })
+
+    # ---- GLOBAL SEARCH ----
+    if q:
+        rows = [
+            r for r in rows
+            if q.lower() in (r["reference_main"] + r["reference_sub"]).lower()
+        ]
+
+    # ---- STATUS FILTER ----
+    if status == "paid":
+        rows = [r for r in rows if r["status"].lower() == "paid"]
+    elif status == "pending":
+        rows = [r for r in rows if r["status"].lower() != "paid"]
 
     rows.sort(key=lambda r: r["date"], reverse=True)
 
@@ -644,16 +666,29 @@ def transactions_all():
     end = start + per_page
     page_rows = rows[start:end]
 
+    # ---- SUMMARY METRICS ----
+    total_shipments = total
+    total_owed = sum(r["amount"] for r in rows if r["status"].lower() != "paid")
+    pending_count = sum(1 for r in rows if r["status"].lower() != "paid")
+    billing_records = total
+
     return render_template(
         "customer/transactions/all.html",
         rows=page_rows,
+        all_rows=rows,   # needed for export
         page=page,
         per_page=per_page,
         total=total,
         total_pages=total_pages,
         per_page_options=allowed,
+        q=q,
+        status=status,
+        days=days,
+        total_shipments=total_shipments,
+        total_owed=total_owed,
+        pending_count=pending_count,
+        billing_records=billing_records,
     )
-
 
 
 @customer_bp.route("/transactions/receipts/<int:payment_id>/modal")

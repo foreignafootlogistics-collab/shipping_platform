@@ -83,7 +83,6 @@
         Clear
       </a>
     </div>
-
   </form>
 
   {# Table #}
@@ -131,115 +130,133 @@
    Modals AFTER table (valid HTML)
    ========================= #}
 {% for pkg in packages %}
-{% set s = (pkg.status or '') %}
-{% set lock_docs = (s == 'Ready for Pick Up' or s == 'Delivered') %}
-<div class="modal fade" id="docsModal{{ pkg.id }}" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <form method="POST"
-            enctype="multipart/form-data"
-            action="{{ url_for('customer.package_upload_docs', pkg_id=pkg.id) }}">
-        {{ form.csrf_token }}
+  {% set s = (pkg.status or '') %}
+  {% set lock_docs = (s == 'Ready for Pick Up' or s == 'Delivered') %}
 
-        <div class="modal-header">
-          <h5 class="modal-title">Upload Invoices / Declared Value</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
+  <div class="modal fade" id="docsModal{{ pkg.id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
 
-        <div class="modal-body">
+        {# Upload form (NO nested forms inside) #}
+        <form method="POST"
+              enctype="multipart/form-data"
+              action="{{ url_for('customer.package_upload_docs', pkg_id=pkg.id) }}">
+          {{ form.csrf_token }}
 
-          {% if lock_docs %}
-            <div class="alert alert-secondary py-2 mb-3">
-              <i class="fas fa-lock me-1"></i>
-              This package is <strong>{{ s }}</strong>, so invoices & declared value are locked.
-            </div>
-          {% endif %}
+          <div class="modal-header">
+            <h5 class="modal-title">Upload Invoices / Declared Value</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
 
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label">Declared Value (USD)</label>
-              <input class="form-control"
-                     type="number"
-                     name="declared_value"
-                     step="0.01"
-                     min="0"
-                     value="{{ pkg.declared_value if pkg.declared_value is not none else (pkg.value if pkg.value is not none else 0) }}"
-                     {% if lock_docs %}disabled{% endif %}>
-              <div class="form-text">This updates the “VAL: $xx.xx” shown under status.</div>
-            </div>
+          <div class="modal-body">
 
-            <div class="col-md-6">
-              <label class="form-label">Invoice File 1</label>
-              <input class="form-control" type="file" name="invoice_file_1" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
+            {% if lock_docs %}
+              <div class="alert alert-secondary py-2 mb-3">
+                <i class="fas fa-lock me-1"></i>
+                This package is <strong>{{ s }}</strong>, so invoices & declared value are locked.
+              </div>
+            {% endif %}
 
-              <label class="form-label mt-2">Invoice File 2</label>
-              <input class="form-control" type="file" name="invoice_file_2" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Declared Value (USD)</label>
+                <input class="form-control"
+                       type="number"
+                       name="declared_value"
+                       step="0.01"
+                       min="0"
+                       value="{{ pkg.declared_value if pkg.declared_value is not none else (pkg.value if pkg.value is not none else 0) }}"
+                       {% if lock_docs %}disabled{% endif %}>
+                <div class="form-text">This updates the “VAL: $xx.xx” shown under status.</div>
+              </div>
 
-              <label class="form-label mt-2">Invoice File 3</label>
-              <input class="form-control" type="file" name="invoice_file_3" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
-            </div>
+              <div class="col-md-6">
+                <label class="form-label">Invoice File 1</label>
+                <input class="form-control" type="file" name="invoice_file_1" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
 
-            <div class="col-12">
-              <div class="fw-semibold mb-1">Existing Attachments</div>
+                <label class="form-label mt-2">Invoice File 2</label>
+                <input class="form-control" type="file" name="invoice_file_2" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
 
-              {% if pkg.attachments and pkg.attachments|length > 0 %}
-                <div class="d-flex flex-wrap gap-2">
-                  {% for a in pkg.attachments %}
-                    <div class="d-inline-flex align-items-center gap-1">
-                    {% set f = (a.file_name or '')|string %}
-                    {% if f.startswith("http://") or f.startswith("https://") %}
-                      <a class="btn btn-sm btn-outline-secondary"
-                         target="_blank"
-                         rel="noopener"
-                         href="{{ f }}"
-                         title="{{ a.original_name or a.file_name }}">
-                        <i class="fas fa-file-alt me-1"></i> View
-                      </a>
-                    {% else %}
-                      <a class="btn btn-sm btn-outline-secondary"
-                         target="_blank"
-                         rel="noopener"
-                         href="{{ url_for('customer.view_package_attachment', attachment_id=a.id) }}"
-                         title="{{ a.original_name or a.file_name }}">
-                        <i class="fas fa-file-alt me-1"></i> View
-                      </a>
+                <label class="form-label mt-2">Invoice File 3</label>
+                <input class="form-control" type="file" name="invoice_file_3" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
+              </div>
 
-                      <form method="POST"
-                            action="{{ url_for('customer.delete_package_attachment_customer', attachment_id=a.id) }}"
-                            style="display:inline;"
-                            onsubmit="return confirm('Delete this attachment?');">
-                        {{ form.csrf_token }}
+              <div class="col-12">
+                <div class="fw-semibold mb-1">Existing Attachments</div>
 
-                        <button type="submit"
-                                class="btn btn-sm"
-                                style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .40rem;"
-                                title="Delete attachment"
-                                {% if lock_docs %}disabled{% endif %}>
-                          <i class="fa-solid fa-xmark"></i>
-                        </button>
-                      </form>
+                {% if pkg.attachments and pkg.attachments|length > 0 %}
+                  <div class="d-flex flex-wrap gap-2">
+                    {% for a in pkg.attachments %}
+                      <div class="d-inline-flex align-items-center gap-1">
+                        {% set f = (a.file_name or '')|string %}
 
-                    </div>
-                  {% endfor %}
-                </div>
-              {% else %}
-                <div class="text-muted">No attachments yet.</div>
-              {% endif %}
+                        {% if f.startswith("http://") or f.startswith("https://") %}
+                          <a class="btn btn-sm btn-outline-secondary"
+                             target="_blank"
+                             rel="noopener"
+                             href="{{ f }}"
+                             title="{{ a.original_name or a.file_name }}">
+                            <i class="fas fa-file-alt me-1"></i> View
+                          </a>
+                        {% else %}
+                          <a class="btn btn-sm btn-outline-secondary"
+                             target="_blank"
+                             rel="noopener"
+                             href="{{ url_for('customer.view_package_attachment', attachment_id=a.id) }}"
+                             title="{{ a.original_name or a.file_name }}">
+                            <i class="fas fa-file-alt me-1"></i> View
+                          </a>
 
+                          <button type="button"
+                                  class="btn btn-sm"
+                                  style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .40rem;"
+                                  title="Delete attachment"
+                                  {% if lock_docs %}disabled{% endif %}
+                                  onclick="deleteAttachment('{{ a.id }}', '{{ pkg.id }}')">
+                            <i class="fa-solid fa-xmark"></i>
+                          </button>
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="text-muted">No attachments yet.</div>
+                {% endif %}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-          <button type="submit" class="btn btn-primary" {% if lock_docs %}disabled{% endif %}>Save</button>
-        </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="submit" class="btn btn-primary" {% if lock_docs %}disabled{% endif %}>Save</button>
+          </div>
 
-      </form>
+        </form>
+
+        {# Hidden delete form (outside upload form) #}
+        <form id="deleteAttachmentForm{{ pkg.id }}" method="POST" style="display:none;">
+          {{ form.csrf_token }}
+        </form>
+
+      </div>
     </div>
   </div>
-</div>
 {% endfor %}
+
+<script>
+  const DELETE_URL_TEMPLATE = "{{ url_for('customer.delete_package_attachment_customer', attachment_id=0) }}";
+
+  function deleteAttachment(attachmentId, pkgId) {
+    if (!confirm("Delete this attachment?")) return;
+
+    const form = document.getElementById("deleteAttachmentForm" + pkgId);
+    if (!form) return;
+
+    // Use server-generated route template (no guessing)
+    form.action = DELETE_URL_TEMPLATE.replace("0", attachmentId);
+    form.submit();
+  }
+</script>
 
 <style>
 .pkg-attachment {
@@ -266,7 +283,6 @@
   --bs-btn-color: #374151;
   --bs-btn-border-color: #d1d5db;
 }
-
 </style>
 
 {% endblock %}

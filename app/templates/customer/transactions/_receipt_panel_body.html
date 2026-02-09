@@ -1,0 +1,81 @@
+{# NO extends - panel partial #}
+
+<div class="mxk-card">
+
+  <div class="mxk-top">
+    <div class="d-flex justify-content-between align-items-start">
+      <div class="d-flex align-items-center gap-2">
+        <div class="mxk-logo">FAFL</div>
+        <div>
+          <div class="small text-muted">Receipt</div>
+          <div class="fw-bold">{{ receipt_no }}</div>
+          <div class="small text-muted">
+            {{ payment.created_at|datetimeformat('%b %d, %Y %I:%M %p') }}
+          </div>
+        </div>
+      </div>
+      <span class="badge rounded-pill bg-success">PAID</span>
+    </div>
+
+    <div class="mt-3 d-flex justify-content-between align-items-center">
+      <div class="small text-muted">
+        Customer<br>
+        <span class="fw-bold text-dark">{{ current_user.full_name }}</span><br>
+        <span class="text-muted">{{ current_user.registration_number }}</span>
+      </div>
+      <div class="text-end">
+        <div class="small text-muted">Amount</div>
+        <div class="h5 fw-bold mb-0">{{ (payment.amount_jmd or 0)|jmd }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mxk-sec">
+    <div class="fw-bold mb-2">Payment Details</div>
+    <div class="mxk-row"><span>Method</span><span>{{ payment.method or "Cash" }}</span></div>
+
+    {% if payment.reference %}
+      <div class="mxk-row"><span>Reference</span><span>{{ payment.reference }}</span></div>
+    {% endif %}
+
+    {% if invoice %}
+      <div class="mxk-row"><span>Invoice</span><span>{{ invoice.invoice_number }}</span></div>
+    {% endif %}
+  </div>
+
+  <div class="mxk-sec">
+    <div class="fw-bold mb-2">Payment Breakdown</div>
+    <div class="mxk-row"><span>Freight</span><span>{{ (breakdown.freight or 0)|jmd }}</span></div>
+    <div class="mxk-row"><span>Duty</span><span>{{ (breakdown.duty or 0)|jmd }}</span></div>
+    <div class="mxk-row"><span>Handling</span><span>{{ (breakdown.handling or 0)|jmd }}</span></div>
+    <div class="mxk-row"><span>GCT</span><span>{{ (breakdown.gct or 0)|jmd }}</span></div>
+
+    <hr class="my-2">
+
+    <div class="d-flex justify-content-between fw-bold">
+      <span>Total</span>
+      <span>{{ (breakdown.total or 0)|jmd }}</span>
+    </div>
+
+    {% if payment.notes %}
+      <div class="small text-muted mt-2">{{ payment.notes }}</div>
+    {% endif %}
+  </div>
+
+  <div class="mxk-sec">
+    <a class="mxk-btn w-100"
+       href="{{ url_for('customer.view_receipt', payment_id=payment.id) }}">
+      View Full Receipt
+    </a>
+  </div>
+</div>
+
+<style>
+  .mxk-card{border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;background:#fff;}
+  .mxk-top{padding:14px;background:linear-gradient(180deg, rgba(74,20,140,.10), rgba(74,20,140,0));}
+  .mxk-logo{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#4A148C;color:#fff;font-weight:800;letter-spacing:.5px;}
+  .mxk-sec{padding:14px;border-top:1px solid #eef2f7;}
+  .mxk-row{display:flex;justify-content:space-between;padding:6px 0;font-size:.95rem;}
+  .mxk-btn{display:inline-block;text-align:center;background:#4A148C;color:#fff;border:1px solid #4A148C;border-radius:12px;padding:.7rem 1rem;text-decoration:none;}
+  .mxk-btn:hover{filter:brightness(.92);color:#fff;}
+</style>

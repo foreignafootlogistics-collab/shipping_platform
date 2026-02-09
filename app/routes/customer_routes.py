@@ -707,8 +707,59 @@ def receipt_modal(payment_id):
     p = Payment.query.filter_by(id=payment_id, user_id=current_user.id).first_or_404()
     inv = Invoice.query.filter_by(id=p.invoice_id, user_id=current_user.id).first()
 
-    # IMPORTANT: this template must be a partial (NO extends)
-    return render_template("customer/transactions/_receipt_modal_body.html", payment=p, invoice=inv)
+    receipt_no = f"RCPT-{p.id}"
+
+    def _num(x):
+        try:
+            return float(x or 0)
+        except Exception:
+            return 0.0
+
+    breakdown = {"freight": 0.0, "duty": 0.0, "handling": 0.0, "gct": 0.0, "total": 0.0}
+
+    if inv:
+        pkgs = Package.query.filter_by(invoice_id=inv.id).all()
+
+        freight_total = 0.0
+        duty_total = 0.0
+        handling_total = 0.0
+        gct_total = 0.0
+
+        for pkg in pkgs:
+            freight_total += _num(getattr(pkg, "freight_fee", getattr(pkg, "freight", 0)))
+            handling_total += _num(getattr(pkg, "storage_fee", getattr(pkg, "handling", 0)))
+            duty_total += _num(getattr(pkg, "duty", 0))
+            gct_total += _num(getattr(pkg, "gct", 0))
+
+        inv_total = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
+        if inv_total <= 0:
+            inv_total = freight_total + handling_total + duty_total + gct_total
+
+        breakdown = {
+            "freight": float(freight_total),
+            "duty": float(duty_total),
+            "handling": float(handling_total),
+            "gct": float(gct_total),
+            "total": float(inv_total),
+        }
+
+    wants_panel = request.headers.get("X-Panel") == "1"
+    if wants_panel:
+        return render_template(
+            "customer/transactions/_receipt_panel_body.html",
+            payment=p,
+            invoice=inv,
+            breakdown=breakdown,
+            receipt_no=receipt_no
+        )
+
+    return render_template(
+        "customer/transactions/_receipt_modal_body.html",
+        payment=p,
+        invoice=inv,
+        receipt_no=receipt_no
+    )
+
 
 
 @customer_bp.route("/transactions/bills")
@@ -727,12 +778,13 @@ def view_bills():
 def bill_invoice_modal(invoice_id):
     inv = Invoice.query.filter_by(id=invoice_id, user_id=current_user.id).first_or_404()
 
-    # packages linked to invoice
     pkgs = Package.query.filter_by(invoice_id=inv.id).order_by(Package.id.asc()).all()
 
     def _num(x):
-        try: return float(x or 0)
-        except: return 0.0
+        try:
+            return float(x or 0)
+        except Exception:
+            return 0.0
 
     packages = []
     for p in pkgs:
@@ -759,27 +811,32 @@ def bill_invoice_modal(invoice_id):
             "discount_due": _num(getattr(p, "discount_due", 0)),
         })
 
-    # totals (simple, consistent)
     subtotal = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
     discount_total = _num(getattr(inv, "discount_total", 0))
 
-    # IMPORTANT: amount owed should be inv.amount_due if you maintain it
     amount_due = _num(getattr(inv, "amount_due", 0))
     if amount_due <= 0:
-        # fallback if amount_due not maintained
         amount_due = max(subtotal - discount_total, 0)
+
+    dt = inv.date_issued or inv.date_submitted or inv.created_at
 
     invoice_dict = {
         "id": inv.id,
-        "number": inv.invoice_number,
-        "date": inv.date_issued or inv.date_submitted or inv.created_at,
+        "number": inv.invoice_number or f"INV-{inv.id}",
+        "date": dt,
+        "date_display": dt.strftime("%b %d, %Y %I:%M %p") if dt else "",
+        "status": (getattr(inv, "status", "") or "").strip() or ("Paid" if amount_due <= 0 else "Pending"),
         "customer_code": current_user.registration_number,
         "customer_name": current_user.full_name,
-        "subtotal": subtotal,
-        "discount_total": discount_total,
-        "total_due": amount_due,
+        "subtotal": float(subtotal),
+        "discount_total": float(discount_total),
+        "total_due": float(amount_due),
         "packages": packages,
     }
+
+    wants_panel = request.headers.get("X-Panel") == "1"
+    if wants_panel:
+        return render_template("customer/transactions/_invoice_panel_body.html", invoice=invoice_dict)
 
     return render_template("customer/transactions/_invoice_modal_body.html", invoice=invoice_dict)
 

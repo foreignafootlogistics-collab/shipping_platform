@@ -331,7 +331,7 @@
       </div>
     `;
     try {
-      const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+      const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest", "X-Panel": "1" } });
       if (!res.ok) {
         body.innerHTML = `<div class="alert alert-danger m-3 mb-0">Failed to load (HTTP ${res.status}).</div>`;
         return;

@@ -1,0 +1,36 @@
+{# partials/status_vars.html
+   Inputs:  status (string)
+   Outputs: progress_width (int), progress_color (bootstrap keyword)
+#}
+
+{% set s = (status or '')|trim %}
+{% set s_lc = s|lower %}
+
+{% set progress_width = 0 %}
+{% set progress_color = 'secondary' %}
+
+{# 1) Overseas → RED (33%) #}
+{% if s_lc == 'overseas' %}
+  {% set progress_width = 33 %}
+  {% set progress_color = 'danger' %}
+
+{# 2) Received at Local Port / Arrived → YELLOW (66%) #}
+{% elif 'local port' in s_lc or 'received at local port' in s_lc or 'arrived' in s_lc %}
+  {% set progress_width = 66 %}
+  {% set progress_color = 'warning' %}
+
+{# 3) Ready / Pickup → BLUE (80%) #}
+{% elif 'ready' in s_lc or 'pick up' in s_lc or 'pickup' in s_lc %}
+  {% set progress_width = 80 %}
+  {% set progress_color = 'primary' %}
+
+{# 4) Delivered / Out for delivery → GREEN (100%) #}
+{% elif 'deliver' in s_lc or s_lc in ['delivery', 'delivered', 'out for delivery'] %}
+  {% set progress_width = 100 %}
+  {% set progress_color = 'success' %}
+
+{# 5) Unassigned → YELLOW (0%) #}
+{% elif s_lc == 'unassigned' %}
+  {% set progress_width = 0 %}
+  {% set progress_color = 'warning' %}
+{% endif %}

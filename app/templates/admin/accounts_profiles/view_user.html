@@ -320,17 +320,16 @@
                 </td>
 
                 <td class="pkg-cell">
-                  <div class="pkg-status-bar {{ bar_class }}"></div>
+                  {% set status = pkg.status %}
+                  {% include 'partials/status_vars.html' %}
 
-                  <div>
-                    <strong>{{ pkg.house_awb or '-' }}</strong><br>
-                    <span class="badge pkg-status-badge {{ bar_class }}">
-                      {{ 'Delivered' if (pkg.status or '')|lower == 'delivery' else (pkg.status or 'Unknown') }}
+                  <div class="pkg-status-bar bar-{{ progress_color }}"></div>
 
-                    </span>
-
-                  </div>
+                  <strong>{{ pkg.house_awb or '-' }}</strong><br>
+                  {% include 'partials/status_tracker.html' with context %}
                 </td>
+
+
 
                 <td>
                   <div>{{ pkg.description or '-' }}</div>
@@ -1565,11 +1564,12 @@ td.pkg-cell .pkg-status-bar{
   border-radius: 2px;
 }
 
-/* Bar colors (keep these) */
-td.pkg-cell .pkg-status-bar.status-overseas  { background-color: #dc3545 !important; }
-td.pkg-cell .pkg-status-bar.status-ready     { background-color: #ffc107 !important; }
-td.pkg-cell .pkg-status-bar.status-delivered { background-color: #198754 !important; }
-td.pkg-cell .pkg-status-bar.status-unknown   { background-color: #adb5bd !important; }
+/* left bar uses same progress_color keywords */
+td.pkg-cell .pkg-status-bar.bar-danger  { background-color: #dc3545 !important; }  /* red */
+td.pkg-cell .pkg-status-bar.bar-warning { background-color: #ffc107 !important; }  /* yellow */
+td.pkg-cell .pkg-status-bar.bar-primary { background-color: #0d6efd !important; }  /* blue */
+td.pkg-cell .pkg-status-bar.bar-success { background-color: #198754 !important; }  /* green */
+td.pkg-cell .pkg-status-bar.bar-secondary { background-color: #adb5bd !important; }
 
 /* Badge base */
 td.pkg-cell span.badge.pkg-status-badge{
@@ -1620,7 +1620,7 @@ $(document).ready(function () {
       order: [[0, 'desc']],
       pageLength: 10
     });
-  } 
+  }
 
   // Messages: ONLY use DataTables if you are NOT doing server-side pagination for messages
   // If you ARE doing server-side pagination, remove this whole block and rely on your backend search.
@@ -1630,88 +1630,16 @@ $(document).ready(function () {
       dom: 'rtip' // hide built-in search box
     });
 
- // hook custom search input
+    // hook custom search input
     $('#msgSearchInput').on('input', function () {
       msgTable.search(this.value).draw();
     });
   }
 
-
   // Scheduled deliveries (client-side ok)
   if ($('#scheduledeliveryTable').length) {
     $('#scheduledeliveryTable').DataTable();
   }
-});
-
-
-  // Quick add delivery launcher
-  document.getElementById("adminAddDeliveryBtn").onclick = () => {
-    new bootstrap.Modal(document.getElementById('adminAddDeliveryModal')).show();
-  };
-
-  // Full admin delivery modal launcher
-  document.querySelectorAll('.open-admin-delivery-modal').forEach(btn => {
-    btn.addEventListener('click', function() {
-      const userId = this.getAttribute('data-user-id');
-      document.getElementById('modalUserId').value = userId;
-      document.getElementById('adminDeliveryForm').reset();
-      new bootstrap.Modal(document.getElementById('adminDeliveryModal')).show();
-    });
-  });
-
-  // Submit full admin delivery form (big modal)
-  document.getElementById('adminDeliveryForm').addEventListener('submit', function(e){
-    e.preventDefault();
-    const payload = {
-      user_id: document.getElementById('modalUserId').value,
-      date: document.getElementById('modalDeliveryDate').value,
-      time: document.getElementById('modalDeliveryTime').value,
-      location: document.getElementById('modalDeliveryLocation').value,
-      person_receiving: document.getElementById('modalPersonReceiving').value,
-      mobile: document.getElementById('modalDeliveryMobile').value,
-      directions: document.getElementById('modalDeliveryDirections').value
-    };
-    fetch("{{ url_for('logistics.add_scheduled_delivery') }}", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    })
-    .then(res => res.json())
-    .then(data => {
-      if(data.status === "success"){
-        alert('Delivery scheduled successfully!');
-        bootstrap.Modal.getInstance(document.getElementById('adminDeliveryModal')).hide();
-      } else {
-        alert(data.message || 'Error scheduling delivery.');
-      }
-    });
-  });
-
-  // Submit quick add delivery form (small modal)
-  document.getElementById("adminAddDeliveryForm").onsubmit = function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-    fetch("{{ url_for('logistics.add_scheduled_delivery', user_id=user.id) }}", {
-      method: "POST",
-      body: formData
-    })
-    .then(res => res.json())
-    .then(data => {
-      if(data.status === "success"){
-        const tbody = document.querySelector("#scheduledeliveryTable tbody");
-        tbody.insertAdjacentHTML("beforeend", `
-          <tr>
-            <td>${data.delivery.date}</td>
-            <td>${data.delivery.time}</td>
-            <td>${data.delivery.location}</td>
-            <td>${data.delivery.person_receiving}</td>
-            <td>${data.delivery.status}</td>
-          </tr>
-        `);
-        bootstrap.Modal.getInstance(document.getElementById('adminAddDeliveryModal')).hide();
-      }
-    });
-  };
 
   // Mark as Paid Modal
   $('.mark-paid-btn').click(function () {
@@ -1723,7 +1651,6 @@ $(document).ready(function () {
 
     new bootstrap.Modal(document.getElementById('markPaidModal')).show();
   });
-
 
   $('#markPaidForm').submit(function (e) {
     e.preventDefault();
@@ -1760,6 +1687,84 @@ $(document).ready(function () {
   });
 });
 
+/* -----------------------------
+   Delivery modals (outside jQuery)
+   ----------------------------- */
+
+// Quick add delivery launcher
+document.getElementById("adminAddDeliveryBtn")?.addEventListener("click", () => {
+  new bootstrap.Modal(document.getElementById('adminAddDeliveryModal')).show();
+});
+
+// Full admin delivery modal launcher
+document.querySelectorAll('.open-admin-delivery-modal').forEach(btn => {
+  btn.addEventListener('click', function() {
+    const userId = this.getAttribute('data-user-id');
+    document.getElementById('modalUserId').value = userId;
+    document.getElementById('adminDeliveryForm').reset();
+    new bootstrap.Modal(document.getElementById('adminDeliveryModal')).show();
+  });
+});
+
+// Submit full admin delivery form (big modal)
+document.getElementById('adminDeliveryForm')?.addEventListener('submit', function(e){
+  e.preventDefault();
+  const payload = {
+    user_id: document.getElementById('modalUserId').value,
+    date: document.getElementById('modalDeliveryDate').value,
+    time: document.getElementById('modalDeliveryTime').value,
+    location: document.getElementById('modalDeliveryLocation').value,
+    person_receiving: document.getElementById('modalPersonReceiving').value,
+    mobile: document.getElementById('modalDeliveryMobile').value,
+    directions: document.getElementById('modalDeliveryDirections').value
+  };
+
+  fetch("{{ url_for('logistics.add_scheduled_delivery') }}", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  })
+  .then(res => res.json())
+  .then(data => {
+    if(data.status === "success"){
+      alert('Delivery scheduled successfully!');
+      bootstrap.Modal.getInstance(document.getElementById('adminDeliveryModal')).hide();
+    } else {
+      alert(data.message || 'Error scheduling delivery.');
+    }
+  });
+});
+
+// Submit quick add delivery form (small modal)
+document.getElementById("adminAddDeliveryForm")?.addEventListener("submit", function(e) {
+  e.preventDefault();
+  const formData = new FormData(this);
+
+  fetch("{{ url_for('logistics.add_scheduled_delivery', user_id=user.id) }}", {
+    method: "POST",
+    body: formData
+  })
+  .then(res => res.json())
+  .then(data => {
+    if(data.status === "success"){
+      const tbody = document.querySelector("#scheduledeliveryTable tbody");
+      tbody.insertAdjacentHTML("beforeend", `
+        <tr>
+          <td>${data.delivery.date}</td>
+          <td>${data.delivery.time}</td>
+          <td>${data.delivery.location}</td>
+          <td>${data.delivery.person_receiving}</td>
+          <td>${data.delivery.status}</td>
+        </tr>
+      `);
+      bootstrap.Modal.getInstance(document.getElementById('adminAddDeliveryModal')).hide();
+    }
+  });
+});
+
+/* ================================
+   Bulk delete behaviour
+   ================================ */
 document.addEventListener("DOMContentLoaded", () => {
   const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
   const selectAll = document.getElementById("pkgSelectAll");
@@ -1827,7 +1832,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   toggleBulkBtn();
 });
-
 
 
 /* ================================
@@ -1952,13 +1956,12 @@ function initInlineInvoice(rootElement) {
       });
     }
 
-    // ---------- NEW: "Authorised by" dropdown + other ----------
+    // ---------- "Authorised by" dropdown + other ----------
     const authSelect = payOverlay.querySelector('#authBySelectInline');
     const authInput  = payOverlay.querySelector('#authByInputInline');
     const authHidden = payOverlay.querySelector('#authByHiddenInline');
 
     if (authSelect && authHidden) {
-      // initialise from current select value
       if (authSelect.value !== '__other__') {
         authHidden.value = authSelect.value;
       }
@@ -1987,6 +1990,7 @@ function initInlineInvoice(rootElement) {
         });
       }
     }
+
     updateDisplay();
   }
 
@@ -2114,7 +2118,6 @@ function loadInvoiceInline(invoiceId){
     .catch(() => alert('⚠️ Unable to load invoice inline.'));
 }
 
-
 // Load invoice into modal
 function openInvoiceModal(invoiceId) {
   const modalEl  = document.getElementById("invoiceModal");
@@ -2128,21 +2131,20 @@ function openInvoiceModal(invoiceId) {
   const url  = base.replace('0', String(invoiceId));
 
   fetch(url, {
-      headers: { "X-Requested-With": "XMLHttpRequest" }
+    headers: { "X-Requested-With": "XMLHttpRequest" }
   })
   .then(r => {
-      if (!r.ok) throw new Error("Failed");
-      return r.text();
+    if (!r.ok) throw new Error("Failed");
+    return r.text();
   })
-    .then(html => {
-      bodyEl.innerHTML = html;
+  .then(html => {
+    bodyEl.innerHTML = html;
 
-      // 🔌 wire invoice controls inside the modal
-      initInlineInvoice(modalEl);
+    // 🔌 wire invoice controls inside the modal
+    initInlineInvoice(modalEl);
 
-      modal.show();
-  })
-
+    modal.show();
+  });
 }
 
 // ✅ Add Single Package via AJAX (no page reload)
@@ -2155,9 +2157,7 @@ document.getElementById('addSinglePackageForm')
 
     fetch(form.getAttribute('action'), {
       method: 'POST',
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest'
-      },
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
       body: formData
     })
     .then(res => res.json())
@@ -2167,41 +2167,103 @@ document.getElementById('addSinglePackageForm')
         return;
       }
 
-      // ✅ Insert new package row at top of table
       const tbody = document.querySelector('#packagesTable tbody');
+
+      // map status -> bootstrap color keyword (same rules as status_vars.html)
+      const st = String(data.pkg.status || '').toLowerCase();
+
+      let progressColor = 'secondary';
+      if (st === 'overseas') progressColor = 'danger';
+      else if (st.includes('local port') || st.includes('received at local port') || st.includes('arrived')) progressColor = 'warning';
+      else if (st.includes('ready') || st.includes('pickup') || st.includes('pick up')) progressColor = 'primary';
+      else if (st.includes('deliver') || st === 'delivery' || st === 'delivered' || st.includes('out for delivery')) progressColor = 'success';
+      else if (st === 'unassigned') progressColor = 'warning';
+
+      // ✅ pull CSRF token from any existing hidden input on page
+      const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+
+      // ✅ attachments buttons (Cloudinary)
+      const attachments = Array.isArray(data.pkg.attachments) ? data.pkg.attachments : [];
+      const attachmentsHtml = attachments.length
+        ? `
+          <div class="mt-1 d-flex flex-wrap gap-2">
+            ${attachments.map(a => `
+              <a class="btn btn-sm"
+                 style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
+                 target="_blank"
+                 href="${a.view_url}"
+                 title="${(a.original_name || 'Attachment').replace(/"/g, '&quot;')}">
+                <i class="fa-solid fa-file-lines"></i>
+              </a>
+
+              <form method="POST"
+                    action="${a.delete_url}"
+                    class="d-inline"
+                    onsubmit="return confirm('Delete this attachment?');">
+                <input type="hidden" name="csrf_token" value="${csrf}">
+                <button type="submit"
+                        class="btn btn-sm"
+                        style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .45rem;"
+                        title="Delete attachment">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </form>
+            `).join('')}
+          </div>
+        `
+        : ``;
 
       const row = `
         <tr>
-          <td class="text-center">
-            <input type="checkbox" class="pkg-check" value="${data.pkg.id}">
+          <td class="text-center align-middle">
+            <input type="checkbox"
+                   class="pkg-check"
+                   value="${data.pkg.id}">
           </td>
+
           <td class="pkg-cell">
-            <div class="pkg-status-bar status-overseas"></div>
+            <div class="pkg-status-bar bar-${progressColor}"></div>
             <strong>${data.pkg.house_awb || '-'}</strong><br>
-            <span class="badge pkg-status-badge status-overseas">
-              ${data.pkg.status}
+
+            <span class="badge ${
+              progressColor === 'danger' ? 'bg-danger' :
+              progressColor === 'warning' ? 'bg-warning text-dark' :
+              progressColor === 'primary' ? 'bg-primary' :
+              progressColor === 'success' ? 'bg-success' : 'bg-secondary'
+            }">
+              ${data.pkg.status || 'Unknown'}
             </span>
+
+            <div class="status-progress mt-1 ${progressColor}">
+              <div class="fill" style="width:${
+                progressColor === 'danger' ? 33 :
+                progressColor === 'warning' ? (st === 'unassigned' ? 0 : 66) :
+                progressColor === 'primary' ? 80 :
+                progressColor === 'success' ? 100 : 0
+              }%;"></div>
+            </div>
           </td>
-          <td><div>${data.pkg.description || '-'}</div></td>
+
+          <td>
+            <div>${data.pkg.description || '-'}</div>
+            ${attachmentsHtml}
+          </td>
+
           <td>${data.pkg.tracking_number || '-'}</td>
-          <td class="text-start">${data.pkg.weight}</td>
+          <td class="text-start">${data.pkg.weight || ''}</td>
           <td>${data.pkg.date_received || '—'}</td>
-          <td class="text-end">$${parseFloat(data.pkg.declared_value).toFixed(2)}</td>
-          <td class="text-end">$${parseFloat(data.pkg.amount_due).toFixed(2)}</td>
+          <td class="text-end">$${parseFloat(data.pkg.declared_value || 0).toFixed(2)}</td>
+          <td class="text-end">$${parseFloat(data.pkg.amount_due || 0).toFixed(2)}</td>
         </tr>
       `;
 
       tbody.insertAdjacentHTML('afterbegin', row);
 
-      // ✅ Close modal & reset
-      bootstrap.Modal.getInstance(
-        document.getElementById('addSinglePackageModal')
-      ).hide();
-
+      // ✅ close modal & reset
+      bootstrap.Modal.getInstance(document.getElementById('addSinglePackageModal')).hide();
       form.reset();
     })
     .catch(() => alert('Server error adding package'));
 });
-
 </script>
 {% endblock %}

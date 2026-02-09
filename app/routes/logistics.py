@@ -1955,13 +1955,7 @@ def bulk_shipment_action(shipment_id):
 
         for p in pkgs:
             p.status = "Received at Local Port"
-
-            # ✅ only set these if the model has them
-            if hasattr(p, "received_date"):
-                p.received_date = now
-            if hasattr(p, "date_received"):
-                p.date_received = now
-
+            
         db.session.commit()
         flash(f"{len(package_ids)} package(s) marked Received at Local Port.", "success")
         return redirect(url_for(

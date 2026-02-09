@@ -1167,7 +1167,7 @@ def view_user(id):
 def create_single_package_for_user(id):
     user = db.session.get(User, id)
     if not user:
-        return jsonify({"ok": False, "error": "User not found"}), 404
+        return jsonify({"success": False, "error": "User not found"}), 404
 
     # helpers
     def to_float(v):
@@ -1208,6 +1208,22 @@ def create_single_package_for_user(id):
     db.session.add(pkg)
     db.session.commit()
 
+    # ✅ attachments serializer (Cloudinary buttons use these URLs)
+    def serialize_attachment(a):
+        return {
+            "id": a.id,
+            "original_name": getattr(a, "original_name", None) or "Attachment",
+            "view_url": url_for("logistics.view_package_attachment", attachment_id=a.id),
+            "delete_url": url_for("logistics.delete_package_attachment_admin", attachment_id=a.id),
+        }
+
+    # ✅ IMPORTANT: refresh relationship after commit (safe)
+    attachments = []
+    try:
+        attachments = [serialize_attachment(a) for a in (pkg.attachments or [])]
+    except Exception:
+        attachments = []
+
     return jsonify({
         "success": True,
         "pkg": {
@@ -1220,6 +1236,9 @@ def create_single_package_for_user(id):
             "date_received": (pkg.date_received.strftime("%Y-%m-%d") if getattr(pkg, "date_received", None) else ""),
             "declared_value": float(getattr(pkg, "declared_value", 0) or 0),
             "amount_due": float(getattr(pkg, "amount_due", 0) or 0),
+
+            # ✅ add attachments list for the front-end buttons
+            "attachments": attachments
         }
     })
 

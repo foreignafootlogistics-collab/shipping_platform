@@ -5,271 +5,465 @@
 {% block content %}
 <div class="container my-4 txn-wrap">
 
-<!-- ================= HEADER ================= -->
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h3 class="fw-bold mb-0">Transactions</h3>
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h3 class="fw-bold mb-0">Transactions</h3>
+      <div class="text-muted small">Billing history, receipts, and invoice records</div>
+    </div>
 
-  <div class="d-flex gap-2">
-    <a href="{{ url_for('customer.transactions_all', q=q, status=status, days=days, per_page=per_page, page=1) }}?export=csv"
-       class="btn btn-outline-secondary btn-sm">
-      ⬇ CSV
-    </a>
-    <a href="{{ url_for('customer.transactions_all', q=q, status=status, days=days, per_page=per_page, page=1) }}?export=pdf"
-       class="btn btn-outline-danger btn-sm">
-      📄 PDF
-    </a>
+    <!-- Per-page (keeps filters) -->
+    <form method="GET" class="d-flex align-items-center gap-2">
+      <input type="hidden" name="q" value="{{ q or '' }}">
+      <input type="hidden" name="status" value="{{ status or '' }}">
+      <input type="hidden" name="days" value="{{ days or '' }}">
+      <input type="hidden" name="page" value="1">
+
+      <span class="small text-muted">Show</span>
+      <select name="per_page" class="form-select form-select-sm txn-perpage" onchange="this.form.submit()">
+        {% for opt in per_page_options %}
+          <option value="{{ opt }}" {% if opt == per_page %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+    </form>
   </div>
-</div>
 
-<!-- ================= SUMMARY CARDS ================= -->
-<div class="row g-3 mb-4">
+  <!-- Summary cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3 col-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-body d-flex align-items-center">
+          <div class="me-3 pill-icon bg-purple text-white">📦</div>
+          <div>
+            <small class="text-muted">Total Shipments</small>
+            <div class="h4 fw-bold mb-0">{{ total_shipments }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-  <div class="col-md-3 col-6">
-    <div class="card shadow-sm border-0 h-100">
-      <div class="card-body d-flex align-items-center">
-        <div class="me-3 bg-purple rounded p-3 text-white">📦</div>
-        <div>
-          <small class="text-muted">Total Shipments</small>
-          <h4 class="fw-bold mb-0">{{ total_shipments }}</h4>
+    <div class="col-md-3 col-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-body d-flex align-items-center">
+          <div class="me-3 pill-icon bg-warning text-white">💸</div>
+          <div>
+            <small class="text-muted">Total Owed (JMD)</small>
+            <div class="h4 fw-bold mb-0">{{ "{:,.2f}".format(total_owed) }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3 col-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-body d-flex align-items-center">
+          <div class="me-3 pill-icon bg-success text-white">📑</div>
+          <div>
+            <small class="text-muted">Billing Records</small>
+            <div class="h4 fw-bold mb-0">{{ billing_records }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3 col-6">
+      <div class="card shadow-sm border-0 h-100">
+        <div class="card-body d-flex align-items-center">
+          <div class="me-3 pill-icon bg-danger text-white">⚠️</div>
+          <div>
+            <small class="text-muted">Pending</small>
+            <div class="h4 fw-bold mb-0">{{ pending_count }}</div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="col-md-3 col-6">
-    <div class="card shadow-sm border-0 h-100">
-      <div class="card-body d-flex align-items-center">
-        <div class="me-3 bg-warning rounded p-3 text-white">💸</div>
-        <div>
-          <small class="text-muted">Total Owed (JMD)</small>
-          <h4 class="fw-bold mb-0">{{ "{:,.2f}".format(total_owed) }}</h4>
+  <!-- Filters (WORKING) -->
+  <form method="GET" class="card shadow-sm border-0 mb-4 txn-filters">
+    <div class="card-body">
+      <input type="hidden" name="page" value="1">
+      <input type="hidden" name="per_page" value="{{ per_page }}">
+
+      <div class="row g-2 align-items-center">
+        <div class="col-md-5">
+          <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input name="q" value="{{ q or '' }}" class="form-control"
+                   placeholder="Search by Reference / Invoice ID / Receipt...">
+          </div>
+        </div>
+
+        <div class="col-md-3">
+          <select name="status" class="form-select">
+            <option value="" {% if not status %}selected{% endif %}>All Status</option>
+            <option value="paid" {% if status=='paid' %}selected{% endif %}>Paid</option>
+            <option value="pending" {% if status=='pending' %}selected{% endif %}>Pending</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <select name="days" class="form-select">
+            <option value="" {% if not days %}selected{% endif %}>All time</option>
+            <option value="7" {% if days==7 %}selected{% endif %}>Last 7 days</option>
+            <option value="30" {% if days==30 %}selected{% endif %}>Last 30 days</option>
+          </select>
+        </div>
+
+        <div class="col-md-2 d-flex gap-2">
+          <button class="btn btn-purple w-100" type="submit">
+            Apply
+          </button>
+          <a class="btn btn-outline-secondary w-100"
+             href="{{ url_for('customer.transactions_all', per_page=per_page, page=1) }}">
+            Reset
+          </a>
         </div>
       </div>
+
+      {% if q or status or days %}
+      <div class="mt-3 d-flex flex-wrap gap-2 small">
+        {% if q %}<span class="chip">Search: <strong>{{ q }}</strong></span>{% endif %}
+        {% if status %}<span class="chip">Status: <strong>{{ status|upper }}</strong></span>{% endif %}
+        {% if days %}<span class="chip">Range: <strong>{{ days }} days</strong></span>{% endif %}
+      </div>
+      {% endif %}
     </div>
-  </div>
+  </form>
 
-  <div class="col-md-3 col-6">
-    <div class="card shadow-sm border-0 h-100">
-      <div class="card-body d-flex align-items-center">
-        <div class="me-3 bg-success rounded p-3 text-white">📑</div>
-        <div>
-          <small class="text-muted">Billing Records</small>
-          <h4 class="fw-bold mb-0">{{ billing_records }}</h4>
-        </div>
-      </div>
-    </div>
-  </div>
+  <!-- Desktop table -->
+  <div class="card shadow-sm txn-card d-none d-md-block">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 txn-table">
+        <thead class="table-purple text-white">
+          <tr>
+            <th style="width:120px;">Type</th>
+            <th>Reference</th>
+            <th style="width:210px;">Date</th>
+            <th style="width:150px;">Status</th>
+            <th style="width:140px;">Method</th>
+            <th style="width:170px;" class="text-end">Amount (JMD)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr class="transaction-row" data-url="{{ r.view_url }}" data-pdf="{{ r.pdf_url }}">
+            <td>
+              {% if r.type == "payment" %}
+                <span class="badge rounded-pill bg-success">Payment</span>
+              {% else %}
+                <span class="badge rounded-pill bg-purple">Invoice</span>
+              {% endif %}
+            </td>
 
-  <div class="col-md-3 col-6">
-    <div class="card shadow-sm border-0 h-100">
-      <div class="card-body d-flex align-items-center">
-        <div class="me-3 bg-danger rounded p-3 text-white">⚠️</div>
-        <div>
-          <small class="text-muted">Pending</small>
-          <h4 class="fw-bold mb-0">{{ pending_count }}</h4>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+            <td>
+              <div class="ref-main">{{ r.reference_main }}</div>
+              {% if r.reference_sub %}
+                <div class="ref-sub">{{ r.reference_sub }}</div>
+              {% endif %}
 
-<!-- ================= FILTERS (WORKING) ================= -->
-<form method="GET" class="card shadow-sm border-0 mb-4">
-  <div class="card-body">
-    <div class="row g-2 align-items-center">
+              <div class="mt-1 d-flex gap-3 small">
+                <a href="#" class="txn-open text-primary"><i class="bi bi-eye-fill"></i> View</a>
+                {% if r.pdf_url %}
+                  <a href="{{ r.pdf_url }}" class="text-danger" target="_blank" rel="noopener">
+                    <i class="bi bi-file-earmark-pdf-fill"></i> PDF
+                  </a>
+                {% endif %}
+              </div>
+            </td>
 
-      <div class="col-md-5">
-        <input name="q" value="{{ q }}" class="form-control"
-               placeholder="Search by Reference or Invoice ID...">
-      </div>
+            <td class="text-nowrap">
+              {{ r.date.strftime("%Y-%m-%d %H:%M") if r.date else "" }}
+            </td>
 
-      <div class="col-md-3">
-        <select name="status" class="form-select">
-          <option value="">All Status</option>
-          <option value="paid" {% if status=='paid' %}selected{% endif %}>Paid</option>
-          <option value="pending" {% if status=='pending' %}selected{% endif %}>Pending</option>
-        </select>
-      </div>
+            <td class="text-nowrap">
+              {% if (r.status or '')|lower == 'paid' %}
+                <span class="badge bg-success">PAID</span>
+              {% else %}
+                <span class="badge bg-warning text-dark">PENDING</span>
+              {% endif %}
+            </td>
 
-      <div class="col-md-3">
-        <select name="days" class="form-select">
-          <option value="">All time</option>
-          <option value="7" {% if days==7 %}selected{% endif %}>Last 7 days</option>
-          <option value="30" {% if days==30 %}selected{% endif %}>Last 30 days</option>
-        </select>
-      </div>
+            <td class="text-nowrap">{{ r.method or "—" }}</td>
 
-      <div class="col-md-1 text-end">
-        <select name="per_page" class="form-select" onchange="this.form.submit()">
-          {% for opt in per_page_options %}
-            <option value="{{ opt }}" {% if opt==per_page %}selected{% endif %}>{{ opt }}</option>
+            <td class="text-end fw-bold">{{ "{:,.2f}".format(r.amount or 0) }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="text-center py-4 text-muted">No transactions found</td>
+          </tr>
           {% endfor %}
-        </select>
-      </div>
+        </tbody>
+      </table>
     </div>
   </div>
-</form>
 
-<!-- ================= TABLE (DESKTOP) ================= -->
-<div class="card shadow-sm txn-card d-none d-md-block">
-  <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0 txn-table">
-      <thead class="table-purple text-white">
-        <tr>
-          <th>Type</th>
-          <th>Reference</th>
-          <th>Date</th>
-          <th>Status</th>
-          <th>Method</th>
-          <th class="text-end">Amount (JMD)</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for r in rows %}
-        <tr class="transaction-row" data-url="{{ r.view_url }}">
-          <td>
-            {% if r.type=='payment' %}
-              <span class="badge rounded-pill bg-success">Payment</span>
-            {% else %}
-              <span class="badge rounded-pill bg-purple">Invoice</span>
-            {% endif %}
-          </td>
-          <td>
-            <div class="ref-main">{{ r.reference_main }}</div>
-            {% if r.reference_sub %}<div class="ref-sub">{{ r.reference_sub }}</div>{% endif %}
-            <a href="#" class="txn-view small text-primary">👁 View</a>
-            {% if r.pdf_url %}
-              <a href="{{ r.pdf_url }}" target="_blank" class="small text-danger ms-2">📄 PDF</a>
-            {% endif %}
-          </td>
-          <td>{{ r.date.strftime("%Y-%m-%d %H:%M") }}</td>
-          <td>
-            {% if r.status|lower=='paid' %}
+  <!-- Mobile cards -->
+  <div class="d-md-none">
+    {% for r in rows %}
+      <div class="card shadow-sm mb-3 transaction-card" data-url="{{ r.view_url }}" data-pdf="{{ r.pdf_url }}">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="badge {% if r.type=='payment' %}bg-success{% else %}bg-purple{% endif %} rounded-pill">
+              {{ r.type|title }}
+            </span>
+            {% if (r.status or '')|lower == 'paid' %}
               <span class="badge bg-success">PAID</span>
             {% else %}
               <span class="badge bg-warning text-dark">PENDING</span>
             {% endif %}
-          </td>
-          <td>{{ r.method or "—" }}</td>
-          <td class="text-end fw-bold">{{ "{:,.2f}".format(r.amount) }}</td>
-        </tr>
-      {% else %}
-        <tr><td colspan="6" class="text-center py-4 text-muted">No transactions found</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+          </div>
+
+          <div class="mt-2 fw-bold">{{ r.reference_main }}</div>
+          {% if r.reference_sub %}<div class="small text-muted">{{ r.reference_sub }}</div>{% endif %}
+
+          <div class="small text-muted mt-2">
+            {{ r.date.strftime("%Y-%m-%d %H:%M") if r.date else "" }}
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <div class="fw-bold">J$ {{ "{:,.2f}".format(r.amount or 0) }}</div>
+            <div class="text-muted">{{ r.method or "—" }}</div>
+          </div>
+
+          <div class="mt-2 d-flex gap-3 small">
+            <a href="#" class="txn-open text-primary"><i class="bi bi-eye-fill"></i> View</a>
+            {% if r.pdf_url %}
+              <a href="{{ r.pdf_url }}" class="text-danger" target="_blank" rel="noopener">
+                <i class="bi bi-file-earmark-pdf-fill"></i> PDF
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
   </div>
+
+  <!-- Pagination (preserve filters) -->
+  {% if total_pages > 1 %}
+  <nav class="d-flex justify-content-center mt-3" aria-label="Transactions pagination">
+    <ul class="pagination pagination-sm mb-0">
+      <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('customer.transactions_all', page=page-1, per_page=per_page, q=q, status=status, days=days) }}">
+          &laquo;
+        </a>
+      </li>
+
+      <li class="page-item disabled">
+        <span class="page-link">Page {{ page }} of {{ total_pages }}</span>
+      </li>
+
+      <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+        <a class="page-link"
+           href="{{ url_for('customer.transactions_all', page=page+1, per_page=per_page, q=q, status=status, days=days) }}">
+          &raquo;
+        </a>
+      </li>
+    </ul>
+  </nav>
+  {% endif %}
+
 </div>
 
-<!-- ================= MOBILE CARD VIEW ================= -->
-<div class="d-md-none">
-  {% for r in rows %}
-  <div class="card mb-3 shadow-sm transaction-card" data-url="{{ r.view_url }}">
-    <div class="card-body">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <span class="badge {% if r.type=='payment' %}bg-success{% else %}bg-purple{% endif %}">
-          {{ r.type|title }}
-        </span>
-        {% if r.status|lower=='paid' %}
-          <span class="badge bg-success">PAID</span>
-        {% else %}
-          <span class="badge bg-warning text-dark">PENDING</span>
-        {% endif %}
-      </div>
+<!-- ================= RIGHT SLIDE PANEL (MOCKUP STYLE) ================= -->
+<div class="txn-overlay" id="txnOverlay" aria-hidden="true"></div>
 
-      <h6 class="fw-bold mb-1">{{ r.reference_main }}</h6>
-      {% if r.reference_sub %}<div class="small text-muted">{{ r.reference_sub }}</div>{% endif %}
+<aside class="txn-panel" id="txnPanel" aria-hidden="true">
+  <div class="txn-panel-header bg-purple text-white">
+    <div>
+      <div class="small opacity-75">Transaction Details</div>
+      <div class="fw-bold" id="panelTitle">—</div>
+    </div>
+    <button class="btn btn-sm btn-light" id="panelClose" type="button" aria-label="Close">✕</button>
+  </div>
 
-      <div class="small text-muted mt-2">
-        {{ r.date.strftime("%Y-%m-%d %H:%M") }}
-      </div>
+  <div class="txn-panel-body">
+    <div class="txn-panel-meta">
+      <div class="small text-muted">Customer</div>
+      <div class="fw-bold">{{ current_user.full_name }} • {{ current_user.registration_number }}</div>
+    </div>
 
-      <div class="d-flex justify-content-between mt-2">
-        <strong>J$ {{ "{:,.2f}".format(r.amount) }}</strong>
-        <span>{{ r.method or "—" }}</span>
-      </div>
+    <div class="txn-panel-actions">
+      <a href="#" class="btn btn-outline-secondary btn-sm w-100" id="panelPdfBtn" target="_blank" rel="noopener" style="display:none;">
+        <i class="bi bi-file-earmark-pdf"></i> Open PDF
+      </a>
+    </div>
+
+    <div class="txn-panel-content" id="panelBody">
+      <div class="text-center py-5 text-muted">Select a transaction to view details.</div>
     </div>
   </div>
-  {% endfor %}
-</div>
+</aside>
 
-<!-- ================= PAGINATION ================= -->
-{% if total_pages > 1 %}
-<nav class="d-flex justify-content-center mt-3">
-  <ul class="pagination pagination-sm mb-0">
-    <li class="page-item {% if page<=1 %}disabled{% endif %}">
-      <a class="page-link"
-         href="{{ url_for('customer.transactions_all', page=page-1, per_page=per_page, q=q, status=status, days=days) }}">
-        &laquo;
-      </a>
-    </li>
-    <li class="page-item disabled">
-      <span class="page-link">Page {{ page }} of {{ total_pages }}</span>
-    </li>
-    <li class="page-item {% if page>=total_pages %}disabled{% endif %}">
-      <a class="page-link"
-         href="{{ url_for('customer.transactions_all', page=page+1, per_page=per_page, q=q, status=status, days=days) }}">
-        &raquo;
-      </a>
-    </li>
-  </ul>
-</nav>
-{% endif %}
-
-</div>
-
-<!-- ================= RIGHT SLIDE PANEL ================= -->
-<div id="txnSidePanel" class="txn-side-panel">
-  <div class="panel-header bg-purple text-white">
-    <strong>Invoice Details</strong>
-    <button class="btn-close btn-close-white" id="closePanel"></button>
-  </div>
-  <div id="panelBody" class="p-3">
-    <div class="text-center text-muted py-5">Select a transaction to view details</div>
-  </div>
-</div>
-
-<!-- ================= JS FOR PANEL + CLICK ================= -->
 <script>
-document.addEventListener("click", async (e) => {
-  const row = e.target.closest(".transaction-row, .transaction-card");
-  if (!row) return;
-
-  const url = row.dataset.url;
-  const panel = document.getElementById("txnSidePanel");
+(function(){
+  const panel = document.getElementById("txnPanel");
+  const overlay = document.getElementById("txnOverlay");
+  const closeBtn = document.getElementById("panelClose");
   const body = document.getElementById("panelBody");
+  const title = document.getElementById("panelTitle");
+  const pdfBtn = document.getElementById("panelPdfBtn");
 
-  panel.classList.add("open");
-  body.innerHTML = `<div class="text-center text-muted py-5">Loading…</div>`;
-
-  try {
-    const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" }});
-    body.innerHTML = await res.text();
-  } catch (err) {
-    body.innerHTML = `<div class="alert alert-danger">Failed to load.</div>`;
+  function openPanel() {
+    panel.classList.add("open");
+    overlay.classList.add("show");
+    panel.setAttribute("aria-hidden", "false");
+    overlay.setAttribute("aria-hidden", "false");
+    document.body.classList.add("no-scroll");
   }
-});
 
-document.getElementById("closePanel").addEventListener("click", () => {
-  document.getElementById("txnSidePanel").classList.remove("open");
-});
+  function closePanel() {
+    panel.classList.remove("open");
+    overlay.classList.remove("show");
+    panel.setAttribute("aria-hidden", "true");
+    overlay.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("no-scroll");
+  }
+
+  async function loadDetails(url) {
+    body.innerHTML = `
+      <div class="p-3">
+        <div class="skeleton sk-line"></div>
+        <div class="skeleton sk-line"></div>
+        <div class="skeleton sk-line w-75"></div>
+        <div class="skeleton sk-box mt-3"></div>
+      </div>
+    `;
+    try {
+      const res = await fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+      if (!res.ok) {
+        body.innerHTML = `<div class="alert alert-danger m-3 mb-0">Failed to load (HTTP ${res.status}).</div>`;
+        return;
+      }
+      body.innerHTML = await res.text();
+    } catch (e) {
+      body.innerHTML = `<div class="alert alert-danger m-3 mb-0">Failed to load details.</div>`;
+    }
+  }
+
+  document.addEventListener("click", (e) => {
+    const trigger = e.target.closest(".transaction-row, .transaction-card");
+    const openLink = e.target.closest(".txn-open");
+    if (!trigger && !openLink) return;
+
+    // if they clicked the "View" link, still open panel
+    const row = openLink ? e.target.closest(".transaction-row, .transaction-card") : trigger;
+    if (!row) return;
+
+    e.preventDefault();
+
+    const url = row.getAttribute("data-url");
+    const pdf = row.getAttribute("data-pdf") || "";
+    const ref = row.querySelector(".ref-main") ? row.querySelector(".ref-main").innerText.trim() : "Details";
+
+    title.textContent = ref;
+
+    if (pdf) {
+      pdfBtn.style.display = "";
+      pdfBtn.href = pdf;
+    } else {
+      pdfBtn.style.display = "none";
+      pdfBtn.href = "#";
+    }
+
+    openPanel();
+    if (url) loadDetails(url);
+  });
+
+  closeBtn.addEventListener("click", closePanel);
+  overlay.addEventListener("click", closePanel);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closePanel();
+  });
+})();
 </script>
 
 <style>
-.bg-purple{background:#4A148C!important;}
-.table-purple th{background:#4A148C;color:white;}
-.txn-wrap{max-width:1100px;}
+  :root{
+    --fafl-purple:#4A148C;
+  }
+  .bg-purple{ background: var(--fafl-purple) !important; }
+  .btn-purple{ background: var(--fafl-purple); color:#fff; border:1px solid var(--fafl-purple); }
+  .btn-purple:hover{ filter: brightness(.92); color:#fff; }
 
-.txn-side-panel{
-  position:fixed; top:0; right:-420px; width:420px; height:100vh;
-  background:white; box-shadow:-3px 0 10px rgba(0,0,0,.15);
-  transition:.3s ease; z-index:1050; overflow-y:auto;
-}
-.txn-side-panel.open{ right:0; }
-.panel-header{padding:.75rem 1rem; display:flex; justify-content:space-between; align-items:center;}
+  .txn-wrap{ max-width:1100px; }
+  .pill-icon{ width:48px; height:48px; display:flex; align-items:center; justify-content:center; border-radius:14px; font-size:20px; }
 
-.transaction-row:hover,.transaction-card:hover{cursor:pointer;background:#f6f3fb;}
-.ref-main{font-weight:700;}
-.ref-sub{font-size:.82rem;color:#6b7280;}
+  .chip{
+    border:1px solid #e5e7eb;
+    background:#f8fafc;
+    padding:.35rem .6rem;
+    border-radius:999px;
+  }
+
+  .txn-card{
+    overflow:hidden;
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+  }
+  .txn-table thead th{ padding:.85rem .85rem; white-space:nowrap; }
+  .txn-table tbody td{ padding:.8rem .85rem; }
+  .table-purple th{ background: var(--fafl-purple) !important; color:#fff; }
+  .transaction-row:hover td{ background:#f7f3ff; cursor:pointer; }
+
+  .ref-main{ font-weight:800; }
+  .ref-sub{ font-size:.82rem; color:#6b7280; }
+
+  /* Panel + overlay like mockup */
+  .no-scroll{ overflow:hidden; }
+  .txn-overlay{
+    position:fixed; inset:0;
+    background:rgba(0,0,0,.35);
+    opacity:0; pointer-events:none;
+    transition:.2s ease;
+    z-index:1049;
+  }
+  .txn-overlay.show{ opacity:1; pointer-events:auto; }
+
+  .txn-panel{
+    position:fixed; top:0; right:-460px;
+    width:460px; height:100vh;
+    background:#fff;
+    box-shadow:-12px 0 30px rgba(0,0,0,.18);
+    transition:.25s ease;
+    z-index:1050;
+    display:flex; flex-direction:column;
+  }
+  .txn-panel.open{ right:0; }
+
+  .txn-panel-header{
+    padding:14px 16px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .txn-panel-body{ padding:14px 16px; overflow:auto; }
+  .txn-panel-meta{
+    padding:12px 12px;
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+    background:#fafafa;
+    margin-bottom:12px;
+  }
+  .txn-panel-actions{ margin-bottom:12px; }
+
+  /* Make whatever your partial returns look “premium” */
+  .txn-panel-content .card{ border-radius:14px !important; }
+  .txn-panel-content table{ width:100%; }
+  .txn-panel-content .table{ margin-bottom:0; }
+  .txn-panel-content .table th{ background:#f3f4f6; }
+  .txn-panel-content hr{ opacity:.15; }
+
+  /* Skeleton */
+  .skeleton{ background:linear-gradient(90deg,#f2f2f2,#e9e9e9,#f2f2f2); background-size:200% 100%; animation:shimmer 1.2s infinite; border-radius:10px; }
+  .sk-line{ height:14px; margin:10px 0; }
+  .sk-box{ height:140px; }
+  .w-75{ width:75%; }
+  @keyframes shimmer{ 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+  @media (max-width: 576px){
+    .txn-panel{ width:100%; right:-100%; }
+  }
 </style>
 {% endblock %}
+

@@ -329,16 +329,43 @@ footer {
   margin-left: auto;
   margin-right: auto;
 }
-.status-progress{
-  height: 6px;
-  background: #e9ecef;
-  border-radius: 999px;
-  overflow: hidden;
+.status-badge{
+  font-weight: 700;
+  font-size: .72rem;
+  padding: .35rem .55rem;
+  border-radius: .45rem;
 }
 
+/* progress bar base */
+.status-progress{
+  height: 7px;
+  border-radius: 999px;
+  background: #e5e7eb; /* light gray track */
+  overflow: hidden;
+  margin-top: .35rem;
+}
 .status-progress .fill{
   height: 100%;
   border-radius: 999px;
-  transition: width .25s ease-in-out;
 }
+
+/* ===== COLOR MAP ===== */
+.status-delivered { background: #16a34a !important; color: #fff !important; }
+.status-progress.status-delivered .fill{ background: #16a34a !important; }
+
+.status-overseas { background: #dc2626 !important; color: #fff !important; }
+.status-progress.status-overseas .fill{ background: #dc2626 !important; }
+
+.status-local_port { background: #facc15 !important; color: #111827 !important; }
+.status-progress.status-local_port .fill{ background: #facc15 !important; }
+
+.status-ready { background: #2563eb !important; color: #fff !important; }
+.status-progress.status-ready .fill{ background: #2563eb !important; }
+
+.status-unassigned { background: #4a148c !important; color: #fff !important; }
+.status-progress.status-unassigned .fill{ background: #4a148c !important; }
+
+/* fallback */
+.status-other { background: #6b7280 !important; color: #fff !important; }
+.status-progress.status-other .fill{ background: #6b7280 !important; }
 

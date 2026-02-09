@@ -329,4 +329,16 @@ footer {
   margin-left: auto;
   margin-right: auto;
 }
+.status-progress{
+  height: 6px;
+  background: #e9ecef;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.status-progress .fill{
+  height: 100%;
+  border-radius: 999px;
+  transition: width .25s ease-in-out;
+}
 

@@ -323,7 +323,10 @@
                   {% set status = pkg.status %}
                   {% include 'partials/status_vars.html' %}
 
-                  <div class="pkg-status-bar bar-{{ progress_color }}"></div>
+                  {% set pc = (progress_color|default('secondary')) %}
+                  {% set pc = pc|replace('bg-','')|replace('text-bg-','') %}
+                  <div class="pkg-status-bar bar-{{ pc }}"></div>
+
 
                   <strong>{{ pkg.house_awb or '-' }}</strong><br>
                   {% include 'partials/status_tracker.html' with context %}
@@ -1622,19 +1625,54 @@ $(document).ready(function () {
     });
   }
 
-  // Messages: ONLY use DataTables if you are NOT doing server-side pagination for messages
-  // If you ARE doing server-side pagination, remove this whole block and rely on your backend search.
-  let msgTable = null;
-  if ($('#messagesTable').length) {
-    msgTable = $('#messagesTable').DataTable({
-      dom: 'rtip' // hide built-in search box
-    });
+  // -----------------------------
+// Messages: server-side search (NO DataTables)
+// -----------------------------
+(function initServerSideMessageSearch() {
+  const input = document.getElementById('msgSearchInput');
+  if (!input) return;
 
-    // hook custom search input
-    $('#msgSearchInput').on('input', function () {
-      msgTable.search(this.value).draw();
-    });
+  let t = null;
+
+  function goSearch() {
+    const q = (input.value || '').trim();
+
+    const url = new URL(window.location.href);
+
+    // stay on Messages tab
+    url.searchParams.set('tab', 'messages');
+
+    // reset to page 1 on new search
+    url.searchParams.set('msg_page', '1');
+
+    // keep per-page if it exists
+    if (!url.searchParams.get('msg_per_page')) {
+      // optional: keep current select value if you want
+      // url.searchParams.set('msg_per_page', '10');
+    }
+
+    // set/clear q
+    if (q) url.searchParams.set('msg_q', q);
+    else url.searchParams.delete('msg_q');
+
+    window.location.href = url.toString();
   }
+
+  // Enter triggers search immediately
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      goSearch();
+    }
+  });
+
+  // Debounced search while typing (optional)
+  input.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(goSearch, 450);
+  });
+})();
+
 
   // Scheduled deliveries (client-side ok)
   if ($('#scheduledeliveryTable').length) {
@@ -2258,6 +2296,25 @@ document.getElementById('addSinglePackageForm')
       `;
 
       tbody.insertAdjacentHTML('afterbegin', row);
+      // re-wire checkbox listeners for newly added row
+const newCheckbox = tbody.querySelector('tr:first-child .pkg-check');
+if (newCheckbox) {
+  newCheckbox.addEventListener("change", () => {
+    const selectAll = document.getElementById("pkgSelectAll");
+    const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+
+    const checked = document.querySelectorAll(".pkg-check:checked").length;
+    if (bulkDeleteBtn) bulkDeleteBtn.disabled = checked === 0;
+    if (selectAll && !newCheckbox.checked) selectAll.checked = false;
+  });
+}
+
+// enable button if any checked
+const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+if (bulkDeleteBtn) {
+  const checked = document.querySelectorAll(".pkg-check:checked").length;
+  bulkDeleteBtn.disabled = checked === 0;
+}
 
       // ✅ close modal & reset
       bootstrap.Modal.getInstance(document.getElementById('addSinglePackageModal')).hide();

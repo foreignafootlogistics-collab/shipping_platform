@@ -312,9 +312,11 @@
                              class="package-checkbox"                          
                              onclick="updateShipmentHeaderCheckbox()">
                     </td>
-                    <td class="text-center">
+                    <td class="text-center align-middle">
+
+                      <!-- Smaller calculator -->
                       <button type="button"
-                              class="btn btn-sm btn-outline-primary"
+                              class="btn btn-sm btn-outline-primary mb-1"
                               data-bs-toggle="modal"
                               data-bs-target="#chargesModal"
                               data-pkg-id="{{ pkg.id }}"
@@ -323,7 +325,19 @@
                               data-value="{{ pkg.value if pkg.value is not none else 0 }}">
                         <i class="bi bi-calculator"></i>
                       </button>
+
+                      <br>
+
+                      <!-- Attachment button BELOW calculator -->
+                      <button type="button"
+                              class="btn btn-sm btn-outline-secondary js-open-attach"
+                              data-pkg-id="{{ pkg.id }}"
+                              title="Attach invoice / files">
+                        <i class="bi bi-paperclip"></i>
+                      </button>
+
                     </td>
+
 
                     <td>
                       <strong>{{ pkg.full_name }}</strong><br>
@@ -369,18 +383,7 @@
                         {% endif %}
                       </div>
 
-                      <div class="mt-2">
-                        <button type="button"
-                                class="btn btn-sm btn-outline-secondary js-open-attach"
-                                data-pkg-id="{{ pkg.id }}"
-                                title="Attach invoice / files">
-                          <i class="bi bi-paperclip"></i>
-                        </button>
-
-                      </div>
                     </td>
-
-
                     <td>{{ pkg.date_received.strftime('%Y-%m-%d') if pkg.date_received else '-' }}</td>
                     <td><input id="weight_{{ pkg.id }}" type="number" step="0.01" min="0" class="form-control form-control-sm text-end" value="{{ pkg.weight or 0 }}"></td>
                     <td>
@@ -547,6 +550,8 @@
 
             <div class="modal-body">
               <input type="hidden" id="attachPkgId" value="">
+              <input type="hidden" id="attachCsrfToken" value="{{ csrf_token() }}">
+
               <div class="small text-muted mb-2">
                 Package ID: <strong id="attachPkgLabel">—</strong>
               </div>
@@ -1208,7 +1213,6 @@ function validateMoveShipmentForm() {
       await res.json();
 
       alert(`Saved charges for package ${pkgId}.`);
-      // Optional: close modal after save
       const modalObj = bootstrap.Modal.getInstance(chargesModal);
       if (modalObj) modalObj.hide();
     } catch (err) {
@@ -1219,17 +1223,14 @@ function validateMoveShipmentForm() {
 
 })();
 
+
 /* ================================
    BULK INVOICE PREVIEW + FINALIZE
    ================================ */
 async function openInvoicePreview(selectedPkgIds) {
-  console.log('openInvoicePreview, ids =', selectedPkgIds);
-
   const data = await postJSON("{{ url_for('logistics.bulk_invoice_preview') }}", {
     package_ids: selectedPkgIds
   });
-
-  console.log('bulk_invoice_preview response:', data);
 
   const tbody = document.querySelector('#inv-prev-tbody');
   if (!tbody) {
@@ -1272,18 +1273,13 @@ async function openInvoicePreview(selectedPkgIds) {
 }
 
 async function finalizeInvoicesFromModal(ev) {
-  // This will stop any default form submit behaviour
   if (ev && ev.preventDefault) ev.preventDefault();
-
-  console.log('Finalize button clicked');
 
   const checks = [...document.querySelectorAll('.inv-user:checked')];
   const selections = checks.map(ch => ({
     user_id: Number(ch.dataset.uid),
     package_ids: ch.dataset.pkgs.split(',').map(x => Number(x))
   }));
-
-  console.log('Selections:', selections);
 
   if (!selections.length) {
     alert('Select at least one customer.');
@@ -1295,7 +1291,6 @@ async function finalizeInvoicesFromModal(ev) {
       "{{ url_for('logistics.bulk_invoice_finalize_json') }}",
       { selections }
     );
-    console.log('bulk_invoice_finalize_json response:', res);
 
     if (res.error) {
       alert('⚠️ Server error: ' + res.error);
@@ -1303,14 +1298,13 @@ async function finalizeInvoicesFromModal(ev) {
     }
 
     alert(`Created ${res.created} invoice(s).`);
-
-    // reload to show updated invoice_id on packages / invoice list
     setTimeout(() => window.location.reload(), 500);
   } catch (err) {
     console.error('Error calling finalize-json:', err);
     alert('⚠️ Error generating invoices: ' + (err.message || err));
   }
 }
+
 
 /* =====================================
    SHIPMENT FINANCE INVOICE (OPTION A)
@@ -1343,7 +1337,6 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
       body: JSON.stringify({ package_ids: packageIds || [] })
     });
 
-    // ✅ safer: if server returns HTML/redirect, this will throw and hit catch
     const data = await r.json();
 
     if (!r.ok || !data.ok) {
@@ -1355,19 +1348,14 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
     const fmt2 = (n) => Number(n || 0).toFixed(2);
 
     const usd_to_jmd = Number(data.usd_to_jmd || 0);
-
     const pkgCount = Number(data.package_count || 0);
 
     const freightUsd = Number(data.freight_usd || 0);
     const freightJmd = freightUsd * usd_to_jmd;
-
-    // ✅ backend returns rate_usd_per_kg (NOT base_rate_usd_per_kg)
     const rateUsdPerKg = Number(data.rate_usd_per_kg || 0);
 
-    // Build rows (Freight + Service Bands)
     let rowsHtml = "";
 
-    // ✅ Freight row (Count = total packages)
     rowsHtml += `
       <tr>
         <td><strong>Freight</strong></td>
@@ -1378,7 +1366,6 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
       </tr>
     `;
 
-    // Service bands
     let serviceUsdSum = 0;
     let serviceJmdSum = 0;
 
@@ -1402,7 +1389,6 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
       `;
     });
 
-    // ✅ Service Total row (sum of band lines ONLY)
     rowsHtml += `
       <tr class="table-light fw-bold">
         <td colspan="3" class="text-end">Service Total</td>
@@ -1411,7 +1397,6 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
       </tr>
     `;
 
-    // ✅ totals for the table (Freight + Service)
     const tableUsdTotal = freightUsd + serviceUsdSum;
     const tableJmdTotal = freightJmd + serviceJmdSum;
 
@@ -1531,10 +1516,10 @@ document.getElementById('btnPrintShipmentFinance')?.addEventListener('click', fu
   w.print();
 });
 
+
 /* ============================
    SHIPMENT TABLE / BULK ACTION
    ============================ */
-
 let dt = null;
 let dtInitialized = false;
 
@@ -1552,8 +1537,8 @@ function initShipmentTable() {
     lengthMenu: [[10, 25, 50, 100, 500, 1000], [10, 25, 50, 100, 500, 1000]],
     dom:
       "<'row g-2 align-items-center mb-2'<'col-md-12 text-md-end'B>>" +
-  "rt" +
-    "<'row align-items-center mt-2'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
+      "rt" +
+      "<'row align-items-center mt-2'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
     order: [[2, 'asc']],
     buttons: [
       { extend: 'copyHtml5',  className: 'btn btn-sm btn-purple'   },
@@ -1564,19 +1549,11 @@ function initShipmentTable() {
     columnDefs: [
       { orderable: false, targets: [0, 1] }
     ],
-    rowCallback: function (row) {
-      if ($(row).hasClass('no-dt') || $(row).hasClass('d-none')) {
-        return false;
-      }
-    },
     language: { emptyTable: 'No packages in this shipment.' }
   });
 
-  // Sync custom length dropdown with DataTables
-  $('#shipmentLengthSelect').on('change', function () {
-    const len = Number(this.value);
-    if (dt) dt.page.len(len).draw();
-  });
+  // ✅ Make the custom dropdown always control DT length
+  bindShipmentLengthSelect();
 
   // stop header checkbox cell from triggering sort
   $(document)
@@ -1588,19 +1565,41 @@ function initShipmentTable() {
   // whenever DataTables redraws (paging/search), resync header checkbox
   dt.on('draw.shipment', function () {
     updateShipmentHeaderCheckbox();
+    syncShipmentLengthSelect();
   });
-
-  // style length dropdown
-  $('#shipmentTable_wrapper .dataTables_length select')
-    .addClass('form-select form-select-sm');
-  $('#shipmentTable_wrapper .dataTables_length label')
-    .addClass('mb-0 small');
 
   dtInitialized = true;
 
-  // initial sync
+  // initial syncs
   updateShipmentHeaderCheckbox();
+  syncShipmentLengthSelect();
 }
+
+// ✅ bind once; safe even if called multiple times
+function bindShipmentLengthSelect() {
+  const sel = document.getElementById('shipmentLengthSelect');
+  if (!sel) return;
+
+  if (sel.dataset.bound === "1") return;
+  sel.dataset.bound = "1";
+
+  sel.addEventListener('change', function () {
+    const len = Number(this.value || 10);
+    if (dt) dt.page.len(len).draw();
+  });
+
+  // Set dropdown to current DT length (or default)
+  syncShipmentLengthSelect();
+}
+
+function syncShipmentLengthSelect() {
+  const sel = document.getElementById('shipmentLengthSelect');
+  if (!sel) return;
+
+  const current = (dt && typeof dt.page.len === 'function') ? dt.page.len() : 10;
+  sel.value = String(current);
+}
+
 
 // 🔑 GLOBAL handler so we can bind it anywhere
 async function handleShipmentApply(e) {
@@ -1623,32 +1622,24 @@ async function handleShipmentApply(e) {
   // Collect selected package IDs (use DataTables if active)
   let ids = [];
   if (dt && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-    // Use DataTables API so it can see all rows, not just the current page
     ids = dt.$('.package-checkbox:checked').map(function () {
       return this.value;
     }).get();
   } else {
-    // Fallback: plain DOM query
     ids = Array.from(document.querySelectorAll('.package-checkbox:checked'))
                .map(cb => cb.value);
   }
 
-  console.log('handleShipmentApply action=', action, 'ids=', ids);
-
-  // ✅ Finance Invoice (Supplier / Shipment totals) → OPTION A entire shipment
-
+  // ✅ Finance Invoice → entire shipment
   if (action === 'finance_invoice') {
     const shipmentId = getShipmentIdFromUrl();
-
     if (!shipmentId) {
       alert("⚠️ No shipment selected (missing shipment_id in URL).");
-    return;
+      return;
     }
-
     await openShipmentFinanceInvoicePreviewJSON(shipmentId, []);
     return;
   }
-
 
   // All other actions require selection
   if (!ids.length) {
@@ -1656,7 +1647,7 @@ async function handleShipmentApply(e) {
     return;
   }
 
-  // 🔹 Generate Invoice (Customer) → JSON preview modal
+  // Generate Invoice → JSON preview modal
   if (action === 'generate_invoice') {
     try {
       await openInvoicePreview(ids);
@@ -1666,37 +1657,31 @@ async function handleShipmentApply(e) {
     }
     return;
   }
-  
-  // 🔹 Move to another shipment → open "Move" modal
+
+  // Move → open modal
   if (action === 'move') {
-    // 1) Clear previous injected inputs
     const holder = document.getElementById('movePackageIdsContainer');
     if (holder) holder.innerHTML = '';
 
-    // 2) Inject one hidden input per selected pkg
     ids.forEach(id => {
       const input = document.createElement('input');
       input.type = 'hidden';
-      input.name = 'package_ids';   // IMPORTANT: matches getlist('package_ids')
+      input.name = 'package_ids';
       input.value = id;
       holder.appendChild(input);
     });
 
-    // 3) Also ensure from_shipment_id is correct (optional safety)
     const fromInput = document.querySelector('#moveShipmentForm input[name="from_shipment_id"]');
     if (fromInput) {
       fromInput.value = getShipmentIdFromUrl() || fromInput.value || 0;
     }
 
-    // 4) Show modal
     const modalEl = document.getElementById('moveShipmentModal');
     if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
-
-    return; // do not submit shipmentForm
+    return;
   }
 
-
-  // For all other actions, attach hidden inputs then POST to /bulk-action as before
+  // Default: submit shipmentForm with hidden package_ids
   const oldHolder = document.getElementById('selectedIdsContainer');
   if (oldHolder) oldHolder.remove();
 
@@ -1711,19 +1696,13 @@ async function handleShipmentApply(e) {
   });
   form.appendChild(holder);
 
-  // Optional: handle a create_shipment action
-  if (action === 'create_shipment') {
-    window.location.href = "{{ url_for('logistics.logistics_dashboard', tab='view_packages', create_shipment=1) }}";
-    return;
-  }
-
   if (!confirm(`Perform "${action}" on ${ids.length} package(s)?`)) {
     return;
   }
 
-  // Normal submit for non-invoice, non-move actions
   form.submit();
 }
+
 
 // ✅ Guard jQuery usage so page never crashes if jQuery/DataTables fails to load
 (function () {
@@ -1742,199 +1721,13 @@ async function handleShipmentApply(e) {
     // Shipment Log table
     if (document.querySelector('#shipmentLog.tab-pane.show.active, #shipmentLog.tab-pane.active')) {
       initShipmentTable();
+    } else {
+      // still bind length select so it's ready if DT initializes later
+      bindShipmentLengthSelect();
     }
   });
 })();
 
-
-/* ======================
-   VARIOUS SAVE HELPERS
-   ====================== */
-
-function readRowInputs(pkgId) {
-  const catEl     = document.getElementById(`cat_${pkgId}`);
-  const valEl     = document.getElementById(`pricing_value_${pkgId}`) || document.getElementById(`value_${pkgId}`);
-  const weightEl  = document.getElementById(`pricing_weight_${pkgId}`) || document.getElementById(`weight_${pkgId}`);
-
-  const category  = (catEl && catEl.value) ? catEl.value : 'Other';
-  const invoice   = parseFloat((valEl && valEl.value) ? valEl.value : 0) || 0;
-  const weight    = parseFloat((weightEl && weightEl.value) ? weightEl.value : 0) || 0;
-
-  return { category, invoice, weight };
-}
-
-async function runCalculator(pkgId) {
-  const cat     = document.getElementById(`cat_${pkgId}`).value;
-  const invoice = parseFloat(document.getElementById(`pricing_value_${pkgId}`).value || 0);
-  const weight  = parseFloat(document.getElementById(`pricing_weight_${pkgId}`).value || 0);
-
-  try {
-    const res = await fetch("{{ url_for('logistics.api_calculate_charges') }}", {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token() }}' },
-      body: JSON.stringify({ category: cat, invoice: invoice, weight: weight })
-    });
-    if (!res.ok) throw new Error('Network response was not ok');
-    const data = await res.json();
-
-    document.getElementById(`duty_${pkgId}`).value          = data.duty.toFixed(2);
-    document.getElementById(`scf_${pkgId}`).value           = data.scf.toFixed(2);
-    document.getElementById(`envl_${pkgId}`).value          = data.envl.toFixed(2);
-    document.getElementById(`caf_${pkgId}`).value           = data.caf.toFixed(2);
-    document.getElementById(`gct_${pkgId}`).value           = data.gct.toFixed(2);
-    document.getElementById(`stamp_${pkgId}`).value         = data.stamp.toFixed(2);
-    document.getElementById(`customs_total_${pkgId}`).value = data.customs_total.toFixed(2);
-    document.getElementById(`freight_${pkgId}`).value       = data.freight.toFixed(2);
-    document.getElementById(`handling_${pkgId}`).value      = data.handling.toFixed(2);
-    document.getElementById(`freight_total_${pkgId}`).value = data.freight_total.toFixed(2);
-    document.getElementById(`grandtotal_${pkgId}`).value    = data.grand_total.toFixed(2);
-  } catch (err) {
-    console.error(err);
-    alert('⚠️ Error calculating charges. See console.');
-  }
-}
-
-const updateUrlTemplate = "{{ url_for('logistics.api_update_package', pkg_id=0) }}";
-
-async function savePricing(pkgId) {
-  const invoice = parseFloat(document.getElementById(`pricing_value_${pkgId}`).value || 0);
-  const grand   = parseFloat(document.getElementById(`grandtotal_${pkgId}`).value || 0);
-
-  const updateUrl = updateUrlTemplate.replace(/\/0$/, `/${pkgId}`);
-
-  try {
-    const res = await fetch(updateUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': '{{ csrf_token() }}'
-      },
-      body: JSON.stringify({ value: invoice, amount_due: grand })
-    });
-
-    if (!res.ok) throw new Error('Update API failed');
-    await res.json();
-
-    const amountField = document.getElementById(`amount_due_${pkgId}`);
-    if (amountField) amountField.value = grand.toFixed(2);
-
-    alert(`💾 Package ${pkgId} updated. Amount Due: $${grand.toFixed(2)}`);
-  } catch (err) {
-    console.error(err);
-    alert('⚠️ Error saving pricing. See console.');
-  }
-}
-
-function readNumber(id) {
-  const el = document.getElementById(id);
-  return el ? (parseFloat(el.value || '0') || 0) : 0;
-}
-
-async function saveValueOnly(pkgId) {
-  const invoice = readNumber(`pricing_value_${pkgId}`) || readNumber(`value_${pkgId}`);
-  const url = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace(/\/0$/, `/${pkgId}`);
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': '{{ csrf_token() }}'
-      },
-      body: JSON.stringify({ value: invoice })
-    });
-    if (!res.ok) throw new Error('Save Value Only failed');
-    await res.json();
-
-    alert(`Saved invoice value ($${invoice.toFixed(2)}) for package ${pkgId}.`);
-  } catch (e) {
-    console.error(e);
-    alert('⚠️ Could not save invoice value.');
-  }
-}
-
-async function saveManualCharges(pkgId) {
-  const payload = {
-    category: (document.getElementById(`cat_${pkgId}`)?.value) || undefined,
-    value: readNumber(`pricing_value_${pkgId}`) || readNumber(`value_${pkgId}`),
-    weight: readNumber(`pricing_weight_${pkgId}`) || readNumber(`weight_${pkgId}`),
-    duty: readNumber(`duty_${pkgId}`),
-    scf: readNumber(`scf_${pkgId}`),
-    envl: readNumber(`envl_${pkgId}`),
-    caf: readNumber(`caf_${pkgId}`),
-    gct: readNumber(`gct_${pkgId}`),
-    stamp: readNumber(`stamp_${pkgId}`),
-    customs_total: readNumber(`customs_total_${pkgId}`),
-    freight: readNumber(`freight_${pkgId}`),
-    handling: readNumber(`handling_${pkgId}`),
-    freight_total: readNumber(`freight_total_${pkgId}`),
-    other_charges: readNumber(`other_charges_${pkgId}`),
-    grand_total: (function () {
-      const gt = readNumber(`grandtotal_${pkgId}`);
-      if (gt > 0) return gt;
-      const sum = (
-        readNumber(`customs_total_${pkgId}`) +
-        readNumber(`freight_${pkgId}`) +
-        readNumber(`handling_${pkgId}`) +
-        readNumber(`other_charges_${pkgId}`)
-      );
-      return sum;
-    })()
-  };
-
-  payload.amount_due = payload.grand_total;
-
-  const url = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace(/\/0$/, `/${pkgId}`);
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': '{{ csrf_token() }}'
-      },
-      body: JSON.stringify(payload)
-    });
-    if (!res.ok) throw new Error('Save manual charges failed');
-    await res.json();
-
-    const amountField = document.getElementById(`amount_due_${pkgId}`);
-    if (amountField) amountField.value = (payload.amount_due || 0).toFixed(2);
-
-    const grandEl = document.getElementById(`grandtotal_${pkgId}`);
-    if (grandEl) grandEl.value = (payload.grand_total || 0).toFixed(2);
-
-    alert(`Saved charges for package ${pkgId}.`);
-  } catch (e) {
-    console.error(e);
-    alert('⚠️ Could not save charges.');
-  }
-}
-
-function bindAutoSum(pkgId) {
-  const ids = [
-    `customs_total_${pkgId}`,
-    `freight_${pkgId}`,
-    `handling_${pkgId}`,
-    `other_charges_${pkgId}`
-  ];
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('input', () => {
-      const sum = ids.reduce((acc, x) => acc + readNumber(x), 0);
-      const gt = document.getElementById(`grandtotal_${pkgId}`);
-      if (gt) gt.value = sum.toFixed(2);
-    });
-  });
-}
-
-function togglePricing(pkgId) {
-  const row = document.getElementById('pricing_' + pkgId);
-  if (!row) return;
-  row.classList.toggle('d-none');
-  if (!row.classList.contains('d-none')) bindAutoSum(pkgId);
-}
 
 /* ======================
    UPLOAD SPINNER
@@ -1956,6 +1749,7 @@ function togglePricing(pkgId) {
     if (spinner) spinner.style.display = 'none';
   });
 })();
+
 
 /* ==========================
    UPLOAD PREVIEW TABLE (CSV)
@@ -1983,7 +1777,7 @@ document.addEventListener('DOMContentLoaded', function () {
       getRowCheckboxes().forEach(cb => {
         const tr = cb.closest('tr');
         const isInvalid = tr && tr.classList.contains('table-danger');
-        cb.checked = !isInvalid;   // only non-error rows
+        cb.checked = !isInvalid;
       });
     });
   }
@@ -1992,10 +1786,7 @@ document.addEventListener('DOMContentLoaded', function () {
 // Called by the Confirm form's onsubmit
 function handleConfirmSubmit(e) {
   const table = document.getElementById('previewTable');
-  if (!table) {
-    // no preview table – let submit continue; backend will just bail
-    return true;
-  }
+  if (!table) return true;
 
   const checkboxes = table.querySelectorAll('input.row-select:checked');
   const indices = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
@@ -2006,15 +1797,12 @@ function handleConfirmSubmit(e) {
     return false;
   }
 
-  // Put the selected row indexes into the hidden input as JSON
   const hidden = document.getElementById('selectedIndicesInput');
-  if (hidden) {
-    hidden.value = JSON.stringify(indices);
-  }
+  if (hidden) hidden.value = JSON.stringify(indices);
 
-  // allow the form to submit
   return true;
 }
+
 
 /* ==========================
    SHIPMENT SEARCH MODAL
@@ -2049,18 +1837,17 @@ document.getElementById('shipmentSearchForm')?.addEventListener('submit', async 
   }
 });
 
+
 /* ==========================
    SIMPLE SELECT-ALL HELPERS
    ========================== */
 function toggleShipmentSelectAll(master) {
-  // If DataTables active: apply to all rows (all pages)
   if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
     dt.$('.package-checkbox').prop('checked', master.checked);
     updateShipmentHeaderCheckbox();
     return;
   }
 
-  // fallback: plain DOM
   const tbody = document.querySelector('#shipmentTable tbody');
   if (!tbody) return;
 
@@ -2076,7 +1863,6 @@ function updateShipmentHeaderCheckbox() {
   const tbody  = document.querySelector('#shipmentTable tbody');
   if (!header || !tbody) return;
 
-  // If DataTables active, measure across all rows/pages
   if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
     const all = dt.$('.package-checkbox').length;
     const chk = dt.$('.package-checkbox:checked').length;
@@ -2084,14 +1870,14 @@ function updateShipmentHeaderCheckbox() {
     return;
   }
 
-  // fallback: plain DOM
   const boxes   = tbody.querySelectorAll('.package-checkbox');
   const checked = tbody.querySelectorAll('.package-checkbox:checked');
   header.checked = (boxes.length > 0 && boxes.length === checked.length);
 }
 
+
 /* ==========================
-   PACKAGE ATTACHMENTS (ADMIN) - NEW MODAL
+   PACKAGE ATTACHMENTS (ADMIN)
    ========================== */
 (function attachAdminFilesNew(){
   const modalEl  = document.getElementById('attachInvoiceModal');
@@ -2105,7 +1891,7 @@ function updateShipmentHeaderCheckbox() {
 
   let currentPkgId = null;
 
-  // Open modal: triggered by paperclip icon
+  // Open modal
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('.js-open-attach');
     if (!btn) return;
@@ -2133,10 +1919,8 @@ function updateShipmentHeaderCheckbox() {
       return;
     }
 
-    const csrf =
-      document.querySelector('input[name="csrf_token"]')?.value ||
-      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
-      '';
+    // ✅ guaranteed CSRF (add <input id="attachCsrfToken" value="{{ csrf_token() }}"> in modal)
+    const csrf = document.getElementById('attachCsrfToken')?.value || '';
 
     const fd = new FormData();
     if (csrf) fd.append('csrf_token', csrf);
@@ -2145,10 +1929,8 @@ function updateShipmentHeaderCheckbox() {
 
     if (statusEl) statusEl.textContent = 'Uploading…';
 
-    // ✅ Correct URL for your blueprint:
-    // logistics_bp = /admin/logistics
-    // route = /admin/packages/<id>/attachments
-    const url = `/admin/logistics/admin/packages/${pkgId}/attachments`;
+    // ✅ FIXED URL (removed extra /admin)
+    const url = `/admin/logistics/packages/${pkgId}/attachments`;
 
     let res, data = {};
     try {
@@ -2171,21 +1953,17 @@ function updateShipmentHeaderCheckbox() {
       return;
     }
 
-    // ✅ Optional: refresh page so attachment icons show consistently everywhere
-    // (recommended since attachments are rendered server-side in your template)
     if (statusEl) statusEl.textContent = 'Uploaded!';
     bootstrap.Modal.getInstance(modalEl)?.hide();
 
     setTimeout(() => window.location.reload(), 350);
   }
 
-  // Upload button
   uploadBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     doUpload();
   });
 
-  // Also allow pressing Enter inside modal to upload (optional)
   modalEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -2193,11 +1971,7 @@ function updateShipmentHeaderCheckbox() {
     }
   });
 })();
-
 </script>
-
-
-
 <style>
   .logistics-header { background-color: #4a148c; }
   .logistics-tabs .nav-link { color: #4a148c; font-weight: 500; }

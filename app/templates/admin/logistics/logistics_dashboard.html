@@ -357,17 +357,22 @@
                     <td>
                       <div>{{ pkg.description or '-' }}</div>
 
-                      {# attachments under description #}
+                      {# attachments under description (supports relationship list OR dynamic query) #}
+                      {% set atts = pkg.attachments %}
+                      {% if atts is not none and atts is not sequence and atts.all is defined %}
+                        {% set atts = atts.all() %}
+                      {% endif %}
+
                       <div class="mt-1 d-flex flex-wrap gap-2 pkg-attach-wrap">
-                        {% if pkg.attachments and pkg.attachments|length > 0 %}
-                          {% for a in pkg.attachments %}
+                        {% if atts and atts|length > 0 %}
+                          {% for a in atts %}
                             <a class="badge text-decoration-none"
                                style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
                                target="_blank"
                                href="{{ url_for('logistics.view_package_attachment', attachment_id=a.id) }}"
-                               title="{{ a.original_name }}">
-                              <i class="fa-solid fa-paperclip me-1"></i>
-                              {{ (a.original_name or 'file')[:18] }}{% if (a.original_name or '')|length > 18 %}…{% endif %}
+                              title="{{ a.original_name }}">
+                             <i class="fa-solid fa-paperclip me-1"></i>
+                             {{ (a.original_name or 'file')[:18] }}{% if (a.original_name or '')|length > 18 %}…{% endif %}
                             </a>
 
                             <form method="POST"
@@ -380,8 +385,11 @@
                               </button>
                             </form>
                           {% endfor %}
+                        {% else %}
+                          <span class="text-muted small">No attachments</span>
                         {% endif %}
                       </div>
+
 
                     </td>
                     <td>{{ pkg.date_received.strftime('%Y-%m-%d') if pkg.date_received else '-' }}</td>
@@ -1536,7 +1544,7 @@ function initShipmentTable() {
     lengthChange: true,
     lengthMenu: [[10, 25, 50, 100, 500, 1000], [10, 25, 50, 100, 500, 1000]],
     dom:
-      "<'row g-2 align-items-center mb-2'<'col-md-12 text-md-end'B>>" +
+      "<'row g-2 align-items-center mb-2'<'col-md-6'l><'col-md-6 text-md-end'B>>" +
       "rt" +
       "<'row align-items-center mt-2'<'col-sm-12 col-md-5'i><'col-sm-12 col-md-7'p>>",
     order: [[2, 'asc']],

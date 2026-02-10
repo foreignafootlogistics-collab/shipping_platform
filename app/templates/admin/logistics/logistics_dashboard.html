@@ -116,14 +116,16 @@
                 <!-- 9. Invoice -->
                 <td>
                   {% if p.invoice_filename %}
-                    <a href="{{ url_for('static', filename='uploads/invoices/' ~ p.invoice_filename) }}"
-                       target="_blank">
-                      View
-                    </a>
+                    {% if is_url(p.invoice_filename) %}
+                      <a href="{{ p.invoice_filename }}" target="_blank" rel="noopener">View</a>
+                    {% else %}
+                      <a href="{{ url_for('uploads.invoice_file', filename=p.invoice_filename) }}" target="_blank" rel="noopener">View</a>
+                    {% endif %}
                   {% else %}
                     N/A
                   {% endif %}
                 </td>
+
 
                 <!-- 10. Submitted On -->
                 <td>
@@ -1672,21 +1674,27 @@ async function handleShipmentApply(e) {
   form.submit();
 }
 
-$(document).ready(function () {
-  // Pre-Alerts table
-  if (hasDataTables() && $('#dashboardPrealertsTable').length) {
-    $('#dashboardPrealertsTable').DataTable({
-      order: [[0, 'desc']],
-      pageLength: 10,
-      language: { emptyTable: "No pre-alert shipments found." }
-    });
-  }
+// ✅ Guard jQuery usage so page never crashes if jQuery/DataTables fails to load
+(function () {
+  if (!window.jQuery) return;
 
-  // Shipment Log table
-  if (document.querySelector('#shipmentLog.tab-pane.show.active, #shipmentLog.tab-pane.active')) {
-    initShipmentTable();
-  }
-});
+  $(function () {
+    // Pre-Alerts table
+    if (hasDataTables() && $('#dashboardPrealertsTable').length) {
+      $('#dashboardPrealertsTable').DataTable({
+        order: [[0, 'desc']],
+        pageLength: 10,
+        language: { emptyTable: "No pre-alert shipments found." }
+      });
+    }
+
+    // Shipment Log table
+    if (document.querySelector('#shipmentLog.tab-pane.show.active, #shipmentLog.tab-pane.active')) {
+      initShipmentTable();
+    }
+  });
+})();
+
 
 /* ======================
    VARIOUS SAVE HELPERS

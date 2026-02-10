@@ -83,6 +83,9 @@ def create_app():
     from dotenv import load_dotenv
     load_dotenv()
 
+    from app.utils.file_url import is_url
+    app.jinja_env.globals["is_url"] = is_url
+
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
@@ -102,6 +105,17 @@ def create_app():
     app.config["INVOICE_UPLOAD_FOLDER"] = cfg.INVOICE_UPLOAD_FOLDER
     app.config["PACKAGE_ATTACHMENT_FOLDER"] = cfg.PACKAGE_ATTACHMENT_FOLDER
 
+    # ✅ ENSURE UPLOAD FOLDERS EXIST AT RUNTIME (Render disk + local)
+    for key in ("INVOICE_UPLOAD_FOLDER", "PACKAGE_ATTACHMENT_FOLDER"):
+        p = app.config.get(key)
+        if not p:
+            app.logger.warning(f"{key} not set")
+            continue
+        try:
+            Path(p).mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            app.logger.warning(f"Could not create {key} folder ({p}): {e}")
+
     # ------------------------------------------------------
     # ✅ CLOUDINARY CONFIG + INIT (PUT IT HERE)
     # ------------------------------------------------------
@@ -116,13 +130,7 @@ def create_app():
             app.config["CLOUDINARY_API_KEY"] and 
             app.config["CLOUDINARY_API_SECRET"]):
         app.logger.warning("Cloudinary env vars missing - invoice uploads will not work.")
-
-    # ✅ ENSURE FOLDERS EXIST AT RUNTIME (Render disk + local)
-    try:
-            Path(app.config["INVOICE_UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
-            Path(app.config["PACKAGE_ATTACHMENT_FOLDER"]).mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        app.logger.warning(f"Could not create upload folders: {e}")  
+      
   
     app.config['PROFILE_UPLOAD_FOLDER'] = str(PROFILE_UPLOAD_FOLDER)
     app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024

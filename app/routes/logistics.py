@@ -1079,24 +1079,35 @@ def bulk_assign_packages():
     flash(msg + ".", "success")
     return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
+
 @logistics_bp.route("/package-attachment/<int:attachment_id>", methods=["GET"])
 @admin_required
 def view_package_attachment(attachment_id):
     att = PackageAttachment.query.get_or_404(attachment_id)
-    if not att.package_id:
+
+    # ✅ Cloudinary / remote URL
+    if att.file_name and str(att.file_name).startswith(("http://", "https://")):
+        return redirect(att.file_name)
+
+    # ✅ Disk file (Render disk or local)
+    upload_folder = (
+        current_app.config.get("PACKAGE_ATTACHMENT_FOLDER")
+        or current_app.config.get("INVOICE_UPLOAD_FOLDER")
+    )
+    if not upload_folder:
+        current_app.logger.error("PACKAGE_ATTACHMENT_FOLDER / INVOICE_UPLOAD_FOLDER not configured")
+        abort(500)
+
+    if not att.file_name:
         abort(404)
 
-    upload_folder = current_app.config["PACKAGE_ATTACHMENT_FOLDER"]
     file_path = os.path.join(upload_folder, att.file_name)
     if not os.path.exists(file_path):
+        current_app.logger.warning("Attachment missing: %s", file_path)
         abort(404)
 
-    return send_from_directory(
-        upload_folder,
-        att.file_name,
-        as_attachment=False,
-        download_name=(att.original_name or att.file_name),
-    )
+    # ✅ Most-compatible signature across Flask versions
+    return send_from_directory(upload_folder, att.file_name, as_attachment=False)
 
 
 @logistics_bp.route("/package-attachment/<int:attachment_id>/delete", methods=["POST"])
@@ -1104,20 +1115,24 @@ def view_package_attachment(attachment_id):
 def delete_package_attachment_admin(attachment_id):
     att = PackageAttachment.query.get_or_404(attachment_id)
 
-    upload_folder = current_app.config["PACKAGE_ATTACHMENT_FOLDER"]
-    file_path = os.path.join(upload_folder, att.file_name)
-
-    try:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-    except Exception:
-        current_app.logger.exception("Failed deleting attachment file")
+    # If disk file, remove best-effort
+    if att.file_name and not str(att.file_name).startswith(("http://", "https://")):
+        upload_folder = (
+            current_app.config.get("PACKAGE_ATTACHMENT_FOLDER")
+            or current_app.config.get("INVOICE_UPLOAD_FOLDER")
+        )
+        if upload_folder:
+            file_path = os.path.join(upload_folder, att.file_name)
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception:
+                current_app.logger.exception("Failed deleting attachment file")
 
     db.session.delete(att)
     db.session.commit()
     flash("Attachment deleted.", "success")
     return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="view_packages"))
-
 
 # --------------------------------------------------------------------------------------
 # Preview invalid rows CSV download

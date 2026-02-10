@@ -475,9 +475,17 @@
                 <td>${{ money(p.item_value_usd) }}</td>
                 <td>
                   {% if p.invoice_filename %}
-                    <a href="{{ url_for('static', filename='uploads/invoices/' ~ p.invoice_filename) }}" target="_blank">View</a>
-                  {% else %}N/A{% endif %}
+                    {% if is_url(p.invoice_filename) %}
+                      <a href="{{ p.invoice_filename }}" target="_blank" rel="noopener">View</a>
+                    {% else %}
+                      <a href="{{ url_for('uploads.invoice_file', filename=p.invoice_filename) }}" target="_blank" rel="noopener">View</a>
+                    {% endif %}
+                  {% else %}
+                    N/A
+                  {% endif %}
                 </td>
+
+
                 <td>{{ p.created_at }}</td>
               </tr>
               {% endfor %}

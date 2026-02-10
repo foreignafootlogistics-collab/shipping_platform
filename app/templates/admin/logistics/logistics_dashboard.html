@@ -371,10 +371,12 @@
 
                       <div class="mt-2">
                         <button type="button"
-                                class="btn btn-sm btn-outline-purple js-open-attach"
-                                data-pkg="{{ pkg.id }}">
-                          <i class="bi bi-paperclip"></i> Attach
+                                class="btn btn-sm btn-outline-secondary js-open-attach"
+                                data-pkg-id="{{ pkg.id }}"
+                                title="Attach invoice / files">
+                          <i class="bi bi-paperclip"></i>
                         </button>
+
                       </div>
                     </td>
 
@@ -531,43 +533,46 @@
         </div>
       </div>
 
-      <!-- Attach Invoice/Files Modal -->
-      <div class="modal fade" id="attachFilesModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
+      <!-- Attach Invoice/Files Modal (NEW) -->
+      <div class="modal fade" id="attachInvoiceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-md modal-dialog-centered">
           <div class="modal-content">
 
-            <div class="modal-header" style="background-color:#4a148c; color:white;">
+            <div class="modal-header" style="background:#4a148c; color:#fff;">
               <h5 class="modal-title">
-                <i class="bi bi-paperclip me-1"></i> Attach Files to Package
+                <i class="bi bi-paperclip me-1"></i> Attach Files
               </h5>
               <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
 
-            <form id="attachFilesForm" enctype="multipart/form-data">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" id="attachPackageId" value="">
-
-              <div class="modal-body">
-                <div class="mb-2">
-                  <label class="form-label">Select file(s)</label>
-                  <input type="file" name="attachments" id="attachFilesInput" class="form-control" multiple required>
-                  <div class="form-text">Allowed: PDF, PNG, JPG, WEBP</div>
-                </div>
-
-                <div id="attachUploadStatus" class="small text-muted"></div>
+            <div class="modal-body">
+              <input type="hidden" id="attachPkgId" value="">
+              <div class="small text-muted mb-2">
+                Package ID: <strong id="attachPkgLabel">—</strong>
               </div>
 
-              <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-success">
-                  <i class="bi bi-upload me-1"></i> Upload
-                </button>
-              </div>
-            </form>
+              <label class="form-label">Select file(s)</label>
+              <input type="file"
+                     id="attachFiles"
+                     class="form-control"
+                     multiple
+                     accept=".pdf,.png,.jpg,.jpeg,.webp">
+              <div class="form-text">Allowed: PDF, PNG, JPG, WEBP</div>
+
+              <div id="attachUploadStatus" class="small text-muted mt-2">Select a file to upload.</div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="button" class="btn btn-success" id="btnAttachUpload">
+                <i class="bi bi-upload me-1"></i> Upload
+              </button>
+            </div>
 
           </div>
         </div>
       </div>
+
 
       <!-- Charges / Fees Modal -->
       <div class="modal fade" id="chargesModal" tabindex="-1" aria-labelledby="chargesModalLabel" aria-hidden="true">
@@ -2086,100 +2091,106 @@ function updateShipmentHeaderCheckbox() {
 }
 
 /* ==========================
-   PACKAGE ATTACHMENTS (ADMIN)
+   PACKAGE ATTACHMENTS (ADMIN) - NEW MODAL
    ========================== */
-(function attachAdminFiles(){
-  const modalEl = document.getElementById('attachFilesModal');
-  const formEl  = document.getElementById('attachFilesForm');
-  if (!modalEl || !formEl) return;
+(function attachAdminFilesNew(){
+  const modalEl  = document.getElementById('attachInvoiceModal');
+  if (!modalEl) return;
 
-  const pkgIdInput = document.getElementById('attachPackageId');
-  const fileInput  = document.getElementById('attachFilesInput');
+  const pkgIdInput = document.getElementById('attachPkgId');
+  const pkgLbl     = document.getElementById('attachPkgLabel');
+  const fileInput  = document.getElementById('attachFiles');
   const statusEl   = document.getElementById('attachUploadStatus');
+  const uploadBtn  = document.getElementById('btnAttachUpload');
 
-  // open modal with package id
+  let currentPkgId = null;
+
+  // Open modal: triggered by paperclip icon
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('.js-open-attach');
     if (!btn) return;
 
-    const pkgId = btn.getAttribute('data-pkg');
-    pkgIdInput.value = pkgId;
-    fileInput.value = '';
-    statusEl.textContent = '';
+    currentPkgId = btn.getAttribute('data-pkg-id') || btn.getAttribute('data-pkg') || '';
+
+    if (pkgIdInput) pkgIdInput.value = currentPkgId;
+    if (pkgLbl) pkgLbl.textContent = currentPkgId || '—';
+    if (fileInput) fileInput.value = '';
+    if (statusEl) statusEl.textContent = 'Select a file to upload.';
 
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
   });
 
-  formEl.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const pkgId = pkgIdInput.value;
-    if (!pkgId) return;
-
-    const csrf = formEl.querySelector('input[name="csrf_token"]')?.value || '';
-    const fd = new FormData();
-    fd.append('csrf_token', csrf);
-
-    const files = fileInput.files;
-    if (!files || !files.length) return;
-
-    for (const f of files) fd.append('attachments', f);
-
-    statusEl.textContent = 'Uploading…';
-
-    const res = await fetch(`/logistics/admin/packages/${pkgId}/attachments`, {
-      method: 'POST',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      body: fd
-    });
-
-    let data = {};
-    try { data = await res.json(); } catch (e) {}
-
-    if (!res.ok || !data.success) {
-      statusEl.textContent = '';
-      alert(data.error || 'Upload failed');
+  async function doUpload() {
+    const pkgId = (currentPkgId || pkgIdInput?.value || '').trim();
+    if (!pkgId) {
+      alert('Package id missing.');
       return;
     }
 
-    // Find row by checkbox value (Shipment Log uses class="package-checkbox")
-    const row = document.querySelector(`.package-checkbox[value="${pkgId}"]`)?.closest('tr')
-             || document.querySelector(`.pkg-check[value="${pkgId}"]`)?.closest('tr'); // supports other tables
-
-    if (row) {
-      // find the attachment wrap inside description cell
-      const wrap = row.querySelector('.pkg-attach-wrap');
-      if (wrap) {
-        data.attachments.forEach(a => {
-          const badge = document.createElement('a');
-          badge.className = 'badge text-decoration-none';
-          badge.style.cssText = 'background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;';
-          badge.target = '_blank';
-          badge.href = a.view_url;
-          badge.title = a.original_name || 'Attachment';
-          const name = (a.original_name || 'file');
-          const shortName = name.length > 18 ? name.slice(0,18) + '…' : name;
-          badge.innerHTML = `<i class="fa-solid fa-paperclip me-1"></i>${shortName}`;
-          wrap.appendChild(badge);
-
-          const del = document.createElement('form');
-          del.method = 'POST';
-          del.action = a.delete_url;
-          del.className = 'd-inline';
-          del.onsubmit = () => confirm('Delete this attachment?');
-          del.innerHTML = `
-            <input type="hidden" name="csrf_token" value="${csrf}">
-            <button type="submit" class="btn btn-link btn-sm p-0 text-danger" title="Delete">
-              <i class="bi bi-x-circle"></i>
-            </button>
-          `;
-          wrap.appendChild(del);
-        });
-      }
+    const files = fileInput?.files;
+    if (!files || !files.length) {
+      alert('Please choose at least one file.');
+      return;
     }
 
-    statusEl.textContent = 'Uploaded!';
+    const csrf =
+      document.querySelector('input[name="csrf_token"]')?.value ||
+      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
+      '';
+
+    const fd = new FormData();
+    if (csrf) fd.append('csrf_token', csrf);
+
+    for (const f of files) fd.append('attachments', f);
+
+    if (statusEl) statusEl.textContent = 'Uploading…';
+
+    // ✅ Correct URL for your blueprint:
+    // logistics_bp = /admin/logistics
+    // route = /admin/packages/<id>/attachments
+    const url = `/admin/logistics/admin/packages/${pkgId}/attachments`;
+
+    let res, data = {};
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: fd
+      });
+      try { data = await res.json(); } catch (e) {}
+    } catch (err) {
+      console.error(err);
+      if (statusEl) statusEl.textContent = '';
+      alert('Upload failed (network error).');
+      return;
+    }
+
+    if (!res.ok || !data.success) {
+      if (statusEl) statusEl.textContent = '';
+      alert(data.error || `Upload failed (HTTP ${res.status}).`);
+      return;
+    }
+
+    // ✅ Optional: refresh page so attachment icons show consistently everywhere
+    // (recommended since attachments are rendered server-side in your template)
+    if (statusEl) statusEl.textContent = 'Uploaded!';
     bootstrap.Modal.getInstance(modalEl)?.hide();
+
+    setTimeout(() => window.location.reload(), 350);
+  }
+
+  // Upload button
+  uploadBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    doUpload();
+  });
+
+  // Also allow pressing Enter inside modal to upload (optional)
+  modalEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      doUpload();
+    }
   });
 })();
 

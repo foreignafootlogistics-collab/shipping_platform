@@ -1,8 +1,5 @@
 {# app/templates/partials/package_row_shared.html #}
 
-{# ------------------------------
-   Helpers (support dict OR ORM)
-   ------------------------------ #}
 {% set _id = pkg.id if pkg.id is defined else pkg.get('id') %}
 {% set _user_id = pkg.user_id if pkg.user_id is defined else pkg.get('user_id') %}
 {% set _invoice_id = pkg.invoice_id if pkg.invoice_id is defined else pkg.get('invoice_id') %}
@@ -25,271 +22,234 @@
 {% set _attachments = pkg.attachments if pkg.attachments is defined else pkg.get('attachments') %}
 {% set _epc = pkg.epc if pkg.epc is defined else pkg.get('epc') %}
 
-{# Declared value fallback #}
 {% set dv = _declared if _declared is not none else (_value if _value is not none else 0) %}
 
 <tr>
 
 {% if mode == "admin" %}
-{# ==========================================================
-   ADMIN MODE — 10 columns (unchanged layout)
-   ========================================================== #}
 
-  {# 1) Actions #}
-  <td>
-    <input type="checkbox"
-           name="package_ids"
-           value="{{ _id }}"
-           class="package-checkbox"
-           form="bulkActionForm">
+{# ===================== ADMIN MODE ===================== #}
 
+<td>
+  <input type="checkbox"
+         name="package_ids"
+         value="{{ _id }}"
+         class="package-checkbox"
+         form="bulkActionForm">
+
+  <div class="d-flex flex-column align-items-start gap-1 mt-1">
+
+    {# SMALLER CALCULATOR (top) #}
     {% if _invoice_id %}
       <a href="#"
          onclick="viewInvoiceById({{ _invoice_id }}); return false;"
-         class="btn btn-sm btn-outline-purple ms-1"
+         class="btn btn-sm btn-outline-purple p-1"
          title="View Existing Invoice">
-        <i class="fas fa-file-invoice-dollar"></i>
+        <i class="fas fa-calculator fa-sm"></i>
       </a>
     {% else %}
       <a href="#"
          onclick="viewInvoiceByUser({{ _user_id }}); return false;"
-         class="btn btn-sm btn-outline-purple ms-1"
+         class="btn btn-sm btn-outline-purple p-1"
          title="Preview (Pro-forma)">
-        <i class="fas fa-eye"></i>
+        <i class="fas fa-calculator fa-sm"></i>
       </a>
     {% endif %}
-  </td>
 
-  {# 2) User #}
-  <td>
-    <strong>
-      <a href="{{ url_for('accounts_profiles.view_user', id=_user_id) }}"
-         class="text-purple text-decoration-none">
-        {{ _full_name or '-' }}
-      </a>
-    </strong><br>
-    <small class="text-muted">{{ _reg or '-' }}</small>
-  </td>
+    {# NEW: SMALL ATTACH ICON BELOW CALCULATOR #}
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary p-1 js-open-attach"
+            title="Attach Invoice"
+            data-bs-toggle="modal"
+            data-bs-target="#attachInvoiceModal"
+            data-pkg-id="{{ _id }}">
+      <i class="fas fa-paperclip fa-sm"></i>
+    </button>
 
-  {# 3) Package (status tracker + tracking) #}
-  <td>
-    {% set status = _status %}
-    {% include 'partials/status_vars.html' %}
-    {% include 'partials/status_tracker.html' with context %}
-    <br>
-    <small class="text-muted">{{ _tracking or '-' }}</small>
-  </td>
+  </div>
+</td>
 
-  {# 4) House AWB + EPC badge #}
-  <td>
-    {{ _house or '-' }}
-    {% if _epc %}
-      <span class="badge badge-epc ms-1">
-        <i class="bi bi-flag-fill" style="font-size:0.60rem;"></i> EPC
-      </span>
-    {% endif %}
-  </td>
+<td>
+  <strong>
+    <a href="{{ url_for('accounts_profiles.view_user', id=_user_id) }}"
+       class="text-purple text-decoration-none">
+      {{ _full_name or '-' }}
+    </a>
+  </strong><br>
+  <small class="text-muted">{{ _reg or '-' }}</small>
+</td>
 
-  {# 5) Description + attachments (badge list + delete X) + NEW Attach button #}
-  <td>
-    <div>{{ _desc or '-' }}</div>
+<td>
+  {% set status = _status %}
+  {% include 'partials/status_vars.html' %}
+  {% include 'partials/status_tracker.html' with context %}
+  <br>
+  <small class="text-muted">{{ _tracking or '-' }}</small>
+</td>
 
-    {# ✅ NEW: badge-style attachment list + delete, with pkg-attach-wrap for live updates #}
-    <div class="mt-1 d-flex flex-wrap gap-2 pkg-attach-wrap">
-      {% if _attachments and (_attachments|length > 0) %}
-        {% for a in _attachments %}
-          {% set aid = a.id if a.id is defined else a.get('id') %}
-          {% set aname = (a.original_name if a.original_name is defined else a.get('original_name')) %}
-          {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
+<td>
+  {{ _house or '-' }}
+  {% if _epc %}
+    <span class="badge badge-epc ms-1">
+      <i class="bi bi-flag-fill" style="font-size:0.60rem;"></i> EPC
+    </span>
+  {% endif %}
+</td>
 
-          <a class="badge text-decoration-none"
-             style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
+<td>
+  <div>{{ _desc or '-' }}</div>
+
+  {% if _attachments and (_attachments|length > 0) %}
+    <div class="mt-1 d-flex flex-wrap gap-2">
+      {% for a in _attachments %}
+        {% set aid = a.id if a.id is defined else a.get('id') %}
+        {% set aname = (a.original_name if a.original_name is defined else a.get('original_name')) %}
+        {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
+
+        <div class="d-inline-flex align-items-center gap-1">
+          <a class="btn btn-sm"
+             style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
              target="_blank"
              href="{{ url_for('logistics.view_package_attachment', attachment_id=aid) }}"
              title="{{ aname or fname }}">
-            <i class="fa-solid fa-paperclip me-1"></i>
-            {{ ((aname or fname) or 'file')[:18] }}{% if (((aname or fname) or '')|length > 18) %}…{% endif %}
+            <i class="fa-solid fa-file-lines"></i>
           </a>
-
-          <form method="POST"
-                action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=aid) }}"
-                class="d-inline"
-                onsubmit="return confirm('Delete this attachment?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit"
-                    class="btn btn-link btn-sm p-0 text-danger"
-                    title="Delete">
-              <i class="bi bi-x-circle"></i>
-            </button>
-          </form>
-        {% endfor %}
-      {% endif %}
+        </div>
+      {% endfor %}
     </div>
+  {% endif %}
+</td>
 
-    {# ✅ NEW: Attach button (opens Attach Modal on the View Packages page) #}
-    <div class="mt-2">
-      <button type="button"
-              class="btn btn-sm btn-outline-purple js-open-attach"
-              data-pkg="{{ _id }}">
-        <i class="bi bi-paperclip"></i> Attach
-      </button>
-    </div>
-  </td>
-
-  {# 6) Date Received #}
-  <td>
-    {% if _date_received %}
-      {% if _date_received.strftime is defined %}
-        {{ _date_received.strftime("%Y-%m-%d") }}
-      {% else %}
-        {{ (_date_received|string)[:10] }}
-      {% endif %}
+<td>
+  {% if _date_received %}
+    {% if _date_received.strftime is defined %}
+      {{ _date_received.strftime("%Y-%m-%d") }}
     {% else %}
-      -
+      {{ (_date_received|string)[:10] }}
     {% endif %}
-  </td>
+  {% else %}
+    -
+  {% endif %}
+</td>
 
-  {# 7) Weight #}
-  <td>
-    {% if _weight is not none %}
-      {{ _weight }} ({{ (_weight|float)|round(0,'ceil')|int }})
-      <input type="hidden" id="weight_{{ _id }}" value="{{ _weight }}">
-    {% else %}
-      -
-    {% endif %}
-  </td>
+<td>
+  {% if _weight is not none %}
+    {{ _weight }} ({{ (_weight|float)|round(0,'ceil')|int }})
+    <input type="hidden" id="weight_{{ _id }}" value="{{ _weight }}">
+  {% else %}
+    -
+  {% endif %}
+</td>
 
-  {# 8) Item Value ($) #}
-  <td class="text-center">
-    {{ "%.2f"|format(dv or 0) }}
-  </td>
+<td class="text-center">
+  {{ "%.2f"|format(dv or 0) }}
+</td>
 
-  {# 9) Amount Due ($) #}
-  <td class="text-center">
-    {{ "%.2f"|format(_amount_due if _amount_due is not none else 0) }}
-  </td>
+<td class="text-center">
+  {{ "%.2f"|format(_amount_due if _amount_due is not none else 0) }}
+</td>
 
-  {# 10) Hidden EPC flag for DataTables filter #}
-  <td class="d-none">{{ 1 if _epc else 0 }}</td>
+<td class="d-none">{{ 1 if _epc else 0 }}</td>
 
 {% else %}
-{# ==========================================================
-   CUSTOMER MODE — 7 columns (same layout, NEW TRACKER)
-   ========================================================== #}
 
-  {% set status_l = (_status or '')|trim|lower %}
-  {% set lock_docs = (status_l in ['ready for pick up', 'delivered', 'delivery']) %}
-  {% set is_paid = (status_l in ['delivered', 'delivery']) %}
-  {% set show_amount = (status_l in ['ready for pick up','delivered','delivery']) %}
-  {% set amount_to_show = (_amount_due if _amount_due is not none else 0) %}
+{# ===================== CUSTOMER MODE ===================== #}
 
-  {# 1) Docs button #}
-  <td class="text-center align-middle">
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary {% if lock_docs %}disabled{% endif %}"
-            {% if lock_docs %}disabled aria-disabled="true"{% endif %}
-            data-bs-toggle="modal"
-            data-bs-target="#docsModal{{ _id }}"
-            title="{% if lock_docs %}Locked ({{ _status }}){% else %}Upload Invoices / Declared Value{% endif %}">
-      <i class="fas {% if lock_docs %}fa-lock{% else %}fa-file-upload{% endif %}"></i>
-    </button>
+{% set status_l = (_status or '')|trim|lower %}
+{% set lock_docs = (status_l in ['ready for pick up', 'delivered', 'delivery']) %}
+{% set is_paid = (status_l in ['delivered', 'delivery']) %}
+{% set show_amount = (status_l in ['ready for pick up','delivered','delivery']) %}
+{% set amount_to_show = (_amount_due if _amount_due is not none else 0) %}
 
-    {% if _attachments and (_attachments|length > 0) %}
-      <div class="small text-success mt-1" title="Attachments available">
-        <i class="fas fa-check-circle"></i>
+<td class="text-center align-middle">
+  <button type="button"
+          class="btn btn-sm btn-outline-secondary {% if lock_docs %}disabled{% endif %}"
+          data-bs-toggle="modal"
+          data-bs-target="#docsModal{{ _id }}"
+          title="Upload Invoices">
+    <i class="fas {% if lock_docs %}fa-lock{% else %}fa-file-upload{% endif %}"></i>
+  </button>
+
+  {% if _attachments and (_attachments|length > 0) %}
+    <div class="small text-success mt-1">
+      <i class="fas fa-check-circle"></i>
+    </div>
+  {% endif %}
+</td>
+
+<td class="pkg-cell">
+  {% set status = _status %}
+  {% include "partials/status_vars.html" %}
+  <strong>{{ _house or "-" }}</strong><br>
+  {% include "partials/status_tracker.html" with context %}
+  <div class="small text-muted mt-1">VAL: ${{ "%.2f"|format(dv or 0) }}</div>
+</td>
+
+<td>
+  {{ _desc or "-" }}
+
+  {% if _attachments and (_attachments|length > 0) %}
+    <div class="small mt-1 d-flex gap-2 flex-wrap">
+      {% for a in _attachments %}
+        {% set aid = a.id if a.id is defined else a.get('id') %}
+        {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
+        {% set f = (fname or '')|string %}
+
+        {% if f.startswith("http://") or f.startswith("https://") %}
+          <a class="pkg-attachment" href="{{ f }}" target="_blank">
+            <i class="fas fa-file-alt"></i>
+          </a>
+        {% else %}
+          <a class="pkg-attachment"
+             href="{{ url_for('customer.view_package_attachment', attachment_id=aid) }}"
+             target="_blank">
+            <i class="fas fa-file-alt"></i>
+          </a>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</td>
+
+<td>{{ _tracking or "-" }}</td>
+
+<td class="text-center">
+  {% if _weight is not none %}
+    {{ (_weight|float)|round(0,'ceil')|int }}
+  {% else %}
+    —
+  {% endif %}
+</td>
+
+<td class="text-center">
+  {% if _date_received %}
+    {% if _date_received.strftime is defined %}
+      {{ _date_received.strftime("%Y-%m-%d") }}
+    {% else %}
+      {{ (_date_received|string)[:10] }}
+    {% endif %}
+  {% else %}
+    —
+  {% endif %}
+</td>
+
+<td class="text-center">
+  {% if show_amount %}
+    <div class="fw-semibold">{{ amount_to_show|jmd }}</div>
+
+    {% if is_paid %}
+      <div class="mt-1 d-flex justify-content-center">
+        <img
+          src="{{ url_for('static', filename='images/paid-stamp.png') }}"
+          alt="PAID"
+          style="height:36px; opacity:0.85; transform: rotate(-8deg);"
+        >
       </div>
     {% endif %}
-  </td>
-
-  {# 2) House AWB + SHARED STATUS TRACKER #}
-  <td class="pkg-cell">
-    {% set status = _status %}
-    {% include "partials/status_vars.html" %}
-
-    <strong>{{ _house or "-" }}</strong><br>
-
-    {% include "partials/status_tracker.html" with context %}
-
-    <div class="small text-muted mt-1">VAL: ${{ "%.2f"|format(dv or 0) }}</div>
-  </td>
-
-  {# 3) Description + attachment icons #}
-  <td>
-    {{ _desc or "-" }}
-
-    {% if _attachments and (_attachments|length > 0) %}
-      <div class="small mt-1 d-flex gap-2 flex-wrap">
-        {% for a in _attachments %}
-          {% set aid = a.id if a.id is defined else a.get('id') %}
-          {% set aname = (a.original_name if a.original_name is defined else a.get('original_name')) %}
-          {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
-          {% set f = (fname or '')|string %}
-
-          {% if f.startswith("http://") or f.startswith("https://") %}
-            <a class="pkg-attachment"
-               target="_blank"
-               rel="noopener"
-               href="{{ f }}"
-               title="{{ aname or fname }}">
-              <i class="fas fa-file-alt"></i>
-            </a>
-          {% else %}
-            <a class="pkg-attachment"
-               target="_blank"
-               rel="noopener"
-               href="{{ url_for('customer.view_package_attachment', attachment_id=aid) }}"
-               title="{{ aname or fname }}">
-              <i class="fas fa-file-alt"></i>
-            </a>
-          {% endif %}
-        {% endfor %}
-      </div>
-    {% endif %}
-  </td>
-
-  {# 4) Tracking #}
-  <td>{{ _tracking or "-" }}</td>
-
-  {# 5) Weight #}
-  <td class="text-center">
-    {% if _weight is not none %}
-      {{ (_weight|float)|round(0,'ceil')|int }}
-    {% else %}
-      —
-    {% endif %}
-  </td>
-
-  {# 6) Date Received #}
-  <td class="text-center">
-    {% if _date_received %}
-      {% if _date_received.strftime is defined %}
-        {{ _date_received.strftime("%Y-%m-%d") }}
-      {% else %}
-        {{ (_date_received|string)[:10] }}
-      {% endif %}
-    {% else %}
-      —
-    {% endif %}
-  </td>
-
-  {# 7) Amount Due + PAID stamp #}
-  <td class="text-center">
-    {% if show_amount %}
-      <div class="fw-semibold">{{ amount_to_show|jmd }}</div>
-
-      {% if is_paid %}
-        <div class="mt-1 d-flex justify-content-center">
-          <img
-            src="{{ url_for('static', filename='images/paid-stamp.png') }}"
-            alt="PAID"
-            style="height:36px; opacity:0.85; transform: rotate(-8deg);"
-          >
-        </div>
-      {% endif %}
-    {% else %}
-      —
-    {% endif %}
-  </td>
+  {% else %}
+    —
+  {% endif %}
+</td>
 
 {% endif %}
 </tr>

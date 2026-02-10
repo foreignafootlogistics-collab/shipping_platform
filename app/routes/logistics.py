@@ -1908,7 +1908,7 @@ def move_packages_between_shipments():
                             shipment_id=to_id))
 
 
-@logistics_bp.route('/shipmentlog/<int:shipment_id>/bulk-action', methods=['POST']) 
+@logistics_bp.route('/shipmentlog/<int:shipment_id>/bulk-action', methods=['POST'])
 @admin_required
 def bulk_shipment_action(shipment_id):
     upload_form = UploadPackageForm()
@@ -1930,25 +1930,45 @@ def bulk_shipment_action(shipment_id):
         skipped = 0  # <-- track how many we skip
 
         for p in pkgs:
-
-            # ✅ NEW: SKIP if already has outstanding amount
-            existing_due = float(getattr(p, "amount_due", 0) or 0)
-            if existing_due > 0:
-                skipped += 1
-                continue  # <-- DO NOT recalculate this one
-
+            # -------------------------
+            # Read values from form
+            # -------------------------
             form_val = (
                 request.form.get(f"value_{p.id}")
                 or request.form.get(f"pricing_value_{p.id}")
                 or ""
             )
+
             form_weight = (
                 request.form.get(f"weight_{p.id}")
                 or request.form.get(f"pricing_weight_{p.id}")
                 or ""
             )
 
+            # ✅ NEW: manual other charges input (must match your input name)
+            form_other = (
+                request.form.get(f"other_{p.id}")
+                or request.form.get(f"other_charges_{p.id}")
+                or request.form.get(f"pricing_other_{p.id}")
+                or ""
+            )
+
+            try:
+                manual_other = float(form_other) if form_other not in ("", None) else None
+            except ValueError:
+                manual_other = None
+
+            has_manual_other = (manual_other is not None)
+
+            # ✅ CHANGED: only skip already-priced packages if NO manual other charge was provided
+            existing_due = float(getattr(p, "amount_due", 0) or 0)
+            if existing_due > 0 and not has_manual_other:
+                skipped += 1
+                continue
+
+            # -------------------------
             # invoice / value
+            # -------------------------
             try:
                 invoice_val = (
                     float(form_val)
@@ -1958,14 +1978,38 @@ def bulk_shipment_action(shipment_id):
             except ValueError:
                 invoice_val = float(p.value or 0)
 
+            # -------------------------
             # weight
+            # -------------------------
             try:
                 weight = float(form_weight) if form_weight not in ("", None) else float(p.weight or 0)
             except ValueError:
                 weight = float(p.weight or 0)
 
+            # Category (your current logic always defaults)
             category = "Other"
+
+            # -------------------------
+            # Calculate base breakdown
+            # -------------------------
             breakdown = calculate_charges(category, invoice_val, weight)
+
+            # ✅ NEW: Manual override for other charges (if provided)
+            if manual_other is not None:
+                breakdown["other_charges"] = manual_other
+
+                # ✅ Recompute totals safely (in case calculator doesn't already recalc)
+                freight = float(breakdown.get("freight", 0) or 0)
+                handling = float(breakdown.get("handling", 0) or 0)
+                other = float(breakdown.get("other_charges", 0) or 0)
+                customs_total = float(breakdown.get("customs_total", 0) or 0)
+
+                breakdown["freight_total"] = freight + handling + other
+                breakdown["grand_total"] = breakdown["freight_total"] + customs_total
+
+            # -------------------------
+            # Persist back to Package
+            # -------------------------
 
             # Mirror invoice value
             p.value = invoice_val
@@ -1974,35 +2018,37 @@ def bulk_shipment_action(shipment_id):
 
             # Amount due / totals
             if hasattr(p, "amount_due"):
-                p.amount_due = breakdown["grand_total"]
+                p.amount_due = float(breakdown.get("grand_total", 0) or 0)
             if hasattr(p, "grand_total"):
-                p.grand_total = breakdown["grand_total"]
+                p.grand_total = float(breakdown.get("grand_total", 0) or 0)
             if hasattr(p, "customs_total"):
-                p.customs_total = breakdown["customs_total"]
+                p.customs_total = float(breakdown.get("customs_total", 0) or 0)
 
             # Customs breakdown
             if hasattr(p, "duty"):
-                p.duty = breakdown["duty"]
+                p.duty = float(breakdown.get("duty", 0) or 0)
             if hasattr(p, "scf"):
-                p.scf = breakdown["scf"]
+                p.scf = float(breakdown.get("scf", 0) or 0)
             if hasattr(p, "envl"):
-                p.envl = breakdown["envl"]
+                p.envl = float(breakdown.get("envl", 0) or 0)
             if hasattr(p, "caf"):
-                p.caf = breakdown["caf"]
+                p.caf = float(breakdown.get("caf", 0) or 0)
             if hasattr(p, "gct"):
-                p.gct = breakdown["gct"]
+                p.gct = float(breakdown.get("gct", 0) or 0)
             if hasattr(p, "stamp"):
-                p.stamp = breakdown["stamp"]
+                p.stamp = float(breakdown.get("stamp", 0) or 0)
 
             # Freight / handling
             if hasattr(p, "freight_fee"):
-                p.freight_fee = breakdown["freight"]
+                p.freight_fee = float(breakdown.get("freight", 0) or 0)
             if hasattr(p, "storage_fee"):
-                p.storage_fee = breakdown["handling"]
+                p.storage_fee = float(breakdown.get("handling", 0) or 0)
             if hasattr(p, "freight_total"):
-                p.freight_total = breakdown["freight_total"]
+                p.freight_total = float(breakdown.get("freight_total", 0) or 0)
+
+            # ✅ other charges now respects manual override
             if hasattr(p, "other_charges"):
-                p.other_charges = breakdown.get("other_charges", 0)
+                p.other_charges = float(breakdown.get("other_charges", 0) or 0)
 
             updated += 1
 
@@ -2010,7 +2056,7 @@ def bulk_shipment_action(shipment_id):
 
         flash(
             f"Calculated outstanding for {updated} package(s). "
-            f"Skipped {skipped} already priced.",
+            f"Skipped {skipped} already priced (unless manual other charges was entered).",
             "success"
         )
 
@@ -2022,58 +2068,37 @@ def bulk_shipment_action(shipment_id):
             )
         )
 
-
     # 🧾 Generate invoice – JS should intercept and open the Invoice Preview modal
     elif action == "generate_invoice":
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "ready":
-        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()        
-
+        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
         for p in pkgs:
-            p.status = "Ready for Pick Up"            
-
+            p.status = "Ready for Pick Up"
         db.session.commit()
         flash(f"{len(package_ids)} package(s) marked Ready for Pick Up.", "success")
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "revert_overseas":
         pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
-        now = datetime.utcnow()
-
         for p in pkgs:
-            # ✅ revert status
             p.status = "Overseas"
-
-            # ✅ OPTIONAL: clear the "ready" dates so it doesn't look received in JA
-            # (uncomment if that’s how you want it to behave)
             if hasattr(p, "received_date"):
                 p.received_date = None
             if hasattr(p, "date_received"):
-                p.date_received = None   
-
+                p.date_received = None
         db.session.commit()
         flash(f"{len(package_ids)} package(s) reverted back to Overseas.", "success")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "received_local_port":
         pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
-        now = datetime.utcnow()
-
         for p in pkgs:
             p.status = "Received at Local Port"
-            
         db.session.commit()
         flash(f"{len(package_ids)} package(s) marked Received at Local Port.", "success")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "notify_ready":
         users = (db.session.query(User)
@@ -2084,7 +2109,6 @@ def bulk_shipment_action(shipment_id):
         from app.utils.email_utils import send_email, compose_ready_pickup_email
 
         for idx, u in enumerate(users):
-            # ✅ throttle bulk sends
             _email_throttle(idx)
 
             pkgs = Package.query.filter(
@@ -2114,19 +2138,16 @@ def bulk_shipment_action(shipment_id):
 
     # ✅ SEND INVOICE EMAILS (NEW SYSTEM)
     elif action == "send_invoices":
-        # 1) Load selected packages
         pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
         if not pkgs:
             flash("No matching packages found for the selected items.", "warning")
             return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-        # 2) Collect unique invoice IDs
         invoice_ids = {p.invoice_id for p in pkgs if p.invoice_id}
         if not invoice_ids:
             flash("The selected packages are not attached to any invoices yet.", "warning")
             return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-        # 3) Load invoices + users
         rows = (
             db.session.query(Invoice, User)
             .join(User, Invoice.user_id == User.id)
@@ -2145,7 +2166,6 @@ def bulk_shipment_action(shipment_id):
         failed = []
 
         for idx, (inv, user) in enumerate(rows):
-            # ✅ throttle bulk sends
             _email_throttle(idx)
 
             if not user.email:
@@ -2154,7 +2174,6 @@ def bulk_shipment_action(shipment_id):
 
             amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
 
-            # Build dict expected by send_invoice_email + template
             invoice_dict = {
                 "number": inv.invoice_number or f"INV-{inv.id}",
                 "date": getattr(inv, "date_issued", None) or getattr(inv, "created_at", None),
@@ -2184,7 +2203,6 @@ def bulk_shipment_action(shipment_id):
                     "discount_due": float(getattr(p, "discount_due", None) or 0),
                 })
 
-            # ✅ attach real PDF later; keep None for now so it doesn't crash
             pdf_bytes = None
 
             ok = email_utils.send_invoice_email(
@@ -2234,7 +2252,6 @@ def bulk_shipment_action(shipment_id):
         flash(f"Removed {len(package_ids)} package(s) from shipment {shipment_id}.", "success")
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-    # Fallback
     else:
         flash("⚠️ Unknown action selected.", "danger")
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))

@@ -126,7 +126,6 @@
                   {% endif %}
                 </td>
 
-
                 <!-- 10. Submitted On -->
                 <td>
                   {% if p.created_at %}
@@ -283,6 +282,7 @@
               </div>
 
             </div>
+
             {% if shipment_packages %}
             <div class="table-responsive shadow-sm">
               <table id="shipmentTable" class="table table-bordered table-striped table-hover align-middle table-sm">
@@ -298,7 +298,8 @@
                     <th>Description</th>
                     <th>Date Received</th>
                     <th>Weight</th>
-                    <th>Item Value ($)</th>                  
+                    <th>Item Value ($)</th>
+                    <th>Other Charges (JMD)</th>
                     <th>Outstanding ($)</th>
                   </tr>
                 </thead>
@@ -306,10 +307,10 @@
                   {% for pkg in shipment_packages %}
                   <tr>
                     <td>
-                      <input type="checkbox" 
+                      <input type="checkbox"
                              name="package_ids"
                              value="{{ pkg.id }}"
-                             class="package-checkbox"                          
+                             class="package-checkbox"
                              onclick="updateShipmentHeaderCheckbox()">
                     </td>
                     <td class="text-center align-middle">
@@ -337,7 +338,6 @@
                       </button>
 
                     </td>
-
 
                     <td>
                       <strong>{{ pkg.full_name }}</strong><br>
@@ -368,7 +368,7 @@
                                style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
                                target="_blank"
                                href="{{ url_for('logistics.view_package_attachment', attachment_id=a.id) }}"
-                              title="{{ a.original_name }}">
+                               title="{{ a.original_name }}">
                              <i class="fa-solid fa-paperclip me-1"></i>
                              {{ (a.original_name or 'file')[:18] }}{% if (a.original_name or '')|length > 18 %}…{% endif %}
                             </a>
@@ -384,19 +384,45 @@
                             </form>
                           {% endfor %}
                         </div>
-                      {% endif %}                    
-
-
+                      {% endif %}
                     </td>
+
                     <td>{{ pkg.date_received.strftime('%Y-%m-%d') if pkg.date_received else '-' }}</td>
-                    <td><input id="weight_{{ pkg.id }}" type="number" step="0.01" min="0" class="form-control form-control-sm text-end" value="{{ pkg.weight or 0 }}"></td>
+
+                    <!-- ✅ IMPORTANT: add name= so the POST sends these fields -->
                     <td>
-                      <input id="value_{{ pkg.id }}" type="number" step="0.01" min="0"
+                      <input id="weight_{{ pkg.id }}"
+                             name="weight_{{ pkg.id }}"
+                             type="number" step="0.01" min="0"
+                             class="form-control form-control-sm text-end"
+                             value="{{ pkg.weight or 0 }}">
+                    </td>
+
+                    <td>
+                      <input id="value_{{ pkg.id }}"
+                             name="value_{{ pkg.id }}"
+                             type="number" step="0.01" min="0"
                              class="form-control form-control-sm text-end"
                              value="{{ pkg.value if pkg.value is not none else 0 }}">
                     </td>
-                  
-                    <td><input id="amount_due_{{ pkg.id }}" type="number" step="0.01" class="form-control form-control-sm text-end" value="{{ pkg.amount_due or 0 }}" readonly></td>
+
+                    <!-- ✅ NEW: manual other charges field that your route reads as other_charges_{{id}} -->
+                    <td>
+                      <input id="other_charges_{{ pkg.id }}"
+                             name="other_charges_{{ pkg.id }}"
+                             type="number" step="0.01" min="0"
+                             class="form-control form-control-sm text-end"
+                             value="{{ pkg.other_charges or 0 }}">
+                    </td>
+
+                    <td>
+                      <input id="amount_due_{{ pkg.id }}"
+                             name="amount_due_{{ pkg.id }}"
+                             type="number" step="0.01"
+                             class="form-control form-control-sm text-end"
+                             value="{{ pkg.amount_due or 0 }}"
+                             readonly>
+                    </td>
                   </tr>
                   {% endfor %}
                 </tbody>
@@ -412,14 +438,12 @@
         </div> <!-- /col-md-9 -->
       </div>  <!-- /row mb-3 -->
 
-      
-
       <!-- Move to Shipment Modal -->
       <div class="modal fade" id="moveShipmentModal" tabindex="-1" aria-labelledby="moveShipmentLabel" aria-hidden="true">
         <div class="modal-dialog modal-sm modal-dialog-centered">
           <div class="modal-content">
-            <form method="POST" 
-                  action="{{ url_for('logistics.move_packages_between_shipments') }}" 
+            <form method="POST"
+                  action="{{ url_for('logistics.move_packages_between_shipments') }}"
                   id="moveShipmentForm"
                   onsubmit="return validateMoveShipmentForm();">
               <div class="modal-header">
@@ -581,7 +605,6 @@
           </div>
         </div>
       </div>
-
 
       <!-- Charges / Fees Modal -->
       <div class="modal fade" id="chargesModal" tabindex="-1" aria-labelledby="chargesModalLabel" aria-hidden="true">
@@ -777,14 +800,14 @@
             </div>
 
             <div class="modal-footer">
-              <button type="button" 
+              <button type="button"
                       class="btn btn-secondary"
                       data-bs-dismiss="modal">
                 Cancel
               </button>
               <button id="btn-finalize-invoices"
                       class="btn btn-purple"
-                      type="button"                      
+                      type="button"
                       onclick="finalizeInvoicesFromModal(event)">
                 Generate Customer Invoice(s)
               </button>
@@ -792,6 +815,7 @@
           </div>
         </div>
       </div>
+
       <!-- ✅ Shipment Finance Invoice Preview Modal (Supplier Cost) -->
       <div class="modal fade" id="shipmentFinanceInvoiceModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -820,8 +844,6 @@
     </div> <!-- /shipmentLog tab-pane -->
     {% endif %}
 
-
-     
     <!-- ======================= -->
     <!-- Upload Packages Tab     -->
     <!-- ======================= -->
@@ -990,7 +1012,6 @@
   </div> <!-- /tab-content -->
 </div>  <!-- /container -->
 
-
 <script>
 const categoryRates = {{ CATEGORIES|tojson }};
 const USD_TO_JMD    = {{ USD_TO_JMD }};
@@ -1032,7 +1053,6 @@ function validateMoveShipmentForm() {
   }
   return true;
 }
-
 
 /* ============================
    CHARGES MODAL / CALCULATOR
@@ -1200,6 +1220,10 @@ function validateMoveShipmentForm() {
     const weightField = document.getElementById('weight_' + pkgId);
     if (weightField) weightField.value = payload.weight.toFixed(2);
 
+    // ✅ NEW: keep row other_charges input synced (so bulk calc can read it)
+    const otherField = document.getElementById('other_charges_' + pkgId);
+    if (otherField) otherField.value = payload.other_charges.toFixed(2);
+
     // Save to DB via API
     const updateUrl = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace(/\/0$/, `/${pkgId}`);
 
@@ -1226,7 +1250,6 @@ function validateMoveShipmentForm() {
   });
 
 })();
-
 
 /* ================================
    BULK INVOICE PREVIEW + FINALIZE
@@ -1308,7 +1331,6 @@ async function finalizeInvoicesFromModal(ev) {
     alert('⚠️ Error generating invoices: ' + (err.message || err));
   }
 }
-
 
 /* =====================================
    SHIPMENT FINANCE INVOICE (OPTION A)
@@ -1503,7 +1525,6 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
   }
 }
 
-
 // Optional: Print button (prints modal content)
 document.getElementById('btnPrintShipmentFinance')?.addEventListener('click', function () {
   const body = document.getElementById('shipmentFinanceInvoiceBody');
@@ -1519,7 +1540,6 @@ document.getElementById('btnPrintShipmentFinance')?.addEventListener('click', fu
   w.focus();
   w.print();
 });
-
 
 /* ============================
    SHIPMENT TABLE / BULK ACTION
@@ -1603,7 +1623,6 @@ function syncShipmentLengthSelect() {
   const current = (dt && typeof dt.page.len === 'function') ? dt.page.len() : 10;
   sel.value = String(current);
 }
-
 
 // 🔑 GLOBAL handler so we can bind it anywhere
 async function handleShipmentApply(e) {
@@ -1707,7 +1726,6 @@ async function handleShipmentApply(e) {
   form.submit();
 }
 
-
 // ✅ Guard jQuery usage so page never crashes if jQuery/DataTables fails to load
 (function () {
   if (!window.jQuery) return;
@@ -1732,7 +1750,6 @@ async function handleShipmentApply(e) {
   });
 })();
 
-
 /* ======================
    UPLOAD SPINNER
    ====================== */
@@ -1753,7 +1770,6 @@ async function handleShipmentApply(e) {
     if (spinner) spinner.style.display = 'none';
   });
 })();
-
 
 /* ==========================
    UPLOAD PREVIEW TABLE (CSV)
@@ -1807,7 +1823,6 @@ function handleConfirmSubmit(e) {
   return true;
 }
 
-
 /* ==========================
    SHIPMENT SEARCH MODAL
    ========================== */
@@ -1840,7 +1855,6 @@ document.getElementById('shipmentSearchForm')?.addEventListener('submit', async 
     tbody.appendChild(tr);
   }
 });
-
 
 /* ==========================
    SIMPLE SELECT-ALL HELPERS
@@ -1878,7 +1892,6 @@ function updateShipmentHeaderCheckbox() {
   const checked = tbody.querySelectorAll('.package-checkbox:checked');
   header.checked = (boxes.length > 0 && boxes.length === checked.length);
 }
-
 
 /* ==========================
    PACKAGE ATTACHMENTS (ADMIN)
@@ -1976,6 +1989,7 @@ function updateShipmentHeaderCheckbox() {
   });
 })();
 </script>
+
 <style>
   .logistics-header { background-color: #4a148c; }
   .logistics-tabs .nav-link { color: #4a148c; font-weight: 500; }
@@ -2015,5 +2029,3 @@ function updateShipmentHeaderCheckbox() {
   .tab-content > .tab-pane.show { display: block !important; }
 </style>
 {% endblock %}
-
-

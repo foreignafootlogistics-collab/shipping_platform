@@ -90,42 +90,50 @@
     {% endif %}
   </td>
 
-  {# 5) Description + attachments + delete X #}
+  {# 5) Description + attachments (badge list + delete X) + NEW Attach button #}
   <td>
     <div>{{ _desc or '-' }}</div>
 
-    {% if _attachments and (_attachments|length > 0) %}
-      <div class="mt-1 d-flex flex-wrap gap-2">
+    {# ✅ NEW: badge-style attachment list + delete, with pkg-attach-wrap for live updates #}
+    <div class="mt-1 d-flex flex-wrap gap-2 pkg-attach-wrap">
+      {% if _attachments and (_attachments|length > 0) %}
         {% for a in _attachments %}
           {% set aid = a.id if a.id is defined else a.get('id') %}
           {% set aname = (a.original_name if a.original_name is defined else a.get('original_name')) %}
           {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
 
-          <div class="d-inline-flex align-items-center gap-1">
-            <a class="btn btn-sm"
-               style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
-               target="_blank"
-               href="{{ url_for('logistics.view_package_attachment', attachment_id=aid) }}"
-               title="{{ aname or fname }}">
-              <i class="fa-solid fa-file-lines"></i>
-            </a>
+          <a class="badge text-decoration-none"
+             style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
+             target="_blank"
+             href="{{ url_for('logistics.view_package_attachment', attachment_id=aid) }}"
+             title="{{ aname or fname }}">
+            <i class="fa-solid fa-paperclip me-1"></i>
+            {{ ((aname or fname) or 'file')[:18] }}{% if (((aname or fname) or '')|length > 18) %}…{% endif %}
+          </a>
 
-            <form method="POST"
-                  action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=aid) }}"
-                  style="display:inline;"
-                  onsubmit="return confirm('Delete this attachment?');">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit"
-                      class="btn btn-sm"
-                      style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .40rem;"
-                      title="Delete attachment">
-                <i class="fa-solid fa-xmark"></i>
-              </button>
-            </form>
-          </div>
+          <form method="POST"
+                action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=aid) }}"
+                class="d-inline"
+                onsubmit="return confirm('Delete this attachment?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit"
+                    class="btn btn-link btn-sm p-0 text-danger"
+                    title="Delete">
+              <i class="bi bi-x-circle"></i>
+            </button>
+          </form>
         {% endfor %}
-      </div>
-    {% endif %}
+      {% endif %}
+    </div>
+
+    {# ✅ NEW: Attach button (opens Attach Modal on the View Packages page) #}
+    <div class="mt-2">
+      <button type="button"
+              class="btn btn-sm btn-outline-purple js-open-attach"
+              data-pkg="{{ _id }}">
+        <i class="bi bi-paperclip"></i> Attach
+      </button>
+    </div>
   </td>
 
   {# 6) Date Received #}
@@ -196,7 +204,7 @@
   {# 2) House AWB + SHARED STATUS TRACKER #}
   <td class="pkg-cell">
     {% set status = _status %}
-    {% include "partials/status_vars.html" %}    
+    {% include "partials/status_vars.html" %}
 
     <strong>{{ _house or "-" }}</strong><br>
 
@@ -204,7 +212,6 @@
 
     <div class="small text-muted mt-1">VAL: ${{ "%.2f"|format(dv or 0) }}</div>
   </td>
-
 
   {# 3) Description + attachment icons #}
   <td>

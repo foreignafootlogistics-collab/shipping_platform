@@ -85,6 +85,10 @@ HEADER_MAP = {
 REQUIRED_FIELDS = ["registration_number", "tracking_number", "description", "weight"]
 
 
+def _is_internal_user(u) -> bool:
+    role = getattr(u, "role", None)
+    return (role in ("admin", "operations", "finance")) or bool(getattr(u, "is_superadmin", False))
+
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -1080,6 +1084,83 @@ def bulk_assign_packages():
     flash(msg + ".", "success")
     return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
+@logistics_bp.route("/admin/packages/<int:package_id>/attachments", methods=["POST"])
+@login_required
+def admin_upload_package_attachments(package_id):
+    if not _is_internal_user(current_user):
+        abort(403)
+
+    pkg = Package.query.get_or_404(package_id)
+
+    files = request.files.getlist("attachments")
+    if not files:
+        return jsonify(success=False, error="No files uploaded."), 400
+
+    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+    if not upload_folder:
+        return jsonify(success=False, error="Upload folder not configured."), 500
+
+    os.makedirs(upload_folder, exist_ok=True)
+
+    allowed = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
+    created = []
+
+    for f in files:
+        if not f or not f.filename:
+            continue
+
+        original = f.filename
+        safe = secure_filename(original)
+        ext = os.path.splitext(safe)[1].lower()
+
+        if ext and ext not in allowed:
+            return jsonify(success=False, error=f"File type not allowed: {ext}"), 400
+
+        stored = f"{uuid.uuid4().hex}{ext}"
+        f.save(os.path.join(upload_folder, stored))
+
+        att = PackageAttachment(
+            package_id=pkg.id,
+            file_name=stored,
+            original_name=original
+        )
+        db.session.add(att)
+        db.session.flush()
+
+        created.append({
+            "id": att.id,
+            "original_name": att.original_name,
+            "view_url": url_for("logistics.view_package_attachment", attachment_id=att.id),
+            "delete_url": url_for("logistics.delete_package_attachment_admin", attachment_id=att.id),
+        })
+
+    db.session.commit()
+    return jsonify(success=True, attachments=created)
+
+
+@logistics_bp.route("/admin/package-attachments/<int:attachment_id>/delete", methods=["POST"])
+@login_required
+def delete_package_attachment_admin(attachment_id):
+    if not _is_internal_user(current_user):
+        abort(403)
+
+    att = PackageAttachment.query.get_or_404(attachment_id)
+
+    # delete file from disk if it's not a URL
+    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+    if upload_folder and att.file_name and not (att.file_name.startswith("http://") or att.file_name.startswith("https://")):
+        try:
+            fp = os.path.join(upload_folder, att.file_name)
+            if os.path.exists(fp):
+                os.remove(fp)
+        except Exception:
+            current_app.logger.exception("Failed deleting attachment file")
+
+    db.session.delete(att)
+    db.session.commit()
+
+    # return back
+    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
 @logistics_bp.route("/package-attachment/<int:attachment_id>")
 @login_required
@@ -1102,29 +1183,7 @@ def view_package_attachment(attachment_id):
 
     return send_from_directory(upload_folder, a.file_name, as_attachment=False)
 
-@logistics_bp.route("/package-attachment/<int:attachment_id>/delete", methods=["POST"])
-@admin_required
-def delete_package_attachment_admin(attachment_id):
-    att = PackageAttachment.query.get_or_404(attachment_id)
 
-    # If disk file, remove best-effort
-    if att.file_name and not str(att.file_name).startswith(("http://", "https://")):
-        upload_folder = (
-            current_app.config.get("PACKAGE_ATTACHMENT_FOLDER")
-            or current_app.config.get("INVOICE_UPLOAD_FOLDER")
-        )
-        if upload_folder:
-            file_path = os.path.join(upload_folder, att.file_name)
-            try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-            except Exception:
-                current_app.logger.exception("Failed deleting attachment file")
-
-    db.session.delete(att)
-    db.session.commit()
-    flash("Attachment deleted.", "success")
-    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="view_packages"))
 
 # --------------------------------------------------------------------------------------
 # Preview invalid rows CSV download

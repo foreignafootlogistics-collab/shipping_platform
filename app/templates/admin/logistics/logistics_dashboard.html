@@ -359,12 +359,10 @@
 
                       {# attachments under description (supports relationship list OR dynamic query) #}
                       {% set atts = pkg.attachments %}
-                      {% if atts is not none and atts is not sequence and atts.all is defined %}
-                        {% set atts = atts.all() %}
-                      {% endif %}
+                      {# If your real relationship is pkg.package_attachments, change the line above to that #}
+                      {% if atts and atts|length %}
 
-                      <div class="mt-1 d-flex flex-wrap gap-2 pkg-attach-wrap">
-                        {% if atts and atts|length > 0 %}
+                        <div class="mt-1 d-flex flex-wrap gap-2 pkg-attach-wrap">
                           {% for a in atts %}
                             <a class="badge text-decoration-none"
                                style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
@@ -385,10 +383,8 @@
                               </button>
                             </form>
                           {% endfor %}
-                        {% else %}
-                          <span class="text-muted small">No attachments</span>
-                        {% endif %}
-                      </div>
+                        </div>
+                      {% endif %}                    
 
 
                     </td>
@@ -1727,12 +1723,12 @@ async function handleShipmentApply(e) {
     }
 
     // Shipment Log table
-    if (document.querySelector('#shipmentLog.tab-pane.show.active, #shipmentLog.tab-pane.active')) {
+    if (document.getElementById('shipmentTable')) {
       initShipmentTable();
     } else {
-      // still bind length select so it's ready if DT initializes later
       bindShipmentLengthSelect();
     }
+
   });
 })();
 

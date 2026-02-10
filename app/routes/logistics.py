@@ -1927,8 +1927,16 @@ def bulk_shipment_action(shipment_id):
     if action == "calc_outstanding":
         pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
         updated = 0
+        skipped = 0  # <-- track how many we skip
 
         for p in pkgs:
+
+            # ✅ NEW: SKIP if already has outstanding amount
+            existing_due = float(getattr(p, "amount_due", 0) or 0)
+            if existing_due > 0:
+                skipped += 1
+                continue  # <-- DO NOT recalculate this one
+
             form_val = (
                 request.form.get(f"value_{p.id}")
                 or request.form.get(f"pricing_value_{p.id}")
@@ -1999,8 +2007,21 @@ def bulk_shipment_action(shipment_id):
             updated += 1
 
         db.session.commit()
-        flash(f"Calculated outstanding and updated {updated} package(s).", "success")
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
+        flash(
+            f"Calculated outstanding for {updated} package(s). "
+            f"Skipped {skipped} already priced.",
+            "success"
+        )
+
+        return redirect(
+            url_for(
+                'logistics.logistics_dashboard',
+                shipment_id=shipment_id,
+                tab="shipmentLog"
+            )
+        )
+
 
     # 🧾 Generate invoice – JS should intercept and open the Invoice Preview modal
     elif action == "generate_invoice":

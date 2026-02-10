@@ -176,6 +176,9 @@ class Package(db.Model):
     date_received = db.Column(db.DateTime)   # legacy compatibility
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # 🔑 NEW FIELD — CATEGORY
+    category = db.Column(db.String(120), default="Other")   # ✅ ADD THIS LINE
+
     # Weight / Value
     weight = db.Column(db.Float, default=0.00)
     declared_value = db.Column(db.Float)
@@ -184,6 +187,9 @@ class Package(db.Model):
     # Invoice linkage
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True, index=True)
     invoice_file = db.Column(db.String)
+
+    ...
+
 
     # Scheduled delivery link
     scheduled_delivery_id = db.Column(

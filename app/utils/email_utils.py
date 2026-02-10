@@ -168,6 +168,356 @@ def log_email_to_messages(
             db.session.rollback()
         except Exception:
             pass
+def send_email_smtp(
+    to_email: str,
+    subject: str,
+    plain_body: str,
+    html_body: str | None = None,
+    attachments: list[tuple[bytes, str, str]] | None = None,
+    recipient_user_id: int | None = None,
+    reply_to: str | None = None,
+) -> bool:
+    """
+    Original SMTP sender (kept for fallback).
+    html_body MUST be body-only; we wrap branding here.
+    """
+
+    def _wrap_with_branding(inner_html: str) -> str:
+        inner_html = (inner_html or "").strip()
+        if f'{_BRAND_WRAPPER_MARKER}="1"' in inner_html or _BRAND_WRAPPER_MARKER in inner_html:
+            return inner_html
+
+        return f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;">
+  <div style="width:100%;padding:24px 0;">
+    <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;
+                box-shadow:0 4px 12px rgba(0,0,0,0.05);" {_BRAND_WRAPPER_MARKER}="1">
+
+      <!-- HEADER -->
+      <div style="padding:18px 22px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #e5e7eb;">
+        {_logo_img(22)}
+        <div style="font-size:16px;font-weight:700;color:#4A148C;">
+          Foreign A Foot Logistics Limited
+        </div>
+      </div>
+
+      <!-- BODY -->
+      <div style="padding:26px 24px;line-height:1.65;">
+        {inner_html}
+      </div>
+
+      <!-- FOOTER -->
+      <div style="background:#f5f2fb;padding:16px 22px;font-size:12.5px;color:#555;text-align:left;">
+
+        <div style="display:flex;justify-content:flex-start;align-items:center;gap:10px;margin-bottom:8px;">
+          {_logo_img(20)}
+          <strong>Foreign A Foot Logistics Limited</strong>
+        </div>
+
+        <div style="margin-top:6px; line-height:1.6;">
+          <img src="https://cdn-icons-png.flaticon.com/512/684/684908.png"
+               alt="Location"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica
+        </div>
+
+        <div style="margin-top:8px; line-height:1.8;">
+          <img src="https://cdn-icons-png.flaticon.com/512/724/724664.png"
+               alt="Phone"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="tel:18765607764" style="color:#4A148C;text-decoration:none;">(876) 560-7764</a><br>
+
+          <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png"
+               alt="WhatsApp"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="https://wa.me/18762104291" style="color:#4A148C;text-decoration:none;">
+            WhatsApp: (876) 210-4291
+          </a><br>
+
+          <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png"
+               alt="WhatsApp"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="https://wa.me/18765607764" style="color:#4A148C;text-decoration:none;">
+            WhatsApp: (876) 560-7764
+          </a><br>
+
+          <img src="https://cdn-icons-png.flaticon.com/512/561/561127.png"
+               alt="Email"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4A148C;text-decoration:none;">
+            foreignafootlogistics@gmail.com
+          </a><br>
+
+          <img src="https://cdn-icons-png.flaticon.com/512/1006/1006771.png"
+               alt="Website"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="{DASHBOARD_URL}" style="color:#4A148C;text-decoration:none;">
+            https://app.faflcourier.com
+          </a>
+        </div>
+
+        <div style="margin-top:12px;">
+          <a href="{DASHBOARD_URL}"
+             style="display:inline-block;background:#4A148C;color:#ffffff;text-decoration:none;
+                    padding:10px 14px;border-radius:8px;font-weight:700;font-size:13px;">
+            Open Customer Dashboard
+          </a>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</body>
+</html>""".strip()
+
+    # Fail fast if creds missing
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
+        print("❌ Cannot send email: SMTP_USER / SMTP_PASS not set.")
+        return False
+
+    has_attachments = bool(attachments)
+    msg = MIMEMultipart("mixed" if has_attachments else "alternative")
+
+    msg["From"] = EMAIL_FROM or EMAIL_ADDRESS
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    if reply_to:
+        msg["Reply-To"] = reply_to
+
+    # Plain + HTML (alternative part)
+    if has_attachments:
+        alt = MIMEMultipart("alternative")
+        msg.attach(alt)
+    else:
+        alt = msg
+
+    alt.attach(MIMEText((plain_body or "").strip(), "plain", "utf-8"))
+
+    if html_body:
+        branded_html = _wrap_with_branding(html_body)
+        alt.attach(MIMEText(branded_html, "html", "utf-8"))
+
+    # Attachments
+    if has_attachments:
+        for a in attachments:
+            if isinstance(a, dict):
+                file_bytes = a.get("content", b"")
+                filename = a.get("filename", "attachment")
+                mimetype = a.get("mimetype", "application/octet-stream")
+            else:
+                file_bytes, filename, mimetype = a
+
+            if not mimetype or "/" not in mimetype:
+                mimetype = "application/octet-stream"
+
+            _, subtype = mimetype.split("/", 1)
+            part = MIMEApplication(file_bytes, _subtype=subtype)
+            part.add_header("Content-Disposition", "attachment", filename=filename)
+            msg.attach(part)
+
+    # SEND (short retries, no 30-min sleeps)
+    import ssl
+
+    try:
+        MAX_RETRIES = int(os.getenv("SMTP_MAX_RETRIES", "2"))
+    except Exception:
+        MAX_RETRIES = 2
+
+    try:
+        BACKOFF_BASE = float(os.getenv("SMTP_BACKOFF_BASE", "2"))
+    except Exception:
+        BACKOFF_BASE = 2.0
+
+    try:
+        BACKOFF_451 = float(os.getenv("SMTP_451_BACKOFF_SECONDS", "15"))
+    except Exception:
+        BACKOFF_451 = 15.0
+
+    last_err = None
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            timeout = 30
+            context = ssl.create_default_context()
+
+            if SMTP_PORT == 465:
+                with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=timeout, context=context) as smtp:
+                    smtp.ehlo()
+                    smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                    smtp.send_message(msg)
+            else:
+                with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=timeout) as smtp:
+                    smtp.ehlo()
+                    smtp.starttls(context=context)
+                    smtp.ehlo()
+                    smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+                    smtp.send_message(msg)
+
+            print(f"✅ Email sent to {to_email}")
+
+            if recipient_user_id:
+                log_email_to_messages(recipient_user_id, subject, (plain_body or "").strip())
+
+            return True
+
+        except smtplib.SMTPResponseException as e:
+            last_err = f"{e.smtp_code} {e.smtp_error}"
+
+            if int(e.smtp_code or 0) == 451:
+                print(f"⏸️ SMTP 451 deferred for {to_email}. Backing off {BACKOFF_451}s then retrying...")
+                time.sleep(BACKOFF_451)
+            else:
+                sleep_for = BACKOFF_BASE * attempt
+                print(f"⚠️ SMTP error attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
+                time.sleep(sleep_for)
+
+        except (smtplib.SMTPServerDisconnected, ConnectionResetError, TimeoutError, OSError) as e:
+            last_err = str(e)
+            sleep_for = BACKOFF_BASE * attempt
+            print(f"⚠️ Connection issue attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
+            time.sleep(sleep_for)
+
+        except Exception as e:
+            last_err = str(e)
+            sleep_for = BACKOFF_BASE * attempt
+            print(f"⚠️ Unknown error attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
+            time.sleep(sleep_for)
+
+    print(f"❌ Email sending failed to {to_email}: {last_err}")
+    return False
+
+
+def send_email(
+    to_email: str,
+    subject: str,
+    plain_body: str,
+    html_body: str | None = None,
+    attachments: list[tuple[bytes, str, str]] | None = None,
+    recipient_user_id: int | None = None,
+    reply_to: str | None = None,
+    force_new_connection: bool = False,  # kept for compat with your existing calls
+) -> bool:
+    """
+    Router:
+      - If USE_SENDGRID_API=1 -> SendGrid Web API (bulk-friendly)
+      - else -> SMTP fallback
+    Also logs to in-app Messages when recipient_user_id is provided.
+    """
+
+    use_api = (os.getenv("USE_SENDGRID_API", "0").strip().lower() in ("1", "true", "yes", "on"))
+
+    # If attachments exist, prefer SMTP (unless you later add SendGrid attachments)
+    has_attachments = bool(attachments)
+
+    if use_api and not has_attachments:
+        # Wrap branding here too so SendGrid emails look identical
+        # Reuse SMTP wrapper via send_email_smtp's internal wrapper? We’ll do a small inline wrap:
+        def _wrap_with_branding_for_api(inner_html: str) -> str:
+            inner_html = (inner_html or "").strip()
+            if f'{_BRAND_WRAPPER_MARKER}="1"' in inner_html or _BRAND_WRAPPER_MARKER in inner_html:
+                return inner_html
+
+            # Same wrapper as SMTP
+            return send_email_smtp(
+                to_email="noop@example.com",
+                subject="noop",
+                plain_body="noop",
+                html_body=inner_html,
+            ) and inner_html  # (won't be used)
+        # ↑ ignore; we won't call smtp. Instead, do a direct wrap by calling your existing wrapper logic:
+        # So: simplest = call the same HTML wrapper used in SMTP by duplicating it:
+        # (To avoid complexity, we'll just use the SMTP sender for wrapping without sending)
+        # Better: just wrap inline using the same HTML as in send_email_smtp.
+        # For now: reuse the SMTP wrapper by duplicating it (keep consistent):
+        # We'll just call the SMTP wrapper function by re-building it here:
+
+        def _wrap(inner_html: str) -> str:
+            inner_html = (inner_html or "").strip()
+            if f'{_BRAND_WRAPPER_MARKER}="1"' in inner_html or _BRAND_WRAPPER_MARKER in inner_html:
+                return inner_html
+            return f"""<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;">
+  <div style="width:100%;padding:24px 0;">
+    <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;
+                box-shadow:0 4px 12px rgba(0,0,0,0.05);" {_BRAND_WRAPPER_MARKER}="1">
+      <div style="padding:18px 22px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #e5e7eb;">
+        {_logo_img(22)}
+        <div style="font-size:16px;font-weight:700;color:#4A148C;">Foreign A Foot Logistics Limited</div>
+      </div>
+      <div style="padding:26px 24px;line-height:1.65;">{inner_html}</div>
+      <div style="background:#f5f2fb;padding:16px 22px;font-size:12.5px;color:#555;text-align:left;">
+        <div style="display:flex;justify-content:flex-start;align-items:center;gap:10px;margin-bottom:8px;">
+          {_logo_img(20)} <strong>Foreign A Foot Logistics Limited</strong>
+        </div>
+        <div style="margin-top:6px; line-height:1.6;">
+          <img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" alt="Location"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica
+        </div>
+        <div style="margin-top:8px; line-height:1.8;">
+          <img src="https://cdn-icons-png.flaticon.com/512/724/724664.png" alt="Phone"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="tel:18765607764" style="color:#4A148C;text-decoration:none;">(876) 560-7764</a><br>
+          <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png" alt="WhatsApp"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="https://wa.me/18762104291" style="color:#4A148C;text-decoration:none;">WhatsApp: (876) 210-4291</a><br>
+          <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png" alt="WhatsApp"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="https://wa.me/18765607764" style="color:#4A148C;text-decoration:none;">WhatsApp: (876) 560-7764</a><br>
+          <img src="https://cdn-icons-png.flaticon.com/512/561/561127.png" alt="Email"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="mailto:foreignafootlogistics@gmail.com" style="color:#4A148C;text-decoration:none;">foreignafootlogistics@gmail.com</a><br>
+          <img src="https://cdn-icons-png.flaticon.com/512/1006/1006771.png" alt="Website"
+               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
+          <a href="{DASHBOARD_URL}" style="color:#4A148C;text-decoration:none;">https://app.faflcourier.com</a>
+        </div>
+        <div style="margin-top:12px;">
+          <a href="{DASHBOARD_URL}"
+             style="display:inline-block;background:#4A148C;color:#ffffff;text-decoration:none;
+                    padding:10px 14px;border-radius:8px;font-weight:700;font-size:13px;">
+            Open Customer Dashboard
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</body></html>""".strip()
+
+        wrapped_html = _wrap(html_body or "")
+
+        ok = send_email_sendgrid_api(
+            to_email=to_email,
+            subject=subject,
+            plain_body=(plain_body or "").strip(),
+            html_body=wrapped_html,
+            from_email=(EMAIL_FROM or EMAIL_ADDRESS or "support@faflcourier.com"),
+            from_name="Foreign A Foot Logistics Limited",
+            reply_to=(reply_to or EMAIL_FROM or EMAIL_ADDRESS or "support@faflcourier.com"),
+            category="customer-portal",
+        )
+
+        if ok and recipient_user_id:
+            log_email_to_messages(recipient_user_id, subject, (plain_body or "").strip())
+
+        return ok
+
+    # Fallback: SMTP (attachments supported here)
+    return send_email_smtp(
+        to_email=to_email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        attachments=attachments,
+        recipient_user_id=recipient_user_id,
+        reply_to=reply_to,
+    )
+
 
 
 # ==========================================================
@@ -347,11 +697,23 @@ def send_email(
             part.add_header("Content-Disposition", "attachment", filename=filename)
             msg.attach(part)
     
-    # SEND (robust SMTP: timeouts + STARTTLS context + retries)
     import ssl
 
-    MAX_RETRIES = 3
-    BACKOFF_BASE = 2  # seconds
+    # ✅ Keep retries small (bulk loops should throttle, not this function)
+    try:
+        MAX_RETRIES = int(os.getenv("SMTP_MAX_RETRIES", "2"))
+    except Exception:
+        MAX_RETRIES = 2
+
+    try:
+        BACKOFF_BASE = float(os.getenv("SMTP_BACKOFF_BASE", "2"))
+    except Exception:
+        BACKOFF_BASE = 2.0
+
+    try:
+        BACKOFF_451 = float(os.getenv("SMTP_451_BACKOFF_SECONDS", "15"))
+    except Exception:
+        BACKOFF_451 = 15.0
 
     last_err = None
 
@@ -365,7 +727,6 @@ def send_email(
                     smtp.ehlo()
                     smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
                     smtp.send_message(msg)
-
             else:
                 with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=timeout) as smtp:
                     smtp.ehlo()
@@ -376,20 +737,19 @@ def send_email(
 
             print(f"✅ Email sent to {to_email}")
 
-            # Mirror into in-app Messages
             if recipient_user_id:
                 log_email_to_messages(recipient_user_id, subject, (plain_body or "").strip())
 
             return True
 
         except smtplib.SMTPResponseException as e:
-            # e.smtp_code, e.smtp_error are available
             last_err = f"{e.smtp_code} {e.smtp_error}"
 
-            # Provider limit (SendGrid/Gmail/etc.) -> pause longer
-            if e.smtp_code == 451:
-                print(f"⏸️ SMTP 451 limit hit. Pausing 30 minutes... ({to_email})")
-                time.sleep(60 * 30)
+            # ✅ Yahoo deferral / temp failure:
+            # don't freeze the request for 30 minutes
+            if int(e.smtp_code or 0) == 451:
+                print(f"⏸️ SMTP 451 deferred for {to_email}. Backing off {BACKOFF_451}s then retrying...")
+                time.sleep(BACKOFF_451)
             else:
                 sleep_for = BACKOFF_BASE * attempt
                 print(f"⚠️ SMTP error attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
@@ -409,6 +769,7 @@ def send_email(
 
     print(f"❌ Email sending failed to {to_email}: {last_err}")
     return False
+
 
 
 

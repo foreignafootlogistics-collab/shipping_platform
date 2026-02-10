@@ -5,6 +5,8 @@ import math
 import csv
 import uuid
 import json
+import time
+import random
 from io import StringIO
 from datetime import datetime, timedelta
 
@@ -440,6 +442,28 @@ def _log_in_app_message(recipient_id: int, subject: str, body: str):
     )
     db.session.add(m)
     # do NOT commit here; caller commits
+
+def _email_throttle(i: int, base: float | None = None):
+    """
+    Simple rate limiter for bulk sends.
+    - Sleeps between sends to reduce Yahoo deferrals.
+    - Uses jitter so traffic doesn't look like a bot.
+    """
+    try:
+        base = float(base if base is not None else os.environ.get("EMAIL_THROTTLE_SECONDS", "2.0"))
+    except Exception:
+        base = 2.0
+
+    try:
+        jitter = float(os.environ.get("EMAIL_THROTTLE_JITTER", "0.75"))
+    except Exception:
+        jitter = 0.75
+
+    # no sleep before the first send
+    if i <= 0:
+        return
+
+    time.sleep(max(0.0, base + random.uniform(0, jitter)))
 
 
 # --------------------------------------------------------------------------------------
@@ -1361,20 +1385,28 @@ def email_selected_packages():
 
     sent_count = 0
     failed: list[str] = []
-    for bundle in grouped.values():
+
+    for idx, bundle in enumerate(grouped.values()):
+        # ✅ throttle bulk sends (prevents Yahoo deferrals)
+        _email_throttle(idx)
+
         user = bundle["user"]
         pkgs = bundle["packages"]
+
         ok = email_utils.send_overseas_received_email(
             to_email=user.email,
             full_name=(user.full_name or ""),
             reg_number=(user.registration_number or ""),
             packages=pkgs,
         )
+
         if ok:
             # Log message to in-app messages
             pkg_lines = []
             for p in pkgs:
-                pkg_lines.append(f"- {p.tracking_number or ''} | {p.house_awb or ''} | {p.description or ''} | {p.weight or 0} lb")
+                pkg_lines.append(
+                    f"- {p.tracking_number or ''} | {p.house_awb or ''} | {p.description or ''} | {p.weight or 0} lb"
+                )
 
             subject = "Packages received overseas"
             body = (
@@ -1382,13 +1414,14 @@ def email_selected_packages():
                 "Your package(s) have been received overseas and are now being prepared for shipment to Jamaica:\n\n"
                 + "\n".join(pkg_lines) +
                 "\n\nLog in to your account to track updates.\n"
-                "— FAFL Courier"
+                "— Foreign a Foot Logistics Limited"
             )
             _log_in_app_message(user.id, subject, body)
 
             sent_count += 1
         else:
             failed.append(user.email or "(no email)")
+
 
 
     if sent_count:
@@ -1963,7 +1996,10 @@ def bulk_shipment_action(shipment_id):
 
         from app.utils.email_utils import send_email, compose_ready_pickup_email
 
-        for u in users:
+        for idx, u in enumerate(users):
+            # ✅ throttle bulk sends
+            _email_throttle(idx)
+
             pkgs = Package.query.filter(
                 Package.id.in_(package_ids),
                 Package.user_id == u.id
@@ -2021,7 +2057,10 @@ def bulk_shipment_action(shipment_id):
         sent = 0
         failed = []
 
-        for inv, user in rows:
+        for idx, (inv, user) in enumerate(rows):
+            # ✅ throttle bulk sends
+            _email_throttle(idx)
+
             if not user.email:
                 failed.append("(no email on file)")
                 continue
@@ -2078,7 +2117,7 @@ def bulk_shipment_action(shipment_id):
                     f"Your invoice {invoice_dict['number']} is ready.\n"
                     f"Total Due: JMD {amount_due:,.2f}\n\n"
                     f"View details / pay here:\n{TRANSACTIONS_URL}\n\n"
-                    "— FAFL Courier"
+                    "— Foreign a Foot Logistics Limited"
                 )
             else:
                 failed.append(user.email)

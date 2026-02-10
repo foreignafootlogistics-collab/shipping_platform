@@ -36,6 +36,7 @@ from app.forms import (
     PackageBulkActionForm, UploadPackageForm, PreAlertForm, InvoiceFinalizeForm,
     PaymentForm, ScheduledDeliveryForm
 )
+from app.utils.file_url import is_url 
 from app.utils import email_utils, update_wallet
 from app.utils.wallet import process_first_shipment_bonus
 
@@ -1080,35 +1081,26 @@ def bulk_assign_packages():
     return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
 
-@logistics_bp.route("/package-attachment/<int:attachment_id>", methods=["GET"])
-@admin_required
+@logistics_bp.route("/package-attachment/<int:attachment_id>")
+@login_required
+@admin_required  # or whatever you use for admin access
 def view_package_attachment(attachment_id):
-    att = PackageAttachment.query.get_or_404(attachment_id)
+    a = PackageAttachment.query.get_or_404(attachment_id)
 
-    # ✅ Cloudinary / remote URL
-    if att.file_name and str(att.file_name).startswith(("http://", "https://")):
-        return redirect(att.file_name)
+    # ✅ Cloudinary URL
+    if a.file_name and str(a.file_name).startswith(("http://", "https://")):
+        return redirect(a.file_name)
 
-    # ✅ Disk file (Render disk or local)
-    upload_folder = (
-        current_app.config.get("PACKAGE_ATTACHMENT_FOLDER")
-        or current_app.config.get("INVOICE_UPLOAD_FOLDER")
-    )
+    # ✅ legacy disk file fallback (if you still have older uploads)
+    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
     if not upload_folder:
-        current_app.logger.error("PACKAGE_ATTACHMENT_FOLDER / INVOICE_UPLOAD_FOLDER not configured")
         abort(500)
 
-    if not att.file_name:
+    fp = os.path.join(upload_folder, a.file_name)
+    if not os.path.exists(fp):
         abort(404)
 
-    file_path = os.path.join(upload_folder, att.file_name)
-    if not os.path.exists(file_path):
-        current_app.logger.warning("Attachment missing: %s", file_path)
-        abort(404)
-
-    # ✅ Most-compatible signature across Flask versions
-    return send_from_directory(upload_folder, att.file_name, as_attachment=False)
-
+    return send_from_directory(upload_folder, a.file_name, as_attachment=False)
 
 @logistics_bp.route("/package-attachment/<int:attachment_id>/delete", methods=["POST"])
 @admin_required

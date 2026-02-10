@@ -231,10 +231,11 @@ def prealerts_create():
         filename = None
         if form.invoice.data:
             file = form.invoice.data
-            if file and getattr(file, "filename", "") and allowed_file(file.filename):
-                # Upload to Cloudinary instead of saving to disk
-                from app.utils.cloudinary_storage import upload_invoice_image
-                filename = upload_invoice_image(file)   # store URL in invoice_filename
+            if file and getattr(file, "filename", ""):
+                original = file.filename.strip()
+                if original and allowed_file(original):
+                    from app.utils.cloudinary_storage import upload_invoice_image
+                    filename = upload_invoice_image(file)   # store URL in invoice_filename
 
 
 
@@ -431,43 +432,44 @@ def package_upload_docs(pkg_id):
         try:
             dvf = float(dv)
             pkg.declared_value = dvf
-            pkg.value = dvf              # ✅ mirror for admin View Packages
+            pkg.value = dvf  # mirror for admin View Packages
         except ValueError:
             flash("Declared value must be a number.", "warning")
-            return redirect(url_for("customer.view_packages"))        
+            return redirect(url_for("customer.view_packages"))
 
-    # handle 3 files
     files = [
         request.files.get("invoice_file_1"),
         request.files.get("invoice_file_2"),
         request.files.get("invoice_file_3"),
     ]
 
+    from app.utils.cloudinary_storage import upload_invoice_image
+
     saved_any = False
     for f in files:
         if f and f.filename and allowed_file(f.filename):
-            original = f.filename
-            safe = secure_filename(original)
+            original = f.filename.strip()
 
-            # unique stored name
-            ext = os.path.splitext(safe)[1].lower()
-            stored = f"pkg{pkg.id}_{int(datetime.utcnow().timestamp())}_{safe}"
+            # ✅ upload to Cloudinary, store URL
+            url = upload_invoice_image(f)
 
-            upload_folder = _invoice_folder()
-            os.makedirs(upload_folder, exist_ok=True)
-            f.save(os.path.join(upload_folder, stored))
-
-            att = PackageAttachment(
+            db.session.add(PackageAttachment(
                 package_id=pkg.id,
-                file_name=stored,         # stored filename on disk
-                original_name=original    # display name
-            )
-            db.session.add(att)
+                file_name=url,           # ✅ store URL
+                original_name=original
+            ))
             saved_any = True
 
+            # OPTIONAL: keep “main invoice” field in sync too
+            # (only set if empty, or always overwrite — your choice)
+            if not getattr(pkg, "invoice_file", None):
+                pkg.invoice_file = url
 
     db.session.commit()
-    flash("Updated package documents successfully.", "success" if saved_any or dv else "info")
+    flash(
+        "Updated package documents successfully.",
+        "success" if (saved_any or dv) else "info"
+    )
     return redirect(url_for("customer.view_packages"))
 
 @customer_bp.route("/package-attachment/<int:attachment_id>")

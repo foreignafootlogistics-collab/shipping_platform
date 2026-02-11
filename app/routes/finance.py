@@ -444,14 +444,14 @@ def finance_dashboard():
 @finance_bp.route('/unpaid_invoices')
 @admin_required(roles=['finance'])
 def unpaid_invoices():
-    start = request.args.get('start')
-    end = request.args.get('end')
-    q = request.args.get('q', '').strip()
-    status = request.args.get('status', 'issued,unpaid,pending')
-    min_due = request.args.get('min_due')
-    max_due = request.args.get('max_due')
+    start = (request.args.get('start') or '').strip()
+    end = (request.args.get('end') or '').strip()
+    q = (request.args.get('q') or '').strip()
+    status = (request.args.get('status') or 'issued,unpaid').strip().lower()  # ✅ default matches UI
+    min_due_raw = (request.args.get('min_due') or '').strip()
+    max_due_raw = (request.args.get('max_due') or '').strip()
 
-    # fallback to current month
+    # fallback to current month ONLY if missing
     if not (start and end):
         today = date.today()
         start = date(today.year, today.month, 1).isoformat()
@@ -460,12 +460,33 @@ def unpaid_invoices():
     start_date = datetime.fromisoformat(start).date()
     end_date = datetime.fromisoformat(end).date()
 
-    status_list = [
-        s for s in (t.strip().lower() for t in status.split(','))
-        if s in ('issued', 'unpaid', 'pending')
-    ]
+    # ✅ status list from dropdown
+    allowed = {'issued', 'unpaid'}  # keep it aligned with your UI
+    status_list = [s for s in (t.strip() for t in status.split(',')) if s in allowed]
     if not status_list:
-        status_list = ['issued', 'unpaid', 'pending']
+        status_list = ['issued', 'unpaid']
+
+    # ✅ stable string that matches <option value="">
+    if set(status_list) == {"issued", "unpaid"}:
+        status_selected = "issued,unpaid"
+    else:
+        status_selected = status_list[0]  # issued OR unpaid
+
+
+    # parse amounts safely
+    min_due = None
+    max_due = None
+    try:
+        if min_due_raw != '':
+            min_due = float(min_due_raw)
+    except ValueError:
+        min_due = None
+
+    try:
+        if max_due_raw != '':
+            max_due = float(max_due_raw)
+    except ValueError:
+        max_due = None
 
     issued_date_expr = _invoice_issued_date_expr()
     amt_due_expr = _invoice_due_amount_expr()
@@ -490,15 +511,16 @@ def unpaid_invoices():
         like = f"%{q.lower()}%"
         query = query.filter(
             or_(
-                func.lower(User.full_name).like(like),
-                func.lower(User.registration_number).like(like),
+                func.lower(func.coalesce(User.full_name, '')).like(like),
+                func.lower(func.coalesce(User.registration_number, '')).like(like),
+                func.lower(func.coalesce(Invoice.invoice_number, '')).like(like),
             )
         )
 
-    if min_due:
-        query = query.filter(amt_due_expr >= float(min_due))
-    if max_due:
-        query = query.filter(amt_due_expr <= float(max_due))
+    if min_due is not None:
+        query = query.filter(amt_due_expr >= min_due)
+    if max_due is not None:
+        query = query.filter(amt_due_expr <= max_due)
 
     invoices_raw = query.order_by(func.date(issued_date_expr).desc()).all()
 
@@ -514,11 +536,10 @@ def unpaid_invoices():
         }
         for r in invoices_raw
     ]
+
     total_due = sum(r['amount_due'] for r in invoices)
 
-    # status counts for all outstanding (use same due expression)
-    amt_due_expr = _invoice_due_amount_expr()
-
+    # status counts (same statuses)
     status_counts_rows = (
         db.session.query(
             func.lower(Invoice.status).label('s'),
@@ -528,7 +549,6 @@ def unpaid_invoices():
         .group_by(func.lower(Invoice.status))
         .all()
     )
-
     status_counts = {r.s: r.cnt for r in status_counts_rows}
 
     return render_template(
@@ -538,9 +558,9 @@ def unpaid_invoices():
         start=start,
         end=end,
         q=q,
-        status_selected=','.join(status_list),
-        min_due=min_due or '',
-        max_due=max_due or '',
+        status_selected=status_selected,
+        min_due=min_due_raw,
+        max_due=max_due_raw,
         status_counts=status_counts,
     )
 

@@ -1927,52 +1927,74 @@ def bulk_shipment_action(shipment_id):
     if action == "calc_outstanding":
         pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
         updated = 0
-        skipped = 0  # <-- track how many we skip
+        skipped = 0
+
+        def _f(key: str):
+            """Parse float from request.form; return None if blank/invalid."""
+            raw = request.form.get(key)
+            if raw is None:
+                return None
+            raw = str(raw).strip()
+            if raw == "":
+                return None
+            try:
+                return float(raw)
+            except ValueError:
+                return None
 
         for p in pkgs:
             # -------------------------
-            # Read values from form
+            # Read value/weight from form (or fallback)
             # -------------------------
             form_val = (
                 request.form.get(f"value_{p.id}")
                 or request.form.get(f"pricing_value_{p.id}")
                 or ""
             )
-
             form_weight = (
                 request.form.get(f"weight_{p.id}")
                 or request.form.get(f"pricing_weight_{p.id}")
                 or ""
             )
 
-            # ✅ NEW: manual other charges input (must match your input name)
-            form_other = (
-                request.form.get(f"other_{p.id}")
-                or request.form.get(f"other_charges_{p.id}")
-                or request.form.get(f"pricing_other_{p.id}")
-                or ""
-            )
+            # -------------------------
+            # Manual overrides (admin inputs)
+            # Make sure your HTML uses these exact names:
+            # duty_{id}, gct_{id}, scf_{id}, envl_{id}, caf_{id}, stamp_{id}
+            # freight_{id}, handling_{id}, other_{id} (or other_charges_{id})
+            # -------------------------
+            manual = {
+                "duty": _f(f"duty_{p.id}"),
+                "gct": _f(f"gct_{p.id}"),
+                "scf": _f(f"scf_{p.id}"),
+                "envl": _f(f"envl_{p.id}"),
+                "caf": _f(f"caf_{p.id}"),
+                "stamp": _f(f"stamp_{p.id}"),
+                "freight": _f(f"freight_{p.id}"),
+                "handling": _f(f"handling_{p.id}"),
+                # support multiple possible input names for other charges
+                "other_charges": (
+                    _f(f"other_{p.id}")
+                    if _f(f"other_{p.id}") is not None
+                    else _f(f"other_charges_{p.id}")
+                ),
+            }
 
-            try:
-                manual_other = float(form_other) if form_other not in ("", None) else None
-            except ValueError:
-                manual_other = None
+            has_any_manual = any(v is not None for v in manual.values())
 
-            has_manual_other = (manual_other is not None)
-
-            # ✅ CHANGED: only skip already-priced packages if NO manual other charge was provided
+            # ✅ Only skip already-priced packages if NO manual edits were provided
             existing_due = float(getattr(p, "amount_due", 0) or 0)
-            if existing_due > 0 and not has_manual_other:
+            if existing_due > 0 and not has_any_manual:
                 skipped += 1
                 continue
 
             # -------------------------
-            # invoice / value
+            # invoice/value
             # -------------------------
             try:
                 invoice_val = (
                     float(form_val)
-                    if form_val not in ("", None)
+                    if str(form_val).strip() not in ("", "None")
                     else _effective_value(p)
                 )
             except ValueError:
@@ -1982,73 +2004,79 @@ def bulk_shipment_action(shipment_id):
             # weight
             # -------------------------
             try:
-                weight = float(form_weight) if form_weight not in ("", None) else float(p.weight or 0)
+                weight = float(form_weight) if str(form_weight).strip() not in ("", "None") else float(p.weight or 0)
             except ValueError:
                 weight = float(p.weight or 0)
 
-            # Category (your current logic always defaults)
+            weight = _normalize_weight(weight)
+
+            # Category (your current logic defaults)
             category = "Other"
 
             # -------------------------
-            # Calculate base breakdown
+            # Base breakdown (auto)
             # -------------------------
             breakdown = calculate_charges(category, invoice_val, weight)
 
-            # ✅ NEW: Manual override for other charges (if provided)
-            if manual_other is not None:
-                breakdown["other_charges"] = manual_other
+            # -------------------------
+            # Apply manual overrides (only if provided)
+            # -------------------------
+            for k, v in manual.items():
+                if v is not None:
+                    breakdown[k] = v
 
-                # ✅ Recompute totals safely (in case calculator doesn't already recalc)
-                freight = float(breakdown.get("freight", 0) or 0)
-                handling = float(breakdown.get("handling", 0) or 0)
-                other = float(breakdown.get("other_charges", 0) or 0)
-                customs_total = float(breakdown.get("customs_total", 0) or 0)
+            # -------------------------
+            # Recompute totals (ALWAYS after overrides)
+            # -------------------------
+            duty  = float(breakdown.get("duty", 0) or 0)
+            scf   = float(breakdown.get("scf", 0) or 0)
+            envl  = float(breakdown.get("envl", 0) or 0)
+            caf   = float(breakdown.get("caf", 0) or 0)
+            gct   = float(breakdown.get("gct", 0) or 0)
+            stamp = float(breakdown.get("stamp", 0) or 0)
 
-                breakdown["freight_total"] = freight + handling + other
-                breakdown["grand_total"] = breakdown["freight_total"] + customs_total
+            customs_total = duty + scf + envl + caf + gct + stamp
+            breakdown["customs_total"] = customs_total
+
+            freight  = float(breakdown.get("freight", 0) or 0)
+            handling = float(breakdown.get("handling", 0) or 0)
+            other    = float(breakdown.get("other_charges", 0) or 0)
+
+            freight_total = freight + handling + other
+            breakdown["freight_total"] = freight_total
+
+            grand_total = customs_total + freight_total
+            breakdown["grand_total"] = grand_total
 
             # -------------------------
             # Persist back to Package
             # -------------------------
-
-            # Mirror invoice value
             p.value = invoice_val
             if hasattr(p, "declared_value"):
                 p.declared_value = invoice_val
 
-            # Amount due / totals
             if hasattr(p, "amount_due"):
-                p.amount_due = float(breakdown.get("grand_total", 0) or 0)
+                p.amount_due = grand_total
             if hasattr(p, "grand_total"):
-                p.grand_total = float(breakdown.get("grand_total", 0) or 0)
+                p.grand_total = grand_total
             if hasattr(p, "customs_total"):
-                p.customs_total = float(breakdown.get("customs_total", 0) or 0)
+                p.customs_total = customs_total
 
-            # Customs breakdown
-            if hasattr(p, "duty"):
-                p.duty = float(breakdown.get("duty", 0) or 0)
-            if hasattr(p, "scf"):
-                p.scf = float(breakdown.get("scf", 0) or 0)
-            if hasattr(p, "envl"):
-                p.envl = float(breakdown.get("envl", 0) or 0)
-            if hasattr(p, "caf"):
-                p.caf = float(breakdown.get("caf", 0) or 0)
-            if hasattr(p, "gct"):
-                p.gct = float(breakdown.get("gct", 0) or 0)
-            if hasattr(p, "stamp"):
-                p.stamp = float(breakdown.get("stamp", 0) or 0)
+            if hasattr(p, "duty"):  p.duty  = duty
+            if hasattr(p, "scf"):   p.scf   = scf
+            if hasattr(p, "envl"):  p.envl  = envl
+            if hasattr(p, "caf"):   p.caf   = caf
+            if hasattr(p, "gct"):   p.gct   = gct
+            if hasattr(p, "stamp"): p.stamp = stamp
 
-            # Freight / handling
             if hasattr(p, "freight_fee"):
-                p.freight_fee = float(breakdown.get("freight", 0) or 0)
+                p.freight_fee = freight
             if hasattr(p, "storage_fee"):
-                p.storage_fee = float(breakdown.get("handling", 0) or 0)
+                p.storage_fee = handling
             if hasattr(p, "freight_total"):
-                p.freight_total = float(breakdown.get("freight_total", 0) or 0)
-
-            # ✅ other charges now respects manual override
+                p.freight_total = freight_total
             if hasattr(p, "other_charges"):
-                p.other_charges = float(breakdown.get("other_charges", 0) or 0)
+                p.other_charges = other
 
             updated += 1
 
@@ -2056,17 +2084,12 @@ def bulk_shipment_action(shipment_id):
 
         flash(
             f"Calculated outstanding for {updated} package(s). "
-            f"Skipped {skipped} already priced (unless manual other charges was entered).",
+            f"Skipped {skipped} already priced (unless manual edits were entered).",
             "success"
         )
 
-        return redirect(
-            url_for(
-                'logistics.logistics_dashboard',
-                shipment_id=shipment_id,
-                tab="shipmentLog"
-            )
-        )
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
 
     # 🧾 Generate invoice – JS should intercept and open the Invoice Preview modal
     elif action == "generate_invoice":
@@ -2740,15 +2763,30 @@ def api_calculate_charges():
 def api_update_package(pkg_id):
     data = request.get_json(force=True) or {}
 
+    # --- Helper to safely cast numbers ---
+    def to_num(x):
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+
+    # --- Map client keys → Package columns (OPTION A) ---
     field_map = {
         'category': 'category',
         'value': 'value',
         'weight': 'weight',
         'amount_due': 'amount_due',
-        'duty': 'duty', 'scf': 'scf', 'envl': 'envl', 'caf': 'caf', 'gct': 'gct', 'stamp': 'stamp',
+
+        'duty': 'duty',
+        'scf': 'scf',
+        'envl': 'envl',
+        'caf': 'caf',
+        'gct': 'gct',
+        'stamp': 'stamp',
+
         'customs_total': 'customs_total',
-        'freight': 'freight_fee',
-        'handling': 'storage_fee',
+        'freight': 'freight',           # ✅ matches your modal
+        'handling': 'handling',         # ✅ matches your modal
         'freight_total': 'freight_total',
         'other_charges': 'other_charges',
         'grand_total': 'grand_total',
@@ -2758,19 +2796,33 @@ def api_update_package(pkg_id):
     if not p:
         return jsonify({"ok": False, "error": "Package not found"}), 404
 
+    # --- Handle value separately (you already had this logic) ---
     if 'value' in data and data['value'] is not None:
-        p.value = data['value']
-        if hasattr(p, 'declared_value'):
-            p.declared_value = data['value']
+        val = to_num(data['value'])
+        if val is not None:
+            p.value = val
+            if hasattr(p, 'declared_value'):
+                p.declared_value = val
 
+    # --- Apply all other fields ---
+    updated = []
     for client_key, col in field_map.items():
         if client_key == 'value':
             continue
+
         if client_key in data and data[client_key] is not None:
-            setattr(p, col, data[client_key])
+            val = to_num(data[client_key])
+            if val is not None:
+                setattr(p, col, val)
+                updated.append(client_key)
 
     db.session.commit()
-    return jsonify({"ok": True, "updated": list(data.keys())}), 200
+
+    return jsonify({
+        "ok": True,
+        "updated": updated,
+        "pkg_id": pkg_id
+    }), 200
 
 # --------------------------------------------------------------------------------------
 # Invoice status

@@ -1065,6 +1065,57 @@ function validateMoveShipmentForm() {
   const resOther        = document.getElementById('resOther');
   const resTotal        = document.getElementById('resTotal');
 
+  // Helper: safe number from input
+  function numVal(el) {
+    if (!el) return 0;
+    const v = parseFloat(el.value || '0');
+    return isNaN(v) ? 0 : v;
+  }
+
+  // ✅ Prevent Calculate from overwriting manual edits
+  // - fills ONLY if field is empty OR still 0
+  function setIfEmptyOrZero(el, valueStr) {
+    if (!el) return;
+    const cur = (el.value || '').trim();
+    const curNum = parseFloat(cur || '0');
+    const isEmpty = cur === '';
+    const isZero  = !isNaN(curNum) && curNum === 0;
+    if (isEmpty || isZero) el.value = valueStr;
+  }
+
+  // ✅ Recalculate totals when user manually edits fields
+  function recalcTotalsFromManual() {
+    const duty  = numVal(resDuty);
+    const gct   = numVal(resGct);
+    const scf   = numVal(resScf);
+    const envl  = numVal(resEnvl);
+    const caf   = numVal(resCaf);
+    const stamp = numVal(resStamp);
+
+    const customsTotal = duty + gct + scf + envl + caf + stamp;
+    if (resCustomsTotal) resCustomsTotal.value = customsTotal.toFixed(2);
+
+    const freight  = numVal(resFreight);
+    const handling = numVal(resHandling);
+    const other    = numVal(resOther);
+
+    // if you want freight_total = freight + handling, change to: freight + handling
+    const freightTotal = freight;
+    if (resFreightTotal) resFreightTotal.value = freightTotal.toFixed(2);
+
+    const grandTotal = customsTotal + freight + handling + other;
+    if (resTotal) resTotal.value = grandTotal.toFixed(2);
+  }
+
+  // ✅ Bind recalc to manual edits
+  [
+    resDuty, resGct, resScf, resEnvl, resCaf, resStamp,
+    resFreight, resHandling, resOther
+  ].forEach(el => {
+    if (!el) return;
+    el.addEventListener('input', recalcTotalsFromManual);
+  });
+
   // When the modal opens, fill in data from the button
   chargesModal.addEventListener('show.bs.modal', function(event) {
     const btn = event.relatedTarget;
@@ -1123,20 +1174,24 @@ function validateMoveShipmentForm() {
         const d   = data.data || {};
         const fmt = (x) => (x == null ? "0.00" : Number(x).toFixed(2));
 
-        if (resDuty)         resDuty.value         = fmt(d.duty);
-        if (resGct)          resGct.value          = fmt(d.gct);
-        if (resScf)          resScf.value          = fmt(d.scf);
-        if (resEnvl)         resEnvl.value         = fmt(d.envl);
-        if (resCaf)          resCaf.value          = fmt(d.caf);
-        if (resStamp)        resStamp.value        = fmt(d.stamp);
-        if (resCustomsTotal) resCustomsTotal.value = fmt(d.customs_total);
-        if (resFreight)      resFreight.value      = fmt(d.freight);
-        if (resHandling)     resHandling.value     = fmt(d.handling);
-        if (resFreightTotal) resFreightTotal.value = fmt(d.freight_total);
-        if (resOther)        resOther.value        = fmt(d.other_charges || 0);
+        // ✅ Fill only if empty/zero (protect manual edits)
+        setIfEmptyOrZero(resDuty,         fmt(d.duty));
+        setIfEmptyOrZero(resGct,          fmt(d.gct));
+        setIfEmptyOrZero(resScf,          fmt(d.scf));
+        setIfEmptyOrZero(resEnvl,         fmt(d.envl));
+        setIfEmptyOrZero(resCaf,          fmt(d.caf));
+        setIfEmptyOrZero(resStamp,        fmt(d.stamp));
+        setIfEmptyOrZero(resCustomsTotal, fmt(d.customs_total));
+        setIfEmptyOrZero(resFreight,      fmt(d.freight));
+        setIfEmptyOrZero(resHandling,     fmt(d.handling));
+        setIfEmptyOrZero(resFreightTotal, fmt(d.freight_total));
+        setIfEmptyOrZero(resOther,        fmt(d.other_charges || 0));
 
         const total = d.grand_total || d.total_jmd || 0;
-        if (resTotal) resTotal.value = fmt(total);
+        setIfEmptyOrZero(resTotal, fmt(total));
+
+        // ✅ Always recompute totals based on whatever is currently in inputs
+        recalcTotalsFromManual();
 
         errorBox.style.display  = 'none';
         resultBox.style.display = 'block';
@@ -1150,13 +1205,6 @@ function validateMoveShipmentForm() {
         btnApply.style.display  = 'none';
       });
   });
-
-  // Helper: safe number from input
-  function numVal(el) {
-    if (!el) return 0;
-    const v = parseFloat(el.value || '0');
-    return isNaN(v) ? 0 : v;
-  }
 
   // Apply + save back to table + DB
   btnApply.addEventListener('click', async function() {
@@ -1182,7 +1230,9 @@ function validateMoveShipmentForm() {
       other_charges: numVal(resOther)
     };
 
-    // Grand total: use field if entered, else recompute
+    // Ensure totals are correct before saving
+    recalcTotalsFromManual();
+
     let grand = numVal(resTotal);
     if (!grand) {
       grand = payload.customs_total + payload.freight + payload.handling + payload.other_charges;
@@ -1217,8 +1267,7 @@ function validateMoveShipmentForm() {
       await res.json();
 
       alert(`Saved charges for package ${pkgId}.`);
-      const modalObj = bootstrap.Modal.getInstance(chargesModal);
-      if (modalObj) modalObj.hide();
+      bootstrap.Modal.getInstance(chargesModal)?.hide();
     } catch (err) {
       console.error(err);
       alert('⚠️ Error saving charges for this package.');

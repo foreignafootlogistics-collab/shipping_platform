@@ -17,7 +17,7 @@
     min_due="{{ min_due }}", max_due="{{ max_due }}"
   </div>
 
-  <!-- ✅ Fix: explicit action so GET always hits the right route -->
+  <!-- ✅ Filters (GET) -->
   <form class="card shadow-sm mb-3" method="get" action="{{ url_for('finance.unpaid_invoices') }}">
     <div class="card-body">
       <div class="row g-3 align-items-end">
@@ -50,9 +50,11 @@
         <div class="col-md-1">
           <label class="form-label mb-0 small">Status</label>
           <select name="status" class="form-select">
-            <option value="issued,unpaid" {{ 'selected' if status_selected=='issued,unpaid' }}>Both</option>
+            <option value="issued,unpaid,pending" {{ 'selected' if status_selected=='issued,unpaid,pending' }}>All Open</option>
+            <option value="issued,unpaid" {{ 'selected' if status_selected=='issued,unpaid' }}>Issued + Unpaid</option>
             <option value="issued" {{ 'selected' if status_selected=='issued' }}>Issued</option>
             <option value="unpaid" {{ 'selected' if status_selected=='unpaid' }}>Unpaid</option>
+            <option value="pending" {{ 'selected' if status_selected=='pending' }}>Pending</option>
           </select>
         </div>
       </div>
@@ -60,71 +62,118 @@
       <div class="mt-3 d-flex gap-2">
         <button class="btn btn-primary" type="submit">Apply</button>
         <a class="btn btn-outline-secondary" href="{{ url_for('finance.unpaid_invoices') }}">Reset</a>
+
         <div class="ms-auto small text-muted">
-          issued: {{ status_counts.get('issued',0) }} • unpaid: {{ status_counts.get('unpaid',0) }}
+          issued: {{ status_counts.get('issued',0) }}
+          • unpaid: {{ status_counts.get('unpaid',0) }}
+          • pending: {{ status_counts.get('pending',0) }}
         </div>
       </div>
     </div>
   </form>
 
-  <div class="table-responsive shadow-sm">
-    <table id="unpaidTable" class="table table-striped table-hover align-middle w-100">
-      <thead class="table-dark">
-        <tr>
-          <th>Invoice #</th>
-          <th>Customer</th>
-          <th>Reg #</th>
-          <th>Status</th>
-          <th class="text-end">Amount Due</th>
-          <th>Date Issued</th>
-          <th>Action</th>
-        </tr>
-      </thead>
+  <!-- ✅ Bulk actions (POST) -->
+  <form method="POST"
+        action="{{ url_for('finance.bulk_mark_invoices_paid', start=start, end=end, q=q, status=status_selected, min_due=min_due, max_due=max_due) }}"
+        onsubmit="return confirm('Mark selected invoices as PAID?');">
 
-      <tbody>
-        {% if invoices %}
-          {% for r in invoices %}
-          <tr>
-            <td>
-              <a href="{{ url_for('admin.view_invoice', invoice_id=r['invoice_id']) }}"
-                 class="text-decoration-none">
-                {{ r['invoice_number'] or r['invoice_id'] }}
-              </a>
-            </td>
-
-            <td>{{ r['customer'] }}</td>
-            <td>{{ r['registration_number'] }}</td>
-
-            <td>
-              <span class="badge {{ 'bg-info' if r['status']|lower=='issued' else 'bg-warning' }}">
-                {{ r['status']|capitalize }}
-              </span>
-            </td>
-
-            <td class="text-end">
-              ${{ '%.2f'|format((r['amount_due'] or 0)|float) }}
-            </td>
-
-            <td>{{ r['date_issued'] }}</td>
-
-            <td>
-              <a href="{{ url_for('admin.view_invoice', invoice_id=r['invoice_id']) }}"
-                 class="btn btn-sm btn-outline-primary">
-                View
-              </a>
-            </td>
-          </tr>
-          {% endfor %}
-        {% endif %}
-      </tbody>
-    </table>
-
-    {% if not invoices %}
-      <div class="alert alert-info text-center mb-0">
-        No matching invoices.
-      </div>
+    {# If you have global CSRF enabled via Flask-WTF, this will work.
+       If csrf_token() is not available in your app, replace with a small WTForm or remove.
+    #}
+    {% if csrf_token is defined %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     {% endif %}
-  </div>
+
+    <div class="d-flex gap-2 mb-2">
+      <button class="btn btn-success btn-sm" type="submit">
+        ✅ Mark Selected Paid
+      </button>
+
+      <button class="btn btn-outline-secondary btn-sm" type="button" id="btnSelectAll">
+        Select all on page
+      </button>
+
+      <button class="btn btn-outline-secondary btn-sm" type="button" id="btnClearAll">
+        Clear
+      </button>
+
+      <div class="ms-auto small text-muted" id="selectedCount">0 selected</div>
+    </div>
+
+    <div class="table-responsive shadow-sm">
+      <table id="unpaidTable" class="table table-striped table-hover align-middle w-100">
+        <thead class="table-dark">
+          <tr>
+            <th style="width:30px;">
+              <input type="checkbox" id="checkAll">
+            </th>
+            <th>Invoice #</th>
+            <th>Customer</th>
+            <th>Reg #</th>
+            <th>Status</th>
+            <th class="text-end">Amount Due</th>
+            <th>Date Issued</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% if invoices %}
+            {% for r in invoices %}
+            <tr>
+              <td>
+                <input class="row-check"
+                       type="checkbox"
+                       name="invoice_ids[]"
+                       value="{{ r['invoice_id'] }}">
+              </td>
+
+              <td>
+                <a href="{{ url_for('admin.view_invoice', invoice_id=r['invoice_id']) }}"
+                   class="text-decoration-none">
+                  {{ r['invoice_number'] or r['invoice_id'] }}
+                </a>
+              </td>
+
+              <td>{{ r['customer'] }}</td>
+              <td>{{ r['registration_number'] }}</td>
+
+              <td>
+                {% set s = (r['status'] or '')|lower %}
+                <span class="badge
+                  {% if s == 'issued' %}bg-info
+                  {% elif s == 'pending' %}bg-secondary
+                  {% else %}bg-warning
+                  {% endif %}">
+                  {{ r['status']|capitalize }}
+                </span>
+              </td>
+
+              <td class="text-end">
+                ${{ '%.2f'|format((r['amount_due'] or 0)|float) }}
+              </td>
+
+              <td>{{ r['date_issued'] }}</td>
+
+              <td>
+                <a href="{{ url_for('admin.view_invoice', invoice_id=r['invoice_id']) }}"
+                   class="btn btn-sm btn-outline-primary">
+                  View
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          {% endif %}
+        </tbody>
+      </table>
+
+      {% if not invoices %}
+        <div class="alert alert-info text-center mb-0">
+          No matching invoices.
+        </div>
+      {% endif %}
+    </div>
+  </form>
 </div>
 {% endblock %}
 
@@ -138,19 +187,59 @@
 <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
 
 <script>
+  function updateSelectedCount() {
+    const n = document.querySelectorAll('.row-check:checked').length;
+    const el = document.getElementById('selectedCount');
+    if (el) el.textContent = `${n} selected`;
+  }
+
   $(function(){
     // ✅ Prevent DataTables from keeping old state / causing confusion after server filters
     if ($.fn.DataTable.isDataTable('#unpaidTable')) {
       $('#unpaidTable').DataTable().destroy();
     }
 
-    $('#unpaidTable').DataTable({
+    const table = $('#unpaidTable').DataTable({
       stateSave: false,
       pageLength: 15,
       dom: 'Bfrtip',
       buttons: ['copyHtml5','excelHtml5','csvHtml5','print'],
-      columnDefs: [{ targets: [4], className: 'text-end' }]
+      columnDefs: [
+        { targets: [0], orderable: false },      // checkbox col
+        { targets: [5], className: 'text-end' }  // amount due col (shifted because checkbox col added)
+      ]
     });
+
+    // header check all (current page)
+    $('#checkAll').on('change', function(){
+      const checked = this.checked;
+      table.rows({ page: 'current' }).nodes().to$().find('input.row-check').prop('checked', checked);
+      updateSelectedCount();
+    });
+
+    // buttons
+    $('#btnSelectAll').on('click', function(){
+      table.rows({ page: 'current' }).nodes().to$().find('input.row-check').prop('checked', true);
+      $('#checkAll').prop('checked', true);
+      updateSelectedCount();
+    });
+
+    $('#btnClearAll').on('click', function(){
+      $('input.row-check').prop('checked', false);
+      $('#checkAll').prop('checked', false);
+      updateSelectedCount();
+    });
+
+    // update count on any checkbox click
+    $(document).on('change', 'input.row-check', updateSelectedCount);
+
+    // when table redraws (pagination/search), reset header checkbox + count
+    table.on('draw', function(){
+      updateSelectedCount();
+      $('#checkAll').prop('checked', false);
+    });
+
+    updateSelectedCount();
   });
 </script>
 {% endblock %}

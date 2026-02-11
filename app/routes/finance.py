@@ -447,33 +447,27 @@ def unpaid_invoices():
     start = (request.args.get('start') or '').strip()
     end = (request.args.get('end') or '').strip()
     q = (request.args.get('q') or '').strip()
-    status = (request.args.get('status') or 'issued,unpaid').strip().lower()  # ✅ default matches UI
+
+    # ✅ include pending again
+    status = (request.args.get('status') or 'issued,unpaid,pending').strip().lower()
     min_due_raw = (request.args.get('min_due') or '').strip()
     max_due_raw = (request.args.get('max_due') or '').strip()
 
-    # fallback to current month ONLY if missing
-    if not (start and end):
-        today = date.today()
-        start = date(today.year, today.month, 1).isoformat()
-        end = date(today.year, today.month, monthrange(today.year, today.month)[1]).isoformat()
-
-    start_date = datetime.fromisoformat(start).date()
-    end_date = datetime.fromisoformat(end).date()
-
-    # ✅ status list from dropdown
-    allowed = {'issued', 'unpaid'}  # keep it aligned with your UI
+    # ✅ status list from dropdown (now includes pending)
+    allowed = {'issued', 'unpaid', 'pending'}
     status_list = [s for s in (t.strip() for t in status.split(',')) if s in allowed]
     if not status_list:
-        status_list = ['issued', 'unpaid']
+        status_list = ['issued', 'unpaid', 'pending']
 
-    # ✅ stable string that matches <option value="">
-    if set(status_list) == {"issued", "unpaid"}:
+    # ✅ stable string so dropdown stays selected
+    if set(status_list) == {"issued", "unpaid", "pending"}:
+        status_selected = "issued,unpaid,pending"
+    elif set(status_list) == {"issued", "unpaid"}:
         status_selected = "issued,unpaid"
     else:
-        status_selected = status_list[0]  # issued OR unpaid
+        status_selected = status_list[0]
 
-
-    # parse amounts safely
+    # parse min/max safely
     min_due = None
     max_due = None
     try:
@@ -481,7 +475,6 @@ def unpaid_invoices():
             min_due = float(min_due_raw)
     except ValueError:
         min_due = None
-
     try:
         if max_due_raw != '':
             max_due = float(max_due_raw)
@@ -503,9 +496,18 @@ def unpaid_invoices():
         )
         .join(User, User.id == Invoice.user_id)
         .filter(amt_due_expr > 0)
-        .filter(func.date(issued_date_expr).between(start_date, end_date))
         .filter(func.lower(Invoice.status).in_(status_list))
     )
+
+    # ✅ IMPORTANT: only apply date filter if user actually chose it
+    if start and end:
+        start_date = datetime.fromisoformat(start).date()
+        end_date = datetime.fromisoformat(end).date()
+        query = query.filter(func.date(issued_date_expr).between(start_date, end_date))
+    else:
+        # so template inputs don't look broken
+        start = ''
+        end = ''
 
     if q:
         like = f"%{q.lower()}%"
@@ -539,12 +541,9 @@ def unpaid_invoices():
 
     total_due = sum(r['amount_due'] for r in invoices)
 
-    # status counts (same statuses)
+    # ✅ counts for all outstanding by status
     status_counts_rows = (
-        db.session.query(
-            func.lower(Invoice.status).label('s'),
-            func.count(Invoice.id).label('cnt'),
-        )
+        db.session.query(func.lower(Invoice.status).label('s'), func.count(Invoice.id).label('cnt'))
         .filter(amt_due_expr > 0)
         .group_by(func.lower(Invoice.status))
         .all()
@@ -563,6 +562,75 @@ def unpaid_invoices():
         max_due=max_due_raw,
         status_counts=status_counts,
     )
+
+
+
+@finance_bp.route('/unpaid_invoices/bulk_mark_paid', methods=['POST'])
+@admin_required(roles=['finance'])
+def bulk_mark_invoices_paid():
+    # invoice_ids[] comes from checkboxes
+    invoice_ids = request.form.getlist("invoice_ids[]")
+    if not invoice_ids:
+        flash("No invoices selected.", "warning")
+        return redirect(url_for("finance.unpaid_invoices", **request.args))
+
+    # sanitize to ints
+    clean_ids = []
+    for x in invoice_ids:
+        try:
+            clean_ids.append(int(x))
+        except Exception:
+            continue
+
+    if not clean_ids:
+        flash("No valid invoices selected.", "warning")
+        return redirect(url_for("finance.unpaid_invoices", **request.args))
+
+    # Only allow marking issued/unpaid/pending as paid
+    open_statuses = ['issued', 'unpaid', 'pending']
+
+    try:
+        # Fetch invoices and validate
+        invoices = (
+            Invoice.query
+            .filter(Invoice.id.in_(clean_ids))
+            .all()
+        )
+
+        if not invoices:
+            flash("Selected invoices not found.", "danger")
+            return redirect(url_for("finance.unpaid_invoices", **request.args))
+
+        updated = 0
+        now = datetime.utcnow()
+
+        for inv in invoices:
+            s = (inv.status or "").lower()
+
+            # only update open invoices
+            if s not in open_statuses:
+                continue
+
+            inv.status = "paid"
+            inv.date_paid = now
+
+            # clear balances
+            inv.amount_due = 0.0
+
+            # optional: keep grand_total/amount unchanged, just mark paid
+            # if you want: inv.amount = inv.grand_total or inv.amount
+
+            updated += 1
+
+        db.session.commit()
+        flash(f"Marked {updated} invoice(s) as PAID.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Bulk update failed: {e}", "danger")
+
+    # send them back to the same filtered view
+    return redirect(url_for("finance.unpaid_invoices", **request.args))
 
 
 # ---------------------- MONTHLY EXPENSES ---------------------- #

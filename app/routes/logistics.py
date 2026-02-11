@@ -2136,14 +2136,14 @@ def bulk_shipment_action(shipment_id):
         flash(f"{len(package_ids)} package(s) marked Ready and notifications sent.", "success")
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-    # ✅ SEND INVOICE EMAILS (NEW SYSTEM)
+    # ✅ SEND INVOICE EMAILS (SIMPLE TABLE EMAIL)
     elif action == "send_invoices":
         pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
         if not pkgs:
             flash("No matching packages found for the selected items.", "warning")
             return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-        invoice_ids = {p.invoice_id for p in pkgs if p.invoice_id}
+        invoice_ids = sorted({p.invoice_id for p in pkgs if p.invoice_id})
         if not invoice_ids:
             flash("The selected packages are not attached to any invoices yet.", "warning")
             return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
@@ -2160,8 +2160,6 @@ def bulk_shipment_action(shipment_id):
 
         from app.utils import email_utils
 
-        TRANSACTIONS_URL = "https://app.faflcourier.com/customer/transactions/all"
-
         sent = 0
         failed = []
 
@@ -2174,55 +2172,44 @@ def bulk_shipment_action(shipment_id):
 
             amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
 
+            # Build ONLY what email_utils needs
             invoice_dict = {
                 "number": inv.invoice_number or f"INV-{inv.id}",
                 "date": getattr(inv, "date_issued", None) or getattr(inv, "created_at", None),
-                "customer_name": user.full_name or user.email or "Customer",
-                "customer_code": getattr(user, "registration_number", "") or "",
-                "subtotal": float(getattr(inv, "subtotal", 0) or 0),
-                "discount_total": float(getattr(inv, "discount_total", 0) or 0),
                 "total_due": amount_due,
                 "packages": []
             }
 
             inv_pkgs = Package.query.filter(Package.invoice_id == inv.id).all()
+
             for p in inv_pkgs:
+                # ✅ NO description
+                # ✅ Weight will be rounded in email_utils
                 invoice_dict["packages"].append({
                     "house_awb": p.house_awb or "-",
+                    "tracking_number": p.tracking_number or "-",
                     "weight": float(p.weight or 0),
-                    "value": float(getattr(p, "declared_value", None) or p.value or 0),
-                    "description": p.description or "",
-                    "freight": float(getattr(p, "freight_fee", None) or 0),
-                    "handling": float(getattr(p, "storage_fee", None) or 0),
-                    "other_charges": float(getattr(p, "other_charges", None) or 0),
-                    "duty": float(getattr(p, "duty", None) or 0),
-                    "scf": float(getattr(p, "scf", None) or 0),
-                    "envl": float(getattr(p, "envl", None) or 0),
-                    "caf": float(getattr(p, "caf", None) or 0),
-                    "gct": float(getattr(p, "gct", None) or 0),
-                    "discount_due": float(getattr(p, "discount_due", None) or 0),
                 })
-
-            pdf_bytes = None
 
             ok = email_utils.send_invoice_email(
                 to_email=user.email,
                 full_name=user.full_name or user.email,
                 invoice=invoice_dict,
-                pdf_bytes=pdf_bytes,
+                pdf_bytes=None,
                 recipient_user_id=user.id
             )
 
             if ok:
                 sent += 1
+
+                # ✅ Log simple in-app message (no link)
                 _log_in_app_message(
                     user.id,
                     f"Invoice Ready: {invoice_dict['number']}",
                     f"Hi {user.full_name or user.email},\n\n"
                     f"Your invoice {invoice_dict['number']} is ready.\n"
-                    f"Total Due: JMD {amount_due:,.2f}\n\n"
-                    f"View details / pay here:\n{TRANSACTIONS_URL}\n\n"
-                    "— Foreign a Foot Logistics Limited"
+                    f"Total Amount Due: JMD {amount_due:,.2f}\n\n"
+                    "— Foreign A Foot Logistics Limited"
                 )
             else:
                 failed.append(user.email)
@@ -2235,6 +2222,7 @@ def bulk_shipment_action(shipment_id):
             flash("Some invoice emails failed: " + ", ".join(failed), "danger")
 
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
 
     elif action == "remove_from_shipment":
         db.session.execute(

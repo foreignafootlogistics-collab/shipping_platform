@@ -1035,47 +1035,120 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 
 
 # ==========================================================
-#  INVOICE EMAIL
+#  INVOICE EMAIL (SIMPLE TABLE VERSION - no link, no description, rounded weight)
 # ==========================================================
 def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_user_id=None):
     invoice = invoice or {}
 
-    inv_no = invoice.get("number") or "—"
+    inv_no = invoice.get("number") or "INV"
     subject = f"📄 Invoice {inv_no} is Ready"
 
+    # Total due
     total_due = invoice.get("total_due") or 0
     try:
         total_due_num = float(total_due)
     except (TypeError, ValueError):
         total_due_num = 0.0
 
-    inv_date = invoice.get("date")
-    if hasattr(inv_date, "strftime"):
-        inv_date_str = inv_date.strftime("%Y-%m-%d %H:%M")
-    elif isinstance(inv_date, str) and inv_date:
-        inv_date_str = inv_date
-    else:
-        inv_date_str = ""
+    # Build rows (NO description; rounded weight)
+    pkg_rows = []
+    for p in (invoice.get("packages") or []):
+        house_awb = (p.get("house_awb") or "-")
+        tracking = (p.get("tracking_number") or p.get("tracking") or "-")
 
-    plain_body = (
-        f"Hi {full_name},\n\n"
-        f"Your invoice from Foreign A Foot Logistics Limited is now available.\n\n"
-        f"Invoice #: {inv_no}\n"
-        f"Date: {inv_date_str}\n"
-        f"Total Due: JMD {total_due_num:,.2f}\n\n"
-        f"View details / pay here:\n{TRANSACTIONS_URL}\n\n"
-        f"Thank you for shipping with us!\n"
-        f"Foreign A Foot Logistics Limited\n"
-    )
+        try:
+            w = float(p.get("weight") or 0.0)
+        except (TypeError, ValueError):
+            w = 0.0
 
-    # IMPORTANT: invoice_email.html should be BODY ONLY (no logo/header/footer/html tags)
-    html_body = render_template(
-        "emails/invoice_email.html",
-        full_name=full_name,
-        invoice=invoice,
-        transactions_url=TRANSACTIONS_URL,
-        DASHBOARD_URL=DASHBOARD_URL,
-    )
+        pkg_rows.append({
+            "house_awb": house_awb,
+            "tracking": tracking,
+            "weight": f"{round(w, 2):.2f}",  # ✅ rounded weight
+        })
+
+    # -------------------------
+    # Plain text
+    # -------------------------
+    lines = [
+        f"Hi {full_name},",
+        "",
+        f"Your invoice {inv_no} is ready.",
+        "",
+        "House AWB | Tracking | Weight",
+        "----------------------------------------",
+    ]
+    for r in pkg_rows:
+        lines.append(f"{r['house_awb']} | {r['tracking']} | {r['weight']} lb")
+    lines += [
+        "",
+        f"Total Amount Due: JMD {total_due_num:,.2f}",
+        "",
+        "— Foreign A Foot Logistics Limited",
+    ]
+    plain_body = "\n".join(lines)
+
+    # -------------------------
+    # HTML (self-contained, no template needed)
+    # -------------------------
+    def esc(s):
+        try:
+            return (str(s)
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace('"', "&quot;")
+                    .replace("'", "&#39;"))
+        except Exception:
+            return ""
+
+    html_rows = []
+    for r in pkg_rows:
+        html_rows.append(f"""
+          <tr>
+            <td style="padding:12px 14px;border:1px solid #e9ecef;">{esc(r['house_awb'])}</td>
+            <td style="padding:12px 14px;border:1px solid #e9ecef;">{esc(r['tracking'])}</td>
+            <td style="padding:12px 14px;border:1px solid #e9ecef;text-align:right;white-space:nowrap;">{esc(r['weight'])} lb</td>
+          </tr>
+        """)
+
+    html_body = f"""
+    <div style="font-family:Arial, Helvetica, sans-serif; color:#222; line-height:1.5;">
+      <p style="font-size:18px;margin:0 0 18px 0;">Hi {esc(full_name)},</p>
+
+      <p style="font-size:18px;margin:0 0 18px 0;">
+        Your invoice <strong>{esc(inv_no)}</strong> is ready.
+      </p>
+
+      <div style="margin:22px 0 18px 0; border:1px solid #e9ecef; border-radius:8px; overflow:hidden;">
+        <table style="width:100%; border-collapse:collapse; font-size:16px;">
+          <thead style="background:#f8f9fa;">
+            <tr>
+              <th style="text-align:left;padding:14px;border:1px solid #e9ecef;">House AWB</th>
+              <th style="text-align:left;padding:14px;border:1px solid #e9ecef;">Tracking</th>
+              <th style="text-align:right;padding:14px;border:1px solid #e9ecef;">Weight</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(html_rows) if html_rows else """
+              <tr>
+                <td colspan="3" style="padding:12px 14px;border:1px solid #e9ecef;color:#666;">
+                  No packages found on this invoice.
+                </td>
+              </tr>
+            """}
+          </tbody>
+        </table>
+      </div>
+
+      <p style="font-size:22px;margin:14px 0 10px 0;">
+        Total Amount Due: <strong>JMD {total_due_num:,.2f}</strong>
+      </p>
+
+      <hr style="border:none;border-top:1px solid #eee;margin:22px 0;" />
+      <p style="margin:0;font-size:18px;">— Foreign A Foot Logistics Limited</p>
+    </div>
+    """
 
     attachments = []
     if isinstance(pdf_bytes, (bytes, bytearray)) and len(pdf_bytes) > 0:

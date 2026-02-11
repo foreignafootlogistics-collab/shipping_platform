@@ -2495,12 +2495,23 @@ def bulk_invoice_preview():
     """
     Input JSON: { "package_ids": [1,2,3,...] }
     Group by user and sum Package.amount_due.
-    Detained packages are skipped.
+    ✅ Detained packages are skipped
+    ✅ Already-invoiced packages are skipped (prevents duplicates)
     """
     data = request.get_json(silent=True) or {}
-    pkg_ids = [int(x) for x in (data.get('package_ids') or []) if str(x).isdigit()]
+    pkg_ids = []
+    for x in (data.get('package_ids') or []):
+        try:
+            pkg_ids.append(int(x))
+        except Exception:
+            pass
+
     if not pkg_ids:
-        return jsonify({"rows": [], "detained_skipped": 0})
+        return jsonify({
+            "rows": [],
+            "detained_skipped": 0,
+            "already_invoiced_skipped": 0
+        })
 
     rows = (
         db.session.query(
@@ -2508,6 +2519,7 @@ def bulk_invoice_preview():
             Package.user_id,
             Package.amount_due,
             Package.status,
+            Package.invoice_id,
             User.full_name,
             User.registration_number,
         )
@@ -2518,10 +2530,16 @@ def bulk_invoice_preview():
 
     grouped = {}
     detained = 0
+    already_invoiced = 0
 
-    for pid, uid, amount_due, status, full_name, reg in rows:
+    for pid, uid, amount_due, status, invoice_id, full_name, reg in rows:
         if (status or "").lower() == "detained":
             detained += 1
+            continue
+
+        # ✅ skip if already attached to an invoice
+        if invoice_id:
+            already_invoiced += 1
             continue
 
         g = grouped.setdefault(
@@ -2539,7 +2557,11 @@ def bulk_invoice_preview():
         g["package_count"] += 1
         g["total_due"] += float(amount_due or 0.0)
 
-    return jsonify({"rows": list(grouped.values()), "detained_skipped": detained})
+    return jsonify({
+        "rows": list(grouped.values()),
+        "detained_skipped": detained,
+        "already_invoiced_skipped": already_invoiced
+    })
 
 
 

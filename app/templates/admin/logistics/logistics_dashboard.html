@@ -1301,23 +1301,40 @@ async function openInvoicePreview(selectedPkgIds) {
     tr.innerHTML = `
       <td>
         <input type="checkbox" class="inv-user" data-uid="${row.user_id}"
-               data-pkgs="${row.package_ids.join(',')}" checked>
+               data-pkgs="${(row.package_ids || []).join(',')}" checked>
       </td>
       <td><strong>${row.registration_number || ''}</strong> ${row.full_name || ''}</td>
-      <td class="text-center">${row.package_count}</td>
+      <td class="text-center">${row.package_count || 0}</td>
       <td class="text-end">${Number(row.total_due || 0).toFixed(2)}</td>
     `;
     tbody.appendChild(tr);
   }
 
+  // ✅ If nothing eligible, show a friendly row
+  if (!(data.rows || []).length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" class="text-muted">
+          No eligible packages to invoice (detained / already invoiced were skipped).
+        </td>
+      </tr>
+    `;
+  }
+
   const totalCell = document.getElementById('inv-prev-total');
   if (totalCell) totalCell.textContent = grand.toFixed(2);
 
+  // ✅ Notes (detained + already invoiced)
   const note = document.getElementById('detained-note');
   if (note) {
-    note.textContent = data.detained_skipped
-      ? `• ${data.detained_skipped} detained package(s) skipped`
-      : '';
+    const parts = [];
+    if (data.detained_skipped) {
+      parts.push(`• ${data.detained_skipped} detained package(s) skipped`);
+    }
+    if (data.already_invoiced_skipped) {
+      parts.push(`• ${data.already_invoiced_skipped} already-invoiced package(s) skipped`);
+    }
+    note.textContent = parts.join('   ');
   }
 
   const modalEl = document.getElementById('bulkInvoicePreviewModal');
@@ -1325,38 +1342,6 @@ async function openInvoicePreview(selectedPkgIds) {
   modal.show();
 }
 
-async function finalizeInvoicesFromModal(ev) {
-  if (ev && ev.preventDefault) ev.preventDefault();
-
-  const checks = [...document.querySelectorAll('.inv-user:checked')];
-  const selections = checks.map(ch => ({
-    user_id: Number(ch.dataset.uid),
-    package_ids: ch.dataset.pkgs.split(',').map(x => Number(x))
-  }));
-
-  if (!selections.length) {
-    alert('Select at least one customer.');
-    return;
-  }
-
-  try {
-    const res = await postJSON(
-      "{{ url_for('logistics.bulk_invoice_finalize_json') }}",
-      { selections }
-    );
-
-    if (res.error) {
-      alert('⚠️ Server error: ' + res.error);
-      return;
-    }
-
-    alert(`Created ${res.created} invoice(s).`);
-    setTimeout(() => window.location.reload(), 500);
-  } catch (err) {
-    console.error('Error calling finalize-json:', err);
-    alert('⚠️ Error generating invoices: ' + (err.message || err));
-  }
-}
 
 
 /* =====================================

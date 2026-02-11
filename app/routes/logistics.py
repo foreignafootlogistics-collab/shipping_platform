@@ -2621,23 +2621,32 @@ def bulk_invoice_finalize_json():
         ]
       }
 
-    For each selection we create ONE invoice and attach eligible packages.
-    ✅ Prevents empty invoices
-    ✅ Prevents invoicing a package twice
+    Creates ONE invoice per user selection, attaching ONLY packages that are:
+      - not detained
+      - not already invoiced (invoice_id is null)
+
+    Prevents empty invoices.
     """
     data = request.get_json(silent=True) or {}
     selections = data.get('selections') or []
     if not selections:
-        return jsonify({"created": 0, "invoices": []})
+        return jsonify({"created": 0, "invoices": [], "skipped": {}})
 
     created = 0
     out = []
-    skipped_already_invoiced = 0
-    skipped_no_eligible = 0
+
+    # stats
+    skipped_detained = 0
+    skipped_invoiced = 0
+    skipped_empty    = 0
+
+    # ✅ Toggle this:
+    # If True: reuse an existing pending invoice for that user (append packages)
+    # If False: always create a NEW invoice (still prevents empty/duplicates)
+    REUSE_PENDING_INVOICE = True
 
     try:
         for sel in selections:
-            # --- user id ---
             try:
                 uid = int(sel.get("user_id") or 0)
             except Exception:
@@ -2645,85 +2654,110 @@ def bulk_invoice_finalize_json():
             if not uid:
                 continue
 
-            # --- package ids ---
             pkg_ids = []
             for x in (sel.get("package_ids") or []):
                 try:
                     pkg_ids.append(int(x))
                 except Exception:
                     pass
+
+            pkg_ids = list({x for x in pkg_ids if x > 0})
             if not pkg_ids:
-                skipped_no_eligible += 1
                 continue
 
-            # ✅ Load packages for that user ONLY
+            # Load packages (and lock to avoid race duplicates)
             pkgs = (
                 Package.query
                 .filter(Package.id.in_(pkg_ids))
-                .filter(Package.user_id == uid)
+                .with_for_update()
                 .all()
             )
             if not pkgs:
-                skipped_no_eligible += 1
+                continue
+
+            # Keep only this user's packages (safety)
+            pkgs = [p for p in pkgs if int(getattr(p, "user_id", 0) or 0) == uid]
+            if not pkgs:
                 continue
 
             eligible = []
             for p in pkgs:
-                # ✅ skip detained (same rule you already had)
                 if (p.status or "").lower() == "detained":
+                    skipped_detained += 1
                     continue
-
-                # ✅ skip packages that already have an invoice
                 if getattr(p, "invoice_id", None):
-                    skipped_already_invoiced += 1
+                    skipped_invoiced += 1
                     continue
-
                 eligible.append(p)
 
-            # ✅ CRITICAL: if none eligible, do NOT create an invoice
+            # ✅ Prevent empty invoice
             if not eligible:
-                skipped_no_eligible += 1
+                skipped_empty += 1
                 continue
 
-            # totals
+            # Total from eligible packages
             total_amount = float(sum(float(p.amount_due or 0.0) for p in eligible))
 
-            inv_number = _generate_invoice_number()
-            inv = Invoice(
-                user_id=uid,
-                invoice_number=inv_number,
-                status="pending",
-                date_submitted=datetime.utcnow(),
-                date_issued=datetime.utcnow(),
-                grand_total=total_amount,
-                amount_due=total_amount,
-                amount=total_amount,
-                description=f"Invoice for {len(eligible)} package(s)",
-            )
+            inv = None
 
-            db.session.add(inv)
-            db.session.flush()  # get inv.id
+            # ✅ Optionally reuse existing pending invoice for that user
+            if REUSE_PENDING_INVOICE:
+                inv = (
+                    Invoice.query
+                    .filter(and_(Invoice.user_id == uid, Invoice.status == "pending"))
+                    .order_by(Invoice.id.desc())
+                    .first()
+                )
 
-            # attach packages
+            if inv is None:
+                inv_number = _generate_invoice_number()
+                inv = Invoice(
+                    user_id=uid,
+                    invoice_number=inv_number,
+                    status="pending",
+                    date_submitted=datetime.utcnow(),
+                    date_issued=datetime.utcnow(),
+                    grand_total=0,
+                    amount_due=0,
+                    amount=0,
+                    description="",  # set after attaching
+                )
+                db.session.add(inv)
+                db.session.flush()  # get inv.id
+                created += 1
+
+            # Attach packages to invoice
             for p in eligible:
                 p.invoice_id = inv.id
-                # optionally:
+                # OPTIONAL: mark status
                 # p.status = "Invoiced"
 
-            created += 1
+            # Recompute invoice totals based on ALL packages attached
+            inv_pkgs = Package.query.filter(Package.invoice_id == inv.id).all()
+            inv_total = float(sum(float(x.amount_due or 0.0) for x in inv_pkgs))
+
+            inv.grand_total = inv_total
+            inv.amount_due  = inv_total
+            inv.amount      = inv_total
+            inv.description = f"Invoice for {len(inv_pkgs)} package(s)"
+
             out.append({
                 "invoice_id": inv.id,
                 "invoice_number": inv.invoice_number,
-                "amount": total_amount,
-                "package_count": len(eligible),
+                "amount": inv_total,
+                "added_packages": [p.id for p in eligible],
             })
 
         db.session.commit()
+
         return jsonify({
             "created": created,
             "invoices": out,
-            "skipped_already_invoiced": skipped_already_invoiced,
-            "skipped_no_eligible": skipped_no_eligible,
+            "skipped": {
+                "detained": skipped_detained,
+                "already_invoiced": skipped_invoiced,
+                "empty_selection": skipped_empty
+            }
         })
 
     except Exception as e:

@@ -4,7 +4,7 @@ from werkzeug.utils import secure_filename
 from flask import current_app, abort
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, abort, current_app
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from calendar import monthrange
 
 from flask_login import current_user
@@ -12,13 +12,14 @@ from wtforms import StringField, PasswordField, SubmitField
 from wtforms.validators import DataRequired, Email
 
 from sqlalchemy import func, or_
+import sqlalchemy as sa
 
 from app.forms import LoginForm, ExpenseForm
 from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import USD_TO_JMD
 
 from app.extensions import db
-from app.models import Invoice, Expense, User, ExpenseAuditLog
+from app.models import Invoice, Expense, User, ExpenseAuditLog, Package, Payment
 import cloudinary
 import cloudinary.uploader
 
@@ -564,73 +565,125 @@ def unpaid_invoices():
     )
 
 
+from datetime import datetime, timezone
+from flask import request, redirect, url_for, flash
+from flask_login import current_user
+from sqlalchemy import func
 
-@finance_bp.route('/unpaid_invoices/bulk_mark_paid', methods=['POST'])
-@admin_required(roles=['finance'])
+@finance_bp.route("/unpaid_invoices/mark_paid_bulk", methods=["POST"])
+@admin_required(roles=["finance"])
 def bulk_mark_invoices_paid():
-    # invoice_ids[] comes from checkboxes
-    invoice_ids = request.form.getlist("invoice_ids[]")
-    if not invoice_ids:
-        flash("No invoices selected.", "warning")
-        return redirect(url_for("finance.unpaid_invoices", **request.args))
+    """
+    Bulk mark invoices paid:
+    - creates a Payment record for each invoice (for remaining balance)
+    - sets invoice.status='paid', invoice.amount_due=0, invoice.date_paid=now
+    - sets Package.amount_due=0 and status='delivered' for packages on that invoice
+    """
 
-    # sanitize to ints
-    clean_ids = []
-    for x in invoice_ids:
+    # ✅ support both invoice_ids[] and invoice_ids
+    raw_ids = request.form.getlist("invoice_ids[]") or request.form.getlist("invoice_ids")
+    invoice_ids = []
+    for x in raw_ids:
         try:
-            clean_ids.append(int(x))
+            invoice_ids.append(int(x))
         except Exception:
-            continue
+            pass
 
-    if not clean_ids:
-        flash("No valid invoices selected.", "warning")
-        return redirect(url_for("finance.unpaid_invoices", **request.args))
+    if not invoice_ids:
+        flash("Select at least one invoice.", "warning")
+        return redirect(url_for("finance.unpaid_invoices"))
 
-    # Only allow marking issued/unpaid/pending as paid
-    open_statuses = ['issued', 'unpaid', 'pending']
+    now = datetime.now(timezone.utc)
+    actor_name = (getattr(current_user, "full_name", None) or getattr(current_user, "email", None) or "Finance")
+
+    # ✅ lock invoice rows (avoid double-paying)
+    invoices = (
+        db.session.query(Invoice)
+        .filter(Invoice.id.in_(invoice_ids))
+        .with_for_update()
+        .all()
+    )
+
+    changed = 0
+    skipped = 0
 
     try:
-        # Fetch invoices and validate
-        invoices = (
-            Invoice.query
-            .filter(Invoice.id.in_(clean_ids))
-            .all()
-        )
-
-        if not invoices:
-            flash("Selected invoices not found.", "danger")
-            return redirect(url_for("finance.unpaid_invoices", **request.args))
-
-        updated = 0
-        now = datetime.utcnow()
-
         for inv in invoices:
-            s = (inv.status or "").lower()
+            # compute remaining balance (includes discounts + prior payments)
+            subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(inv.id)
+            balance = float(total_due or 0.0)
 
-            # only update open invoices
-            if s not in open_statuses:
+            # already paid / nothing due
+            if balance <= 0:
+                inv.amount_due = 0.0
+                inv.status = "paid"
+                if hasattr(inv, "date_paid"):
+                    inv.date_paid = inv.date_paid or now
+
+                # packages -> delivered, clear due
+                Package.query.filter_by(invoice_id=inv.id).update(
+                    {"amount_due": 0.0, "status": "delivered"},
+                    synchronize_session=False
+                )
+                skipped += 1
                 continue
 
-            inv.status = "paid"
-            inv.date_paid = now
+            # ✅ create payment for remaining balance
+            payment_kwargs = {
+                "invoice_id": inv.id,
+                "user_id": inv.user_id,
+                "created_at": now,
+            }
 
-            # clear balances
-            inv.amount_due = 0.0
+            # method field name safety
+            if hasattr(Payment, "method"):
+                payment_kwargs["method"] = "Bulk"
+            elif hasattr(Payment, "payment_type"):
+                payment_kwargs["payment_type"] = "Bulk"
 
-            # optional: keep grand_total/amount unchanged, just mark paid
-            # if you want: inv.amount = inv.grand_total or inv.amount
+            # amount field name safety
+            if hasattr(Payment, "amount_jmd"):
+                payment_kwargs["amount_jmd"] = balance
+            else:
+                payment_kwargs["amount"] = balance
 
-            updated += 1
+            if hasattr(Payment, "notes"):
+                payment_kwargs["notes"] = f"Bulk marked paid by {actor_name}"
+            if hasattr(Payment, "reference"):
+                payment_kwargs["reference"] = f"BULK-{now.strftime('%Y%m%d%H%M%S')}-{inv.id}"
+            if hasattr(Payment, "authorized_by"):
+                payment_kwargs["authorized_by"] = actor_name
+
+            db.session.add(Payment(**payment_kwargs))
+            db.session.flush()
+
+            # ✅ recompute after inserting payment
+            _s, _d, _p, new_due = _fetch_invoice_totals_pg(inv.id)
+            inv.amount_due = float(new_due or 0.0)
+
+            if inv.amount_due <= 0:
+                inv.amount_due = 0.0
+                inv.status = "paid"
+                if hasattr(inv, "date_paid"):
+                    inv.date_paid = now
+
+                Package.query.filter_by(invoice_id=inv.id).update(
+                    {"amount_due": 0.0, "status": "delivered"},
+                    synchronize_session=False
+                )
+            else:
+                inv.status = "partial"
+
+            changed += 1
 
         db.session.commit()
-        flash(f"Marked {updated} invoice(s) as PAID.", "success")
+        flash(f"Bulk update complete. Paid: {changed}, Already paid/zero due: {skipped}", "success")
 
     except Exception as e:
         db.session.rollback()
-        flash(f"Bulk update failed: {e}", "danger")
+        flash(f"Bulk mark paid failed: {e}", "danger")
 
-    # send them back to the same filtered view
-    return redirect(url_for("finance.unpaid_invoices", **request.args))
+    return redirect(url_for("finance.unpaid_invoices"))
 
 
 # ---------------------- MONTHLY EXPENSES ---------------------- #

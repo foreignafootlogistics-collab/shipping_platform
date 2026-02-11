@@ -159,7 +159,7 @@ def _last_n_months(n: int = 12):
 def _mark_invoice_packages_delivered(invoice_id: int):
     # safest even if inv.packages relationship doesn’t exist
     Package.query.filter_by(invoice_id=invoice_id).update(
-        {"status": "delivery"},
+        {"status": "delivered"},
         synchronize_session=False
     )
 
@@ -2056,7 +2056,7 @@ def add_discount(invoice_id):
         if previous_status != "paid":
             _mark_invoice_packages_delivered(inv.id)
             for pkg in inv.packages:
-                pkg.status = "delivery" 
+                pkg.status = "delivered" 
     elif 0 < new_due < base_total_after:
         inv.status = "partial"
     else:

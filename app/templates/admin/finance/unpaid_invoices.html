@@ -11,12 +11,6 @@
     <h5 class="text-warning mb-0">Total Due: ${{ '%.2f'|format((total_due or 0)|float) }}</h5>
   </div>
 
-  <!-- ✅ Helpful: show what the server received -->
-  <div class="small text-muted mb-2">
-    Filters: start={{ start }}, end={{ end }}, q="{{ q }}", status="{{ status_selected }}",
-    min_due="{{ min_due }}", max_due="{{ max_due }}"
-  </div>
-
   <!-- ✅ Filters (GET) -->
   <form class="card shadow-sm mb-3" method="get" action="{{ url_for('finance.unpaid_invoices') }}">
     <div class="card-body">
@@ -34,7 +28,6 @@
         <div class="col-md-3">
           <label class="form-label mb-0 small">Customer (name or reg #)</label>
           <input type="text" name="q" value="{{ q }}" placeholder="Search…" class="form-control">
-          <div class="form-text">Tip: Reset if your date range excludes the invoices.</div>
         </div>
 
         <div class="col-md-2">
@@ -59,14 +52,16 @@
         </div>
       </div>
 
-      <div class="mt-3 d-flex gap-2">
+      <div class="mt-3 d-flex gap-2 align-items-center flex-wrap">
         <button class="btn btn-primary" type="submit">Apply</button>
         <a class="btn btn-outline-secondary" href="{{ url_for('finance.unpaid_invoices') }}">Reset</a>
 
-        <div class="ms-auto small text-muted">
-          issued: {{ status_counts.get('issued',0) }}
-          • unpaid: {{ status_counts.get('unpaid',0) }}
-          • pending: {{ status_counts.get('pending',0) }}
+        <div class="ms-auto d-flex align-items-center gap-2">
+          <span class="small text-muted">
+            issued: {{ status_counts.get('issued',0) }}
+            • unpaid: {{ status_counts.get('unpaid',0) }}
+            • pending: {{ status_counts.get('pending',0) }}
+          </span>
         </div>
       </div>
     </div>
@@ -77,14 +72,10 @@
         action="{{ url_for('finance.bulk_mark_invoices_paid', start=start, end=end, q=q, status=status_selected, min_due=min_due, max_due=max_due) }}"
         onsubmit="return confirm('Mark selected invoices as PAID?');">
 
-    {# If you have global CSRF enabled via Flask-WTF, this will work.
-       If csrf_token() is not available in your app, replace with a small WTForm or remove.
-    #}
-    {% if csrf_token is defined %}
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    {% endif %}
+    {# ✅ Always include CSRF if you use Flask-WTF globally #}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <div class="d-flex gap-2 mb-2">
+    <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
       <button class="btn btn-success btn-sm" type="submit">
         ✅ Mark Selected Paid
       </button>
@@ -97,7 +88,18 @@
         Clear
       </button>
 
-      <div class="ms-auto small text-muted" id="selectedCount">0 selected</div>
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <label class="small text-muted mb-0" for="dtPageSize">Show</label>
+        <select id="dtPageSize" class="form-select form-select-sm" style="width:110px;">
+          <option value="10">10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+        </select>
+        <div class="small text-muted" id="selectedCount">0 selected</div>
+      </div>
     </div>
 
     <div class="table-responsive shadow-sm">
@@ -143,7 +145,8 @@
                 <span class="badge
                   {% if s == 'issued' %}bg-info
                   {% elif s == 'pending' %}bg-secondary
-                  {% else %}bg-warning
+                  {% elif s == 'unpaid' %}bg-warning
+                  {% else %}bg-light text-dark
                   {% endif %}">
                   {{ r['status']|capitalize }}
                 </span>
@@ -194,7 +197,6 @@
   }
 
   $(function(){
-    // ✅ Prevent DataTables from keeping old state / causing confusion after server filters
     if ($.fn.DataTable.isDataTable('#unpaidTable')) {
       $('#unpaidTable').DataTable().destroy();
     }
@@ -202,12 +204,19 @@
     const table = $('#unpaidTable').DataTable({
       stateSave: false,
       pageLength: 15,
+      lengthChange: false, // ✅ we control via our own dropdown
       dom: 'Bfrtip',
       buttons: ['copyHtml5','excelHtml5','csvHtml5','print'],
       columnDefs: [
-        { targets: [0], orderable: false },      // checkbox col
-        { targets: [5], className: 'text-end' }  // amount due col (shifted because checkbox col added)
+        { targets: [0], orderable: false },
+        { targets: [5], className: 'text-end' }
       ]
+    });
+
+    // external page size dropdown
+    $('#dtPageSize').val('15'); // default to match pageLength
+    $('#dtPageSize').on('change', function(){
+      table.page.len(parseInt(this.value || '15', 10)).draw();
     });
 
     // header check all (current page)
@@ -217,7 +226,6 @@
       updateSelectedCount();
     });
 
-    // buttons
     $('#btnSelectAll').on('click', function(){
       table.rows({ page: 'current' }).nodes().to$().find('input.row-check').prop('checked', true);
       $('#checkAll').prop('checked', true);
@@ -230,10 +238,8 @@
       updateSelectedCount();
     });
 
-    // update count on any checkbox click
     $(document).on('change', 'input.row-check', updateSelectedCount);
 
-    // when table redraws (pagination/search), reset header checkbox + count
     table.on('draw', function(){
       updateSelectedCount();
       $('#checkAll').prop('checked', false);

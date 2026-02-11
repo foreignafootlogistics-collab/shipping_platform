@@ -1035,131 +1035,222 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 
 
 # ==========================================================
-#  INVOICE EMAIL (SIMPLE TABLE VERSION - no link, no description, rounded weight)
+#  INVOICE EMAIL (INLINE HTML DESIGN — LIGHT BACKGROUND)
 # ==========================================================
+from datetime import datetime
+from math import ceil
+
 def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_user_id=None):
+    """
+    Sends a clean, light-background invoice notification email with:
+    - White background, black text
+    - FAFL purple accents + yellow total
+    - Table: AWB/BL | Merchant | Tracking # | Weight (rounded)
+    - Big "Total Due"
+    - NO attachment language
+    - NO links
+    - NO external HTML template
+    """
+
     invoice = invoice or {}
+    inv_no = invoice.get("number") or "—"
+    packages = invoice.get("packages") or []
 
-    inv_no = invoice.get("number") or "INV"
-    subject = f"📄 Invoice {inv_no} is Ready"
-
-    # Total due
+    # ----- total due -----
     total_due = invoice.get("total_due") or 0
     try:
         total_due_num = float(total_due)
     except (TypeError, ValueError):
         total_due_num = 0.0
 
-    # Build rows (NO description; rounded weight)
-    pkg_rows = []
-    for p in (invoice.get("packages") or []):
-        house_awb = (p.get("house_awb") or "-")
-        tracking = (p.get("tracking_number") or p.get("tracking") or "-")
+    # ----- date (optional) -----
+    inv_date = invoice.get("date")
+    if hasattr(inv_date, "strftime"):
+        inv_date_str = inv_date.strftime("%Y-%m-%d %H:%M")
+    elif isinstance(inv_date, str) and inv_date:
+        inv_date_str = inv_date
+    else:
+        inv_date_str = ""
+
+    subject = f"📄 Invoice {inv_no} is Ready"
+    pkg_count = len(packages)
+
+    # ----- safe HTML escaping -----
+    def esc(s):
+        s = "" if s is None else str(s)
+        return (
+            s.replace("&", "&amp;")
+             .replace("<", "&lt;")
+             .replace(">", "&gt;")
+             .replace('"', "&quot;")
+             .replace("'", "&#39;")
+        )
+
+    # ----- build table rows -----
+    row_html = []
+    for p in packages:
+        awb = esc(p.get("house_awb") or "-")
+        merchant = esc(p.get("merchant") or "-")
+        tracking = esc(p.get("tracking_number") or "-")
 
         try:
-            w = float(p.get("weight") or 0.0)
+            w = float(p.get("weight") or 0)
         except (TypeError, ValueError):
             w = 0.0
+        weight_display = str(int(round(w)))  # rounded like your screenshot
 
-        pkg_rows.append({
-            "house_awb": house_awb,
-            "tracking": tracking,
-            "weight": f"{round(w, 2):.2f}",  # ✅ rounded weight
-        })
-
-    # -------------------------
-    # Plain text
-    # -------------------------
-    lines = [
-        f"Hi {full_name},",
-        "",
-        f"Your invoice {inv_no} is ready.",
-        "",
-        "House AWB | Tracking | Weight",
-        "----------------------------------------",
-    ]
-    for r in pkg_rows:
-        lines.append(f"{r['house_awb']} | {r['tracking']} | {r['weight']} lb")
-    lines += [
-        "",
-        f"Total Amount Due: JMD {total_due_num:,.2f}",
-        "",
-        "— Foreign A Foot Logistics Limited",
-    ]
-    plain_body = "\n".join(lines)
-
-    # -------------------------
-    # HTML (self-contained, no template needed)
-    # -------------------------
-    def esc(s):
-        try:
-            return (str(s)
-                    .replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-                    .replace('"', "&quot;")
-                    .replace("'", "&#39;"))
-        except Exception:
-            return ""
-
-    html_rows = []
-    for r in pkg_rows:
-        html_rows.append(f"""
+        row_html.append(f"""
           <tr>
-            <td style="padding:12px 14px;border:1px solid #e9ecef;">{esc(r['house_awb'])}</td>
-            <td style="padding:12px 14px;border:1px solid #e9ecef;">{esc(r['tracking'])}</td>
-            <td style="padding:12px 14px;border:1px solid #e9ecef;text-align:right;white-space:nowrap;">{esc(r['weight'])} lb</td>
+            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
+              {awb}
+            </td>
+            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
+              {merchant}
+            </td>
+            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
+              {tracking}
+            </td>
+            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
+              {weight_display}
+            </td>
           </tr>
         """)
 
+    rows_block = "\n".join(row_html) if row_html else """
+      <tr>
+        <td colspan="4" style="padding:14px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:14px;">
+          No packages found on this invoice.
+        </td>
+      </tr>
+    """
+
+    greeting_name = (full_name or "").strip() or "Customer"
+
+    intro_line = (
+        f"Foreign a Foot Logistics Limited has billed you for {pkg_count} package(s). "
+        f"Please see details below."
+    )
+
+    # ----- INLINE HTML (WHITE BACKGROUND) -----
     html_body = f"""
-    <div style="font-family:Arial, Helvetica, sans-serif; color:#222; line-height:1.5;">
-      <p style="font-size:18px;margin:0 0 18px 0;">Hi {esc(full_name)},</p>
+    <div style="margin:0; padding:0; background:#f3f4f6;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;">
+        <tr>
+          <td align="center">
+            <table width="680" cellpadding="0" cellspacing="0"
+                   style="max-width:680px; width:100%; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
 
-      <p style="font-size:18px;margin:0 0 18px 0;">
-        Your invoice <strong>{esc(inv_no)}</strong> is ready.
-      </p>
-
-      <div style="margin:22px 0 18px 0; border:1px solid #e9ecef; border-radius:8px; overflow:hidden;">
-        <table style="width:100%; border-collapse:collapse; font-size:16px;">
-          <thead style="background:#f8f9fa;">
-            <tr>
-              <th style="text-align:left;padding:14px;border:1px solid #e9ecef;">House AWB</th>
-              <th style="text-align:left;padding:14px;border:1px solid #e9ecef;">Tracking</th>
-              <th style="text-align:right;padding:14px;border:1px solid #e9ecef;">Weight</th>
-            </tr>
-          </thead>
-          <tbody>
-            {''.join(html_rows) if html_rows else """
+              <!-- HEADER (FAFL PURPLE) -->
               <tr>
-                <td colspan="3" style="padding:12px 14px;border:1px solid #e9ecef;color:#666;">
-                  No packages found on this invoice.
+                <td style="background:#4A148C; padding:16px 20px;">
+                  <div style="font-family:Arial, sans-serif; font-size:16px; color:#ffffff; font-weight:700;">
+                    Foreign A Foot Logistics Limited
+                  </div>
+                  <div style="font-family:Arial, sans-serif; font-size:12px; color:#efe6ff; margin-top:2px;">
+                    Invoice Notification{(" • " + esc(inv_date_str)) if inv_date_str else ""}
+                  </div>
                 </td>
               </tr>
-            """}
-          </tbody>
-        </table>
-      </div>
 
-      <p style="font-size:22px;margin:14px 0 10px 0;">
-        Total Amount Due: <strong>JMD {total_due_num:,.2f}</strong>
-      </p>
+              <!-- BODY -->
+              <tr>
+                <td style="padding:22px 20px 10px 20px;">
+                  <div style="font-family:Arial, sans-serif; font-size:22px; color:#111827; font-weight:700; margin-bottom:10px;">
+                    Hi {esc(greeting_name)},
+                  </div>
 
-      <hr style="border:none;border-top:1px solid #eee;margin:22px 0;" />
-      <p style="margin:0;font-size:18px;">— Foreign A Foot Logistics Limited</p>
+                  <div style="font-family:Arial, sans-serif; font-size:16px; color:#374151; line-height:1.55;">
+                    {esc(intro_line)}
+                  </div>
+
+                  <div style="height:14px;"></div>
+
+                  <!-- TABLE -->
+                  <table width="100%" cellpadding="0" cellspacing="0"
+                         style="border-collapse:collapse; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;">
+                    <thead>
+                      <tr style="background:#f5f2fb;">
+                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #e5e7eb;">
+                          AWB/BL
+                        </th>
+                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #e5e7eb;">
+                          Merchant
+                        </th>
+                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #e5e7eb;">
+                          Tracking #
+                        </th>
+                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800;">
+                          Weight
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows_block}
+                    </tbody>
+                  </table>
+
+                  <div style="height:18px;"></div>
+
+                  <!-- TOTAL DUE (BIG + YELLOW) -->
+                  <div style="font-family:Arial, sans-serif; font-size:18px; color:#111827; font-weight:700;">
+                    Total Due:
+                  </div>
+                  <div style="font-family:Arial, sans-serif; font-size:54px; line-height:1.05; font-weight:900; color:#FFD400; margin-top:6px;">
+                    ${total_due_num:,.2f}
+                  </div>
+
+                  <div style="height:14px;"></div>
+
+                  <div style="font-family:Arial, sans-serif; font-size:13px; color:#6b7280;">
+                    Thank you for shipping with us.
+                  </div>
+                </td>
+              </tr>
+
+              <!-- FOOTER STRIP -->
+              <tr>
+                <td style="padding:14px 20px; background:#f5f2fb; border-top:1px solid #e5e7eb;">
+                  <div style="font-family:Arial, sans-serif; font-size:12px; color:#6b7280;">
+                    © {datetime.utcnow().year} Foreign A Foot Logistics Limited
+                  </div>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+      </table>
     </div>
     """
 
-    attachments = []
-    if isinstance(pdf_bytes, (bytes, bytearray)) and len(pdf_bytes) > 0:
-        attachments = [(bytes(pdf_bytes), f"Invoice_{inv_no}.pdf", "application/pdf")]
+    # ----- Plain text fallback -----
+    plain_lines = []
+    plain_lines.append(f"Hi {greeting_name},\n")
+    plain_lines.append(f"Foreign a Foot Logistics Limited has billed you for {pkg_count} package(s).")
+    plain_lines.append("")
+    plain_lines.append("AWB/BL | Merchant | Tracking # | Weight")
+    for p in packages:
+        awb = p.get("house_awb") or "-"
+        merchant = p.get("merchant") or "-"
+        tracking = p.get("tracking_number") or "-"
+        try:
+            w = float(p.get("weight") or 0)
+        except Exception:
+            w = 0.0
+        plain_lines.append(f"{awb} | {merchant} | {tracking} | {int(round(w))}")
+    plain_lines.append("")
+    plain_lines.append(f"Total Due: ${total_due_num:,.2f}")
+    plain_lines.append("")
+    plain_lines.append("— Foreign A Foot Logistics Limited")
+
+    plain_body = "\n".join(plain_lines)
 
     return send_email(
         to_email=to_email,
         subject=subject,
         plain_body=plain_body,
         html_body=html_body,
-        attachments=attachments,
+        attachments=[],  # explicitly none
         recipient_user_id=recipient_user_id,
         reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )

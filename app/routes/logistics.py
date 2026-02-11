@@ -2183,14 +2183,13 @@ def bulk_shipment_action(shipment_id):
             inv_pkgs = Package.query.filter(Package.invoice_id == inv.id).all()
 
             for p in inv_pkgs:
-                # ✅ NO description
-                # ✅ Weight will be rounded in email_utils
                 invoice_dict["packages"].append({
                     "house_awb": p.house_awb or "-",
+                    "merchant": (getattr(p, "merchant", None) or getattr(p, "shipper", None) or "-"),
                     "tracking_number": p.tracking_number or "-",
-                    "weight": float(p.weight or 0),
+                    "weight": float(p.weight or 0),  # rounded in email_utils
                 })
-
+  
             ok = email_utils.send_invoice_email(
                 to_email=user.email,
                 full_name=user.full_name or user.email,
@@ -2207,6 +2206,7 @@ def bulk_shipment_action(shipment_id):
                     user.id,
                     f"Invoice Ready: {invoice_dict['number']}",
                     f"Hi {user.full_name or user.email},\n\n"
+                    f"Foreign a Foot Logistics Limited has billed you for {len(inv_pkgs)} package(s). "
                     f"Your invoice {invoice_dict['number']} is ready.\n"
                     f"Total Amount Due: JMD {amount_due:,.2f}\n\n"
                     "— Foreign A Foot Logistics Limited"

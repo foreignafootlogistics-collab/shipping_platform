@@ -1037,19 +1037,18 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 # ==========================================================
 #  INVOICE EMAIL (INLINE HTML DESIGN — LIGHT BACKGROUND)
 # ==========================================================
-from datetime import datetime
-from math import ceil
-
 def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_user_id=None):
     """
     Sends a clean, light-background invoice notification email with:
     - White background, black text
     - FAFL purple accents + yellow total
-    - Table: AWB/BL | Merchant | Tracking # | Weight (rounded)
+    - Table: AWB/BL | Merchant | Tracking # | Weight (rounded UP)
     - Big "Total Due"
     - NO attachment language
     - NO links
     - NO external HTML template
+    - Mobile-safe (scroll wrapper + responsive stacked rows on small screens)
+    - Black table outline + black grid lines
     """
 
     invoice = invoice or {}
@@ -1086,7 +1085,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
              .replace("'", "&#39;")
         )
 
-    # ----- build table rows -----
+    # ----- build table rows (desktop) + stacked cells (mobile) -----
     row_html = []
     for p in packages:
         awb = esc(p.get("house_awb") or "-")
@@ -1097,28 +1096,34 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
             w = float(p.get("weight") or 0)
         except (TypeError, ValueError):
             w = 0.0
-        weight_display = str(int(round(w)))  # rounded like your screenshot
+
+        # ✅ ROUND UP (never round down)
+        weight_display = str(int(ceil(w)))
 
         row_html.append(f"""
-          <tr>
-            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
-              {awb}
+          <tr class="stack-row">
+            <td class="cell" style="padding:12px 14px; border-top:1px solid #111111; border-right:1px solid #111111; color:#000000; font-size:14px; font-family:Arial, sans-serif;">
+              <span class="stack-label" style="display:none;">AWB/BL</span>
+              <span class="stack-val">{awb}</span>
             </td>
-            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
-              {merchant}
+            <td class="cell" style="padding:12px 14px; border-top:1px solid #111111; border-right:1px solid #111111; color:#000000; font-size:14px; font-family:Arial, sans-serif;">
+              <span class="stack-label" style="display:none;">Merchant</span>
+              <span class="stack-val">{merchant}</span>
             </td>
-            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
-              {tracking}
+            <td class="cell" style="padding:12px 14px; border-top:1px solid #111111; border-right:1px solid #111111; color:#000000; font-size:14px; font-family:Arial, sans-serif;">
+              <span class="stack-label" style="display:none;">Tracking #</span>
+              <span class="stack-val">{tracking}</span>
             </td>
-            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
-              {weight_display}
+            <td class="cell" style="padding:12px 14px; border-top:1px solid #111111; color:#000000; font-size:14px; font-family:Arial, sans-serif;">
+              <span class="stack-label" style="display:none;">Weight</span>
+              <span class="stack-val">{weight_display}</span>
             </td>
           </tr>
         """)
 
     rows_block = "\n".join(row_html) if row_html else """
       <tr>
-        <td colspan="4" style="padding:14px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:14px;">
+        <td colspan="4" style="padding:14px; border-top:1px solid #111111; color:#111111; font-size:14px; font-family:Arial, sans-serif;">
           No packages found on this invoice.
         </td>
       </tr>
@@ -1134,6 +1139,37 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
     # ----- INLINE HTML (WHITE BACKGROUND) -----
     html_body = f"""
     <div style="margin:0; padding:0; background:#f3f4f6;">
+      <style>
+        /* Mobile stacking (best effort in email clients) */
+        @media only screen and (max-width: 600px) {{
+          .mobile-hide {{ display:none !important; }}
+          .stack-row td {{
+            display:block !important;
+            width:100% !important;
+            box-sizing:border-box !important;
+            border-right:none !important;
+          }}
+          .stack-label {{
+            display:block !important;
+            font-weight:700 !important;
+            color:#4A148C !important;
+            margin-bottom:4px !important;
+            font-family:Arial, sans-serif !important;
+          }}
+          .stack-val {{
+            display:block !important;
+            margin-bottom:10px !important;
+            font-family:Arial, sans-serif !important;
+          }}
+          .table-wrap {{
+            overflow-x:visible !important;
+          }}
+          .tbl {{
+            min-width:0 !important;
+          }}
+        }}
+      </style>
+
       <table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;">
         <tr>
           <td align="center">
@@ -1155,44 +1191,46 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
               <!-- BODY -->
               <tr>
                 <td style="padding:22px 20px 10px 20px;">
-                  <div style="font-family:Arial, sans-serif; font-size:22px; color:#111827; font-weight:700; margin-bottom:10px;">
+                  <div style="font-family:Arial, sans-serif; font-size:22px; color:#000000; font-weight:700; margin-bottom:10px;">
                     Hi {esc(greeting_name)},
                   </div>
 
-                  <div style="font-family:Arial, sans-serif; font-size:16px; color:#374151; line-height:1.55;">
+                  <div style="font-family:Arial, sans-serif; font-size:16px; color:#111111; line-height:1.55;">
                     {esc(intro_line)}
                   </div>
 
                   <div style="height:14px;"></div>
 
-                  <!-- TABLE -->
-                  <table width="100%" cellpadding="0" cellspacing="0"
-                         style="border-collapse:collapse; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;">
-                    <thead>
-                      <tr style="background:#f5f2fb;">
-                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #e5e7eb;">
-                          AWB/BL
-                        </th>
-                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #e5e7eb;">
-                          Merchant
-                        </th>
-                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #e5e7eb;">
-                          Tracking #
-                        </th>
-                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800;">
-                          Weight
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows_block}
-                    </tbody>
-                  </table>
+                  <!-- MOBILE SAFE WRAP (allows swipe if needed) -->
+                  <div class="table-wrap" style="max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch;">
+                    <table class="tbl" width="100%" cellpadding="0" cellspacing="0"
+                           style="min-width:520px; border-collapse:collapse; background:#ffffff; border:2px solid #000000; border-radius:10px; overflow:hidden;">
+                      <thead class="mobile-hide">
+                        <tr style="background:#f5f2fb;">
+                          <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #000000; border-bottom:2px solid #000000;">
+                            AWB/BL
+                          </th>
+                          <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #000000; border-bottom:2px solid #000000;">
+                            Merchant
+                          </th>
+                          <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #000000; border-bottom:2px solid #000000;">
+                            Tracking #
+                          </th>
+                          <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-bottom:2px solid #000000;">
+                            Weight
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows_block}
+                      </tbody>
+                    </table>
+                  </div>
 
                   <div style="height:18px;"></div>
 
                   <!-- TOTAL DUE (BIG + YELLOW) -->
-                  <div style="font-family:Arial, sans-serif; font-size:18px; color:#111827; font-weight:700;">
+                  <div style="font-family:Arial, sans-serif; font-size:18px; color:#000000; font-weight:700;">
                     Total Due:
                   </div>
                   <div style="font-family:Arial, sans-serif; font-size:54px; line-height:1.05; font-weight:900; color:#FFD400; margin-top:6px;">
@@ -1201,7 +1239,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
 
                   <div style="height:14px;"></div>
 
-                  <div style="font-family:Arial, sans-serif; font-size:13px; color:#6b7280;">
+                  <div style="font-family:Arial, sans-serif; font-size:13px; color:#111111;">
                     Thank you for shipping with us.
                   </div>
                 </td>
@@ -1209,8 +1247,8 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
 
               <!-- FOOTER STRIP -->
               <tr>
-                <td style="padding:14px 20px; background:#f5f2fb; border-top:1px solid #e5e7eb;">
-                  <div style="font-family:Arial, sans-serif; font-size:12px; color:#6b7280;">
+                <td style="padding:14px 20px; background:#f5f2fb; border-top:1px solid #000000;">
+                  <div style="font-family:Arial, sans-serif; font-size:12px; color:#111111;">
                     © {datetime.utcnow().year} Foreign A Foot Logistics Limited
                   </div>
                 </td>
@@ -1237,7 +1275,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
             w = float(p.get("weight") or 0)
         except Exception:
             w = 0.0
-        plain_lines.append(f"{awb} | {merchant} | {tracking} | {int(round(w))}")
+        plain_lines.append(f"{awb} | {merchant} | {tracking} | {int(ceil(w))}")  # ✅ round UP
     plain_lines.append("")
     plain_lines.append(f"Total Due: ${total_due_num:,.2f}")
     plain_lines.append("")
@@ -1254,6 +1292,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
         recipient_user_id=recipient_user_id,
         reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )
+
 
 
 # ==========================================================

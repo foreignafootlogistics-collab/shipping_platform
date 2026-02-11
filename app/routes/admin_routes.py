@@ -1875,6 +1875,32 @@ def invoice_breakdown(package_id):
     return jsonify(payload)
 
 
+@admin_bp.route("/invoice/<int:invoice_id>/delete", methods=["POST"])
+@admin_required
+def delete_invoice(invoice_id):
+    inv = Invoice.query.get_or_404(invoice_id)
+
+    # If any payments exist, block delete (safer)
+    pay_count = Payment.query.filter(Payment.invoice_id == inv.id).count()
+    if pay_count > 0:
+        msg = f"Cannot delete invoice: {pay_count} payment(s) are linked to it."
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify(success=False, error=msg), 400
+        flash(msg, "danger")
+        return redirect(url_for("accounts_profiles.view_user", id=inv.user_id, tab="invoices"))
+
+    # Unlink packages from this invoice (avoid FK errors / keep packages)
+    Package.query.filter(Package.invoice_id == inv.id).update({"invoice_id": None})
+
+    db.session.delete(inv)
+    db.session.commit()
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(success=True)
+
+    flash("Invoice deleted.", "success")
+    return redirect(url_for("accounts_profiles.view_user", id=inv.user_id, tab="invoices"))
+
 @admin_bp.route("/invoice/add-payment/<int:invoice_id>", methods=["POST"])
 @admin_required
 def add_payment(invoice_id):

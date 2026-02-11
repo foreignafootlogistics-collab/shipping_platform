@@ -540,7 +540,8 @@
                 <th class="text-end">Amount Due</th>
                 <th class="text-end">Amount Paid</th>
                 <th class="text-end">Amount Owed</th>                
-                <th>Status</th>                
+                <th>Status</th>
+                <th class="text-center" style="width:60px;">Delete</th>                
               </tr>
             </thead>
             <tbody>
@@ -617,7 +618,20 @@
                     {% endif %}
                   </div>
                 </td>
-               
+                <td class="text-center">
+                  {% if paid|float <= 0 %}
+                    <button type="button"
+                            class="btn btn-sm btn-outline-danger"
+                            title="Delete invoice"
+                            onclick="openDeleteInvoiceModal({{ inv.id }}, '{{ (inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)))|e }}')">
+                      <i class="bi bi-trash"></i>
+                    </button>
+                  {% else %}
+                    <i class="bi bi-lock text-muted"
+                       title="Cannot delete: payment exists"
+                       style="font-size: 1.1rem;"></i>
+                  {% endif %}
+                </td>               
               </tr>              
               {% endfor %}
             </tbody>
@@ -1186,6 +1200,7 @@
     </div>
   </div>
    
+  
   <!-- Payments Filter Modal -->
   <div class="modal fade" id="paymentFilterModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -1471,6 +1486,42 @@
             <button type="submit" class="btn btn-primary">Confirm Payment</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+ 
+  <div class="modal fade" id="deleteInvoiceModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+
+        <div class="modal-header" style="background:#dc3545; color:#fff;">
+          <h5 class="modal-title">
+            <i class="bi bi-exclamation-triangle me-1"></i> Delete Invoice
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <form id="deleteInvoiceForm" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="modal-body">
+            <p class="mb-2">
+              You are about to delete: <strong id="delInvoiceLabel">—</strong>
+            </p>
+            <div class="alert alert-warning mb-0">
+              This will remove the invoice record. Any packages linked to it will be unassigned.
+              Payments linked to it will be handled by the server rule.
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-danger">
+              <i class="bi bi-trash me-1"></i> Delete
+            </button>
+          </div>
+        </form>
+
       </div>
     </div>
   </div>
@@ -2330,5 +2381,45 @@ if (bulkDeleteBtn) {
     })
     .catch(() => alert('Server error adding package'));
 });
+
+function openDeleteInvoiceModal(invoiceId, invoiceLabel){
+  const modalEl = document.getElementById('deleteInvoiceModal');
+  const formEl  = document.getElementById('deleteInvoiceForm');
+  const labelEl = document.getElementById('delInvoiceLabel');
+
+  if (!modalEl || !formEl) return;
+
+  labelEl.textContent = invoiceLabel || ('Invoice #' + invoiceId);
+
+  // point to the delete route
+  formEl.action = "{{ url_for('admin.delete_invoice', invoice_id=0) }}".replace('0', String(invoiceId));
+
+  new bootstrap.Modal(modalEl).show();
+}
+
+document.getElementById('deleteInvoiceForm')?.addEventListener('submit', function(e){
+  e.preventDefault();
+
+  const form = this;
+  const action = form.action;
+  const formData = new FormData(form);
+
+  fetch(action, {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    body: formData
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) {
+      alert(data.error || 'Delete failed');
+      return;
+    }
+    // easiest: reload to refresh totals/balance/pagination
+    window.location.reload();
+  })
+  .catch(() => alert('Server error deleting invoice'));
+});
+
 </script>
 {% endblock %}

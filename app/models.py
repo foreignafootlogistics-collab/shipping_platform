@@ -259,6 +259,7 @@ class ShipmentLog(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     sl_id = db.Column(db.String, unique=True, nullable=False, index=True)
+    sl_name = db.Column(db.String(120), nullable=True)   # ✅ NEW (renameable)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     packages = db.relationship(

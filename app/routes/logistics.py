@@ -1084,6 +1084,31 @@ def bulk_assign_packages():
     flash(msg + ".", "success")
     return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
+@logistics_bp.route("/shipments/<int:shipment_id>/packages/delete", methods=["POST"])
+@admin_required
+def delete_packages_from_shipment(shipment_id):
+    package_ids = request.form.getlist("package_ids")  # from checkboxes
+    if not package_ids:
+        flash("Please select at least one package to delete.", "warning")
+        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
+
+    # IMPORTANT: only delete packages that are in THIS shipment
+    pkgs = (Package.query
+            .filter(Package.id.in_(package_ids), Package.shipment_id == shipment_id)
+            .all())
+
+    if not pkgs:
+        flash("No matching packages found in this shipment.", "warning")
+        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
+
+    for p in pkgs:
+        db.session.delete(p)
+
+    db.session.commit()
+    flash(f"Deleted {len(pkgs)} package(s).", "success")
+    return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
+
+
 @logistics_bp.route("/admin/packages/<int:package_id>/attachments", methods=["POST"])
 @login_required
 def admin_upload_package_attachments(package_id):
@@ -1728,10 +1753,9 @@ def _next_sl_id():
     """
     today = datetime.utcnow().strftime("%Y%m%d")
 
-    # Look for the latest SL-* regardless of date
     last = (
         db.session.query(ShipmentLog.sl_id)
-        .filter(ShipmentLog.sl_id.like("SL-%-%"))
+        .filter(ShipmentLog.sl_id.like(f"SL-{today}-%"))
         .order_by(ShipmentLog.sl_id.desc())
         .first()
     )
@@ -1739,12 +1763,29 @@ def _next_sl_id():
     last_num = 0
     if last and last[0]:
         try:
-            # Extract the trailing numeric portion after the last dash
             last_num = int(last[0].rsplit("-", 1)[-1])
         except ValueError:
             last_num = 0
 
     return f"SL-{today}-{last_num + 1:05d}"
+
+@logistics_bp.route("/shipment/<int:shipment_id>/rename", methods=["POST"])
+@admin_required
+def rename_shipment(shipment_id):
+    s = ShipmentLog.query.get_or_404(shipment_id)
+
+    new_name = request.form.get("sl_name", "").strip()
+
+    if not new_name:
+        flash("Shipment name cannot be empty.", "warning")
+        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
+
+    s.sl_name = new_name
+    db.session.commit()
+
+    flash("Shipment renamed successfully.", "success")
+    return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
+
 
 @logistics_bp.route('/shipmentlog/create', methods=['POST'])
 @admin_required

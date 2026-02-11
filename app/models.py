@@ -481,14 +481,14 @@ class Expense(db.Model):
     amount = db.Column(db.Float, nullable=False, default=0.0)
     description = db.Column(db.Text)
 
-    # ✅ NEW: optional PDF attachment
-    attachment_name = db.Column(db.String(255))         # original filename
-    attachment_stored = db.Column(db.String(255))       # stored filename on disk
+    # ✅ Attachment (Cloudinary-only)
+    attachment_name = db.Column(db.String(255))       # original filename
+    attachment_url = db.Column(db.String(500))        # Cloudinary secure_url
+    attachment_public_id = db.Column(db.String(255))  # Cloudinary public_id (for delete)
     attachment_mime = db.Column(db.String(120))
     attachment_uploaded_at = db.Column(db.DateTime)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
 
 class ExpenseAuditLog(db.Model):
     __tablename__ = "expense_audit_logs"

@@ -3,7 +3,7 @@ import uuid
 from werkzeug.utils import secure_filename
 from flask import current_app, abort
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, abort, current_app
 from datetime import datetime, date, timedelta
 from calendar import monthrange
 
@@ -19,10 +19,97 @@ from app.calculator_data import USD_TO_JMD
 
 from app.extensions import db
 from app.models import Invoice, Expense, User, ExpenseAuditLog
+import cloudinary
+import cloudinary.uploader
+
 
 
 finance_bp = Blueprint('finance', __name__, url_prefix='/finance')
 
+def _cloudinary_ready():
+    return all([
+        current_app.config.get("CLOUDINARY_CLOUD_NAME"),
+        current_app.config.get("CLOUDINARY_API_KEY"),
+        current_app.config.get("CLOUDINARY_API_SECRET"),
+    ])
+
+def _init_cloudinary_from_config():
+    cloudinary.config(
+        cloud_name=current_app.config["CLOUDINARY_CLOUD_NAME"],
+        api_key=current_app.config["CLOUDINARY_API_KEY"],
+        api_secret=current_app.config["CLOUDINARY_API_SECRET"],
+        secure=True,
+    )
+
+def _upload_expense_pdf_to_cloudinary(file_storage):
+    if not file_storage or not getattr(file_storage, "filename", ""):
+        return None, None, None, None
+
+    filename = secure_filename(file_storage.filename)
+    if not filename.lower().endswith(".pdf"):
+        raise ValueError("Only PDF files are allowed.")
+
+    if not _cloudinary_ready():
+        raise ValueError("Cloudinary env vars missing. Set CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET.")
+
+    _init_cloudinary_from_config()
+
+    res = cloudinary.uploader.upload(
+        file_storage,
+        resource_type="raw",      # ✅ required for PDFs
+        folder="fafl/expenses",
+        public_id=f"expense_{uuid.uuid4().hex}",
+        use_filename=False,
+        unique_filename=False,
+    )
+
+    return (
+        filename,
+        res.get("secure_url"),
+        res.get("public_id"),
+        file_storage.mimetype or "application/pdf",
+    )
+
+def _delete_cloudinary_raw(public_id: str):
+    if not public_id or not _cloudinary_ready():
+        return
+    _init_cloudinary_from_config()
+    try:
+        cloudinary.uploader.destroy(public_id, resource_type="raw")
+    except Exception:
+        pass
+
+
+# -----------------------------
+# Audit log helper (yours)
+# -----------------------------
+def _log_expense_action(action: str, expense, request_obj):
+    # keep your existing implementation
+    from app.models import ExpenseAuditLog
+
+    actor_id = getattr(current_user, "id", None)
+    actor_email = getattr(current_user, "email", None)
+    actor_role = getattr(current_user, "role", None)
+
+    log = ExpenseAuditLog(
+        expense_id=getattr(expense, "id", None),
+        action=action,
+        actor_id=actor_id,
+        actor_email=actor_email,
+        actor_role=actor_role,
+        expense_date=getattr(expense, "date", None),
+        expense_category=getattr(expense, "category", None),
+        expense_amount=float(getattr(expense, "amount", 0.0) or 0.0),
+        expense_description=getattr(expense, "description", None),
+
+        # update these to match your new Expense fields:
+        expense_attachment_name=getattr(expense, "attachment_name", None),
+        expense_attachment_stored=getattr(expense, "attachment_public_id", None),
+
+        ip_address=(request_obj.headers.get("X-Forwarded-For", request_obj.remote_addr) or "")[:64],
+        user_agent=(request_obj.headers.get("User-Agent", "") or "")[:255],
+    )
+    db.session.add(log)
 
 def _month_bounds(ym: str):
     y, m = map(int, ym.split('-'))
@@ -466,23 +553,34 @@ def monthly_expenses():
 
     if form.validate_on_submit():
         try:
-            original_name, stored_name, mime = None, None, None
+            attachment_name = None
+            attachment_url = None
+            attachment_public_id = None
+            attachment_mime = None
+            uploaded_at = None
 
-            # ✅ handle PDF upload
+            # ✅ Cloudinary upload (PDF only)
             file_obj = request.files.get("attachment")
             if file_obj and file_obj.filename:
-                original_name, stored_name, mime = _save_expense_pdf(file_obj)
+                attachment_name, attachment_url, attachment_public_id, attachment_mime = (
+                    _upload_expense_pdf_to_cloudinary(file_obj)
+                )
+                uploaded_at = datetime.utcnow()
 
             new_expense = Expense(
                 date=form.date.data,
                 category=form.category.data,
                 amount=float(form.amount.data),
                 description=form.description.data or '',
-                attachment_name=original_name,
-                attachment_stored=stored_name,
-                attachment_mime=mime,
-                attachment_uploaded_at=datetime.utcnow() if stored_name else None,
+
+                # ✅ Cloudinary fields (make sure these exist in Expense model)
+                attachment_name=attachment_name,
+                attachment_url=attachment_url,
+                attachment_public_id=attachment_public_id,
+                attachment_mime=attachment_mime,
+                attachment_uploaded_at=uploaded_at,
             )
+
             db.session.add(new_expense)
             db.session.flush()  # so new_expense.id exists for logging
 
@@ -507,7 +605,7 @@ def monthly_expenses():
             'amount': float(e.amount or 0),
             'description': e.description,
             'attachment_name': e.attachment_name,
-            'has_attachment': bool(e.attachment_stored),
+            'has_attachment': bool(getattr(e, "attachment_url", None)),  # ✅ Cloudinary
         })
 
     total_expenses = sum(e['amount'] for e in expenses) if expenses else 0.0
@@ -519,25 +617,20 @@ def monthly_expenses():
         total_expenses=total_expenses,
     )
 
+
+# ---------------------- OPEN ATTACHMENT (Cloudinary redirect) ---------------------- #
 @finance_bp.route('/expenses/<int:expense_id>/attachment')
 @admin_required(roles=['finance'])
 def download_expense_attachment(expense_id):
     expense = db.session.get(Expense, expense_id)
-    if not expense or not expense.attachment_stored:
+    if not expense or not getattr(expense, "attachment_url", None):
         abort(404)
 
-    folder = _ensure_expense_upload_folder()
-    path = os.path.join(folder, expense.attachment_stored)
-    if not os.path.exists(path):
-        abort(404)
+    # ✅ Redirect straight to Cloudinary
+    return redirect(expense.attachment_url)
 
-    return send_file(
-        path,
-        as_attachment=True,
-        download_name=expense.attachment_name or "expense.pdf",
-        mimetype=expense.attachment_mime or "application/pdf"
-    )
 
+# ---------------------- DELETE EXPENSE (Cloudinary delete) ---------------------- #
 @finance_bp.route('/expenses/delete/<int:expense_id>', methods=['POST'])
 @admin_required(roles=['finance'])
 def delete_expense(expense_id):
@@ -547,19 +640,13 @@ def delete_expense(expense_id):
             flash("Expense not found.", "danger")
             return redirect(url_for('finance.monthly_expenses'))
 
-        # ✅ audit log BEFORE delete (captures snapshot)
+        # ✅ audit log BEFORE delete
         _log_expense_action("DELETED", expense, request)
 
-        # Optional: delete file from disk too
-        if expense.attachment_stored:
-            folder = _ensure_expense_upload_folder()
-            path = os.path.join(folder, expense.attachment_stored)
-            try:
-                if os.path.exists(path):
-                    os.remove(path)
-            except Exception:
-                # don't block deletion if file removal fails
-                pass
+        # ✅ Delete from Cloudinary (if present)
+        public_id = getattr(expense, "attachment_public_id", None)
+        if public_id:
+            _delete_cloudinary_raw(public_id)
 
         db.session.delete(expense)
         db.session.commit()
@@ -570,8 +657,6 @@ def delete_expense(expense_id):
         flash(f"Error deleting expense: {e}", "danger")
 
     return redirect(url_for('finance.monthly_expenses'))
-
-
 
 # ---------------------- ADD EXPENSE ---------------------- #
 @finance_bp.route('/expenses/add', methods=['GET', 'POST'])

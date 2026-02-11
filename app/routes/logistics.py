@@ -2599,7 +2599,9 @@ def bulk_invoice_finalize_json():
         ]
       }
 
-    For each selection we create **one invoice** and attach the packages.
+    For each selection we create ONE invoice and attach eligible packages.
+    ✅ Prevents empty invoices
+    ✅ Prevents invoicing a package twice
     """
     data = request.get_json(silent=True) or {}
     selections = data.get('selections') or []
@@ -2608,9 +2610,12 @@ def bulk_invoice_finalize_json():
 
     created = 0
     out = []
+    skipped_already_invoiced = 0
+    skipped_no_eligible = 0
 
     try:
         for sel in selections:
+            # --- user id ---
             try:
                 uid = int(sel.get("user_id") or 0)
             except Exception:
@@ -2618,31 +2623,48 @@ def bulk_invoice_finalize_json():
             if not uid:
                 continue
 
-            pkg_ids = [
-                int(x)
-                for x in (sel.get("package_ids") or [])
-                if str(x).isdigit()
-            ]
+            # --- package ids ---
+            pkg_ids = []
+            for x in (sel.get("package_ids") or []):
+                try:
+                    pkg_ids.append(int(x))
+                except Exception:
+                    pass
             if not pkg_ids:
+                skipped_no_eligible += 1
                 continue
 
-            # get packages
+            # ✅ Load packages for that user ONLY
             pkgs = (
                 Package.query
                 .filter(Package.id.in_(pkg_ids))
+                .filter(Package.user_id == uid)
                 .all()
             )
             if not pkgs:
+                skipped_no_eligible += 1
                 continue
 
-            # skip detained just like preview
-            eligible = [p for p in pkgs if (p.status or "").lower() != "detained"]
+            eligible = []
+            for p in pkgs:
+                # ✅ skip detained (same rule you already had)
+                if (p.status or "").lower() == "detained":
+                    continue
+
+                # ✅ skip packages that already have an invoice
+                if getattr(p, "invoice_id", None):
+                    skipped_already_invoiced += 1
+                    continue
+
+                eligible.append(p)
+
+            # ✅ CRITICAL: if none eligible, do NOT create an invoice
             if not eligible:
+                skipped_no_eligible += 1
                 continue
 
-            total_amount = float(
-                sum(float(p.amount_due or 0.0) for p in eligible)
-            )
+            # totals
+            total_amount = float(sum(float(p.amount_due or 0.0) for p in eligible))
 
             inv_number = _generate_invoice_number()
             inv = Invoice(
@@ -2650,31 +2672,37 @@ def bulk_invoice_finalize_json():
                 invoice_number=inv_number,
                 status="pending",
                 date_submitted=datetime.utcnow(),
-                date_issued=datetime.utcnow(),                
+                date_issued=datetime.utcnow(),
                 grand_total=total_amount,
                 amount_due=total_amount,
                 amount=total_amount,
                 description=f"Invoice for {len(eligible)} package(s)",
             )
+
             db.session.add(inv)
             db.session.flush()  # get inv.id
 
+            # attach packages
             for p in eligible:
                 p.invoice_id = inv.id
                 # optionally:
                 # p.status = "Invoiced"
 
             created += 1
-            out.append(
-                {
-                    "invoice_id": inv.id,
-                    "invoice_number": inv.invoice_number,
-                    "amount": total_amount,
-                }
-            )
+            out.append({
+                "invoice_id": inv.id,
+                "invoice_number": inv.invoice_number,
+                "amount": total_amount,
+                "package_count": len(eligible),
+            })
 
         db.session.commit()
-        return jsonify({"created": created, "invoices": out})
+        return jsonify({
+            "created": created,
+            "invoices": out,
+            "skipped_already_invoiced": skipped_already_invoiced,
+            "skipped_no_eligible": skipped_no_eligible,
+        })
 
     except Exception as e:
         current_app.logger.exception("Error in bulk_invoice_finalize_json")

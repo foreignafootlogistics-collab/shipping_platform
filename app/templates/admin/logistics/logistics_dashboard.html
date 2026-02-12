@@ -1099,6 +1099,7 @@
   </div> <!-- /tab-content -->
 </div>  <!-- /container -->
 
+
 <script>
 /* ============================================================
    FAFL Shipment Log JS (DEDUPED)
@@ -1494,6 +1495,97 @@ async function openInvoicePreview(selectedPkgIds) {
   modal.show();
 }
 
+// ===============================
+// BULK INVOICE FINALIZE (GLOBAL) - robust
+// supports: {selections:[{user_id, package_ids}]} OR {package_ids:[...]} OR {user_ids:[...]}
+// handles non-JSON responses safely
+// ===============================
+window.finalizeInvoicesFromModal = async function (e) {
+  if (e) e.preventDefault();
+
+  const btn = document.getElementById("btn-finalize-invoices");
+  const oldText = btn ? btn.innerText : "";
+  if (btn) { btn.disabled = true; btn.innerText = "Generating…"; }
+
+  try {
+    const checks = Array.from(document.querySelectorAll("#inv-prev-tbody .inv-user:checked"));
+
+    if (!checks.length) {
+      alert("⚠️ Please select at least one customer.");
+      return;
+    }
+
+    // Build selections (per-user)
+    const selections = checks.map(cb => ({
+      user_id: Number(cb.dataset.uid || 0),
+      package_ids: String(cb.dataset.pkgs || "")
+        .split(",")
+        .map(x => parseInt(x, 10))
+        .filter(n => Number.isFinite(n) && n > 0)
+    })).filter(x => x.user_id && x.package_ids.length);
+
+    if (!selections.length) {
+      alert("⚠️ Nothing to invoice (missing package ids).");
+      return;
+    }
+
+    // Also build a flat package_ids list (for backends that expect it)
+    const package_ids = Array.from(new Set(selections.flatMap(s => s.package_ids)));
+
+    const url = "{{ url_for('logistics.bulk_invoice_finalize') }}";
+
+    // Try primary payload first
+    let res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-CSRFToken": "{{ csrf_token() }}",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify({ selections, package_ids })
+    });
+
+    // Some backends return HTML/redirect. Handle safely.
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+
+    let data = null;
+    if (ct.includes("application/json")) {
+      data = await res.json().catch(() => null);
+    } else {
+      // read text so fetch doesn't silently fail; useful for debugging
+      const txt = await res.text().catch(() => "");
+      if (!res.ok) {
+        throw new Error(txt || `Finalize failed (HTTP ${res.status})`);
+      }
+      // If it's HTML success, just reload
+      data = { ok: true };
+    }
+
+    if (!res.ok || (data && data.ok === false)) {
+      throw new Error((data && data.error) || `Finalize failed (HTTP ${res.status})`);
+    }
+
+    // Close modal
+    const modalEl = document.getElementById("bulkInvoicePreviewModal");
+    if (modalEl) bootstrap.Modal.getInstance(modalEl)?.hide();
+
+    // Redirect if provided
+    if (data && data.redirect_url) {
+      window.location.href = data.redirect_url;
+    } else {
+      window.location.reload();
+    }
+
+  } catch (err) {
+    console.error(err);
+    alert("⚠️ Could not generate invoices.\n\n" + (err?.message || err));
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerText = oldText; }
+  }
+};
+
+
 /* =====================================
    SHIPMENT FINANCE INVOICE (JSON)
    ===================================== */
@@ -1695,6 +1787,8 @@ document.getElementById('btnPrintShipmentFinance')?.addEventListener('click', fu
   w.focus();
   w.print();
 });
+
+
 
 /* ==========================
    SHIPMENT TABLE / DATATABLES

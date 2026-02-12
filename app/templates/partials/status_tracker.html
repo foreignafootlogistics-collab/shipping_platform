@@ -1,35 +1,51 @@
 {# app/templates/partials/status_tracker.html #}
-{# BAR ONLY - do not render badge text here #}
+{# SELF-CONTAINED: badge + bar. DOES NOT NEED status_vars.html #}
 
 {% set s = (status or '')|trim %}
 {% set s_lc = s|lower %}
 
 {% set progress_width = 0 %}
-{% set fill_bg = '#6c757d' %}
+{% set color = '#6c757d' %}   {# default grey #}
 
-{% if s_lc in ['delivered'] or 'delivered' in s_lc %}
+{# ✅ Delivered = green #}
+{% if s_lc == 'delivered' or 'delivered' in s_lc %}
   {% set progress_width = 100 %}
-  {% set fill_bg = '#16a34a' %}
+  {% set color = '#16a34a' %}
+
+{# Out for delivery = blue #}
 {% elif 'out for delivery' in s_lc %}
   {% set progress_width = 90 %}
-  {% set fill_bg = '#2563eb' %}
+  {% set color = '#2563eb' %}
+
+{# Overseas = red #}
 {% elif s_lc == 'overseas' %}
   {% set progress_width = 33 %}
-  {% set fill_bg = '#dc2626' %}
+  {% set color = '#dc2626' %}
+
+{# Local port = yellow #}
 {% elif 'local port' in s_lc or 'received at local port' in s_lc or 'arrived' in s_lc %}
   {% set progress_width = 66 %}
-  {% set fill_bg = '#facc15' %}
+  {% set color = '#facc15' %}
+
+{# Ready for pick up = blue #}
 {% elif 'ready' in s_lc or 'pick up' in s_lc or 'pickup' in s_lc %}
   {% set progress_width = 80 %}
-  {% set fill_bg = '#2563eb' %}
+  {% set color = '#2563eb' %}
+
+{# Unassigned = purple #}
 {% elif s_lc == 'unassigned' %}
   {% set progress_width = 0 %}
-  {% set fill_bg = '#7c3aed' %}
+  {% set color = '#7c3aed' %}
 {% endif %}
+
+<span class="badge mb-1"
+      style="background: {{ color }}; color:#fff; font-weight:600;">
+  {{ status if status else 'Unknown' }}
+</span>
 
 <div class="status-progress mt-1"
      style="height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;width:100%;">
   <div class="fill"
-       style="height:100%;width:{{ progress_width }}%;background:{{ fill_bg }};transition:width .3s ease-in-out;">
+       style="height:100%;width:{{ progress_width }}%;background:{{ color }};transition:width .3s ease-in-out;">
   </div>
 </div>

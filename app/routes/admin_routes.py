@@ -1510,7 +1510,7 @@ def mark_invoice_paid():
         db.session.flush()
 
         # ✅ Recompute using your shared totals function (includes discounts + all payments)
-        subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(inv.id)
+        subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
 
         inv.amount_due = float(total_due)
         prev_status = inv.status
@@ -1519,7 +1519,7 @@ def mark_invoice_paid():
             inv.status = "paid"
             inv.date_paid = datetime.utcnow()
             if prev_status != "paid":
-                _mark_invoice_packages_delivered(inv.id)
+                mark_invoice_packages_delivered(inv.id)
         elif float(payments_total) > 0:
             inv.status = "partial"
             inv.date_paid = None
@@ -1708,7 +1708,7 @@ def view_invoice(invoice_id):
 
     preview_subtotal = sum(float(x.get("amount_due", 0) or 0) for x in packages)
 
-    subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(invoice_id)
+    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(invoice_id)
 
     preview_payments_total = float(payments_total or 0.0)
     preview_discount_total = float(discount_total or 0.0)
@@ -1923,7 +1923,7 @@ def add_payment(invoice_id):
         or 0.0
     )
 
-    subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(inv.id)
+    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
     inv.amount_due = float(total_due)
     new_due = inv.amount_due
     base_total = float(subtotal or 0)
@@ -1938,7 +1938,7 @@ def add_payment(invoice_id):
             inv.date_paid = datetime.utcnow()
 
         if previous_status != "paid":
-            _mark_invoice_packages_delivered(inv.id)
+            mark_invoice_packages_delivered(inv.id)
 
     elif 0 < new_due < base_total:
         inv.status = "partial"
@@ -1996,7 +1996,7 @@ def add_discount(invoice_id):
         inv.date_paid = datetime.utcnow()
 
         if previous_status != "paid":
-            _mark_invoice_packages_delivered(inv.id)
+            mark_invoice_packages_delivered(inv.id)
             for pkg in inv.packages:
                 pkg.status = "delivered" 
     elif 0 < new_due < base_total_after:
@@ -2084,7 +2084,7 @@ def proforma_invoice_modal(invoice_id):
     live_subtotal = float(subtotal or 0.0)
 
     # Pull discounts/payments from DB (ignore DB subtotal)
-    _db_subtotal, discount_total, payments_total, _db_total_due = _fetch_invoice_totals_pg(invoice_id)
+    _db_subtotal, discount_total, payments_total, _db_total_due = fetch_invoice_totals_pg(invoice_id)
 
     # ✅ Compute balance due using LIVE subtotal
     balance_due = max(live_subtotal - float(discount_total or 0) - float(payments_total or 0), 0.0)
@@ -2148,7 +2148,7 @@ def invoice_inline(invoice_id):
         "amount_due": float(getattr(p, "amount_due", 0) or 0),
     } for p in Package.query.filter_by(invoice_id=invoice_id).all()]
 
-    subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(invoice_id)
+    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(invoice_id)
 
     invoice_dict = {
         "id": inv.id,
@@ -2238,7 +2238,7 @@ def email_proforma_invoice(invoice_id):
         })
 
     live_subtotal = float(subtotal or 0.0)
-    _db_subtotal, discount_total, payments_total, _db_total_due = _fetch_invoice_totals_pg(invoice_id)
+    _db_subtotal, discount_total, payments_total, _db_total_due = fetch_invoice_totals_pg(invoice_id)
     balance_due = max(live_subtotal - discount_total - payments_total, 0.0)
 
     invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
@@ -2354,7 +2354,7 @@ def invoice_receipt(invoice_id):
             _money(getattr(r, "amount_due", 0) or 0),
         ])
 
-    subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(invoice_id)
+    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(invoice_id)
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)

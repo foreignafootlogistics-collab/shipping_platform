@@ -615,8 +615,8 @@ def bulk_mark_invoices_paid():
     try:
         for inv in invoices:
             # ✅ compute remaining balance (includes discounts + prior payments)
-            # IMPORTANT: make sure _fetch_invoice_totals_pg is imported/defined in finance.py
-            subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(inv.id)
+            # IMPORTANT: make sure fetch_invoice_totals_pg is imported/defined in finance.py
+            subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
             balance = float(total_due or 0.0)
 
             # already paid / nothing due
@@ -647,7 +647,7 @@ def bulk_mark_invoices_paid():
             db.session.flush()
 
             # ✅ recompute after inserting payment
-            _s, _d, _p, new_due = _fetch_invoice_totals_pg(inv.id)
+            _s, _d, _p, new_due = fetch_invoice_totals_pg(inv.id)
             inv.amount_due = float(new_due or 0.0)
 
             if inv.amount_due <= 0:

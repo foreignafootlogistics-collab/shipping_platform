@@ -16,8 +16,8 @@
 {# 3) YOUR EXACT COLOR RULES     #}
 {# ============================= #}
 
-{# Delivered = GREEN #}
-{% if 'delivered' in s_lc %}
+{# Delivered = GREEN (accept 'delivered' OR legacy 'delivery') #}
+{% if s_lc in ['delivered','delivery'] or 'delivered' in s_lc %}
   {% set progress_width = 100 %}
   {% set badge_bg = '#16a34a' %}
   {% set fill_bg  = '#16a34a' %}

@@ -155,10 +155,9 @@
 
 {# ===================== CUSTOMER MODE ===================== #}
 
-{% set status_l = (_status or '')|trim|lower %}
-{% set lock_docs = (status_l in ['ready for pick up', 'delivered', 'delivery']) %}
-{% set is_paid = (status_l in ['delivered', 'delivery']) %}
-{% set show_amount = (status_l in ['ready for pick up','delivered','delivery']) %}
+{% set lock_docs = (status_l in ['ready for pick up', 'delivered']) %}
+{% set is_paid = (status_l in ['delivered']) %}
+{% set show_amount = (status_l in ['ready for pick up','delivered']) %}
 {% set amount_to_show = (_amount_due if _amount_due is not none else 0) %}
 
 <td class="text-center align-middle">

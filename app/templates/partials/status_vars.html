@@ -1,40 +1,65 @@
-{# partials/status_vars.html #}
+{# ============================= #}
+{#  partials/status_tracker.html #}
+{#  USES status_vars IF PRESENT  #}
+{# ============================= #}
+
 {% set s = (status or '')|trim %}
 {% set s_lc = s|lower %}
 
-{% set progress_width = 0 %}
-{% set bar_color = '#9CA3AF' %}   {# default gray #}
-{% set text_dark = false %}
+{# If status_vars.html was included, bar_color/progress_width already exist.
+   Otherwise we compute them here. #}
 
-{# Delivered = green #}
-{% if 'delivered' in s_lc %}
-  {% set progress_width = 100 %}
-  {% set bar_color = '#16A34A' %}
+{% if bar_color is not defined or progress_width is not defined %}
 
-{# Out for delivery = blue (optional) #}
-{% elif 'out for delivery' in s_lc %}
-  {% set progress_width = 90 %}
-  {% set bar_color = '#2563EB' %}
-
-{# Overseas = red #}
-{% elif s_lc == 'overseas' %}
-  {% set progress_width = 33 %}
-  {% set bar_color = '#DC2626' %}
-
-{# Local port = yellow #}
-{% elif 'local port' in s_lc or 'received at local port' in s_lc or 'arrived' in s_lc %}
-  {% set progress_width = 66 %}
-  {% set bar_color = '#FACC15' %}
-  {% set text_dark = true %}
-
-{# Ready for pick up = blue #}
-{% elif 'ready' in s_lc or 'pick up' in s_lc or 'pickup' in s_lc %}
-  {% set progress_width = 80 %}
-  {% set bar_color = '#2563EB' %}
-
-{# Unassigned = purple #}
-{% elif s_lc == 'unassigned' %}
   {% set progress_width = 0 %}
-  {% set bar_color = '#4A148C' %}
+  {% set bar_color = '#9CA3AF' %}  {# grey default #}
+
+  {% if s_lc in ['delivered'] or 'delivered' in s_lc %}
+    {% set progress_width = 100 %}
+    {% set bar_color = '#16A34A' %}
+
+  {% elif 'out for delivery' in s_lc %}
+    {% set progress_width = 90 %}
+    {% set bar_color = '#2563EB' %}
+
+  {% elif s_lc == 'overseas' %}
+    {% set progress_width = 33 %}
+    {% set bar_color = '#DC2626' %}
+
+  {% elif 'local port' in s_lc or 'received at local port' in s_lc or 'arrived' in s_lc %}
+    {% set progress_width = 66 %}
+    {% set bar_color = '#FACC15' %}
+
+  {% elif 'ready' in s_lc or 'pick up' in s_lc or 'pickup' in s_lc %}
+    {% set progress_width = 80 %}
+    {% set bar_color = '#2563EB' %}
+
+  {% elif s_lc == 'unassigned' %}
+    {% set progress_width = 0 %}
+    {% set bar_color = '#4A148C' %}
+  {% endif %}
 
 {% endif %}
+
+<span class="badge"
+      style="background: {{ bar_color }}; color: #fff; font-weight:600;">
+  {{ status if status else 'Unknown' }}
+</span>
+
+<div class="status-progress mt-1"
+     style="
+        height: 8px;
+        background: #e5e7eb;
+        border-radius: 999px;
+        overflow: hidden;
+        width: 100%;
+     ">
+  <div class="fill"
+       style="
+         height: 100%;
+         width: {{ progress_width }}%;
+         background: {{ bar_color }};
+         transition: width 0.3s ease-in-out;
+       ">
+  </div>
+</div>

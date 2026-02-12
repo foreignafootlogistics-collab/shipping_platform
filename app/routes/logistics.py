@@ -2022,10 +2022,13 @@ def bulk_shipment_action(shipment_id):
             }
 
             has_any_manual = any(v is not None for v in manual.values())
-
+            # ✅ Skip if pricing locked (unless manual overrides were provided)
+            if getattr(p, "pricing_locked", False) and not has_any_manual:
+                skipped += 1
+                continue
             # ✅ Only skip already-priced packages if NO manual edits were provided
             existing_due = float(getattr(p, "amount_due", 0) or 0)
-            if existing_due > 0 and not has_any_manual:
+            if existing_due > 0 and not has_any_manual and not getattr(p, "pricing_locked", False):
                 skipped += 1
                 continue
 
@@ -2110,14 +2113,22 @@ def bulk_shipment_action(shipment_id):
             if hasattr(p, "gct"):   p.gct   = gct
             if hasattr(p, "stamp"): p.stamp = stamp
 
-            if hasattr(p, "freight_fee"):
-                p.freight_fee = freight
-            if hasattr(p, "storage_fee"):
-                p.storage_fee = handling
+            if hasattr(p, "freight"):
+                p.freight = freight
+            if hasattr(p, "handling"):  
+                p.handling = handling
             if hasattr(p, "freight_total"):
                 p.freight_total = freight_total
             if hasattr(p, "other_charges"):
                 p.other_charges = other
+
+            # ✅ If we recalculated OR applied manual overrides, lock pricing
+            if hasattr(p, "pricing_locked"):
+                p.pricing_locked = True
+            if hasattr(p, "pricing_locked_at"):
+                p.pricing_locked_at = datetime.now(timezone.utc)
+            if hasattr(p, "pricing_locked_by"):
+                p.pricing_locked_by = getattr(current_user, "id", None)
 
             updated += 1
 
@@ -2816,38 +2827,83 @@ def bulk_calc_outstanding():
 
     # map id -> incoming values
     wanted = {int(r["pkg_id"]): r for r in rows if "pkg_id" in r}
+    if not wanted:
+        return jsonify({"results": []})
+
     pkgs = (
-        db.session.query(Package.id, Package.value, Package.weight)
+        db.session.query(
+            Package.id, Package.value, Package.weight,
+            Package.pricing_locked,
+            Package.duty, Package.gct, Package.scf, Package.envl, Package.caf, Package.stamp,
+            Package.customs_total, Package.freight, Package.handling, Package.freight_total,
+            Package.other_charges, Package.grand_total
+        )
         .filter(Package.id.in_(list(wanted.keys())))
         .all()
     )
 
     results = []
-    for pid, db_value, db_weight in pkgs:
-        r = wanted[pid]
+
+    for (
+        pid, db_value, db_weight,
+        pricing_locked,
+        duty, gct, scf, envl, caf, stamp,
+        customs_total, freight, handling, freight_total,
+        other_charges, grand_total
+    ) in pkgs:
+
+        r = wanted.get(pid, {}) or {}
+
+        # ✅ If locked, DO NOT recalc. Return stored values.
+        if pricing_locked:
+            results.append({
+                "pkg_id": pid,
+                "locked": True,
+                "invoice": float(db_value or 0),
+                "grand_total": float(grand_total or 0),
+                "breakdown": {
+                    "duty": float(duty or 0),
+                    "gct": float(gct or 0),
+                    "scf": float(scf or 0),
+                    "envl": float(envl or 0),
+                    "caf": float(caf or 0),
+                    "stamp": float(stamp or 0),
+                    "customs_total": float(customs_total or 0),
+                    "freight": float(freight or 0),
+                    "handling": float(handling or 0),
+                    "freight_total": float(freight_total or 0),
+                    "other_charges": float(other_charges or 0),
+                    "grand_total": float(grand_total or 0),
+                }
+            })
+            continue
+
+        # ---- otherwise: calculate live (preview) ----
         invoice = r.get("invoice")
         weight  = r.get("weight")
 
-        # ✅ No Package.category in your model → always default
         category = (r.get("category") or "Other")
 
         # Invoice fallback
         if invoice in (None, '', 0, '0', 0.0, '0.0'):
             invoice = float(db_value or 0) if db_value not in (None, 0) else _effective_value(db.session.get(Package, pid))
-
         else:
             invoice = float(invoice)
 
+        # Weight fallback
         if weight in (None, '', 0, '0', 0.0, '0.0'):
             weight = float(db_weight or 0)
+        else:
+            weight = float(weight)
 
         weight_eff = _normalize_weight(weight)
         breakdown = calculate_charges(category, float(invoice), float(weight_eff))
 
         results.append({
             "pkg_id": pid,
+            "locked": False,
             "invoice": float(invoice),
-            "grand_total": float(breakdown.get("grand_total", 0)),
+            "grand_total": float(breakdown.get("grand_total", 0) or 0),
             "breakdown": breakdown
         })
 
@@ -2873,66 +2929,122 @@ def delete_package(package_id):
         flash(f"Error deleting package: {e}", "danger")
     return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
+# -------------------------------------------
+# CALCULATE CHARGES (respects pricing lock)
+# -------------------------------------------
 @logistics_bp.route('/api/calculate-charges', methods=['POST'])
 @admin_required
 def api_calculate_charges():
     data = request.get_json() or {}
-    invoice = float(data.get('invoice') or data.get('invoice_usd') or 50)
-    category = data.get('category')
-    weight = float(data.get('weight') or 0)
-    result = calculate_charges(category, invoice, weight)
-    return jsonify(result)
 
+    pkg_id = data.get("pkg_id")
+    category = data.get("category")
+    weight = float(data.get("weight") or 0)
+
+    # invoice can come in as invoice or invoice_usd (your original)
+    invoice = float(data.get("invoice") or data.get("invoice_usd") or 50)
+
+    # ✅ If pkg_id is provided and pricing is locked, return saved numbers
+    if pkg_id:
+        p = db.session.get(Package, int(pkg_id))
+        if p and getattr(p, "pricing_locked", False):
+            return jsonify({
+                "ok": True,
+                "locked": True,
+                "data": {
+                    "category": p.category,
+                    "weight": p.weight,
+                    "value": p.value,
+
+                    "duty": p.duty,
+                    "gct": p.gct,
+                    "scf": p.scf,
+                    "envl": p.envl,
+                    "caf": p.caf,
+                    "stamp": p.stamp,
+
+                    "customs_total": p.customs_total,
+                    "freight": p.freight,
+                    "handling": p.handling,
+                    "freight_total": p.freight_total,
+                    "other_charges": p.other_charges,
+                    "grand_total": p.grand_total,
+                }
+            })
+
+    # ✅ Normal calculation if not locked
+    result = calculate_charges(category, invoice, weight)
+
+    # make response consistent with frontend expectations
+    return jsonify({
+        "ok": True,
+        "locked": False,
+        "data": result
+    })
+
+
+# -------------------------------------------
+# UPDATE PACKAGE (locks pricing on save)
+# -------------------------------------------
 @logistics_bp.route('/api/package/<int:pkg_id>', methods=['POST'])
 @admin_required
 def api_update_package(pkg_id):
     data = request.get_json(force=True) or {}
 
-    # --- Helper to safely cast numbers ---
     def to_num(x):
         try:
             return float(x)
         except (TypeError, ValueError):
             return None
 
-    # --- Map client keys → Package columns (OPTION A) ---
-    field_map = {
-        'category': 'category',
-        'value': 'value',
-        'weight': 'weight',
-        'amount_due': 'amount_due',
-
-        'duty': 'duty',
-        'scf': 'scf',
-        'envl': 'envl',
-        'caf': 'caf',
-        'gct': 'gct',
-        'stamp': 'stamp',
-
-        'customs_total': 'customs_total',
-        'freight': 'freight',           # ✅ matches your modal
-        'handling': 'handling',         # ✅ matches your modal
-        'freight_total': 'freight_total',
-        'other_charges': 'other_charges',
-        'grand_total': 'grand_total',
-    }
-
     p = db.session.get(Package, pkg_id)
     if not p:
         return jsonify({"ok": False, "error": "Package not found"}), 404
 
-    # --- Handle value separately (you already had this logic) ---
-    if 'value' in data and data['value'] is not None:
-        val = to_num(data['value'])
+    # ✅ OPTIONAL: block edits when locked unless caller explicitly allows it
+    # (useful if you want only "unlock" to allow changes)
+    if getattr(p, "pricing_locked", False) and not data.get("force_update"):
+        return jsonify({
+            "ok": False,
+            "error": "Pricing is locked for this package. Unlock pricing to edit."
+        }), 409
+
+    # --- Map client keys → Package columns ---
+    field_map = {
+        "category": "category",
+        "value": "value",
+        "weight": "weight",
+        "amount_due": "amount_due",
+
+        "duty": "duty",
+        "scf": "scf",
+        "envl": "envl",
+        "caf": "caf",
+        "gct": "gct",
+        "stamp": "stamp",
+
+        "customs_total": "customs_total",
+        "freight": "freight",
+        "handling": "handling",
+        "freight_total": "freight_total",
+        "other_charges": "other_charges",
+        "grand_total": "grand_total",
+    }
+
+    updated = []
+
+    # value special handling (keep your logic)
+    if "value" in data and data["value"] is not None:
+        val = to_num(data["value"])
         if val is not None:
             p.value = val
-            if hasattr(p, 'declared_value'):
+            if hasattr(p, "declared_value"):
                 p.declared_value = val
+            updated.append("value")
 
-    # --- Apply all other fields ---
-    updated = []
+    # apply all other mapped fields
     for client_key, col in field_map.items():
-        if client_key == 'value':
+        if client_key == "value":
             continue
 
         if client_key in data and data[client_key] is not None:
@@ -2941,14 +3053,65 @@ def api_update_package(pkg_id):
                 setattr(p, col, val)
                 updated.append(client_key)
 
+    # ✅ If this update includes pricing numbers, lock it
+    pricing_keys = {
+        "duty", "gct", "scf", "envl", "caf", "stamp",
+        "customs_total", "freight", "handling", "freight_total",
+        "other_charges", "grand_total", "amount_due"
+    }
+    if any(k in data for k in pricing_keys):
+        if hasattr(p, "pricing_locked"):
+            p.pricing_locked = True
+            updated.append("pricing_locked")
+        if hasattr(p, "pricing_locked_at"):
+            p.pricing_locked_at = datetime.now(timezone.utc)
+            updated.append("pricing_locked_at")
+        if hasattr(p, "pricing_locked_by") and current_user and getattr(current_user, "id", None):
+            p.pricing_locked_by = current_user.id
+            updated.append("pricing_locked_by")
+
     db.session.commit()
 
     return jsonify({
         "ok": True,
         "updated": updated,
-        "pkg_id": pkg_id
+        "pkg_id": pkg_id,
+        "pricing_locked": getattr(p, "pricing_locked", False)
     }), 200
 
+
+# -------------------------------------------
+# LOCK PRICING (OPTIONAL helper)
+# -------------------------------------------
+@logistics_bp.route("/packages/<int:pkg_id>/lock-pricing", methods=["POST"])
+@admin_required
+def lock_package_pricing(pkg_id):
+    p = Package.query.get_or_404(pkg_id)
+    p.pricing_locked = True
+    if hasattr(p, "pricing_locked_at"):
+        p.pricing_locked_at = datetime.now(timezone.utc)
+    if hasattr(p, "pricing_locked_by") and current_user and getattr(current_user, "id", None):
+        p.pricing_locked_by = current_user.id
+    db.session.commit()
+    flash("Pricing locked for this package.", "success")
+    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog"))
+
+
+# -------------------------------------------
+# UNLOCK PRICING (your existing, kept)
+# -------------------------------------------
+@logistics_bp.route("/packages/<int:pkg_id>/unlock-pricing", methods=["POST"])
+@admin_required
+def unlock_package_pricing(pkg_id):
+    p = Package.query.get_or_404(pkg_id)
+    p.pricing_locked = False
+    if hasattr(p, "pricing_locked_at"):
+        p.pricing_locked_at = None
+    if hasattr(p, "pricing_locked_by"):
+        p.pricing_locked_by = None
+    db.session.commit()
+    flash("Pricing unlocked. Auto-calculation will apply next time.", "success")
+    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 # --------------------------------------------------------------------------------------
 # Invoice status
 # --------------------------------------------------------------------------------------

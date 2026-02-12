@@ -1100,6 +1100,16 @@
 </div>  <!-- /container -->
 
 <script>
+/* ============================================================
+   FAFL Shipment Log JS (DEDUPED)
+   - Removes duplicate Charges Modal IIFE
+   - Removes duplicate Filters bindings
+   - Keeps: postJSON, DataTables init, filters, bulk actions,
+           invoice preview, finance invoice preview, delete,
+           upload spinner, CSV preview, search modal, select-all,
+           attachments uploader
+   ============================================================ */
+
 const categoryRates = {{ CATEGORIES|tojson }};
 const USD_TO_JMD    = {{ USD_TO_JMD }};
 
@@ -1142,9 +1152,7 @@ function validateMoveShipmentForm() {
 }
 
 /* ==========================
-   FILTERS (Shipment Table)
-   - works for DataTables
-   - and falls back gracefully
+   FILTERS helpers
    ========================== */
 function getFilterValues() {
   const name = (document.getElementById('fltName')?.value || '').trim().toLowerCase();
@@ -1165,17 +1173,16 @@ function parseCellText(td) {
 }
 
 function parseWeightFromRow(tr) {
-  // weight column contains <input id="weight_...">
   const inp = tr.querySelector('input[id^="weight_"]');
   const v = inp ? Number(inp.value || 0) : 0;
   return isNaN(v) ? 0 : v;
 }
 
-/* ============================
-   CHARGES MODAL / CALCULATOR
-   ============================ */
-(function() {
-  const chargesModal   = document.getElementById('chargesModal');
+/* ==========================
+   CHARGES MODAL (single)
+   ========================== */
+(function initChargesModal(){
+  const chargesModal = document.getElementById('chargesModal');
   if (!chargesModal) return;
 
   const pkgIdInput     = document.getElementById('chargesPkgId');
@@ -1188,7 +1195,6 @@ function parseWeightFromRow(tr) {
   const resultBox      = document.getElementById('chargesResult');
   const errorBox       = document.getElementById('chargesError');
 
-  // Editable result inputs
   const resDuty         = document.getElementById('resDuty');
   const resGct          = document.getElementById('resGct');
   const resScf          = document.getElementById('resScf');
@@ -1202,7 +1208,6 @@ function parseWeightFromRow(tr) {
   const resOther        = document.getElementById('resOther');
   const resTotal        = document.getElementById('resTotal');
 
-  // Helper: safe number from input
   function numVal(el) {
     if (!el) return 0;
     const v = parseFloat(el.value || '0');
@@ -1219,7 +1224,31 @@ function parseWeightFromRow(tr) {
     if (isEmpty || isZero) el.value = valueStr;
   }
 
-  // ✅ Recalculate totals when user manually edits fields
+  function setDisabledForLocked(isLocked) {
+    const editable = [
+      categorySelect, weightInput, valueInput,
+      resDuty, resGct, resScf, resEnvl, resCaf, resStamp,
+      resFreight, resHandling, resOther
+    ];
+    editable.forEach(el => { if (el) el.disabled = !!isLocked; });
+
+    if (btnCalc)  btnCalc.disabled  = !!isLocked;
+    if (btnApply) btnApply.style.display = isLocked ? 'none' : 'inline-block';
+  }
+
+  function clearResults() {
+    if (resultBox) resultBox.style.display = 'none';
+    if (errorBox) { errorBox.style.display = 'none'; errorBox.textContent = ''; }
+    if (btnApply) btnApply.style.display = 'none';
+
+    [
+      resDuty, resGct, resScf, resEnvl, resCaf, resStamp,
+      resCustomsTotal, resFreight, resHandling, resFreightTotal,
+      resOther, resTotal
+    ].forEach(el => { if (el) el.value = ''; });
+  }
+
+  // ✅ Recalculate totals when user manually edits fields (fixed math)
   function recalcTotalsFromManual() {
     const duty  = numVal(resDuty);
     const gct   = numVal(resGct);
@@ -1235,21 +1264,19 @@ function parseWeightFromRow(tr) {
     const handling = numVal(resHandling);
     const other    = numVal(resOther);
 
-    const freightTotal = freight;
+    const freightTotal = freight + handling + other;
     if (resFreightTotal) resFreightTotal.value = freightTotal.toFixed(2);
 
-    const grandTotal = customsTotal + freight + handling + other;
+    const grandTotal = customsTotal + freightTotal;
     if (resTotal) resTotal.value = grandTotal.toFixed(2);
   }
 
-  [
-    resDuty, resGct, resScf, resEnvl, resCaf, resStamp,
-    resFreight, resHandling, resOther
-  ].forEach(el => {
+  [resDuty,resGct,resScf,resEnvl,resCaf,resStamp,resFreight,resHandling,resOther].forEach(el => {
     if (!el) return;
     el.addEventListener('input', recalcTotalsFromManual);
   });
 
+  // reset modal state each time
   chargesModal.addEventListener('show.bs.modal', function(event) {
     const btn = event.relatedTarget;
     if (!btn) return;
@@ -1259,87 +1286,99 @@ function parseWeightFromRow(tr) {
     const value  = btn.getAttribute('data-value')  || "0";
     const desc   = btn.getAttribute('data-desc')   || "";
 
-    pkgIdInput.value   = pkgId;
-    pkgDescInput.value = desc;
-    weightInput.value  = weight;
-    valueInput.value   = value;
+    if (pkgIdInput)   pkgIdInput.value   = pkgId;
+    if (pkgDescInput) pkgDescInput.value = desc;
+    if (weightInput)  weightInput.value  = weight;
+    if (valueInput)   valueInput.value   = value;
 
-    resultBox.style.display = 'none';
-    errorBox.style.display  = 'none';
-    errorBox.textContent    = '';
-    btnApply.style.display  = 'none';
-
-    [
-      resDuty, resGct, resScf, resEnvl, resCaf, resStamp,
-      resCustomsTotal, resFreight, resHandling, resFreightTotal,
-      resOther, resTotal
-    ].forEach(el => { if (el) el.value = ''; });
+    clearResults();
+    setDisabledForLocked(false);
   });
 
-  btnCalc.addEventListener('click', function() {
-    const category = categorySelect.value;
-    const weight   = weightInput.value || "0";
-    const value    = valueInput.value  || "0";
+  // ✅ CALCULATE (server decides locked/unlocked)
+  btnCalc?.addEventListener('click', async function() {
+    const category = (categorySelect?.value || 'Other');
+    const weight   = (weightInput?.value || "0");
+    const value    = (valueInput?.value  || "0");
+    const pkgId    = (pkgIdInput?.value || '').trim();
 
-    if (!category) {
-      errorBox.style.display  = 'block';
-      errorBox.textContent    = "Please select a category.";
-      resultBox.style.display = 'none';
-      btnApply.style.display  = 'none';
+    if (!pkgId) {
+      if (errorBox) {
+        errorBox.style.display = 'block';
+        errorBox.textContent = "Package id missing.";
+      }
+      if (resultBox) resultBox.style.display = 'none';
+      if (btnApply) btnApply.style.display = 'none';
       return;
     }
 
-    const url = new URL("{{ url_for('logistics.shipment_calc_charges') }}", window.location.origin);
-    url.searchParams.set("category",  category);
-    url.searchParams.set("weight",    weight);
-    url.searchParams.set("value_usd", value);
-
-    fetch(url.toString(), {
-      method: "GET",
-      headers: { "Accept": "application/json" }
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (!data.ok) throw new Error(data.error || "Unknown error");
-        const d   = data.data || {};
-        const fmt = (x) => (x == null ? "0.00" : Number(x).toFixed(2));
-
-        setIfEmptyOrZero(resDuty,         fmt(d.duty));
-        setIfEmptyOrZero(resGct,          fmt(d.gct));
-        setIfEmptyOrZero(resScf,          fmt(d.scf));
-        setIfEmptyOrZero(resEnvl,         fmt(d.envl));
-        setIfEmptyOrZero(resCaf,          fmt(d.caf));
-        setIfEmptyOrZero(resStamp,        fmt(d.stamp));
-        setIfEmptyOrZero(resCustomsTotal, fmt(d.customs_total));
-        setIfEmptyOrZero(resFreight,      fmt(d.freight));
-        setIfEmptyOrZero(resHandling,     fmt(d.handling));
-        setIfEmptyOrZero(resFreightTotal, fmt(d.freight_total));
-        setIfEmptyOrZero(resOther,        fmt(d.other_charges || 0));
-
-        const total = d.grand_total || d.total_jmd || 0;
-        setIfEmptyOrZero(resTotal, fmt(total));
-
-        recalcTotalsFromManual();
-
-        errorBox.style.display  = 'none';
-        resultBox.style.display = 'block';
-        btnApply.style.display  = 'inline-block';
-      })
-      .catch(err => {
-        console.error(err);
-        errorBox.textContent    = "Failed to calculate charges: " + err.message;
-        errorBox.style.display  = 'block';
-        resultBox.style.display = 'none';
-        btnApply.style.display  = 'none';
+    try {
+      const res = await fetch("{{ url_for('logistics.api_calculate_charges') }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-CSRFToken": "{{ csrf_token() }}"
+        },
+        body: JSON.stringify({
+          pkg_id: pkgId,
+          category: category,
+          weight: weight,
+          invoice_usd: value
+        })
       });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) throw new Error(data.error || `HTTP ${res.status}`);
+
+      const d = data.data || {};
+      const fmt = (x) => (x == null ? "0.00" : Number(x).toFixed(2));
+
+      // If server returns locked, we still show values but disable edits
+      const locked = !!data.locked || !!d.pricing_locked || !!d.locked;
+
+      // Fill fields WITHOUT overwriting manual edits
+      setIfEmptyOrZero(resDuty,         fmt(d.duty));
+      setIfEmptyOrZero(resGct,          fmt(d.gct));
+      setIfEmptyOrZero(resScf,          fmt(d.scf));
+      setIfEmptyOrZero(resEnvl,         fmt(d.envl));
+      setIfEmptyOrZero(resCaf,          fmt(d.caf));
+      setIfEmptyOrZero(resStamp,        fmt(d.stamp));
+      setIfEmptyOrZero(resCustomsTotal, fmt(d.customs_total));
+      setIfEmptyOrZero(resFreight,      fmt(d.freight));
+      setIfEmptyOrZero(resHandling,     fmt(d.handling));
+      setIfEmptyOrZero(resOther,        fmt(d.other_charges || 0));
+
+      // Always fix totals
+      recalcTotalsFromManual();
+
+      if (errorBox) errorBox.style.display = 'none';
+      if (resultBox) resultBox.style.display = 'block';
+
+      setDisabledForLocked(locked);
+      if (!locked && btnApply) btnApply.style.display = 'inline-block';
+
+    } catch (err) {
+      console.error(err);
+      if (errorBox) {
+        errorBox.textContent = "Failed to calculate charges: " + err.message;
+        errorBox.style.display = 'block';
+      }
+      if (resultBox) resultBox.style.display = 'none';
+      if (btnApply) btnApply.style.display = 'none';
+      setDisabledForLocked(false);
+    }
   });
 
-  btnApply.addEventListener('click', async function() {
-    const pkgId = pkgIdInput.value;
+  // ✅ APPLY & SAVE (locks on save if API supports pricing_locked)
+  btnApply?.addEventListener('click', async function() {
+    const pkgId = (pkgIdInput?.value || '').trim();
     if (!pkgId) return;
 
+    recalcTotalsFromManual();
+
     const payload = {
-      category: (categorySelect.value || 'Other'),
+      category: (categorySelect?.value || 'Other'),
       value:    numVal(valueInput),
       weight:   numVal(weightInput),
 
@@ -1350,23 +1389,21 @@ function parseWeightFromRow(tr) {
       caf:           numVal(resCaf),
       stamp:         numVal(resStamp),
       customs_total: numVal(resCustomsTotal),
+
       freight:       numVal(resFreight),
       handling:      numVal(resHandling),
+      other_charges: numVal(resOther),
+
       freight_total: numVal(resFreightTotal),
-      other_charges: numVal(resOther)
+      grand_total:   numVal(resTotal),
+      amount_due:    numVal(resTotal),
+
+      pricing_locked: true
     };
 
-    recalcTotalsFromManual();
-
-    let grand = numVal(resTotal);
-    if (!grand) {
-      grand = payload.customs_total + payload.freight + payload.handling + payload.other_charges;
-    }
-    payload.grand_total = grand;
-    payload.amount_due  = grand;
-
+    // Update table UI immediately
     const amountField = document.getElementById('amount_due_' + pkgId);
-    if (amountField) amountField.value = grand.toFixed(2);
+    if (amountField) amountField.value = payload.amount_due.toFixed(2);
 
     const valueField = document.getElementById('value_' + pkgId);
     if (valueField) valueField.value = payload.value.toFixed(2);
@@ -1386,8 +1423,8 @@ function parseWeightFromRow(tr) {
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) throw new Error('Update API failed');
-      await res.json();
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || out.ok === false) throw new Error(out.error || `HTTP ${res.status}`);
 
       alert(`Saved charges for package ${pkgId}.`);
       bootstrap.Modal.getInstance(chargesModal)?.hide();
@@ -1396,7 +1433,6 @@ function parseWeightFromRow(tr) {
       alert('⚠️ Error saving charges for this package.');
     }
   });
-
 })();
 
 /* ================================
@@ -1459,7 +1495,7 @@ async function openInvoicePreview(selectedPkgIds) {
 }
 
 /* =====================================
-   SHIPMENT FINANCE INVOICE (OPTION A)
+   SHIPMENT FINANCE INVOICE (JSON)
    ===================================== */
 function openShipmentFinanceInvoiceModalWithHtml(html) {
   const bodyEl = document.getElementById('shipmentFinanceInvoiceBody');
@@ -1489,7 +1525,7 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
       body: JSON.stringify({ package_ids: packageIds || [] })
     });
 
-    const data = await r.json();
+    const data = await r.json().catch(() => ({}));
 
     if (!r.ok || !data.ok) {
       console.error("Finance preview-json failed:", r.status, data);
@@ -1506,9 +1542,7 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
     const freightJmd = freightUsd * usd_to_jmd;
     const rateUsdPerKg = Number(data.rate_usd_per_kg || 0);
 
-    let rowsHtml = "";
-
-    rowsHtml += `
+    let rowsHtml = `
       <tr>
         <td><strong>Freight</strong></td>
         <td class="text-end">${pkgCount}</td>
@@ -1599,11 +1633,7 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
               <th class="text-end">Amount (JMD)</th>
             </tr>
           </thead>
-
-          <tbody>
-            ${rowsHtml}
-          </tbody>
-
+          <tbody>${rowsHtml}</tbody>
           <tfoot>
             <tr class="fw-bold">
               <th colspan="3" class="text-end">Total</th>
@@ -1651,7 +1681,6 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
   }
 }
 
-// Optional: Print button (prints modal content)
 document.getElementById('btnPrintShipmentFinance')?.addEventListener('click', function () {
   const body = document.getElementById('shipmentFinanceInvoiceBody');
   if (!body) return;
@@ -1667,13 +1696,12 @@ document.getElementById('btnPrintShipmentFinance')?.addEventListener('click', fu
   w.print();
 });
 
-/* ============================
-   SHIPMENT TABLE / BULK ACTION
-   ============================ */
+/* ==========================
+   SHIPMENT TABLE / DATATABLES
+   ========================== */
 let dt = null;
 let dtInitialized = false;
 
-// ✅ DataTables filter hook (installed once when DT initializes)
 function installShipmentFilterHook() {
   if (!window.jQuery || !$.fn || !$.fn.dataTable) return;
   if ($.fn.dataTable.__faflShipmentFilterInstalled) return;
@@ -1687,9 +1715,6 @@ function installShipmentFilterHook() {
     const rowNode = api.row(dataIndex).node();
     if (!rowNode) return true;
 
-    // Column mapping:
-    // 2 = User (name + reg)
-    // 3 = Package (status + tracking)
     const userText = parseCellText(rowNode.querySelector('td:nth-child(3)'));
     const pkgText  = parseCellText(rowNode.querySelector('td:nth-child(4)'));
     const w = parseWeightFromRow(rowNode);
@@ -1703,6 +1728,27 @@ function installShipmentFilterHook() {
 
     return true;
   });
+}
+
+function bindShipmentLengthSelect() {
+  const sel = document.getElementById('shipmentLengthSelect');
+  if (!sel) return;
+  if (sel.dataset.bound === "1") return;
+  sel.dataset.bound = "1";
+
+  sel.addEventListener('change', function () {
+    const len = Number(this.value || 10);
+    if (dt) dt.page.len(len).draw();
+  });
+
+  syncShipmentLengthSelect();
+}
+
+function syncShipmentLengthSelect() {
+  const sel = document.getElementById('shipmentLengthSelect');
+  if (!sel) return;
+  const current = (dt && typeof dt.page.len === 'function') ? dt.page.len() : 10;
+  sel.value = String(current);
 }
 
 function initShipmentTable() {
@@ -1723,7 +1769,6 @@ function initShipmentTable() {
       "<'shipment-topbar d-flex justify-content-between align-items-center mb-2'<'shipment-pager-top'p><'shipment-show-top d-flex align-items-center gap-2'<'small text-muted'>l>>" +
       "rt" +
       "<'d-none'<'col-12'i><'col-12'p>>",
-
     order: [[2, 'asc']],
     buttons: [
       { extend: 'copyHtml5',  className: 'btn btn-sm btn-purple'   },
@@ -1731,9 +1776,7 @@ function initShipmentTable() {
       { extend: 'csvHtml5',   className: 'btn btn-sm btn-info'     },
       { extend: 'print',      className: 'btn btn-sm btn-secondary'}
     ],
-    columnDefs: [
-      { orderable: false, targets: [0, 1] }
-    ],
+    columnDefs: [{ orderable: false, targets: [0, 1] }],
     language: { emptyTable: 'No packages in this shipment.' }
   });
 
@@ -1756,223 +1799,16 @@ function initShipmentTable() {
   syncShipmentLengthSelect();
 }
 
-// ---- Custom filters for shipment table ----
-(function shipmentFilters(){
-  if (!window.jQuery) return;
-
-  // Weight range filter (reads from Weight column inputs)
-  $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-    if (!settings.nTable || settings.nTable.id !== "shipmentTable") return true;
-
-    const min = parseFloat(document.getElementById('fltWMin')?.value || '');
-    const max = parseFloat(document.getElementById('fltWMax')?.value || '');
-
-    const rowNode = dt ? dt.row(dataIndex).node() : null;
-    if (!rowNode) return true;
-
-    const wInput = rowNode.querySelector('input[id^="weight_"]');
-    const w = parseFloat((wInput?.value || '0'));
-
-    if (!isNaN(min) && w < min) return false;
-    if (!isNaN(max) && w > max) return false;
-    return true;
-  });
-
-  function applyShipmentFilters(){
-    if (!dt) return;
-
-    const name     = (document.getElementById('fltName')?.value || '').trim();
-    const tracking = (document.getElementById('fltTracking')?.value || '').trim();
-    const reg      = (document.getElementById('fltReg')?.value || '').trim();
-
-    // User column is index 2 (Name + Reg)
-    // Package column is index 3 (Status tracker + Tracking)
-    dt.column(2).search(name || reg ? `${name} ${reg}`.trim() : '', true, false);
-    dt.column(3).search(tracking || '', true, false);
-
-    dt.draw(); // triggers weight filter too
-  }
-
-  function clearShipmentFilters(){
-    if (!dt) return;
-
-    ['fltName','fltTracking','fltReg','fltWMin','fltWMax'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
-    });
-
-    dt.column(2).search('');
-    dt.column(3).search('');
-    dt.draw();
-  }
-
-  document.getElementById('btnApplyFilters')?.addEventListener('click', applyShipmentFilters);
-  document.getElementById('btnClearFilters')?.addEventListener('click', clearShipmentFilters);
-
-  // Enter key applies filters
-  ['fltName','fltTracking','fltReg','fltWMin','fltWMax'].forEach(id => {
-    document.getElementById(id)?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        applyShipmentFilters();
-      }
-    });
-  });
-})();
-
-
-function bindShipmentLengthSelect() {
-  const sel = document.getElementById('shipmentLengthSelect');
-  if (!sel) return;
-
-  if (sel.dataset.bound === "1") return;
-  sel.dataset.bound = "1";
-
-  sel.addEventListener('change', function () {
-    const len = Number(this.value || 10);
-    if (dt) dt.page.len(len).draw();
-  });
-
-  syncShipmentLengthSelect();
-}
-
-function syncShipmentLengthSelect() {
-  const sel = document.getElementById('shipmentLengthSelect');
-  if (!sel) return;
-
-  const current = (dt && typeof dt.page.len === 'function') ? dt.page.len() : 10;
-  sel.value = String(current);
-}
-
-// 🔑 GLOBAL handler so we can bind it anywhere
-async function handleShipmentApply(e) {
-  if (e && e.preventDefault) e.preventDefault();
-
-  const form = document.getElementById('shipmentForm');
-  if (!form) {
-    console.error('shipmentForm not found');
-    return;
-  }
-
-  const actionSel = form.querySelector('select[name="action"]');
-  const action    = actionSel ? actionSel.value : '';
-
-  if (!action) {
-    alert('⚠️ Please select an action.');
-    return;
-  }
-
-  let ids = [];
-  if (dt && $.fn && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-    ids = dt.$('.package-checkbox:checked').map(function () {
-      return this.value;
-    }).get();
-  } else {
-    ids = Array.from(document.querySelectorAll('.package-checkbox:checked'))
-               .map(cb => cb.value);
-  }
-
-  if (action === 'finance_invoice') {
-    const shipmentId = getShipmentIdFromUrl();
-    if (!shipmentId) {
-      alert("⚠️ No shipment selected (missing shipment_id in URL).");
-      return;
-    }
-    await openShipmentFinanceInvoicePreviewJSON(shipmentId, []);
-    return;
-  }
-
-  if (!ids.length) {
-    alert('⚠️ Please select at least one package.');
-    return;
-  }
-
-  if (action === 'generate_invoice') {
-    try {
-      await openInvoicePreview(ids);
-    } catch (err) {
-      console.error('Error in openInvoicePreview:', err);
-      alert('⚠️ Could not load invoice preview.');
-    }
-    return;
-  }
-
-  if (action === 'move') {
-    const holder = document.getElementById('movePackageIdsContainer');
-    if (holder) holder.innerHTML = '';
-
-    ids.forEach(id => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'package_ids';
-      input.value = id;
-      holder.appendChild(input);
-    });
-
-    const fromInput = document.querySelector('#moveShipmentForm input[name="from_shipment_id"]');
-    if (fromInput) {
-      fromInput.value = getShipmentIdFromUrl() || fromInput.value || 0;
-    }
-
-    const modalEl = document.getElementById('moveShipmentModal');
-    if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    return;
-  }
-
-  const oldHolder = document.getElementById('selectedIdsContainer');
-  if (oldHolder) oldHolder.remove();
-
-  const holder = document.createElement('div');
-  holder.id = 'selectedIdsContainer';
-  ids.forEach(id => {
-    const input = document.createElement('input');
-    input.type  = 'hidden';
-    input.name  = 'package_ids';
-    input.value = id;
-    holder.appendChild(input);
-  });
-  form.appendChild(holder);
-
-  if (!confirm(`Perform "${action}" on ${ids.length} package(s)?`)) {
-    return;
-  }
-
-  form.submit();
-}
-
-// ✅ Guard jQuery usage so page never crashes if jQuery/DataTables fails to load
-(function () {
-  if (!window.jQuery) return;
-
-  $(function () {
-    if (hasDataTables() && $('#dashboardPrealertsTable').length) {
-      $('#dashboardPrealertsTable').DataTable({
-        order: [[0, 'desc']],
-        pageLength: 10,
-        language: { emptyTable: "No pre-alert shipments found." }
-      });
-    }
-
-    if (document.getElementById('shipmentTable')) {
-      initShipmentTable();
-    } else {
-      bindShipmentLengthSelect();
-    }
-  });
-})();
-
-/* ✅ Filters buttons (Apply/Clear) */
+/* ==========================
+   Filters bind (single)
+   ========================== */
 (function bindShipmentFilters(){
   const btnApply = document.getElementById('btnApplyFilters');
   const btnClear = document.getElementById('btnClearFilters');
 
   function doApply() {
-    if (dt) {
-      dt.draw();
-      return;
-    }
+    if (dt) { dt.draw(); return; }
 
-    // fallback (no DT): hide rows manually
     const tbody = document.querySelector('#shipmentTable tbody');
     if (!tbody) return;
     const f = getFilterValues();
@@ -1999,10 +1835,7 @@ async function handleShipmentApply(e) {
       if (el) el.value = '';
     });
 
-    if (dt) {
-      dt.draw();
-      return;
-    }
+    if (dt) { dt.draw(); return; }
 
     const tbody = document.querySelector('#shipmentTable tbody');
     if (!tbody) return;
@@ -2012,15 +1845,104 @@ async function handleShipmentApply(e) {
   btnApply?.addEventListener('click', doApply);
   btnClear?.addEventListener('click', doClear);
 
-  // Enter key applies
   ['fltName','fltTracking','fltReg','fltWMin','fltWMax'].forEach(id => {
-    const el = document.getElementById(id);
-    el?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        doApply();
-      }
+    document.getElementById(id)?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); doApply(); }
     });
+  });
+})();
+
+/* ==========================
+   BULK ACTION handler
+   ========================== */
+async function handleShipmentApply(e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const form = document.getElementById('shipmentForm');
+  if (!form) { console.error('shipmentForm not found'); return; }
+
+  const actionSel = form.querySelector('select[name="action"]');
+  const action = actionSel ? actionSel.value : '';
+
+  if (!action) { alert('⚠️ Please select an action.'); return; }
+
+  let ids = [];
+  if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+    ids = dt.$('.package-checkbox:checked').map(function () { return this.value; }).get();
+  } else {
+    ids = Array.from(document.querySelectorAll('.package-checkbox:checked')).map(cb => cb.value);
+  }
+
+  if (action === 'finance_invoice') {
+    const shipmentId = getShipmentIdFromUrl();
+    if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
+    await openShipmentFinanceInvoicePreviewJSON(shipmentId, []);
+    return;
+  }
+
+  if (!ids.length) { alert('⚠️ Please select at least one package.'); return; }
+
+  if (action === 'generate_invoice') {
+    try { await openInvoicePreview(ids); }
+    catch (err) { console.error(err); alert('⚠️ Could not load invoice preview.'); }
+    return;
+  }
+
+  if (action === 'move') {
+    const holder = document.getElementById('movePackageIdsContainer');
+    if (holder) holder.innerHTML = '';
+
+    ids.forEach(id => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'package_ids';
+      input.value = id;
+      holder.appendChild(input);
+    });
+
+    const fromInput = document.querySelector('#moveShipmentForm input[name="from_shipment_id"]');
+    if (fromInput) fromInput.value = getShipmentIdFromUrl() || fromInput.value || 0;
+
+    const modalEl = document.getElementById('moveShipmentModal');
+    if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    return;
+  }
+
+  document.getElementById('selectedIdsContainer')?.remove();
+
+  const holder = document.createElement('div');
+  holder.id = 'selectedIdsContainer';
+  ids.forEach(id => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'package_ids';
+    input.value = id;
+    holder.appendChild(input);
+  });
+  form.appendChild(holder);
+
+  if (!confirm(`Perform "${action}" on ${ids.length} package(s)?`)) return;
+
+  form.submit();
+}
+
+/* ==========================
+   Init on ready (guarded)
+   ========================== */
+(function () {
+  if (!window.jQuery) return;
+
+  $(function () {
+    if (hasDataTables() && $('#dashboardPrealertsTable').length) {
+      $('#dashboardPrealertsTable').DataTable({
+        order: [[0, 'desc']],
+        pageLength: 10,
+        language: { emptyTable: "No pre-alert shipments found." }
+      });
+    }
+
+    if (document.getElementById('shipmentTable')) initShipmentTable();
+    else bindShipmentLengthSelect();
   });
 })();
 
@@ -2035,7 +1957,6 @@ async function handleShipmentApply(e) {
     const form = document.getElementById('shipmentForm');
     if (!form) return;
 
-    // collect checked ids
     let ids = [];
     if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
       ids = dt.$('.package-checkbox:checked').map(function () { return this.value; }).get();
@@ -2043,20 +1964,12 @@ async function handleShipmentApply(e) {
       ids = Array.from(document.querySelectorAll('.package-checkbox:checked')).map(cb => cb.value);
     }
 
-    if (!ids.length) {
-      alert("⚠️ Select at least one package to delete.");
-      return;
-    }
-
+    if (!ids.length) { alert("⚠️ Select at least one package to delete."); return; }
     if (!confirm(`⚠️ DELETE ${ids.length} package(s)? This cannot be undone.`)) return;
 
     const shipmentId = getShipmentIdFromUrl();
-    if (!shipmentId) {
-      alert("No shipment selected.");
-      return;
-    }
+    if (!shipmentId) { alert("No shipment selected."); return; }
 
-    // remove old holder
     document.getElementById('deleteIdsContainer')?.remove();
 
     const holder = document.createElement('div');
@@ -2072,13 +1985,11 @@ async function handleShipmentApply(e) {
 
     form.appendChild(holder);
 
-    // submit to delete route (ONLY for this click)
     form.action = `/admin/logistics/shipments/${shipmentId}/packages/delete`;
     form.method = "POST";
     form.submit();
   });
 })();
-
 
 /* ======================
    UPLOAD SPINNER
@@ -2251,22 +2162,15 @@ function updateShipmentHeaderCheckbox() {
 
   async function doUpload() {
     const pkgId = (currentPkgId || pkgIdInput?.value || '').trim();
-    if (!pkgId) {
-      alert('Package id missing.');
-      return;
-    }
+    if (!pkgId) { alert('Package id missing.'); return; }
 
     const files = fileInput?.files;
-    if (!files || !files.length) {
-      alert('Please choose at least one file.');
-      return;
-    }
+    if (!files || !files.length) { alert('Please choose at least one file.'); return; }
 
     const csrf = document.getElementById('attachCsrfToken')?.value || '';
 
     const fd = new FormData();
     if (csrf) fd.append('csrf_token', csrf);
-
     for (const f of files) fd.append('attachments', f);
 
     if (statusEl) statusEl.textContent = 'Uploading…';
@@ -2296,7 +2200,6 @@ function updateShipmentHeaderCheckbox() {
 
     if (statusEl) statusEl.textContent = 'Uploaded!';
     bootstrap.Modal.getInstance(modalEl)?.hide();
-
     setTimeout(() => window.location.reload(), 350);
   }
 

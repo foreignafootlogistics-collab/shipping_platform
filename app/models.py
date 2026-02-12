@@ -179,6 +179,12 @@ class Package(db.Model):
     # 🔑 NEW FIELD — CATEGORY
     category = db.Column(db.String(120), default="Other")   # ✅ ADD THIS LINE
 
+    pricing_locked = db.Column(db.Boolean, default=False, nullable=False)
+
+    # optional tracking
+    pricing_locked_at = db.Column(db.DateTime, nullable=True)
+    pricing_locked_by = db.Column(db.Integer, nullable=True)
+
     # Weight / Value
     weight = db.Column(db.Float, default=0.00)
     declared_value = db.Column(db.Float)

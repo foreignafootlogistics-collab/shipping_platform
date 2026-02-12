@@ -3,10 +3,12 @@
 
 {% block content %}
 <div class="container mt-4">
+
   <!-- Header -->
   <h2 class="mb-4 text-white p-3 rounded shadow-sm page-header">
     <i class="fas fa-users me-2"></i> Manage Users
   </h2>
+
   <!-- Flash messages -->
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -21,13 +23,26 @@
 
   <!-- Top Buttons: Single/Bulk Add + Excel -->
   <div class="d-flex gap-2 mb-3">
-    <button class="btn btn-outline-dark" type="button" data-bs-toggle="collapse" data-bs-target="#addSingleUserSection" title="Add Single User">
+    <button class="btn btn-outline-dark" type="button"
+            data-bs-toggle="collapse" data-bs-target="#addSingleUserSection"
+            title="Add Single User">
       <i class="fas fa-user-plus"></i>
     </button>
-    <button class="btn btn-outline-dark" type="button" data-bs-toggle="collapse" data-bs-target="#bulkUploadSection" title="Bulk Upload Users">
+
+    <button class="btn btn-outline-dark" type="button"
+            data-bs-toggle="collapse" data-bs-target="#bulkUploadSection"
+            title="Bulk Upload Users">
       <i class="fas fa-users-cog"></i>
     </button>
-    <a href="{{ url_for('accounts_profiles.export_users', format='excel', search=search) }}" class="btn btn-outline-dark ms-auto"><i class="fas fa-file-excel"></i> Excel</a>
+
+    <a href="{{ url_for('accounts_profiles.export_users',
+                        format='excel',
+                        search=search,
+                        unpaid_only=('1' if unpaid_only else None),
+                        sort=sort_by) }}"
+       class="btn btn-outline-dark ms-auto">
+      <i class="fas fa-file-excel"></i> Excel
+    </a>
   </div>
 
   <!-- Add Single User Section -->
@@ -39,22 +54,27 @@
       <div class="card-body p-4">
         <form method="POST" action="{{ url_for('accounts_profiles.add_user') }}" novalidate>
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
           <div class="mb-3">
             <label class="form-label">Full Name <span class="text-danger">*</span></label>
             <input type="text" name="full_name" class="form-control" placeholder="Enter full name" required>
           </div>
+
           <div class="mb-3">
             <label class="form-label">Email <span class="text-danger">*</span></label>
             <input type="email" name="email" class="form-control" placeholder="Enter email address" required>
           </div>
+
           <div class="mb-3">
             <label class="form-label">TRN <span class="text-danger">*</span></label>
             <input type="text" name="trn" class="form-control" placeholder="Enter TRN" required>
           </div>
+
           <div class="mb-3">
             <label class="form-label">Mobile <span class="text-danger">*</span></label>
             <input type="text" name="mobile" class="form-control" placeholder="Enter mobile number" required>
           </div>
+
           <div class="mb-3">
             <label class="form-label">Password <span class="text-danger">*</span></label>
             <div class="input-group">
@@ -64,15 +84,22 @@
               </button>
             </div>
           </div>
+
           <div class="mb-3">
             <label class="form-label">Registration Date</label>
             <input type="date" name="date_registered" class="form-control">
             <small class="text-muted">Leave blank to use today's date.</small>
           </div>
+
           <div class="mt-3">
-            <button class="btn btn-primary me-2" type="submit"><i class="fas fa-save me-1"></i> Save User</button>
-            <a href="{{ url_for('accounts_profiles.manage_users') }}" class="btn btn-secondary"><i class="fas fa-times me-1"></i> Cancel</a>
+            <button class="btn btn-primary me-2" type="submit">
+              <i class="fas fa-save me-1"></i> Save User
+            </button>
+            <a href="{{ url_for('accounts_profiles.manage_users') }}" class="btn btn-secondary">
+              <i class="fas fa-times me-1"></i> Cancel
+            </a>
           </div>
+
         </form>
       </div>
     </div>
@@ -85,6 +112,7 @@
         <h5 class="mb-0"><i class="fas fa-upload me-2"></i> Bulk Upload via Excel</h5>
       </div>
       <div class="card-body p-4">
+
         <form method="POST" action="{{ url_for('accounts_profiles.upload_users') }}" enctype="multipart/form-data">
           {{ form.hidden_tag() }}
           <div class="mb-3">
@@ -116,15 +144,15 @@
                 </thead>
                 <tbody>
                   {% for row in excel_preview %}
-                  <tr>
-                    <td>{{ row['Full Name'] }}</td>
-                    <td>{{ row['Email'] }}</td>
-                    <td>{{ row['TRN'] }}</td>
-                    <td>{{ row['Mobile'] }}</td>
-                    <td>{{ row['Password'] }}</td>
-                    <td>{{ row['Date Registered'] }}</td>
-                    <td>{{ row['Assigned Reg #'] }}</td>
-                  </tr>
+                    <tr>
+                      <td>{{ row['Full Name'] }}</td>
+                      <td>{{ row['Email'] }}</td>
+                      <td>{{ row['TRN'] }}</td>
+                      <td>{{ row['Mobile'] }}</td>
+                      <td>{{ row['Password'] }}</td>
+                      <td>{{ row['Date Registered'] }}</td>
+                      <td>{{ row['Assigned Reg #'] }}</td>
+                    </tr>
                   {% endfor %}
                 </tbody>
               </table>
@@ -132,14 +160,42 @@
             </form>
           </div>
         {% endif %}
+
       </div>
     </div>
   </div>
 
-  <!-- Filter Form -->
-  <form method="GET" class="d-flex gap-2 mb-4">
-    <input type="text" name="search" class="form-control border border-2 border-dark" placeholder="Search name, email, reg #" value="{{ search }}">
+  <!-- Filter Form (Search + Unpaid Only) -->
+  <form method="GET" class="d-flex flex-wrap gap-2 align-items-center mb-4">
+    <input type="text"
+           name="search"
+           class="form-control border border-2 border-dark"
+           style="max-width:360px;"
+           placeholder="Search name, email, reg #"
+           value="{{ search }}">
+
+    <div class="form-check">
+      <input class="form-check-input"
+             type="checkbox"
+             name="unpaid_only"
+             value="1"
+             id="unpaidOnlyChk"
+             {% if unpaid_only %}checked{% endif %}>
+      <label class="form-check-label" for="unpaidOnlyChk">
+        Unpaid invoices only
+      </label>
+    </div>
+
+    {% if sort_by %}
+      <input type="hidden" name="sort" value="{{ sort_by }}">
+    {% endif %}
+
     <button type="submit" class="btn btn-primary">Filter</button>
+
+    <a class="btn btn-outline-secondary"
+       href="{{ url_for('accounts_profiles.manage_users') }}">
+      Clear
+    </a>
   </form>
 
   <!-- Users Table -->
@@ -149,7 +205,7 @@
         <tr>
           <th>Name</th>
           <th>
-            Reg # 
+            Reg #
             <a href="#" id="regSortLink" class="reg-sort ms-1"></a>
           </th>
           <th>Email</th>
@@ -161,22 +217,31 @@
       <tbody>
         {% if users %}
           {% for user in users %}
-          <tr>
-            <td>
-              <a href="{{ url_for('accounts_profiles.view_user', id=user.id) }}" style="color:#4a148c; text-decoration: underline;">{{ user.full_name }}</a>
-            </td>
-            <td>{{ user.registration_number }}</td>
-            <td>{{ user.email }}</td>
-            <td>{{ user.mobile }}</td>
-            <td>{{ user.date_registered or 'N/A' }}</td>
-            <td>
-              {% if user.unpaid_count > 0 %}
-                <span class="badge bg-danger">{{ user.unpaid_count }}</span>
-              {% else %}
-                0
-              {% endif %}
-            </td>
-          </tr>
+            <tr>
+              <td>
+                <a href="{{ url_for('accounts_profiles.view_user',
+                                    id=user.id,
+                                    next=url_for('accounts_profiles.manage_users',
+                                                 page=page,
+                                                 search=search,
+                                                 sort=sort_by,
+                                                 unpaid_only=('1' if unpaid_only else None))) }}"
+                   style="color:#4a148c; text-decoration: underline;">
+                  {{ user.full_name }}
+                </a>
+              </td>
+              <td>{{ user.registration_number }}</td>
+              <td>{{ user.email }}</td>
+              <td>{{ user.mobile }}</td>
+              <td>{{ user.date_registered or 'N/A' }}</td>
+              <td>
+                {% if user.unpaid_count > 0 %}
+                  <span class="badge bg-danger">{{ user.unpaid_count }}</span>
+                {% else %}
+                  0
+                {% endif %}
+              </td>
+            </tr>
           {% endfor %}
         {% else %}
           <tr>
@@ -188,152 +253,214 @@
   </div>
 
   <!-- Pagination -->
-{% if total_pages > 1 %}
-<nav aria-label="Page navigation">
-  <ul class="pagination justify-content-center">
-    {% set start_page = (page - 1) if (page - 1) > 1 else 1 %}
-    {% set end_page = (page + 1) if (page + 1) < total_pages else total_pages %}
+  {% if total_pages > 1 %}
+  <nav aria-label="Page navigation">
+    <ul class="pagination justify-content-center">
 
-    {% if page > 1 %}
-      <li class="page-item"><a class="page-link text-purple" href="?page=1&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}">&laquo; First</a></li>
-      <li class="page-item"><a class="page-link text-purple" href="?page={{ page-1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}">&lt; Prev</a></li>
-    {% endif %}
+      {% set start_page = (page - 1) if (page - 1) > 1 else 1 %}
+      {% set end_page = (page + 1) if (page + 1) < total_pages else total_pages %}
 
-    {% for p in range(start_page, end_page+1) %}
-      <li class="page-item {% if p == page %}active{% endif %}">
-        <a class="page-link {% if p == page %}bg-purple text-white{% else %}text-purple{% endif %}" 
-           href="?page={{ p }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}">{{ p }}</a>
-      </li>
-    {% endfor %}
+      {% if page > 1 %}
+        <li class="page-item">
+          <a class="page-link text-purple"
+             href="?page=1&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
+            &laquo; First
+          </a>
+        </li>
 
-    {% if page < total_pages %}
-      <li class="page-item"><a class="page-link text-purple" href="?page={{ page+1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}">Next &gt;</a></li>
-      <li class="page-item"><a class="page-link text-purple" href="?page={{ total_pages }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}">Last &raquo;</a></li>
-    {% endif %}
-  </ul>
-</nav>
-{% endif %}
+        <li class="page-item">
+          <a class="page-link text-purple"
+             href="?page={{ page-1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
+            &lt; Prev
+          </a>
+        </li>
+      {% endif %}
 
-<style>
-/* Purple color for active page in pagination */
-.bg-purple {
-  background-color: #4a148c !important;
-}
-.text-purple {
-  color: #4a148c !important;
-}
+      {% for p in range(start_page, end_page+1) %}
+        <li class="page-item {% if p == page %}active{% endif %}">
+          <a class="page-link {% if p == page %}bg-purple text-white{% else %}text-purple{% endif %}"
+             href="?page={{ p }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
+            {{ p }}
+          </a>
+        </li>
+      {% endfor %}
 
-/* Table header and table border */
-.table thead th {
-  background-color: #000 !important;
-  color: #fff !important;
-}
-.table {
-  border: 1px solid black !important;
-}
+      {% if page < total_pages %}
+        <li class="page-item">
+          <a class="page-link text-purple"
+             href="?page={{ page+1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
+            Next &gt;
+          </a>
+        </li>
 
-/* Customer name underline and outline in purple */
-.table tbody td a {
-  color: #4a148c;
-  text-decoration: underline;
-}
+        <li class="page-item">
+          <a class="page-link text-purple"
+             href="?page={{ total_pages }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
+            Last &raquo;
+          </a>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+  {% endif %}
 
-/* Container for the arrow */
-.reg-sort {
-  display: inline-block;
-  width: 10px;
-  height: 16px;
-  vertical-align: middle;
-  cursor: pointer;
-  position: relative;
-}
-
-/* Default arrow (both up and down lines) */
-.reg-sort::before,
-.reg-sort::after {
-  content: '';
-  display: block;
-  width: 0;
-  height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  position: absolute;
-  left: 0;
-}
-
-/* Up arrow */
-.reg-sort::before {
-  border-bottom: 5px solid #fff;
-  top: 0;
-}
-
-/* Down arrow */
-.reg-sort::after {
-  border-top: 5px solid #fff;
-  bottom: 0;
-}
-
-/* Active ascending */
-.reg-sort.asc::before {
-  border-bottom-color: #4a148c;
-}
-.reg-sort.asc::after {
-  border-top-color: #ccc;
-}
-
-/* Active descending */
-.reg-sort.desc::before {
-  border-bottom-color: #ccc;
-}
-.reg-sort.desc::after {
-  border-top-color: #4a148c;
-}
-.card-header-purple {
-  background-color: #4a148c !important;
-  color: #fff !important;
-}
-.text-purple-link {
-  color: #4a148c !important;
-}
-.page-header {
-    background-color: #4a148c;
-} 
-</style>
-
-<!-- Show Password Script -->
-<script>
-document.getElementById('togglePassword').addEventListener('click', function() {
-  const passwordInput = document.getElementById('password');
-  const icon = this.querySelector('i');
-  if (passwordInput.type === 'password') {
-    passwordInput.type = 'text';
-    icon.classList.replace('fa-eye', 'fa-eye-slash');
-  } else {
-    passwordInput.type = 'password';
-    icon.classList.replace('fa-eye-slash', 'fa-eye');
+  <style>
+  /* Purple color for active page in pagination */
+  .bg-purple {
+    background-color: #4a148c !important;
   }
-});
+  .text-purple {
+    color: #4a148c !important;
+  }
 
-// Reg # sort toggle
-const regSortLink = document.getElementById('regSortLink');
-let currentSort = "{{ sort_by }}"; // recent, alphabetical_asc, alphabetical_desc
+  /* Table header and table border */
+  .table thead th {
+    background-color: #000 !important;
+    color: #fff !important;
+  }
+  .table {
+    border: 1px solid black !important;
+  }
 
-regSortLink.addEventListener('click', function(e) {
-  e.preventDefault();
-  
-  let newSort;
-  if (currentSort === 'recent') newSort = 'alphabetical_asc';
-  else if (currentSort === 'alphabetical_asc') newSort = 'alphabetical_desc';
-  else newSort = 'recent'; // go back to default
+  /* Customer name underline and outline in purple */
+  .table tbody td a {
+    color: #4a148c;
+    text-decoration: underline;
+  }
 
-  // Update arrow highlighting
-  regSortLink.classList.remove('asc', 'desc');
-  if(newSort === 'alphabetical_asc') regSortLink.classList.add('asc');
-  if(newSort === 'alphabetical_desc') regSortLink.classList.add('desc');
+  /* Container for the arrow */
+  .reg-sort {
+    display: inline-block;
+    width: 10px;
+    height: 16px;
+    vertical-align: middle;
+    cursor: pointer;
+    position: relative;
+  }
 
-  const search = "{{ search }}";
-  const url = `?sort=${newSort}${search ? '&search=' + search : ''}`;
-  window.location.href = url;
-});
-</script>
+  /* Default arrow (both up and down lines) */
+  .reg-sort::before,
+  .reg-sort::after {
+    content: '';
+    display: block;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    position: absolute;
+    left: 0;
+  }
+
+  /* Up arrow */
+  .reg-sort::before {
+    border-bottom: 5px solid #fff;
+    top: 0;
+  }
+
+  /* Down arrow */
+  .reg-sort::after {
+    border-top: 5px solid #fff;
+    bottom: 0;
+  }
+
+  /* Active ascending */
+  .reg-sort.asc::before {
+    border-bottom-color: #4a148c;
+  }
+  .reg-sort.asc::after {
+    border-top-color: #ccc;
+  }
+
+  /* Active descending */
+  .reg-sort.desc::before {
+    border-bottom-color: #ccc;
+  }
+  .reg-sort.desc::after {
+    border-top-color: #4a148c;
+  }
+
+  .card-header-purple {
+    background-color: #4a148c !important;
+    color: #fff !important;
+  }
+  .text-purple-link {
+    color: #4a148c !important;
+  }
+  .page-header {
+    background-color: #4a148c;
+  }
+  </style>
+
+  <!-- Scripts -->
+  <script>
+  // Show Password Script
+  document.getElementById('togglePassword')?.addEventListener('click', function() {
+    const passwordInput = document.getElementById('password');
+    const icon = this.querySelector('i');
+    if (!passwordInput || !icon) return;
+
+    if (passwordInput.type === 'password') {
+      passwordInput.type = 'text';
+      icon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+      passwordInput.type = 'password';
+      icon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
+  });
+
+  // Reg # sort toggle (preserves page/search/unpaid_only)
+  const regSortLink = document.getElementById('regSortLink');
+  let currentSort = "{{ sort_by or 'recent' }}"; // recent, alphabetical_asc, alphabetical_desc
+
+  function buildUrlWithParams(params = {}) {
+    const url = new URL(window.location.href);
+    Object.entries(params).forEach(([k, v]) => {
+      if (v === null || v === undefined || v === '') url.searchParams.delete(k);
+      else url.searchParams.set(k, String(v));
+    });
+    return url.toString();
+  }
+
+  function getParam(name) {
+    const url = new URL(window.location.href);
+    return url.searchParams.get(name);
+  }
+
+  // Set arrow highlighting on load
+  (function initArrowState() {
+    if (!regSortLink) return;
+    regSortLink.classList.remove('asc', 'desc');
+    if (currentSort === 'alphabetical_asc') regSortLink.classList.add('asc');
+    if (currentSort === 'alphabetical_desc') regSortLink.classList.add('desc');
+  })();
+
+  regSortLink?.addEventListener('click', function(e) {
+    e.preventDefault();
+
+    let newSort;
+    if (currentSort === 'recent') newSort = 'alphabetical_asc';
+    else if (currentSort === 'alphabetical_asc') newSort = 'alphabetical_desc';
+    else newSort = 'recent';
+
+    const search = getParam('search') || "{{ search or '' }}";
+    const unpaidOnly = getParam('unpaid_only') || ("{{ '1' if unpaid_only else '' }}");
+    const page = getParam('page') || "{{ page or 1 }}";
+
+    // update arrow highlighting
+    regSortLink.classList.remove('asc', 'desc');
+    if (newSort === 'alphabetical_asc') regSortLink.classList.add('asc');
+    if (newSort === 'alphabetical_desc') regSortLink.classList.add('desc');
+
+    const nextUrl = buildUrlWithParams({
+      sort: newSort,
+      search: search || null,
+      unpaid_only: unpaidOnly === '1' ? '1' : null,
+      page: page || '1'
+    });
+
+    window.location.href = nextUrl;
+  });
+  </script>
+
+</div>
 {% endblock %}

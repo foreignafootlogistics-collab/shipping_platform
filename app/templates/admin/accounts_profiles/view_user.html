@@ -18,7 +18,7 @@
 
       <!-- Left: Back to Manage Users -->
       <div>
-        <a href="{{ url_for('accounts_profiles.manage_users') }}"
+        <a href="{{ request.args.get('next') or url_for('accounts_profiles.manage_users') }}"
            class="text-white text-decoration-none fw-bold">
           <i class="bi bi-arrow-left"></i> Manage Users
         </a>
@@ -1661,6 +1661,125 @@ td.pkg-cell span.badge.pkg-status-badge.status-unknown{
   background-color: #adb5bd !important;
   color: #212529 !important;
 }
+
+/* ================================
+   MOBILE / RESPONSIVE FIXES
+   ================================ */
+
+/* Make icons clickable (you used cursor-pointer class) */
+.cursor-pointer { cursor: pointer; }
+
+/* ---------- Top grey bar: stop overlap on phones ---------- */
+@media (max-width: 768px) {
+
+  /* This targets your top grey bar inside the profile card */
+  .card .d-flex.justify-content-between.align-items-center.p-2[style*="background-color:#6c757d"]{
+    flex-wrap: wrap;
+    gap: .5rem;
+    position: relative !important; /* keep relative */
+  }
+
+  /* The middle group was position-absolute; kill that on mobile */
+  .card .d-flex.justify-content-between.align-items-center.p-2
+  .position-absolute[style*="left: 33%"]{
+    position: static !important;
+    left: auto !important;
+    width: 100%;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-top: .25rem;
+  }
+
+  /* Right-side buttons wrap nicely */
+  .card .d-flex.justify-content-between.align-items-center.p-2 > .d-flex.gap-2{
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: .4rem !important;
+  }
+
+  /* ---------- Profile body: stack columns ---------- */
+  .card-body.d-flex.p-3{
+    flex-direction: column !important;
+    gap: 1rem;
+    padding-bottom: 5rem !important; /* space for wallet button */
+  }
+
+  /* Hide your vertical divider lines on mobile */
+  .card-body.d-flex.p-3 .position-absolute[style*="border-left"],
+  .card-body.d-flex.p-3 .position-absolute[style*="border-top"]{
+    display: none !important;
+  }
+
+  /* Remove extra column paddings that cause squeeze */
+  .card-body.d-flex.p-3 > div[style*="flex:1"]{
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  /* Name sizing */
+  .card-body h3{
+    font-size: 1.25rem !important;
+    line-height: 1.2;
+  }
+
+  /* ---------- Wallet button: stop absolute overlap ---------- */
+  .card-body .position-absolute[style*="bottom:1rem"][style*="right:1rem"]{
+    position: static !important;
+    margin-top: .75rem;
+    width: 100%;
+  }
+
+  .card-body .position-absolute[style*="bottom:1rem"][style*="right:1rem"] .btn{
+    width: 100%;
+    font-size: 1.1rem !important;
+    padding: .65rem 1rem !important;
+  }
+
+  /* ---------- Tabs: allow horizontal scroll instead of wrapping ugly ---------- */
+  .card-header .nav-tabs{
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .card-header .nav-tabs .nav-link{
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+
+  /* ---------- Tables: make them readable on phones ---------- */
+  .table-responsive{
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Make the Packages table not feel cramped */
+  #packagesTable th, #packagesTable td{
+    white-space: nowrap;
+    font-size: .9rem;
+  }
+
+  /* Give House/Status cell ability to wrap inside if needed */
+  #packagesTable td.pkg-cell{
+    white-space: normal;
+    min-width: 180px;
+  }
+
+  /* Buttons row above tables should wrap */
+  .tab-pane .d-flex.justify-content-between.align-items-center.mb-2{
+    flex-wrap: wrap;
+    gap: .5rem;
+  }
+
+  /* The search area in Messages tab */
+  #msgSearchInput{
+    min-width: 0 !important;
+  }
+}
+
 </style>
 {% endblock %}
 

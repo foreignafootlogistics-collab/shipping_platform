@@ -122,18 +122,23 @@ def _safe_commit():
 # -------------------------
 # Manage Users
 # -------------------------
+from sqlalchemy import func, or_, and_
+
 @accounts_bp.route('/manage-users', methods=['GET', 'POST'])
 @admin_required
 def manage_users():
-    page      = request.args.get('page', 1, type=int)
-    per_page  = 20
-    search    = (request.args.get('search') or '').strip()
-    sort_by   = (request.args.get('sort') or 'recent').strip()
-    date_from = request.args.get('date_from')
-    date_to   = request.args.get('date_to')
+    page        = request.args.get('page', 1, type=int)
+    per_page    = 20
+    search      = (request.args.get('search') or '').strip()
+    sort_by     = (request.args.get('sort') or 'recent').strip()
+    date_from   = request.args.get('date_from')
+    date_to     = request.args.get('date_to')
 
-    upload_form   = UploadUsersForm()
-    confirm_form  = ConfirmUploadForm()
+    # ✅ NEW: unpaid-only filter flag (checkbox sends unpaid_only=1)
+    unpaid_only = (request.args.get('unpaid_only') == '1')
+
+    upload_form  = UploadUsersForm()
+    confirm_form = ConfirmUploadForm()
 
     # Load preview token (large payload on disk)
     preview_token = session.get('preview_users_token')
@@ -145,12 +150,13 @@ def manage_users():
         else:
             session.pop('preview_users_token', None)
 
-    # Build query
+    # ---------------------------------------------------------
+    # Build base query (User)
+    # ---------------------------------------------------------
     q = User.query
 
     if search:
         like = f"%{search}%"
-        # guard address via hasattr because your model has it
         q = q.filter(or_(
             User.full_name.ilike(like),
             User.email.ilike(like),
@@ -164,7 +170,22 @@ def manage_users():
     if date_to:
         q = q.filter(User.date_registered <= date_to)
 
+    # ---------------------------------------------------------
+    # ✅ NEW: Unpaid-only filter (users with at least 1 unpaid/pending invoice)
+    #     We apply this BEFORE pagination so page counts are correct.
+    # ---------------------------------------------------------
+    if unpaid_only:
+        unpaid_user_ids_subq = (
+            db.session.query(Invoice.user_id)
+            .filter(func.lower(Invoice.status).in_(('pending', 'unpaid')))
+            .group_by(Invoice.user_id)
+            .subquery()
+        )
+        q = q.filter(User.id.in_(unpaid_user_ids_subq))
+
+    # ---------------------------------------------------------
     # Sort
+    # ---------------------------------------------------------
     if sort_by == 'alphabetical_asc':
         q = q.order_by(User.registration_number.asc())
     elif sort_by == 'alphabetical_desc':
@@ -178,11 +199,12 @@ def manage_users():
         else:
             q = q.order_by(User.id.desc())
 
-    pagination = q.paginate(page=page, per_page=per_page, error_out=False)
-    users = []
-    user_ids = [u.id for u in pagination.items]
+    pagination  = q.paginate(page=page, per_page=per_page, error_out=False)
+    user_ids    = [u.id for u in pagination.items]
 
+    # ---------------------------------------------------------
     # unpaid_count per user: invoices with status in ('pending','unpaid')
+    # ---------------------------------------------------------
     unpaid_map = {uid: 0 for uid in user_ids}
     if user_ids:
         try:
@@ -200,6 +222,7 @@ def manage_users():
         except Exception:
             db.session.rollback()
 
+    users = []
     for u in pagination.items:
         users.append({
             "id": u.id,
@@ -224,6 +247,7 @@ def manage_users():
         sort_by=sort_by,
         date_from=date_from,
         date_to=date_to,
+        unpaid_only=unpaid_only,  # ✅ NEW: so checkbox stays checked + links preserve it
         form=upload_form,
         confirm_form=confirm_form,
         excel_preview=excel_preview

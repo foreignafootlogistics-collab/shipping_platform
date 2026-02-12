@@ -1197,7 +1197,7 @@ def view_user(id):
         total_messages=total_messages,
         msg_from=msg_from,
         msg_to=msg_to,
-        msg_q=msg_q
+        msg_q=msg_q,
         balance=balance,
         messages=messages,
         wallet_balance=wallet_balance,

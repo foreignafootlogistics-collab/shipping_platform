@@ -1179,7 +1179,7 @@ def view_messages():
             subject=subject,
             body=body,
             is_read=False,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(timezone.utc),  # ✅ timezone-aware UTC
         )
         db.session.add(msg)
         db.session.commit()
@@ -1306,7 +1306,7 @@ def customer_message_reply(msg_id):
         subject=subject,
         body=body,
         is_read=False,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),  # ✅ timezone-aware UTC
     )
     db.session.add(msg)
     db.session.commit()
@@ -1324,6 +1324,7 @@ def customer_message_reply(msg_id):
 
     flash("Reply sent.", "success")
     return redirect(url_for("customer.customer_message_detail", msg_id=msg.id))
+
 
 
 # -----------------------------

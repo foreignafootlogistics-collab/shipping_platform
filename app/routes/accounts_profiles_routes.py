@@ -23,6 +23,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from werkzeug.utils import secure_filename
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
+from urllib.parse import urlparse, urljoin
 
 from app.forms import UploadUsersForm, ConfirmUploadForm
 from app.extensions import db
@@ -30,7 +31,6 @@ from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import CATEGORIES
 from app.utils.time import to_jamaica
 from app.utils.messages import make_thread_key
-
 
 # Models (these exist in your file)
 from app.models import (
@@ -58,6 +58,54 @@ MOBILE_REGEX = re.compile(r'^\d{10}$')  # For Jamaican numbers like 876XXXXXXX
 
 def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# -------------------------
+# ✅ NEW: Redirect helper to preserve active tab + filters/pagination
+# -------------------------
+def _back_to_view_user_url(user_id: int, fallback_tab: str = "packages") -> str:
+    """
+    Build a redirect URL back to view_user that preserves:
+    - tab=...
+    - tab-specific query params (pagination + filters)
+    Works even if route is POST because request.values checks args+form.
+    """
+    tab = (
+        request.args.get("tab")
+        or request.form.get("tab")
+        or request.values.get("tab")
+        or fallback_tab
+    )
+
+    kwargs = {"id": user_id, "tab": tab}
+
+    # preserve tab-specific params
+    if tab == "packages":
+        for k in ("pkg_page", "pkg_per_page", "pkg_from", "pkg_to", "pkg_awb", "pkg_tn"):
+            v = request.values.get(k)
+            if v not in (None, "", "None"):
+                kwargs[k] = v
+
+    elif tab == "invoices":
+        for k in ("inv_page", "inv_per_page", "inv_from", "inv_to"):
+            v = request.values.get(k)
+            if v not in (None, "", "None"):
+                kwargs[k] = v
+
+    elif tab == "payments":
+        for k in ("pay_page", "pay_per_page", "pay_from", "pay_to"):
+            v = request.values.get(k)
+            if v not in (None, "", "None"):
+                kwargs[k] = v
+
+    elif tab == "messages":
+        for k in ("msg_page", "msg_per_page", "msg_from", "msg_to", "msg_q"):
+            v = request.values.get(k)
+            if v not in (None, "", "None"):
+                kwargs[k] = v
+
+    return url_for("accounts_profiles.view_user", **kwargs)
+
 
 # -------------------------
 # Preview Blob
@@ -93,6 +141,7 @@ def _delete_user_preview_blob(token: str) -> None:
     except Exception:
         pass
 
+
 # -------------------------
 # Helpers
 # -------------------------
@@ -118,6 +167,7 @@ def _safe_commit():
     except Exception:
         db.session.rollback()
         return False
+
 
 # -------------------------
 # Manage Users
@@ -252,7 +302,6 @@ def manage_users():
         confirm_form=confirm_form,
         excel_preview=excel_preview
     )
-
 
 
 # -------------------------
@@ -420,6 +469,7 @@ def upload_users():
     flash("Excel uploaded successfully. Preview below before confirming.", "info")
     return redirect(url_for('accounts_profiles.manage_users'))
 
+
 # -------------------------
 # Confirm Upload Users
 # -------------------------
@@ -527,6 +577,7 @@ def confirm_upload_users():
 
     return redirect(url_for('accounts_profiles.manage_users'))
 
+
 # -------------------------
 # Export Users (CSV / PDF / Excel)
 # -------------------------
@@ -628,6 +679,7 @@ def export_users():
 
     return "Invalid export format", 400
 
+
 # -------------------------
 # View User (packages + invoices/payments + prealerts)
 # -------------------------
@@ -700,8 +752,6 @@ def view_user(id):
     activity_badge  = "bg-success" if login_active else "bg-secondary"
     last_login_display = fmt_last_login(last)
 
-
-    # Messages (subject, body, created_at)
     # -------------------------
     # Messages (server-side pagination + date filter)
     # -------------------------
@@ -712,6 +762,8 @@ def view_user(id):
 
     msg_from = (request.args.get("msg_from") or "").strip()
     msg_to   = (request.args.get("msg_to") or "").strip()
+    msg_q = (request.args.get("msg_q") or "").strip()
+
 
     messages = []
     total_messages = 0
@@ -734,6 +786,14 @@ def view_user(id):
             dt_to = datetime.fromisoformat(msg_to) + timedelta(days=1)  # next day 00:00
             q = q.filter(DBMessage.created_at < dt_to)
 
+        if msg_q:
+            like = f"%{msg_q}%"
+            q = q.filter(or_(
+                DBMessage.subject.ilike(like),
+                DBMessage.body.ilike(like),
+            ))
+
+
         total_messages = q.count()
 
         page_obj = q.order_by(DBMessage.created_at.desc()).paginate(
@@ -750,7 +810,6 @@ def view_user(id):
     msg_total_pages = max((total_messages + msg_per_page - 1) // msg_per_page, 1)
     msg_show_from = 0 if total_messages == 0 else ((msg_page - 1) * msg_per_page + 1)
     msg_show_to   = min(msg_page * msg_per_page, total_messages)
-
 
     # Prealerts
     try:
@@ -780,8 +839,6 @@ def view_user(id):
     if pkg_per_page not in (10, 25, 50, 100, 500, 1000):
         pkg_per_page = 10
 
-
-    # --- filters coming from the modal (we'll build the modal next step) ---
     pkg_from = (request.args.get("pkg_from") or "").strip()
     pkg_to   = (request.args.get("pkg_to") or "").strip()
     pkg_awb  = (request.args.get("pkg_awb") or "").strip()
@@ -800,7 +857,6 @@ def view_user(id):
                 date_col = getattr(Package, attr)
                 break
 
-        # Apply filters
         if pkg_from and date_col is not None:
             base = base.filter(date_col >= pkg_from)
 
@@ -829,7 +885,6 @@ def view_user(id):
                 return str(v)
 
         for p in page_obj.items:
-            # pick a best-effort date field from the row
             date_received = None
             for attr in ("date_received", "received_date", "created_at"):
                 if getattr(p, attr, None):
@@ -871,8 +926,6 @@ def view_user(id):
                 for a in attachments
             ]
 
-
-
             packages.append({
                 "id": p.id,
                 "user_id": p.user_id,
@@ -886,7 +939,6 @@ def view_user(id):
                 "amount_due": amt_due,
                 "invoice_file": getattr(p, "invoice_file", None),
                 "attachments": attachments,
-
             })
 
     except Exception:
@@ -895,7 +947,7 @@ def view_user(id):
         total_pkgs = 0
         pkg_from = pkg_to = pkg_awb = pkg_tn = ""
 
-    # ---------------- Attachments lookup for packages ----------------
+    # Attachments lookup for packages
     pkg_ids = [p["id"] for p in packages if p.get("id")]
 
     attachments_by_pkg = {}
@@ -919,19 +971,14 @@ def view_user(id):
                 "file_name": file_name,
             })
 
-    # (optional) merge into each package dict so template stays simple
     for p in packages:
         p["attachments"] = attachments_by_pkg.get(p["id"], [])
-
 
     pkg_total_pages = max((total_pkgs + pkg_per_page - 1) // pkg_per_page, 1)
     pkg_show_from = 0 if total_pkgs == 0 else ((pkg_page - 1) * pkg_per_page + 1)
     pkg_show_to   = min(pkg_page * pkg_per_page, total_pkgs)
 
-       # ---------------- Invoices for this user ----------------
-
     # ---------------- Invoices (server-side pagination + date filter) ----------------
-
     inv_page = request.args.get("inv_page", 1, type=int)
     inv_per_page = request.args.get("inv_per_page", 10, type=int)
     if inv_per_page not in (10, 20, 50, 100, 500, 1000):
@@ -948,11 +995,11 @@ def view_user(id):
     invoices_rows = []
     total_owed = 0.0
     total_paid = 0.0
+    all_rows = []  # keep defined for template safety
 
     try:
         inv_query = Invoice.query
 
-        # Match by whatever fields your Invoice model actually has
         conds = []
         if hasattr(Invoice, "user_id"):
             conds.append(Invoice.user_id == id)
@@ -965,13 +1012,10 @@ def view_user(id):
             inv_query = inv_query.filter(or_(*conds))
 
         pay_amount_col = getattr(Payment, "amount_jmd", None) or getattr(Payment, "amount", None)
-
         if pay_amount_col is None:
             raise RuntimeError("Payment model has no amount_jmd/amount column")
 
         paid_sum_col = func.coalesce(func.sum(pay_amount_col), 0.0).label("paid_sum")
-
-
 
         q = (
             db.session.query(Invoice, paid_sum_col)
@@ -980,7 +1024,6 @@ def view_user(id):
             .group_by(Invoice.id)
         )
 
-        # date filter (use best available invoice date column)
         date_col = getattr(Invoice, "date", None) or getattr(Invoice, "date_submitted", None) or getattr(Invoice, "created_at", None)
         if date_col is not None:
             if inv_from:
@@ -988,10 +1031,8 @@ def view_user(id):
             if inv_to:
                 q = q.filter(date_col <= inv_to)
 
-        # total BEFORE pagination
         total_invoices = q.count()
 
-        # order + paginate
         order_col = getattr(Invoice, "date", None) or getattr(Invoice, "date_submitted", None) or getattr(Invoice, "created_at", None) or Invoice.id
         page_obj = q.order_by(order_col.desc()).paginate(
             page=inv_page, per_page=inv_per_page, error_out=False
@@ -1002,7 +1043,6 @@ def view_user(id):
         inv_total_pages = max((total_invoices + inv_per_page - 1) // inv_per_page, 1)
         inv_show_from = 0 if total_invoices == 0 else ((inv_page - 1) * inv_per_page + 1)
         inv_show_to   = min(inv_page * inv_per_page, total_invoices)
-
 
         def _inv_due(inv):
             for attr in ("grand_total", "amount_due", "total"):
@@ -1020,7 +1060,7 @@ def view_user(id):
             .group_by(Invoice.id)
             .all()
         )
-        # ✅ totals based on money, not status
+
         total_owed = sum(max(_inv_due(inv) - float(paid_sum or 0), 0.0) for inv, paid_sum in all_rows)
         total_paid = sum(float(paid_sum or 0) for _, paid_sum in all_rows)
 
@@ -1030,9 +1070,9 @@ def view_user(id):
         invoices_rows = []
         total_owed = 0.0
         total_paid = 0.0
+        all_rows = []
 
     balance = max(total_owed, 0.0)
-
 
     # Payments (server-side pagination + date filter)
     pay_page = request.args.get("pay_page", 1, type=int)
@@ -1065,13 +1105,12 @@ def view_user(id):
             .filter(Payment.user_id == id)
         )
 
-        # date filter (created_at is datetime)
         if pay_from:
-            dt_from = datetime.fromisoformat(pay_from)  # 00:00
+            dt_from = datetime.fromisoformat(pay_from)
             q = q.filter(Payment.created_at >= dt_from)
 
         if pay_to:
-            dt_to = datetime.fromisoformat(pay_to) + timedelta(days=1)  # next day 00:00
+            dt_to = datetime.fromisoformat(pay_to) + timedelta(days=1)
             q = q.filter(Payment.created_at < dt_to)
 
         total_payments = q.count()
@@ -1092,19 +1131,18 @@ def view_user(id):
     pay_show_from = 0 if total_payments == 0 else ((pay_page - 1) * pay_per_page + 1)
     pay_show_to   = min(pay_page * pay_per_page, total_payments)
 
-
     wallet_balance = user.wallet_balance or 0.0
     referral_code  = user.referral_code or ''
-    active_tab = request.args.get("tab", "packages")
 
-    
+    # ✅ UPDATED: supports tab coming from GET or POST
+    active_tab = request.values.get("tab", "packages")
+
     categories = list(CATEGORIES.keys())
 
     jl = to_jamaica(getattr(user, "last_login", None))
     last_login_display = None
     if jl:
         last_login_display = jl.strftime("%Y-%m-%d %I:%M %p")
-
 
     return render_template(
         'admin/accounts_profiles/view_user.html',
@@ -1118,16 +1156,11 @@ def view_user(id):
             "trn": user.trn,
             "wallet_balance": wallet_balance,
             "referral_code": referral_code,
-
             "is_active": bool(getattr(user, "is_active", True)),
-
-            # ✅ live status based on last login
             "activity_status": activity_status,
             "activity_badge": activity_badge,
             "last_login": user.last_login,
             "last_login_display": last_login_display,
-
-            # optional, only if your template uses these
             "authorized_person": getattr(user, "authorized_person", None),
             "profile_picture": getattr(user, "profile_picture", None),
             "referrer": getattr(user, "referrer", None),
@@ -1164,6 +1197,7 @@ def view_user(id):
         total_messages=total_messages,
         msg_from=msg_from,
         msg_to=msg_to,
+        msg_q=msg_q
         balance=balance,
         messages=messages,
         wallet_balance=wallet_balance,
@@ -1193,7 +1227,6 @@ def create_single_package_for_user(id):
     if not user:
         return jsonify({"success": False, "error": "User not found"}), 404
 
-    # helpers
     def to_float(v):
         try:
             return float(v)
@@ -1232,7 +1265,6 @@ def create_single_package_for_user(id):
     db.session.add(pkg)
     db.session.commit()
 
-    # ✅ attachments serializer (Cloudinary buttons use these URLs)
     def serialize_attachment(a):
         return {
             "id": a.id,
@@ -1241,7 +1273,6 @@ def create_single_package_for_user(id):
             "delete_url": url_for("logistics.delete_package_attachment_admin", attachment_id=a.id),
         }
 
-    # ✅ IMPORTANT: refresh relationship after commit (safe)
     attachments = []
     try:
         attachments = [serialize_attachment(a) for a in (pkg.attachments or [])]
@@ -1260,11 +1291,10 @@ def create_single_package_for_user(id):
             "date_received": (pkg.date_received.strftime("%Y-%m-%d") if getattr(pkg, "date_received", None) else ""),
             "declared_value": float(getattr(pkg, "declared_value", 0) or 0),
             "amount_due": float(getattr(pkg, "amount_due", 0) or 0),
-
-            # ✅ add attachments list for the front-end buttons
             "attachments": attachments
         }
     })
+
 
 @accounts_bp.route("/users/<int:id>/packages/bulk-delete", methods=["POST"])
 @admin_required
@@ -1276,7 +1306,6 @@ def bulk_delete_user_packages(id):
     data = request.get_json(silent=True) or {}
     ids = data.get("package_ids") or []
 
-    # normalize + validate
     try:
         ids = [int(x) for x in ids]
     except Exception:
@@ -1285,7 +1314,6 @@ def bulk_delete_user_packages(id):
     if not ids:
         return jsonify({"success": False, "error": "No packages selected"}), 400
 
-    # only delete packages that belong to this user
     q = Package.query.filter(Package.user_id == user.id, Package.id.in_(ids))
     deleted_count = q.count()
 
@@ -1293,6 +1321,7 @@ def bulk_delete_user_packages(id):
     db.session.commit()
 
     return jsonify({"success": True, "deleted": deleted_count})
+
 
 @accounts_bp.route("/users/<int:id>/messages/send", methods=["POST"])
 @admin_required
@@ -1307,11 +1336,13 @@ def send_message_to_user(id):
 
     if not subject or not body:
         flash("Subject and Body are required.", "warning")
-        return redirect(url_for("accounts_profiles.view_user", id=id, tab="messages"))
+        return redirect(_back_to_view_user_url(id, fallback_tab="messages"))
 
+    # NOTE: you used DBMessage alias for queries above, but you're adding Message() here.
+    # If your actual model name is Message, keep as-is. If not, change to DBMessage or import Message.
     tk = make_thread_key(current_user.id, other.id)
 
-    db.session.add(Message(
+    db.session.add(DBMessage(
         sender_id=current_user.id,
         recipient_id=other.id,
         subject=subject,
@@ -1322,12 +1353,12 @@ def send_message_to_user(id):
     ))
     db.session.commit()
 
-    # If sent via AJAX (optional), return JSON
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({"success": True})
 
     flash("Message sent.", "success")
-    return redirect(url_for("accounts_profiles.view_user", id=id, tab="messages"))
+    return redirect(_back_to_view_user_url(id, fallback_tab="messages"))
+
 
 # -------------------------
 # Change Password
@@ -1353,13 +1384,23 @@ def change_password(id: int):
         _safe_commit()
 
         flash(f"Password updated for {user.full_name or 'user'}.", "success")
-        return redirect(url_for("accounts_profiles.view_user", id=id))
+        return redirect(_back_to_view_user_url(id))
 
     return render_template('admin/accounts_profiles/change_password.html', user={"id": user.id, "full_name": user.full_name or ''})
+
 
 # -------------------------
 # Delete Account
 # -------------------------
+def _is_safe_next_url(target: str) -> bool:
+    """Prevent open-redirects: only allow relative or same-host URLs."""
+    if not target:
+        return False
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ("http", "https") and ref_url.netloc == test_url.netloc
+
+
 @accounts_bp.route('/delete-account/<int:id>', methods=['GET', 'POST'])
 @admin_required
 def delete_account(id: int):
@@ -1367,6 +1408,10 @@ def delete_account(id: int):
     if not user:
         flash("User not found.", "danger")
         return redirect(url_for('accounts_profiles.manage_users'))
+
+    # ✅ where to go back to (from ?next=...)
+    raw_next = request.args.get("next") or request.form.get("next")
+    next_url = raw_next if _is_safe_next_url(raw_next) else url_for("accounts_profiles.manage_users")
 
     if request.method == 'POST':
         try:
@@ -1376,9 +1421,16 @@ def delete_account(id: int):
         except Exception as e:
             db.session.rollback()
             flash(f"Failed to delete account: {e}", "danger")
-        return redirect(url_for('accounts_profiles.manage_users'))
 
-    return render_template('admin/accounts_profiles/delete_account.html', user={"id": user.id, "full_name": user.full_name or ''})
+        return redirect(next_url)
+
+    # ✅ include next so the confirm form can POST it back
+    return render_template(
+        'admin/accounts_profiles/delete_account.html',
+        user={"id": user.id, "full_name": user.full_name or ''},
+        next=next_url
+    )
+
 
 # -------------------------
 # Manage Account (simple editor)
@@ -1402,10 +1454,9 @@ def manage_account(id: int):
         _safe_commit()
 
         flash('Account updated successfully.', 'success')
-        return redirect(url_for('accounts_profiles.view_user', id=id))
+        return redirect(_back_to_view_user_url(id))
 
     return render_template('admin/accounts_profiles/view_user.html', user=user)
-
 
 
 @accounts_bp.route('/users/<int:id>/wallet', methods=['POST'])
@@ -1423,4 +1474,4 @@ def update_wallet(id):
     _safe_commit()
 
     flash(f"Wallet updated by {amount:+.2f}. New balance: {user.wallet_balance:.2f}", "success")
-    return redirect(url_for('accounts_profiles.view_user', id=id))
+    return redirect(_back_to_view_user_url(id))

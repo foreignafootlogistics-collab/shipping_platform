@@ -1532,7 +1532,7 @@ window.finalizeInvoicesFromModal = async function (e) {
     // Also build a flat package_ids list (for backends that expect it)
     const package_ids = Array.from(new Set(selections.flatMap(s => s.package_ids)));
 
-    const url = "{{ url_for('logistics.bulk_invoice_finalize') }}";
+    const url = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
 
     // Try primary payload first
     let res = await fetch(url, {

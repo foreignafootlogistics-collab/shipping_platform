@@ -190,6 +190,10 @@ class Package(db.Model):
     declared_value = db.Column(db.Float)
     value = db.Column(db.Float, default=99)
 
+    # Extra fees / adjustments
+    other_charges = db.Column(db.Float, default=0.0, nullable=False)
+    discount_due  = db.Column(db.Float, default=0.0, nullable=False)
+
     # Invoice linkage
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True, index=True)
     invoice_file = db.Column(db.String)

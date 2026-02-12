@@ -1817,6 +1817,36 @@ function showAddress(type) {
   document.getElementById("home-address").style.display = (type === 'home') ? 'block' : 'none';
 }
 
+/* ----------------------------------------------------
+   ✅ KEEP ACTIVE TAB IN THE URL (?tab=...)
+   This ensures reload/redirect stays on invoices tab
+---------------------------------------------------- */
+(function syncTabsToUrl(){
+  // Bootstrap tab triggers are your <button data-bs-toggle="tab"...>
+  const tabButtons = document.querySelectorAll('button[data-bs-toggle="tab"]');
+  if (!tabButtons.length) return;
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener('shown.bs.tab', function (event) {
+      const target = event.target.getAttribute('data-bs-target'); // e.g. "#invoices"
+      if (!target) return;
+
+      const tabName = target.replace('#', ''); // "invoices"
+      const url = new URL(window.location.href);
+
+      url.searchParams.set('tab', tabName);
+
+      // Optional: reset page for some tabs when switching (safe)
+      if (tabName === 'invoices') url.searchParams.set('inv_page', url.searchParams.get('inv_page') || '1');
+      if (tabName === 'packages') url.searchParams.set('pkg_page', url.searchParams.get('pkg_page') || '1');
+      if (tabName === 'payments') url.searchParams.set('pay_page', url.searchParams.get('pay_page') || '1');
+      if (tabName === 'messages') url.searchParams.set('msg_page', url.searchParams.get('msg_page') || '1');
+
+      window.history.replaceState({}, '', url.toString());
+    });
+  });
+})();
+
 $(document).ready(function () {
   /* IMPORTANT: Do NOT initialize DataTables for #packagesTable */
   // $('#packagesTable').DataTable();  // intentionally removed
@@ -1830,53 +1860,46 @@ $(document).ready(function () {
   }
 
   // -----------------------------
-// Messages: server-side search (NO DataTables)
-// -----------------------------
-(function initServerSideMessageSearch() {
-  const input = document.getElementById('msgSearchInput');
-  if (!input) return;
+  // Messages: server-side search (NO DataTables)
+  // -----------------------------
+  (function initServerSideMessageSearch() {
+    const input = document.getElementById('msgSearchInput');
+    if (!input) return;
 
-  let t = null;
+    let t = null;
 
-  function goSearch() {
-    const q = (input.value || '').trim();
+    function goSearch() {
+      const q = (input.value || '').trim();
 
-    const url = new URL(window.location.href);
+      const url = new URL(window.location.href);
 
-    // stay on Messages tab
-    url.searchParams.set('tab', 'messages');
+      // stay on Messages tab
+      url.searchParams.set('tab', 'messages');
 
-    // reset to page 1 on new search
-    url.searchParams.set('msg_page', '1');
+      // reset to page 1 on new search
+      url.searchParams.set('msg_page', '1');
 
-    // keep per-page if it exists
-    if (!url.searchParams.get('msg_per_page')) {
-      // optional: keep current select value if you want
-      // url.searchParams.set('msg_per_page', '10');
+      // set/clear q
+      if (q) url.searchParams.set('msg_q', q);
+      else url.searchParams.delete('msg_q');
+
+      window.location.href = url.toString();
     }
 
-    // set/clear q
-    if (q) url.searchParams.set('msg_q', q);
-    else url.searchParams.delete('msg_q');
+    // Enter triggers search immediately
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        goSearch();
+      }
+    });
 
-    window.location.href = url.toString();
-  }
-
-  // Enter triggers search immediately
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      goSearch();
-    }
-  });
-
-  // Debounced search while typing (optional)
-  input.addEventListener('input', () => {
-    clearTimeout(t);
-    t = setTimeout(goSearch, 450);
-  });
-})();
-
+    // Debounced search while typing (optional)
+    input.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(goSearch, 450);
+    });
+  })();
 
   // Scheduled deliveries (client-side ok)
   if ($('#scheduledeliveryTable').length) {
@@ -2075,12 +2098,10 @@ document.addEventListener("DOMContentLoaded", () => {
   toggleBulkBtn();
 });
 
-
 /* ================================
    Inline invoice behaviour (POS)
    ================================ */
 function initInlineInvoice(rootElement) {
-  // rootElement = container where the invoice snippet lives
   const root = rootElement || document;
 
   const payOverlay      = root.querySelector('#inlinePayOverlay');
@@ -2090,10 +2111,7 @@ function initInlineInvoice(rootElement) {
   const showOverlay = (el) => { if (el) el.classList.remove('d-none'); };
   const hideOverlay = (el) => { if (el) el.classList.add('d-none'); };
 
-  // Always start closed
   [payOverlay, discountOverlay, bdOverlay].forEach(el => el && el.classList.add('d-none'));
-
-  /* ---------- open / close buttons ---------- */
 
   // Add Payment
   root.querySelectorAll('.js-open-pay').forEach(btn => {
@@ -2115,7 +2133,7 @@ function initInlineInvoice(rootElement) {
     });
   });
 
-  // Close X buttons on overlays
+  // Close overlay buttons
   root.querySelectorAll('.fa-inline-close').forEach(btn => {
     btn.addEventListener('click', function () {
       const type = this.getAttribute('data-close');
@@ -2125,7 +2143,6 @@ function initInlineInvoice(rootElement) {
     });
   });
 
-  /* ---------- PAYMENT keypad logic ---------- */
   function setupPaymentLogic() {
     if (!payOverlay) return;
 
@@ -2140,10 +2157,7 @@ function initInlineInvoice(rootElement) {
       if (isNaN(num)) num = 0;
       hidden.value = num.toFixed(2);
       display.textContent =
-        'JMD ' + num.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2
-        });
+        'JMD ' + num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     function pushKey(key) {
@@ -2160,29 +2174,16 @@ function initInlineInvoice(rootElement) {
       updateDisplay();
     }
 
-    // keypad buttons
     payOverlay.querySelectorAll('.payment-key-btn').forEach(btn => {
-      btn.onclick = function () {
-        pushKey(this.getAttribute('data-key'));
-      };
+      btn.onclick = function () { pushKey(this.getAttribute('data-key')); };
     });
 
-    // quick amounts
     payOverlay.querySelectorAll('.payment-quick-btn[data-quick]').forEach(btn => {
-      btn.onclick = function () {
-        current = String(this.getAttribute('data-quick') || '0');
-        updateDisplay();
-      };
+      btn.onclick = function () { current = String(this.getAttribute('data-quick') || '0'); updateDisplay(); };
     });
 
-    // clear
     const clearBtn = payOverlay.querySelector('#payClearBtnInline');
-    if (clearBtn) {
-      clearBtn.onclick = function () {
-        current = '0';
-        updateDisplay();
-      };
-    }
+    if (clearBtn) clearBtn.onclick = function () { current = '0'; updateDisplay(); };
 
     // payment method
     const methodInput = payOverlay.querySelector('#payMethodInputInline');
@@ -2190,23 +2191,20 @@ function initInlineInvoice(rootElement) {
     if (methodInput && methodList) {
       methodList.querySelectorAll('.payment-method-btn').forEach(btn => {
         btn.onclick = function () {
-          methodList.querySelectorAll('.payment-method-btn')
-                    .forEach(b => b.classList.remove('active'));
+          methodList.querySelectorAll('.payment-method-btn').forEach(b => b.classList.remove('active'));
           this.classList.add('active');
           methodInput.value = this.getAttribute('data-method') || 'Cash';
         };
       });
     }
 
-    // ---------- "Authorised by" dropdown + other ----------
+    // authorised by
     const authSelect = payOverlay.querySelector('#authBySelectInline');
     const authInput  = payOverlay.querySelector('#authByInputInline');
     const authHidden = payOverlay.querySelector('#authByHiddenInline');
 
     if (authSelect && authHidden) {
-      if (authSelect.value !== '__other__') {
-        authHidden.value = authSelect.value;
-      }
+      if (authSelect.value !== '__other__') authHidden.value = authSelect.value;
 
       authSelect.addEventListener('change', function () {
         if (this.value === '__other__') {
@@ -2217,18 +2215,14 @@ function initInlineInvoice(rootElement) {
           }
           authHidden.value = '';
         } else {
-          if (authInput) {
-            authInput.classList.add('d-none');
-          }
+          if (authInput) authInput.classList.add('d-none');
           authHidden.value = this.value;
         }
       });
 
       if (authInput) {
         authInput.addEventListener('input', function () {
-          if (authSelect.value === '__other__') {
-            authHidden.value = this.value;
-          }
+          if (authSelect.value === '__other__') authHidden.value = this.value;
         });
       }
     }
@@ -2236,11 +2230,10 @@ function initInlineInvoice(rootElement) {
     updateDisplay();
   }
 
-  /* ---------- DISCOUNT tabs logic ---------- */
   function setupDiscountLogic() {
     if (!discountOverlay) return;
 
-    const form     = discountOverlay.querySelector('#inlineDiscountForm');
+    const form = discountOverlay.querySelector('#inlineDiscountForm');
     if (!form) return;
 
     const balance  = parseFloat(form.getAttribute('data-balance') || '0') || 0;
@@ -2256,10 +2249,7 @@ function initInlineInvoice(rootElement) {
 
     function formatJMD(v) {
       const n = parseFloat(v || '0') || 0;
-      return 'JMD ' + n.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      });
+      return 'JMD ' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     function recalc() {
@@ -2282,13 +2272,8 @@ function initInlineInvoice(rootElement) {
           this.classList.add('active');
           mode = this.getAttribute('data-mode') || 'percent';
           if (panePct && paneAmt) {
-            if (mode === 'percent') {
-              panePct.classList.remove('d-none');
-              paneAmt.classList.add('d-none');
-            } else {
-              panePct.classList.add('d-none');
-              paneAmt.classList.remove('d-none');
-            }
+            if (mode === 'percent') { panePct.classList.remove('d-none'); paneAmt.classList.add('d-none'); }
+            else { panePct.classList.add('d-none'); paneAmt.classList.remove('d-none'); }
           }
           recalc();
         };
@@ -2301,7 +2286,7 @@ function initInlineInvoice(rootElement) {
     recalc();
   }
 
-  /* ---------- Lightning (charges breakdown) ---------- */
+  // charges breakdown overlay
   if (bdOverlay) {
     const ids = [
       'bd-duty-inline','bd-gct-inline','bd-freight-inline','bd-handling-inline',
@@ -2353,8 +2338,6 @@ function loadInvoiceInline(invoiceId){
       const host = document.getElementById('invoiceInlineHost');
       host.innerHTML = html;
       host.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-      // 🔌 wire up Add Payment / Discount / Breakdown
       initInlineInvoice(host);
     })
     .catch(() => alert('⚠️ Unable to load invoice inline.'));
@@ -2368,25 +2351,16 @@ function openInvoiceModal(invoiceId) {
 
   bodyEl.innerHTML = "<p class='text-muted mb-0'>Loading invoice…</p>";
 
-  // Use Flask url_for so the path is always correct
   const base = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1";
   const url  = base.replace('0', String(invoiceId));
 
-  fetch(url, {
-    headers: { "X-Requested-With": "XMLHttpRequest" }
-  })
-  .then(r => {
-    if (!r.ok) throw new Error("Failed");
-    return r.text();
-  })
-  .then(html => {
-    bodyEl.innerHTML = html;
-
-    // 🔌 wire invoice controls inside the modal
-    initInlineInvoice(modalEl);
-
-    modal.show();
-  });
+  fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" }})
+    .then(r => { if (!r.ok) throw new Error("Failed"); return r.text(); })
+    .then(html => {
+      bodyEl.innerHTML = html;
+      initInlineInvoice(modalEl);
+      modal.show();
+    });
 }
 
 // ✅ Add Single Package via AJAX (no page reload)
@@ -2410,8 +2384,6 @@ document.getElementById('addSinglePackageForm')
       }
 
       const tbody = document.querySelector('#packagesTable tbody');
-
-      // map status -> bootstrap color keyword (same rules as status_vars.html)
       const st = String(data.pkg.status || '').toLowerCase();
 
       let progressColor = 'secondary';
@@ -2421,10 +2393,7 @@ document.getElementById('addSinglePackageForm')
       else if (st.includes('deliver') || st === 'delivery' || st === 'delivered' || st.includes('out for delivery')) progressColor = 'success';
       else if (st === 'unassigned') progressColor = 'warning';
 
-      // ✅ pull CSRF token from any existing hidden input on page
       const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
-
-      // ✅ attachments buttons (Cloudinary)
       const attachments = Array.isArray(data.pkg.attachments) ? data.pkg.attachments : [];
       const attachmentsHtml = attachments.length
         ? `
@@ -2458,9 +2427,7 @@ document.getElementById('addSinglePackageForm')
       const row = `
         <tr>
           <td class="text-center align-middle">
-            <input type="checkbox"
-                   class="pkg-check"
-                   value="${data.pkg.id}">
+            <input type="checkbox" class="pkg-check" value="${data.pkg.id}">
           </td>
 
           <td class="pkg-cell">
@@ -2500,27 +2467,25 @@ document.getElementById('addSinglePackageForm')
       `;
 
       tbody.insertAdjacentHTML('afterbegin', row);
-      // re-wire checkbox listeners for newly added row
-const newCheckbox = tbody.querySelector('tr:first-child .pkg-check');
-if (newCheckbox) {
-  newCheckbox.addEventListener("change", () => {
-    const selectAll = document.getElementById("pkgSelectAll");
-    const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
 
-    const checked = document.querySelectorAll(".pkg-check:checked").length;
-    if (bulkDeleteBtn) bulkDeleteBtn.disabled = checked === 0;
-    if (selectAll && !newCheckbox.checked) selectAll.checked = false;
-  });
-}
+      const newCheckbox = tbody.querySelector('tr:first-child .pkg-check');
+      if (newCheckbox) {
+        newCheckbox.addEventListener("change", () => {
+          const selectAll = document.getElementById("pkgSelectAll");
+          const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
 
-// enable button if any checked
-const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
-if (bulkDeleteBtn) {
-  const checked = document.querySelectorAll(".pkg-check:checked").length;
-  bulkDeleteBtn.disabled = checked === 0;
-}
+          const checked = document.querySelectorAll(".pkg-check:checked").length;
+          if (bulkDeleteBtn) bulkDeleteBtn.disabled = checked === 0;
+          if (selectAll && !newCheckbox.checked) selectAll.checked = false;
+        });
+      }
 
-      // ✅ close modal & reset
+      const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+      if (bulkDeleteBtn) {
+        const checked = document.querySelectorAll(".pkg-check:checked").length;
+        bulkDeleteBtn.disabled = checked === 0;
+      }
+
       bootstrap.Modal.getInstance(document.getElementById('addSinglePackageModal')).hide();
       form.reset();
     })
@@ -2535,13 +2500,15 @@ function openDeleteInvoiceModal(invoiceId, invoiceLabel){
   if (!modalEl || !formEl) return;
 
   labelEl.textContent = invoiceLabel || ('Invoice #' + invoiceId);
-
-  // point to the delete route
   formEl.action = "{{ url_for('admin.delete_invoice', invoice_id=0) }}".replace('0', String(invoiceId));
 
   new bootstrap.Modal(modalEl).show();
 }
 
+/* ----------------------------------------------------
+   ✅ INVOICE DELETE: redirect back with tab=invoices
+   (instead of reload which defaults back to packages)
+---------------------------------------------------- */
 document.getElementById('deleteInvoiceForm')?.addEventListener('submit', function(e){
   e.preventDefault();
 
@@ -2560,11 +2527,16 @@ document.getElementById('deleteInvoiceForm')?.addEventListener('submit', functio
       alert(data.error || 'Delete failed');
       return;
     }
-    // easiest: reload to refresh totals/balance/pagination
-    window.location.reload();
+
+    // ✅ force invoices tab in URL
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', 'invoices');
+    // keep current invoice page if present
+    if (!url.searchParams.get('inv_page')) url.searchParams.set('inv_page', '1');
+
+    window.location.href = url.toString();
   })
   .catch(() => alert('Server error deleting invoice'));
 });
-
 </script>
 {% endblock %}

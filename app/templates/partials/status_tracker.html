@@ -1,76 +1,35 @@
-{# ============================= #}
-{#  partials/status_tracker.html #}
-{#  SELF-CONTAINED VERSION       #}
-{# ============================= #}
+{# app/templates/partials/status_tracker.html #}
+{# BAR ONLY - do not render badge text here #}
 
-{# -------- 1) Normalize status -------- #}
 {% set s = (status or '')|trim %}
 {% set s_lc = s|lower %}
 
-{# -------- 2) Defaults -------- #}
 {% set progress_width = 0 %}
-{% set badge_bg = '#6c757d' %}   {# grey default #}
-{% set fill_bg  = '#6c757d' %}
+{% set fill_bg = '#6c757d' %}
 
-{# ============================= #}
-{# 3) YOUR EXACT COLOR RULES     #}
-{# ============================= #}
-
-{# Delivered = GREEN (accept 'delivered' OR legacy 'delivery') #}
-{% if s_lc in ['delivered','delivery'] or 'delivered' in s_lc %}
+{% if s_lc in ['delivered'] or 'delivered' in s_lc %}
   {% set progress_width = 100 %}
-  {% set badge_bg = '#16a34a' %}
-  {% set fill_bg  = '#16a34a' %}
-
-{# Overseas = RED #}
+  {% set fill_bg = '#16a34a' %}
+{% elif 'out for delivery' in s_lc %}
+  {% set progress_width = 90 %}
+  {% set fill_bg = '#2563eb' %}
 {% elif s_lc == 'overseas' %}
   {% set progress_width = 33 %}
-  {% set badge_bg = '#dc2626' %}
-  {% set fill_bg  = '#dc2626' %}
-
-{# Local Port = YELLOW #}
+  {% set fill_bg = '#dc2626' %}
 {% elif 'local port' in s_lc or 'received at local port' in s_lc or 'arrived' in s_lc %}
   {% set progress_width = 66 %}
-  {% set badge_bg = '#facc15' %}
-  {% set fill_bg  = '#facc15' %}
-
-{# Ready for Pick Up = BLUE #}
+  {% set fill_bg = '#facc15' %}
 {% elif 'ready' in s_lc or 'pick up' in s_lc or 'pickup' in s_lc %}
   {% set progress_width = 80 %}
-  {% set badge_bg = '#2563eb' %}
-  {% set fill_bg  = '#2563eb' %}
-
-{# Unassigned = PURPLE #}
+  {% set fill_bg = '#2563eb' %}
 {% elif s_lc == 'unassigned' %}
   {% set progress_width = 0 %}
-  {% set badge_bg = '#7c3aed' %}
-  {% set fill_bg  = '#7c3aed' %}
+  {% set fill_bg = '#7c3aed' %}
 {% endif %}
 
-{# ============================= #}
-{# 4) RENDER (BADGE + BAR)       #}
-{# ============================= #}
-
-<span class="badge"
-      style="background: {{ badge_bg }}; color: #fff; font-weight:600;">
-  {{ status if status else 'Unknown' }}
-</span>
-
 <div class="status-progress mt-1"
-     style="
-        height: 8px;
-        background: #e5e7eb;
-        border-radius: 999px;
-        overflow: hidden;
-        width: 100%;
-     ">
+     style="height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;width:100%;">
   <div class="fill"
-       style="
-         height: 100%;
-         width: {{ progress_width }}%;
-         background: {{ fill_bg }};
-         transition: width 0.3s ease-in-out;
-       ">
+       style="height:100%;width:{{ progress_width }}%;background:{{ fill_bg }};transition:width .3s ease-in-out;">
   </div>
 </div>
-

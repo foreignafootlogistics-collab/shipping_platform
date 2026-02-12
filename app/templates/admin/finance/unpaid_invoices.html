@@ -76,6 +76,16 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
+      <!-- ✅ Payment method dropdown -->
+      <div style="min-width:180px;">
+        <select name="payment_method" class="form-select form-select-sm">
+          <option value="Cash">Cash</option>
+          <option value="Card">Card</option>
+          <option value="Bank Transfer">Bank Transfer</option>
+          <option value="Wallet">Wallet</option>
+          <option value="Bulk">Bulk (Admin Adjustment)</option>
+        </select>
+      </div>
       <button class="btn btn-success btn-sm" type="submit">
         ✅ Mark Selected Paid
       </button>

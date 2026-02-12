@@ -41,6 +41,8 @@ from app.utils.message_notify import send_new_message_email
 from app.utils.email_utils import send_bulk_message_email
 from app.calculator import calculate_charges
 from app.calculator_data import CATEGORIES, USD_TO_JMD
+from app.utils.invoice_totals import fetch_invoice_totals_pg, mark_invoice_packages_delivered
+
 
 import sqlalchemy as sa
 from sqlalchemy import func, extract, asc
@@ -155,66 +157,6 @@ def _last_n_months(n: int = 12):
             m = 12
             y -= 1
     return list(reversed(months))
-
-def _mark_invoice_packages_delivered(invoice_id: int):
-    # safest even if inv.packages relationship doesn’t exist
-    Package.query.filter_by(invoice_id=invoice_id).update(
-        {"status": "delivered"},
-        synchronize_session=False
-    )
-
-
-def _fetch_invoice_totals_pg(invoice_id: int):
-    """Compute invoice totals from Postgres using ORM.
-
-    Returns:
-        subtotal        -> base invoice amount before discounts (JMD)
-        discount_total  -> sum of discounts (JMD)
-        payments_total  -> sum of payments (JMD)
-        total_due       -> final balance (JMD)
-    """
-    inv = Invoice.query.get(invoice_id)
-    if not inv:
-        return 0.0, 0.0, 0.0, 0.0
-
-    # 1) Sum of all package.amount_due linked to this invoice
-    package_sum = (
-        db.session.query(func.coalesce(func.sum(Package.amount_due), 0.0))
-        .filter(Package.invoice_id == invoice_id)
-        .scalar()
-        or 0.0
-    )
-
-    # 2) Base subtotal (before discounts & payments)
-    #    Prefer invoice.grand_total if set, otherwise fall back to package_sum, then legacy fields.
-    subtotal = float(
-        inv.grand_total
-        or package_sum
-        or inv.amount
-        or inv.invoice_value
-        or 0.0
-    )
-
-    # 3) Discounts (from Discount table)
-    discount_total = (
-        db.session.query(func.coalesce(func.sum(Discount.amount_jmd), 0.0))
-        .filter(Discount.invoice_id == invoice_id)
-        .scalar()
-        or 0.0
-    )
-
-    # 4) Payments (IMPORTANT: use amount_jmd)
-    payments_total = (
-        db.session.query(func.coalesce(func.sum(Payment.amount_jmd), 0.0))
-        .filter(Payment.invoice_id == invoice_id)
-        .scalar()
-        or 0.0
-    )
-
-    # 5) Final balance
-    total_due = max(subtotal - discount_total - payments_total, 0.0)
-
-    return float(subtotal), float(discount_total), float(payments_total), float(total_due)
 
 @admin_bp.route("/__routes")
 @admin_required()

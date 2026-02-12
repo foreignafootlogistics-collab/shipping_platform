@@ -23,6 +23,9 @@ from app.models import Invoice, Expense, User, ExpenseAuditLog, Package, Payment
 import cloudinary
 import cloudinary.uploader
 
+from app.utils.invoice_totals import fetch_invoice_totals_pg, mark_invoice_packages_delivered
+
+
 
 
 finance_bp = Blueprint('finance', __name__, url_prefix='/finance')
@@ -565,20 +568,18 @@ def unpaid_invoices():
     )
 
 
-from datetime import datetime, timezone
-from flask import request, redirect, url_for, flash
-from flask_login import current_user
-from sqlalchemy import func
-
 @finance_bp.route("/unpaid_invoices/mark_paid_bulk", methods=["POST"])
 @admin_required(roles=["finance"])
 def bulk_mark_invoices_paid():
     """
     Bulk mark invoices paid:
     - creates a Payment record for each invoice (for remaining balance)
-    - sets invoice.status='paid', invoice.amount_due=0, invoice.date_paid=now
+    - sets invoice.status='paid', invoice.amount_due=0, invoice.date_paid=now (if date_paid exists)
     - sets Package.amount_due=0 and status='delivered' for packages on that invoice
     """
+
+    # ✅ payment method from dropdown
+    payment_method = (request.form.get("payment_method") or "Bulk").strip()
 
     # ✅ support both invoice_ids[] and invoice_ids
     raw_ids = request.form.getlist("invoice_ids[]") or request.form.getlist("invoice_ids")
@@ -594,7 +595,11 @@ def bulk_mark_invoices_paid():
         return redirect(url_for("finance.unpaid_invoices"))
 
     now = datetime.now(timezone.utc)
-    actor_name = (getattr(current_user, "full_name", None) or getattr(current_user, "email", None) or "Finance")
+    actor_name = (
+        getattr(current_user, "full_name", None)
+        or getattr(current_user, "email", None)
+        or "Finance"
+    )
 
     # ✅ lock invoice rows (avoid double-paying)
     invoices = (
@@ -609,7 +614,8 @@ def bulk_mark_invoices_paid():
 
     try:
         for inv in invoices:
-            # compute remaining balance (includes discounts + prior payments)
+            # ✅ compute remaining balance (includes discounts + prior payments)
+            # IMPORTANT: make sure _fetch_invoice_totals_pg is imported/defined in finance.py
             subtotal, discount_total, payments_total, total_due = _fetch_invoice_totals_pg(inv.id)
             balance = float(total_due or 0.0)
 
@@ -620,7 +626,6 @@ def bulk_mark_invoices_paid():
                 if hasattr(inv, "date_paid"):
                     inv.date_paid = inv.date_paid or now
 
-                # packages -> delivered, clear due
                 Package.query.filter_by(invoice_id=inv.id).update(
                     {"amount_due": 0.0, "status": "delivered"},
                     synchronize_session=False
@@ -628,33 +633,17 @@ def bulk_mark_invoices_paid():
                 skipped += 1
                 continue
 
-            # ✅ create payment for remaining balance
-            payment_kwargs = {
-                "invoice_id": inv.id,
-                "user_id": inv.user_id,
-                "created_at": now,
-            }
-
-            # method field name safety
-            if hasattr(Payment, "method"):
-                payment_kwargs["method"] = "Bulk"
-            elif hasattr(Payment, "payment_type"):
-                payment_kwargs["payment_type"] = "Bulk"
-
-            # amount field name safety
-            if hasattr(Payment, "amount_jmd"):
-                payment_kwargs["amount_jmd"] = balance
-            else:
-                payment_kwargs["amount"] = balance
-
-            if hasattr(Payment, "notes"):
-                payment_kwargs["notes"] = f"Bulk marked paid by {actor_name}"
-            if hasattr(Payment, "reference"):
-                payment_kwargs["reference"] = f"BULK-{now.strftime('%Y%m%d%H%M%S')}-{inv.id}"
-            if hasattr(Payment, "authorized_by"):
-                payment_kwargs["authorized_by"] = actor_name
-
-            db.session.add(Payment(**payment_kwargs))
+            # ✅ Create Payment for remaining balance (matches your Payment model)
+            p = Payment(
+                invoice_id=inv.id,
+                user_id=inv.user_id,
+                method=payment_method,  # ✅ FROM DROPDOWN
+                amount_jmd=balance,
+                reference=f"BULK-{now.strftime('%Y%m%d%H%M%S')}-{inv.id}",
+                notes=f"Bulk marked paid by {actor_name}",
+                created_at=now,
+            )
+            db.session.add(p)
             db.session.flush()
 
             # ✅ recompute after inserting payment

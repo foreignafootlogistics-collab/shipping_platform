@@ -1524,6 +1524,11 @@
         <form id="deleteInvoiceForm" method="POST">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="tab" value="{{ current_tab }}">
+          <input type="hidden" name="tab" value="invoices">
+          <input type="hidden" name="inv_page" value="{{ inv_page }}">
+          <input type="hidden" name="inv_per_page" value="{{ inv_per_page }}">
+          <input type="hidden" name="inv_from" value="{{ inv_from or '' }}">
+          <input type="hidden" name="inv_to" value="{{ inv_to or '' }}">
 
           <div class="modal-body">
             <p class="mb-2">

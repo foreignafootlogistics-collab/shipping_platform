@@ -1822,6 +1822,26 @@ def invoice_breakdown(package_id):
 def delete_invoice(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
 
+    # pull "return context" from the form (Option B)
+    tab          = (request.form.get("tab") or "invoices").strip() or "invoices"
+    inv_page     = request.form.get("inv_page", 1, type=int)
+    inv_per_page = request.form.get("inv_per_page", 10, type=int)
+    inv_from     = (request.form.get("inv_from") or "").strip()
+    inv_to       = (request.form.get("inv_to") or "").strip()
+
+    def back():
+        kwargs = {
+            "id": inv.user_id,
+            "tab": tab,
+            "inv_page": inv_page,
+            "inv_per_page": inv_per_page,
+        }
+        if inv_from:
+            kwargs["inv_from"] = inv_from
+        if inv_to:
+            kwargs["inv_to"] = inv_to
+        return redirect(url_for("accounts_profiles.view_user", **kwargs))
+
     # If any payments exist, block delete (safer)
     pay_count = Payment.query.filter(Payment.invoice_id == inv.id).count()
     if pay_count > 0:
@@ -1829,7 +1849,7 @@ def delete_invoice(invoice_id):
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify(success=False, error=msg), 400
         flash(msg, "danger")
-        return redirect(url_for("accounts_profiles.view_user", id=inv.user_id, tab="invoices"))
+        return back()
 
     # Unlink packages from this invoice (avoid FK errors / keep packages)
     Package.query.filter(Package.invoice_id == inv.id).update({"invoice_id": None})
@@ -1838,10 +1858,12 @@ def delete_invoice(invoice_id):
     db.session.commit()
 
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        # still return JSON, but now your client-side reload can keep tab via URL if you want
         return jsonify(success=True)
 
     flash("Invoice deleted.", "success")
-    return redirect(url_for("accounts_profiles.view_user", id=inv.user_id, tab="invoices"))
+    return back()
+
 
 @admin_bp.route("/invoice/add-payment/<int:invoice_id>", methods=["POST"])
 @admin_required

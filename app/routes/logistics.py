@@ -2935,14 +2935,46 @@ def delete_package(package_id):
 @logistics_bp.route('/api/calculate-charges', methods=['POST'])
 @admin_required
 def api_calculate_charges():
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
 
     pkg_id = data.get("pkg_id")
-    category = data.get("category")
-    weight = float(data.get("weight") or 0)
+    category = (data.get("category") or "Other").strip()
 
-    # invoice can come in as invoice or invoice_usd (your original)
-    invoice = float(data.get("invoice") or data.get("invoice_usd") or 50)
+    # raw numbers from UI
+    weight_raw = float(data.get("weight") or 0)
+    invoice_usd = float(data.get("invoice") or data.get("invoice_usd") or 50)
+
+    # match your proforma rounding style (ceil; minimum 1 if >0)
+    if weight_raw > 0:
+        weight_billable = int(math.ceil(weight_raw))
+        if 0 < weight_raw < 1:
+            weight_billable = 1
+    else:
+        weight_billable = 0
+
+    # helper: safe pack fields even if column doesn't exist
+    def pack_pkg_pricing(p: "Package"):
+        return {
+            "category": getattr(p, "category", None) or getattr(p, "description", None) or "Other",
+            "weight": float(getattr(p, "weight", 0) or 0),
+            "value": float(getattr(p, "value", 0) or 0),
+
+            "duty": float(getattr(p, "duty", 0) or 0),
+            "gct": float(getattr(p, "gct", 0) or 0),
+            "scf": float(getattr(p, "scf", 0) or 0),
+            "envl": float(getattr(p, "envl", 0) or 0),
+            "caf": float(getattr(p, "caf", 0) or 0),
+            "stamp": float(getattr(p, "stamp", 0) or 0),
+
+            "customs_total": float(getattr(p, "customs_total", 0) or 0),
+            "freight": float(getattr(p, "freight", 0) or 0),
+            "handling": float(getattr(p, "handling", 0) or 0),
+            "freight_total": float(getattr(p, "freight_total", 0) or 0),
+            "other_charges": float(getattr(p, "other_charges", 0) or 0),
+
+            # some installs store total on amount_due only
+            "grand_total": float(getattr(p, "grand_total", None) or getattr(p, "amount_due", 0) or 0),
+        }
 
     # ✅ If pkg_id is provided and pricing is locked, return saved numbers
     if pkg_id:
@@ -2951,31 +2983,28 @@ def api_calculate_charges():
             return jsonify({
                 "ok": True,
                 "locked": True,
-                "data": {
-                    "category": p.category,
-                    "weight": p.weight,
-                    "value": p.value,
-
-                    "duty": p.duty,
-                    "gct": p.gct,
-                    "scf": p.scf,
-                    "envl": p.envl,
-                    "caf": p.caf,
-                    "stamp": p.stamp,
-
-                    "customs_total": p.customs_total,
-                    "freight": p.freight,
-                    "handling": p.handling,
-                    "freight_total": p.freight_total,
-                    "other_charges": p.other_charges,
-                    "grand_total": p.grand_total,
-                }
+                "data": pack_pkg_pricing(p)
             })
 
     # ✅ Normal calculation if not locked
-    result = calculate_charges(category, invoice, weight)
+    result = calculate_charges(category, invoice_usd, weight_billable)
 
-    # make response consistent with frontend expectations
+    # Keep the response consistent with your frontend expectations
+    # (also return raw weight so UI can display it if needed)
+    result = dict(result or {})
+    result.setdefault("category", category)
+    result["weight_raw"] = float(weight_raw)
+    result["weight_billable"] = float(weight_billable)
+    result["value"] = float(invoice_usd)  # many UIs expect 'value'
+
+    # Ensure keys exist (prevents front-end undefined issues)
+    for k in [
+        "duty", "gct", "scf", "envl", "caf", "stamp",
+        "customs_total", "freight", "handling", "freight_total",
+        "other_charges", "grand_total"
+    ]:
+        result.setdefault(k, 0)
+
     return jsonify({
         "ok": True,
         "locked": False,
@@ -2989,7 +3018,7 @@ def api_calculate_charges():
 @logistics_bp.route('/api/package/<int:pkg_id>', methods=['POST'])
 @admin_required
 def api_update_package(pkg_id):
-    data = request.get_json(force=True) or {}
+    data = request.get_json(silent=True) or {}
 
     def to_num(x):
         try:
@@ -3001,64 +3030,72 @@ def api_update_package(pkg_id):
     if not p:
         return jsonify({"ok": False, "error": "Package not found"}), 404
 
-    # ✅ OPTIONAL: block edits when locked unless caller explicitly allows it
-    # (useful if you want only "unlock" to allow changes)
+    # ✅ block edits when locked unless caller explicitly allows it
     if getattr(p, "pricing_locked", False) and not data.get("force_update"):
         return jsonify({
             "ok": False,
             "error": "Pricing is locked for this package. Unlock pricing to edit."
         }), 409
 
-    # --- Map client keys → Package columns ---
-    field_map = {
-        "category": "category",
-        "value": "value",
-        "weight": "weight",
-        "amount_due": "amount_due",
+    updated = []
 
+    # Only set attrs that actually exist on this Package model
+    def safe_set(attr_name: str, value):
+        if hasattr(p, attr_name):
+            setattr(p, attr_name, value)
+            updated.append(attr_name)
+            return True
+        return False
+
+    # ----- basic fields -----
+    if "category" in data and data["category"] is not None:
+        safe_set("category", (str(data["category"]).strip() or "Other"))
+
+    if "weight" in data and data["weight"] is not None:
+        v = to_num(data["weight"])
+        if v is not None:
+            safe_set("weight", v)
+
+    # value special handling (keep declared_value in sync when present)
+    if "value" in data and data["value"] is not None:
+        v = to_num(data["value"])
+        if v is not None:
+            safe_set("value", v)
+            if hasattr(p, "declared_value"):
+                setattr(p, "declared_value", v)
+                updated.append("declared_value")
+
+    # amount_due
+    if "amount_due" in data and data["amount_due"] is not None:
+        v = to_num(data["amount_due"])
+        if v is not None:
+            safe_set("amount_due", v)
+
+    # ----- pricing fields (only if columns exist) -----
+    pricing_field_map = {
         "duty": "duty",
         "scf": "scf",
         "envl": "envl",
         "caf": "caf",
         "gct": "gct",
         "stamp": "stamp",
-
         "customs_total": "customs_total",
         "freight": "freight",
         "handling": "handling",
         "freight_total": "freight_total",
         "other_charges": "other_charges",
         "grand_total": "grand_total",
+        "discount_due": "discount_due",
     }
 
-    updated = []
-
-    # value special handling (keep your logic)
-    if "value" in data and data["value"] is not None:
-        val = to_num(data["value"])
-        if val is not None:
-            p.value = val
-            if hasattr(p, "declared_value"):
-                p.declared_value = val
-            updated.append("value")
-
-    # apply all other mapped fields
-    for client_key, col in field_map.items():
-        if client_key == "value":
-            continue
-
+    for client_key, col in pricing_field_map.items():
         if client_key in data and data[client_key] is not None:
-            val = to_num(data[client_key])
-            if val is not None:
-                setattr(p, col, val)
-                updated.append(client_key)
+            v = to_num(data[client_key])
+            if v is not None:
+                safe_set(col, v)
 
-    # ✅ If this update includes pricing numbers, lock it
-    pricing_keys = {
-        "duty", "gct", "scf", "envl", "caf", "stamp",
-        "customs_total", "freight", "handling", "freight_total",
-        "other_charges", "grand_total", "amount_due"
-    }
+    # ✅ If any pricing numbers were provided, lock pricing
+    pricing_keys = set(pricing_field_map.keys()) | {"amount_due"}
     if any(k in data for k in pricing_keys):
         if hasattr(p, "pricing_locked"):
             p.pricing_locked = True
@@ -3066,7 +3103,7 @@ def api_update_package(pkg_id):
         if hasattr(p, "pricing_locked_at"):
             p.pricing_locked_at = datetime.now(timezone.utc)
             updated.append("pricing_locked_at")
-        if hasattr(p, "pricing_locked_by") and current_user and getattr(current_user, "id", None):
+        if hasattr(p, "pricing_locked_by") and getattr(current_user, "id", None):
             p.pricing_locked_by = current_user.id
             updated.append("pricing_locked_by")
 
@@ -3087,15 +3124,17 @@ def api_update_package(pkg_id):
 @admin_required
 def lock_package_pricing(pkg_id):
     p = Package.query.get_or_404(pkg_id)
-    p.pricing_locked = True
+
+    if hasattr(p, "pricing_locked"):
+        p.pricing_locked = True
     if hasattr(p, "pricing_locked_at"):
         p.pricing_locked_at = datetime.now(timezone.utc)
-    if hasattr(p, "pricing_locked_by") and current_user and getattr(current_user, "id", None):
+    if hasattr(p, "pricing_locked_by") and getattr(current_user, "id", None):
         p.pricing_locked_by = current_user.id
+
     db.session.commit()
     flash("Pricing locked for this package.", "success")
     return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog"))
-
 
 # -------------------------------------------
 # UNLOCK PRICING (your existing, kept)

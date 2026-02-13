@@ -1966,19 +1966,23 @@ def bulk_shipment_action(shipment_id):
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     # -------------------------
-    # helper: safe float
+    # helper: safe float from form
+    # returns None for blank/missing/invalid
     # -------------------------
-    def _f(key: str):
-        raw = request.form.get(key)
+    def _as_float_or_none(raw):
         if raw is None:
             return None
-        raw = str(raw).strip()
-        if raw == "":
+        s = str(raw).strip()
+        if s == "":
             return None
         try:
-            return float(raw)
-        except ValueError:
+            return float(s)
+        except Exception:
             return None
+
+    # helper: safe float with default
+    def _f(key: str):
+        return _as_float_or_none(request.form.get(key))
 
     # 🔹 Server-side Calculate Outstanding
     if action == "calc_outstanding":
@@ -1987,14 +1991,28 @@ def bulk_shipment_action(shipment_id):
         skipped = 0
 
         for p in pkgs:
-            # weight/value from form (these now ALWAYS arrive)
-            form_val = request.form.get(f"value_{p.id}") or ""
-            form_weight = request.form.get(f"weight_{p.id}") or ""
+            # ✅ skip locked/manual-protected packages if field exists
+            if getattr(p, "pricing_locked", False):
+                skipped += 1
+                continue
 
-            # category from form (hidden per row)
+            # raw incoming strings (may be missing if row not in DOM)
+            v_raw = request.form.get(f"value_{p.id}")
+            w_raw = request.form.get(f"weight_{p.id}")
+
+            # parse form values -> None if missing/blank
+            v_in = _as_float_or_none(v_raw)
+            w_in = _as_float_or_none(w_raw)
+
+            # ✅ fallback to DB ONLY if form did not send it
+            invoice_val = float(v_in) if v_in is not None else float(getattr(p, "value", 0) or 0)
+            weight_val  = float(w_in) if w_in is not None else float(getattr(p, "weight", 0) or 0)
+
+            # category from form (hidden per row) -> fallback
             form_cat = (request.form.get(f"category_{p.id}") or "").strip()
             category = form_cat or (getattr(p, "category", None) or "Other")
 
+            # manual overrides (None means not provided)
             manual = {
                 "duty": _f(f"duty_{p.id}"),
                 "gct": _f(f"gct_{p.id}"),
@@ -2011,33 +2029,24 @@ def bulk_shipment_action(shipment_id):
             has_any_manual = any(v is not None for v in manual.values())
 
             existing_due = float(getattr(p, "amount_due", 0) or 0)
+
+            # ✅ If already priced and no manual changes, skip (your original behavior)
             if existing_due > 0 and not has_any_manual:
                 skipped += 1
                 continue
 
-            # invoice value
-            try:
-                invoice_val = float(form_val) if str(form_val).strip() not in ("", "None") else float(p.value or 0)
-            except ValueError:
-                invoice_val = float(p.value or 0)
+            # normalize weight
+            weight_eff = _normalize_weight(weight_val)
 
-            # weight
-            try:
-                weight = float(form_weight) if str(form_weight).strip() not in ("", "None") else float(p.weight or 0)
-            except ValueError:
-                weight = float(p.weight or 0)
-
-            weight = _normalize_weight(weight)
-
-            # base breakdown
-            breakdown = calculate_charges(category, invoice_val, weight)
+            # base breakdown from calculator
+            breakdown = calculate_charges(category, invoice_val, weight_eff)
 
             # apply manual overrides
             for k, v in manual.items():
                 if v is not None:
                     breakdown[k] = v
 
-            # recompute totals
+            # recompute totals after overrides
             duty  = float(breakdown.get("duty", 0) or 0)
             scf   = float(breakdown.get("scf", 0) or 0)
             envl  = float(breakdown.get("envl", 0) or 0)
@@ -2058,12 +2067,30 @@ def bulk_shipment_action(shipment_id):
             grand_total = customs_total + freight_total
             breakdown["grand_total"] = grand_total
 
-            # persist
-            p.category = category if hasattr(p, "category") else getattr(p, "category", None)
-            p.value = invoice_val
-            if hasattr(p, "declared_value"):
-                p.declared_value = invoice_val
+            # ✅ GUARD: never wipe a real existing_due with a bogus 0 calc
+            if existing_due > 0 and grand_total <= 0 and not has_any_manual:
+                skipped += 1
+                continue
 
+            # -------------------------
+            # Persist safely
+            # -------------------------
+
+            # category (only if model has it)
+            if hasattr(p, "category"):
+                p.category = category
+
+            # ✅ only update value if it came from form
+            if v_in is not None:
+                p.value = invoice_val
+                if hasattr(p, "declared_value"):
+                    p.declared_value = invoice_val
+
+            # ✅ only update weight if it came from form
+            if w_in is not None and hasattr(p, "weight"):
+                p.weight = weight_eff
+
+            # always update pricing fields
             if hasattr(p, "amount_due"):
                 p.amount_due = grand_total
             if hasattr(p, "grand_total"):
@@ -2082,6 +2109,7 @@ def bulk_shipment_action(shipment_id):
                 p.freight_fee = freight
             if hasattr(p, "storage_fee"):
                 p.storage_fee = handling
+
             if hasattr(p, "freight_total"):
                 p.freight_total = freight_total
             if hasattr(p, "other_charges"):
@@ -2093,7 +2121,7 @@ def bulk_shipment_action(shipment_id):
 
         flash(
             f"Calculated outstanding for {updated} package(s). "
-            f"Skipped {skipped} already priced (unless manual edits were entered).",
+            f"Skipped {skipped} already priced / locked / protected.",
             "success"
         )
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
@@ -2130,10 +2158,10 @@ def bulk_shipment_action(shipment_id):
         flash(f"{len(package_ids)} package(s) marked Received at Local Port.", "success")
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-    # (keep notify_ready / send_invoices / remove_from_shipment unchanged)
     else:
         flash("⚠️ Unknown action selected.", "danger")
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
 
 @logistics_bp.route('/shipmentlog/<int:shipment_id>/finance-invoice/preview-json', methods=['POST'])
 @admin_required

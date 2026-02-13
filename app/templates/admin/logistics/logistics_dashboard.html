@@ -996,17 +996,22 @@ function rebuildHiddenPostPayloadForSelected(form, ids) {
   holder.id = 'selectedIdsContainer';
 
   function appendHidden(name, value) {
+    if (value === null || value === undefined) return;
+    const v = String(value).trim();
+    if (v === "") return; // ✅ DO NOT POST BLANKS
     const i = document.createElement('input');
     i.type = 'hidden';
     i.name = name;
-    i.value = (value == null ? '' : String(value));
+    i.value = v;
     holder.appendChild(i);
   }
 
   function getValById(prefix, id) {
     const el = document.getElementById(prefix + id);
-    return el ? el.value : '';
+    if (!el) return null;     // ✅ return null instead of ""
+    return el.value;
   }
+
 
   ids.forEach(id => {
     appendHidden('package_ids', id);

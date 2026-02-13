@@ -1458,10 +1458,16 @@ function updateShipmentHeaderCheckbox() {
       force: true
     };
 
-    // update visible row inputs
-    document.getElementById(`amount_due_${pkgId}`)?.value = payload.amount_due.toFixed(2);
-    document.getElementById(`value_${pkgId}`)?.value      = payload.value.toFixed(2);
-    document.getElementById(`weight_${pkgId}`)?.value     = payload.weight.toFixed(2);
+    // update visible row inputs (SAFE - no optional chaining on assignment)
+    const amountEl = document.getElementById(`amount_due_${pkgId}`);
+    if (amountEl) amountEl.value = payload.amount_due.toFixed(2);
+
+    const valueEl = document.getElementById(`value_${pkgId}`);
+    if (valueEl) valueEl.value = payload.value.toFixed(2);
+
+    const weightEl = document.getElementById(`weight_${pkgId}`);
+    if (weightEl) weightEl.value = payload.weight.toFixed(2);
+
 
     // sync hidden override fields
     setHidden(`duty_${pkgId}`, payload.duty);
@@ -1570,6 +1576,89 @@ window.openChargesModal = function (btn) {
 
   bootstrap.Modal.getOrCreateInstance(chargesModal).show();
 };
+
+/* ============================================================
+   HOTFIX: Always populate charges modal on click
+   - Works even when Bootstrap relatedTarget is missing
+   - Works even when DataTables swaps DOM rows
+   - Also fixes Select All with DataTables
+   ============================================================ */
+
+(function hotfixChargesAndSelectAll(){
+  // ---------- CHARGES MODAL POPULATE ----------
+  const modalEl = document.getElementById('chargesModalSL');
+  if (modalEl) {
+    const pkgIdInput     = document.getElementById('chargesPkgId');
+    const pkgDescInput   = document.getElementById('chargesPkgDesc');
+    const weightInput    = document.getElementById('chargesWeight');
+    const valueInput     = document.getElementById('chargesValue');
+    const categorySelect = document.getElementById('chargesCategory');
+
+    function findRowByPkgId(pkgId) {
+      // normal DOM
+      let tr = document.querySelector(`input.package-checkbox[value="${pkgId}"]`)?.closest('tr');
+      if (tr) return tr;
+
+      // DataTables: search all row nodes
+      if (window.dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+        const nodes = dt.rows().nodes().toArray();
+        for (const n of nodes) {
+          const cb = n.querySelector(`input.package-checkbox[value="${pkgId}"]`);
+          if (cb) return n;
+        }
+      }
+      return null;
+    }
+
+    function populateFromButton(btn) {
+      const pkgId = (btn.getAttribute('data-pkg-id') || '').trim();
+      const desc  = (btn.getAttribute('data-desc') || '').trim();
+      const catBtn = (btn.getAttribute('data-category') || '').trim();
+
+      if (!pkgId) return;
+
+      if (pkgIdInput)   pkgIdInput.value = pkgId;
+      if (pkgDescInput) pkgDescInput.value = desc;
+
+      // category
+      const catHidden = document.getElementById(`category_${pkgId}`);
+      const catRow = (catHidden?.value || '').trim();
+      if (categorySelect) categorySelect.value = catBtn || catRow || 'Other';
+
+      // weight/value from row inputs (DT safe)
+      const row = findRowByPkgId(pkgId);
+
+      const wEl = row?.querySelector(`#weight_${pkgId}`) || document.getElementById(`weight_${pkgId}`);
+      const vEl = row?.querySelector(`#value_${pkgId}`)  || document.getElementById(`value_${pkgId}`);
+
+      if (weightInput) weightInput.value = (wEl?.value ?? '0');
+      if (valueInput)  valueInput.value  = (vEl?.value ?? '0');
+    }
+
+    // Populate BEFORE Bootstrap opens modal
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('.js-open-charges');
+      if (!btn) return;
+      populateFromButton(btn);
+    }, true);
+  }
+
+  // ---------- SELECT ALL FIX (DataTables safe) ----------
+  document.addEventListener('change', function(e){
+    const master = e.target;
+    if (!master || master.id !== 'selectAll') return;
+
+    const checked = !!master.checked;
+
+    if (window.dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+      // select across all DT rows
+      dt.rows().nodes().to$().find('.package-checkbox').prop('checked', checked);
+    } else {
+      document.querySelectorAll('#shipmentTable .package-checkbox').forEach(cb => cb.checked = checked);
+    }
+  }, true);
+
+})();
 
 /* ==========================
    PACKAGE ATTACHMENTS (ADMIN)

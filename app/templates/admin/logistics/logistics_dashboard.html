@@ -700,6 +700,58 @@
           </div>
         </div>
       </div>
+      
+      <!-- Bulk Invoice Preview Modal -->
+      <div class="modal fade" id="bulkInvoicePreviewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+          <div class="modal-content">
+
+            <div class="modal-header">
+              <h5 class="modal-title">Invoice Preview</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+              <p id="detained-note" class="text-muted small mb-2"></p>
+
+              <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                  <thead>
+                    <tr>
+                      <th>Select</th>
+                      <th>Customer</th>
+                      <th class="text-center">Packages</th>
+                      <th class="text-end">Total Due</th>
+                    </tr>
+                  </thead>
+
+                  <tbody id="inv-prev-tbody"></tbody>
+
+                  <tfoot>
+                    <tr class="table-light">
+                      <th colspan="3" class="text-end">Total Amount Due</th>
+                      <th class="text-end" id="inv-prev-total">0.00</th>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                Cancel
+              </button>
+              <button id="btn-finalize-invoices"
+                      class="btn btn-purple"
+                      type="button"
+                      onclick="finalizeInvoicesFromModal(event)">
+                Generate Customer Invoice(s)
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
 
       <!-- Rename Shipment Modal -->
       <div class="modal fade" id="renameShipmentModal" tabindex="-1" aria-hidden="true">
@@ -767,6 +819,9 @@ window.PKG_API_URL      = "{{ url_for('logistics.api_get_package', pkg_id=0) }}"
 window.CALC_API_URL     = "{{ url_for('logistics.shipment_calc_charges') }}";              // calc endpoint (if you use it)
 window.SAVE_CHARGES_URL = "{{ url_for('logistics.api_save_package_charges', pkg_id=0) }}"; // .../0
 window.UPDATE_PKG_URL   = "{{ url_for('logistics.api_update_package', pkg_id=0) }}";        // .../0
+window.INVOICE_PREVIEW_URL  = "{{ url_for('logistics.bulk_invoice_preview') }}";
+window.INVOICE_FINALIZE_URL = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
+
 
 function apiUrl(base, id) {
   // base ends with "/0"
@@ -1664,6 +1719,92 @@ window.openChargesModal = function (btn) {
   }, true);
 
 })();
+
+/* ================================
+   BULK INVOICE PREVIEW + FINALIZE
+================================ */
+
+async function openInvoicePreview(selectedPkgIds) {
+
+  const data = await postJSON(
+    "{{ url_for('logistics.bulk_invoice_preview') }}",
+    { package_ids: selectedPkgIds }
+  );
+
+  const tbody = document.querySelector('#inv-prev-tbody');
+
+  if (!tbody) {
+    alert('Preview table body #inv-prev-tbody not found in DOM.');
+    return;
+  }
+
+  tbody.innerHTML = '';
+
+  let grand = 0;
+
+  for (const row of (data.rows || [])) {
+
+    grand += Number(row.total_due || 0);
+
+    const tr = document.createElement('tr');
+
+    tr.innerHTML = `
+      <td>
+        <input type="checkbox"
+               class="inv-user"
+               data-uid="${row.user_id}"
+               data-pkgs="${(row.package_ids || []).join(',')}"
+               checked>
+      </td>
+      <td>
+        <strong>${row.registration_number || ''}</strong>
+        ${row.full_name || ''}
+      </td>
+      <td class="text-center">
+        ${row.package_count || 0}
+      </td>
+      <td class="text-end">
+        ${Number(row.total_due || 0).toFixed(2)}
+      </td>
+    `;
+
+    tbody.appendChild(tr);
+  }
+
+  if (!(data.rows || []).length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" class="text-muted">
+          No eligible packages to invoice
+          (detained / already invoiced were skipped).
+        </td>
+      </tr>
+    `;
+  }
+
+  const totalCell = document.getElementById('inv-prev-total');
+  if (totalCell) {
+    totalCell.textContent = grand.toFixed(2);
+  }
+
+  const note = document.getElementById('detained-note');
+  if (note) {
+    const parts = [];
+
+    if (data.detained_skipped)
+      parts.push(`• ${data.detained_skipped} detained package(s) skipped`);
+
+    if (data.already_invoiced_skipped)
+      parts.push(`• ${data.already_invoiced_skipped} already-invoiced package(s) skipped`);
+
+    note.textContent = parts.join(' ');
+  }
+
+  const modalEl = document.getElementById('bulkInvoicePreviewModal');
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+}
+
 
 /* ==========================
    PACKAGE ATTACHMENTS (ADMIN)

@@ -2405,24 +2405,39 @@ def api_get_package(pkg_id):
 def bulk_invoice_preview():
     """
     Input JSON: { "package_ids": [1,2,3,...] }
-    Group by user and sum Package.amount_due.
-    ✅ Detained packages are skipped
-    ✅ Already-invoiced packages are skipped (prevents duplicates)
+
+    Returns:
+      {
+        ok: true,
+        rows: [... grouped by user ...],
+        detained_skipped: int,
+        already_invoiced_skipped: int,
+        requested: int,
+        eligible: int,
+        message: str
+      }
     """
     data = request.get_json(silent=True) or {}
+
     pkg_ids = []
-    for x in (data.get('package_ids') or []):
+    for x in (data.get("package_ids") or []):
         try:
             pkg_ids.append(int(x))
         except Exception:
             pass
 
+    pkg_ids = list({x for x in pkg_ids if x > 0})
+
     if not pkg_ids:
         return jsonify({
+            "ok": True,
             "rows": [],
             "detained_skipped": 0,
-            "already_invoiced_skipped": 0
-        })
+            "already_invoiced_skipped": 0,
+            "requested": 0,
+            "eligible": 0,
+            "message": "No packages selected."
+        }), 200
 
     rows = (
         db.session.query(
@@ -2442,37 +2457,48 @@ def bulk_invoice_preview():
     grouped = {}
     detained = 0
     already_invoiced = 0
+    eligible_count = 0
 
     for pid, uid, amount_due, status, invoice_id, full_name, reg in rows:
-        if (status or "").lower() == "detained":
+        if (status or "").strip().lower() == "detained":
             detained += 1
             continue
 
-        # ✅ skip if already attached to an invoice
         if invoice_id:
             already_invoiced += 1
             continue
 
-        g = grouped.setdefault(
-            uid,
-            {
-                "user_id": uid,
-                "full_name": full_name,
-                "registration_number": reg,
-                "package_ids": [],
-                "package_count": 0,
-                "total_due": 0.0,
-            },
-        )
+        due = float(amount_due or 0.0)
+
+        g = grouped.setdefault(uid, {
+            "user_id": uid,
+            "full_name": full_name,
+            "registration_number": reg,
+            "package_ids": [],
+            "package_count": 0,
+            "total_due": 0.0,
+        })
+
         g["package_ids"].append(pid)
         g["package_count"] += 1
-        g["total_due"] += float(amount_due or 0.0)
+        g["total_due"] += due
+        eligible_count += 1
+
+    out_rows = list(grouped.values())
+
+    msg = ""
+    if not out_rows:
+        msg = "No eligible packages. (They may already be invoiced or detained.)"
 
     return jsonify({
-        "rows": list(grouped.values()),
+        "ok": True,
+        "rows": out_rows,
         "detained_skipped": detained,
-        "already_invoiced_skipped": already_invoiced
-    })
+        "already_invoiced_skipped": already_invoiced,
+        "requested": len(pkg_ids),
+        "eligible": eligible_count,
+        "message": msg
+    }), 200
 
 
 

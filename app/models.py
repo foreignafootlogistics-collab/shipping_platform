@@ -193,7 +193,7 @@ class Package(db.Model):
     # Extra fees / adjustments
     other_charges = db.Column(db.Float, default=0.0, nullable=False)
     discount_due  = db.Column(db.Float, default=0.0, nullable=False)
-
+    
     # Invoice linkage
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True, index=True)
     invoice_file = db.Column(db.String)
@@ -211,6 +211,23 @@ class Package(db.Model):
 
     # Finance
     amount_due = db.Column(db.Float, default=0)
+
+    # --- Pricing breakdown (JMD) ---
+    duty  = db.Column(db.Float, default=0.0, nullable=False)
+    gct   = db.Column(db.Float, default=0.0, nullable=False)
+    scf   = db.Column(db.Float, default=0.0, nullable=False)
+    envl  = db.Column(db.Float, default=0.0, nullable=False)
+    caf   = db.Column(db.Float, default=0.0, nullable=False)
+    stamp = db.Column(db.Float, default=0.0, nullable=False)
+
+    customs_total = db.Column(db.Float, default=0.0, nullable=False)
+
+    freight_fee   = db.Column(db.Float, default=0.0, nullable=False)
+    handling_fee  = db.Column(db.Float, default=0.0, nullable=False)
+
+    freight_total = db.Column(db.Float, default=0.0, nullable=False)
+    grand_total   = db.Column(db.Float, default=0.0, nullable=False)
+
 
     # Status and destination
     status = db.Column(db.String, default="Overseas")

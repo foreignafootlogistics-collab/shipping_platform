@@ -1132,36 +1132,34 @@ def mark_notification_read(nid):
     return redirect(url_for("admin.view_notifications"))
 
 
+# ---------- GENERATE INVOICE ----------
 
-# ---------- GENERATE INVOICE (UPDATED) ----------
 @admin_bp.route('/generate-invoice/<int:user_id>', methods=['GET', 'POST'])
 @admin_required
 def generate_invoice_route(user_id):
     user = User.query.get_or_404(user_id)
-
-    packages = (
-        Package.query
-        .filter_by(user_id=user.id, invoice_id=None)
-        .order_by(Package.created_at.asc())
-        .all()
-    )
-
+    packages = (Package.query
+                .filter_by(user_id=user.id, invoice_id=None)
+                .order_by(Package.created_at.asc())
+                .all())
     if not packages:
         flash("No packages available to invoice.", "warning")
         return redirect(url_for('admin.dashboard'))
 
     if request.method != 'POST':
-        return render_template("admin/invoice_confirm.html", user=user, packages=packages)
+        return render_template("admin/invoice_confirm.html",
+                               user=user, packages=packages)
 
     # create invoice shell
     invoice_number = f"INV-{user.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
     now = datetime.utcnow()
 
     inv = Invoice(
         user_id=user.id,
         invoice_number=invoice_number,
-        date_submitted=now,
-        date_issued=now,
+        date_submitted=now,   # ✅ use same timestamp
+        date_issued=now,      # ✅ header date will now show
         created_at=now,
         status="unpaid",
         amount_due=0,
@@ -1169,66 +1167,41 @@ def generate_invoice_route(user_id):
     db.session.add(inv)
     db.session.flush()  # get inv.id
 
-    # ✅ pull Settings once so calculator uses the same rates for all packages
-    from app.models import Settings
-    settings = Settings.query.get(1)
-
     totals = dict(
-        duty=0.0, scf=0.0, envl=0.0, caf=0.0, gct=0.0, stamp=0.0,
-        freight=0.0, handling=0.0, other_charges=0.0, grand_total=0.0,
+        duty=0, scf=0, envl=0, caf=0, gct=0, stamp=0,
+        freight=0, handling=0, other_charges=0, grand_total=0,
     )
     view_lines = []
 
     for p in packages:
-        # ✅ category should be the package category, NOT description
-        category = (getattr(p, "category", None) or "Other").strip() or "Other"
-        desc = (p.description or "Miscellaneous").strip()
+        desc = p.description or "Miscellaneous"
+        wt   = float(p.weight or 0)
+        val  = float(getattr(p, "value", 0) or 0)
 
-        wt = float(getattr(p, "weight", 0) or 0)
+        # calculate full breakdown
+        ch = calculate_charges(desc, val, wt)
 
-        # ✅ declared value field priority (use what you actually store)
-        val = float(
-            getattr(p, "declared_value", None)
-            or getattr(p, "value", None)
-            or 0
-        )
-
-        # ✅ manual other charges should come from the package (not calculator)
-        manual_other = float(getattr(p, "other_charges", 0) or 0)
-        manual_discount_due = float(getattr(p, "discount_due", 0) or 0)
-
-        # calculate breakdown (calculator returns customs+freight totals only)
-        # IMPORTANT: pass settings so calculator uses DB rates
-        ch = calculate_charges(category, val, wt, settings=settings)
-
-        duty    = float(ch.get("duty", 0) or 0)
-        scf     = float(ch.get("scf", 0) or 0)
-        envl    = float(ch.get("envl", 0) or 0)
-        caf     = float(ch.get("caf", 0) or 0)
-        gct     = float(ch.get("gct", 0) or 0)
-        stamp   = float(ch.get("stamp", 0) or 0)
-        freight = float(ch.get("freight", 0) or 0)
-        handling = float(ch.get("handling", 0) or 0)
-
-        # ✅ base calc total (no manual other)
-        calc_grand = float(ch.get("grand_total", 0) or 0)
-
-        # ✅ final due per package = calc total + manual other - discount_due (if you use discount_due)
-        # If discount_due is just "discount line display" and you don’t want it applied,
-        # remove "- manual_discount_due" from this line.
-        line_total = max((calc_grand + manual_other) - manual_discount_due, 0.0)
+        duty          = float(ch.get("duty", 0) or 0)
+        scf           = float(ch.get("scf", 0) or 0)
+        envl          = float(ch.get("envl", 0) or 0)
+        caf           = float(ch.get("caf", 0) or 0)
+        gct           = float(ch.get("gct", 0) or 0)
+        stamp         = float(ch.get("stamp", 0) or 0)
+        freight       = float(ch.get("freight", 0) or 0)
+        handling      = float(ch.get("handling", 0) or 0)
+        other_charges = float(ch.get("other_charges", 0) or 0)
+        grand_total   = float(ch.get("grand_total", 0) or 0)
 
         # --- persist breakdown onto the Package row ---
-        p.category = category
-        p.value = val
-        p.weight = wt
-
-        p.duty = duty
-        p.scf = scf
-        p.envl = envl
-        p.caf = caf
-        p.gct = gct
-        p.stamp = stamp
+        p.category      = desc
+        p.value         = val
+        p.weight        = wt
+        p.duty          = duty
+        p.scf           = scf
+        p.envl          = envl
+        p.caf           = caf
+        p.gct           = gct
+        p.stamp         = stamp
         p.customs_total = float(ch.get("customs_total", 0) or 0)
 
         # map freight / handling to whichever columns exist
@@ -1242,100 +1215,72 @@ def generate_invoice_route(user_id):
         else:
             p.handling = handling
 
-        # ✅ keep manual fields as-is (do NOT overwrite manual with calculator)
-        p.other_charges = manual_other
-        if hasattr(p, "discount_due"):
-            p.discount_due = manual_discount_due
-
-        p.amount_due = line_total
-        p.invoice_id = inv.id
+        p.other_charges = other_charges
+        p.amount_due    = grand_total      # what we already relied on
+        p.invoice_id    = inv.id
 
         # aggregate invoice totals
-        totals["duty"] += duty
-        totals["scf"] += scf
-        totals["envl"] += envl
-        totals["caf"] += caf
-        totals["gct"] += gct
-        totals["stamp"] += stamp
-        totals["freight"] += freight
-        totals["handling"] += handling
-        totals["other_charges"] += manual_other
-        totals["grand_total"] += line_total
+        totals["duty"]          += duty
+        totals["scf"]           += scf
+        totals["envl"]          += envl
+        totals["caf"]           += caf
+        totals["gct"]           += gct
+        totals["stamp"]         += stamp
+        totals["freight"]       += freight
+        totals["handling"]      += handling
+        totals["other_charges"] += other_charges
+        totals["grand_total"]   += grand_total
 
         view_lines.append({
-            "house_awb": p.house_awb,
+            "house_awb":  p.house_awb,
             "description": desc,
-            "category": category,
-            "weight": wt,
-            "value_usd": val,
-
-            # show calc parts
-            "freight": freight,
-            "handling": handling,
-            "duty": duty,
-            "scf": scf,
-            "envl": envl,
-            "caf": caf,
-            "gct": gct,
-            "stamp": stamp,
-
-            # show manual parts
-            "other_charges": manual_other,
-            "discount_due": manual_discount_due,
-
-            # final
-            "grand_total": line_total,
+            "weight":      wt,
+            "value_usd":   val,
+            **ch,
         })
 
     # finalize invoice from totals
-    inv.total_duty = totals["duty"]
-    inv.total_scf = totals["scf"]
-    inv.total_envl = totals["envl"]
-    inv.total_caf = totals["caf"]
-    inv.total_gct = totals["gct"]
-    inv.total_stamp = totals["stamp"]
-    inv.total_freight = totals["freight"]
+    inv.total_duty     = totals["duty"]
+    inv.total_scf      = totals["scf"]
+    inv.total_envl     = totals["envl"]
+    inv.total_caf      = totals["caf"]
+    inv.total_gct      = totals["gct"]
+    inv.total_stamp    = totals["stamp"]
+    inv.total_freight  = totals["freight"]
     inv.total_handling = totals["handling"]
-
-    # ✅ invoice grand total should match what customer pays (includes manual other - discounts due if applied)
-    inv.grand_total = totals["grand_total"]
-    inv.subtotal = totals["grand_total"]
-    inv.amount_due = totals["grand_total"]
+    inv.grand_total    = totals["grand_total"]
+    inv.amount_due     = totals["grand_total"]
+    inv.subtotal       = totals["grand_total"]
 
     db.session.commit()
 
     invoice_dict = {
-        "id": inv.id,
-        "user_id": user.id,
-        "number": inv.invoice_number,
-        "date": inv.date_submitted,
+        "id":           inv.id,
+        "user_id":      user.id,
+        "number":       inv.invoice_number,
+        "date":         inv.date_submitted,
         "customer_code": getattr(user, "registration_number", ""),
         "customer_name": getattr(user, "full_name", ""),
-        "subtotal": totals["grand_total"],
-        "total_due": totals["grand_total"],
-        "packages": [
-            {
-                "house_awb": x["house_awb"],
-                "description": x["description"],
-                "weight": x["weight"],
-                "value": x["value_usd"],
-                "freight": x.get("freight", 0),
-                "storage": x.get("handling", 0),
-                "duty": x.get("duty", 0),
-                "scf": x.get("scf", 0),
-                "envl": x.get("envl", 0),
-                "caf": x.get("caf", 0),
-                "gct": x.get("gct", 0),
-                "other_charges": x.get("other_charges", 0),
-                "discount_due": x.get("discount_due", 0),
-            }
-            for x in view_lines
-        ],
+        "subtotal":     totals["grand_total"],
+        "total_due":    totals["grand_total"],
+        "packages": [{
+            "house_awb":      x["house_awb"],
+            "description":    x["description"],
+            "weight":         x["weight"],
+            "value":          x["value_usd"],
+            "freight":        x.get("freight", 0),
+            "storage":        x.get("handling", 0),
+            "duty":           x.get("duty", 0),
+            "scf":            x.get("scf", 0),
+            "envl":           x.get("envl", 0),
+            "caf":            x.get("caf", 0),
+            "gct":            x.get("gct", 0),
+            "other_charges":  x.get("other_charges", 0),
+            "discount_due":   x.get("discount_due", 0),
+        } for x in view_lines],
     }
-
     flash(f"Invoice {invoice_number} generated successfully!", "success")
     return render_template("admin/invoice_view.html", invoice=invoice_dict)
-
 
 
 @admin_bp.route("/invoice/create/<int:package_id>", methods=["GET", "POST"])
@@ -1729,21 +1674,16 @@ def view_invoice(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
     user = inv.user if hasattr(inv, "user") else None
 
+    # packages for the table (LIVE calc like proforma: ceil weight)
     packages = []
-    rows = (
-        Package.query
-        .filter_by(invoice_id=invoice_id)
-        .order_by(Package.created_at.asc())
-        .all()
-    )
+    rows = Package.query.filter_by(invoice_id=invoice_id).order_by(Package.created_at.asc()).all()
 
     for p in rows:
         desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
 
         wt_raw = float(getattr(p, "weight", 0) or 0)
-        wt = int(math.ceil(wt_raw))  # keep same as proforma
+        wt = int(math.ceil(wt_raw))  # ✅ round up like proforma
 
-        # USD value
         val = float(
             getattr(p, "value", None)
             or getattr(p, "value_usd", None)
@@ -1752,30 +1692,25 @@ def view_invoice(invoice_id):
         )
 
         ch = calculate_charges(desc, val, wt)
-
-        # ✅ FIX: prefer STORED manual other charges (added after calc)
-        calc_other = float(ch.get("other_charges", 0) or 0)
-        pkg_other  = float(getattr(p, "other_charges", 0) or 0)
-        other      = pkg_other if pkg_other > 0 else calc_other
-
-        calc_grand = float(ch.get("grand_total", 0) or 0)
-        due        = (calc_grand - calc_other) + other  # ✅ now shows 16600
+        due = float(ch.get("grand_total", 0) or 0)
 
         packages.append({
             "id": p.id,
             "house_awb": p.house_awb,
             "description": desc,
             "merchant": getattr(p, "merchant", None),
-            "weight": wt,
+            "weight": wt,          # show rounded weight
             "value_usd": val,
-            "amount_due": float(due or 0),
-            # optional if your template shows it:
-            "other_charges": float(other or 0),
+            "amount_due": due,     # ✅ matches proforma
         })
+
 
     preview_subtotal = sum(float(x.get("amount_due", 0) or 0) for x in packages)
 
     subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(invoice_id)
+
+    preview_payments_total = float(payments_total or 0.0)
+    preview_discount_total = float(discount_total or 0.0)
 
     preview_balance_due = max(
         float(preview_subtotal or 0)
@@ -1783,12 +1718,15 @@ def view_invoice(invoice_id):
         - float(payments_total or 0),
         0.0
     )
+        
+    
 
+    # Make a dict that still feels like the ORM object in Jinja
     invoice_dict = {
         "id": inv.id,
         "user_id": inv.user_id,
-        "user": user,
-        "invoice_number": inv.invoice_number,
+        "user": user,                         # so invoice.user.* works
+        "invoice_number": inv.invoice_number, # so invoice.invoice_number works
         "grand_total": float(inv.grand_total or subtotal or 0),
         "date_issued": (
             inv.date_issued
@@ -1805,12 +1743,11 @@ def view_invoice(invoice_id):
         "description": getattr(inv, "description", "") or "",
         "amount_due": float(getattr(inv, "amount_due", total_due) or 0.0),
         "packages": packages,
-
-        # ✅ the preview values used by _invoice_core.html (if inline)
         "preview_subtotal": float(preview_subtotal),
         "preview_discount_total": float(discount_total or 0),
         "preview_payments_total": float(payments_total or 0),
         "preview_total_due": float(preview_balance_due),
+
     }
 
     # ---------- authorised signers ----------
@@ -1855,44 +1792,44 @@ def view_invoice(invoice_id):
   
 
 # ---------- BREAKDOWN (Lightning icon) ----------
-@admin_bp.route("/invoice/breakdown/<int:package_id>")
+@admin_bp.route("/invoice/breakdown/<int:package_id>", methods=["GET"])
 @admin_required
 def invoice_breakdown(package_id):
     p = Package.query.get_or_404(package_id)
 
-    desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
-
-    # match proforma rounding (optional but recommended for consistency)
-    wt_raw = float(getattr(p, "weight", 0) or 0)
-    weight = float(math.ceil(wt_raw))
-
-    # value is USD
-    value = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
+    desc   = (p.description or getattr(p, "category", None) or "Miscellaneous")
+    weight = float(getattr(p, "weight", 0) or 0)
+    value  = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
 
     ch = calculate_charges(desc, value, weight)
 
-    # ✅ FIX: prefer STORED manual other charges
-    calc_other = float(ch.get("other_charges", 0) or 0)
-    pkg_other  = float(getattr(p, "other_charges", 0) or 0)
-
-    other = pkg_other if pkg_other > 0 else calc_other
-
-    # ✅ FIX total: remove calculated-other then add stored-other
-    calc_grand = float(ch.get("grand_total", 0) or 0)
-    total_jmd  = (calc_grand - calc_other) + other
-
     payload = {
-        "duty":      float(ch.get("duty", 0) or 0),
-        "gct":       float(ch.get("gct", 0) or 0),
-        "freight":   float(ch.get("freight", 0) or 0),
-        "handling":  float(ch.get("handling", 0) or 0),
-        "scf":       float(ch.get("scf", 0) or 0),
-        "envl":      float(ch.get("envl", 0) or 0),
-        "caf":       float(ch.get("caf", 0) or 0),
-        "stamp":     float(ch.get("stamp", 0) or 0),
-        "other":     float(other or 0),
-        "total_jmd": float(total_jmd or 0),
+        # core breakdown
+        "duty":          float(ch.get("duty", 0) or 0),
+        "gct":           float(ch.get("gct", 0) or 0),
+        "scf":           float(ch.get("scf", 0) or 0),
+        "envl":          float(ch.get("envl", 0) or 0),
+        "caf":           float(ch.get("caf", 0) or 0),
+        "stamp":         float(ch.get("stamp", 0) or 0),
+
+        # totals
+        "customs_total": float(ch.get("customs_total", 0) or 0),
+        "freight":       float(ch.get("freight", 0) or 0),
+        "handling":      float(ch.get("handling", 0) or 0),
+        "freight_total": float(ch.get("freight_total", 0) or 0),
+
+        # IMPORTANT: name must match your modal field
+        "other_charges": float(ch.get("other_charges", 0) or 0),
+
+        # grand total (JMD)
+        "grand_total":   float(ch.get("grand_total", 0) or 0),
+
+        # also return these so the modal can prefill top fields
+        "category": desc,
+        "weight": weight,
+        "value": value,
     }
+
     return jsonify(payload)
 
 
@@ -2120,12 +2057,10 @@ def proforma_invoice_modal(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
     user = inv.user
 
-    pkgs = (
-        Package.query
-        .filter_by(invoice_id=invoice_id)
-        .order_by(Package.created_at.asc())
-        .all()
-    )
+    pkgs = (Package.query
+            .filter_by(invoice_id=invoice_id)
+            .order_by(Package.created_at.asc())
+            .all())
 
     # Settings (logo + rates)
     from app.models import Settings
@@ -2145,36 +2080,23 @@ def proforma_invoice_modal(invoice_id):
 
     for p in pkgs:
         desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
-        wt_raw = float(getattr(p, "weight", 0) or 0)
+        wt_raw = float(p.weight or 0)
         wt = math.ceil(wt_raw)
-
-        # value is USD (keep as USD - do NOT convert fees to USD)
-        val = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
+        val  = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
 
         # ✅ Calculate charges live (same as lightning breakdown)
         ch = calculate_charges(desc, val, wt)
 
-        freight  = float(ch.get("freight", 0) or 0)
-        handling = float(ch.get("handling", 0) or 0)
-        duty     = float(ch.get("duty", 0) or 0)
-        gct      = float(ch.get("gct", 0) or 0)
-        scf      = float(ch.get("scf", 0) or 0)
-        envl     = float(ch.get("envl", 0) or 0)
-        caf      = float(ch.get("caf", 0) or 0)
-        stamp    = float(ch.get("stamp", 0) or 0)
-
-        # ✅ FIX: Use STORED package other_charges if present (manual entry),
-        # instead of calculated other_charges (which is often 0).
-        calc_other = float(ch.get("other_charges", 0) or 0)
-        pkg_other  = float(getattr(p, "other_charges", 0) or 0)
-
-        # Remove calculated-other from the calculated grand_total, then add stored-other.
-        # This prevents double counting if calculate_charges ever includes other_charges.
-        calc_grand = float(ch.get("grand_total", 0) or 0)
-        base_total = calc_grand - calc_other
-
-        other = pkg_other if pkg_other > 0 else calc_other
-        total_jmd = base_total + other
+        freight   = float(ch.get("freight", 0) or 0)
+        handling  = float(ch.get("handling", 0) or 0)
+        duty      = float(ch.get("duty", 0) or 0)
+        gct       = float(ch.get("gct", 0) or 0)
+        scf       = float(ch.get("scf", 0) or 0)
+        envl      = float(ch.get("envl", 0) or 0)
+        caf       = float(ch.get("caf", 0) or 0)
+        stamp     = float(ch.get("stamp", 0) or 0)
+        other     = float(ch.get("other_charges", 0) or 0)
+        total_jmd = float(ch.get("grand_total", 0) or 0)
 
         subtotal += total_jmd
 
@@ -2182,31 +2104,30 @@ def proforma_invoice_modal(invoice_id):
             "house_awb": p.house_awb,
             "description": desc,
             "weight": wt,
-            "value": val,  # USD value stays USD in template
+            "value": val,
             "freight": freight,
             "handling": handling,
-            "storage": handling,  # optional alias
+            "storage": handling,          # optional alias
             "duty": duty,
             "gct": gct,
             "scf": scf,
             "envl": envl,
             "caf": caf,
             "stamp": stamp,
-            "other_charges": other,   # ✅ this will now show your 8000
-            "discount_due": float(getattr(p, "discount_due", 0) or 0),
+            "other_charges": other,
+            "discount_due": 0.0,
         })
 
-    # ✅ Keep the LIVE subtotal you calculated above
+    # ✅ Keep the LIVE subtotal you calculated above (do NOT overwrite it)
     live_subtotal = float(subtotal or 0.0)
 
     # Pull discounts/payments from DB (ignore DB subtotal)
     _db_subtotal, discount_total, payments_total, _db_total_due = fetch_invoice_totals_pg(invoice_id)
 
-    # ✅ Balance due using LIVE subtotal
-    balance_due = max(
-        live_subtotal - float(discount_total or 0) - float(payments_total or 0),
-        0.0
-    )
+    # ✅ Compute balance due using LIVE subtotal
+    balance_due = max(live_subtotal - float(discount_total or 0) - float(payments_total or 0), 0.0)
+
+
 
     invoice_dict = {
         "id": inv.id,
@@ -2224,6 +2145,7 @@ def proforma_invoice_modal(invoice_id):
         "notes": getattr(inv, "description", "") or "",
         "packages": items,
     }
+
 
     return render_template(
         "admin/invoices/_invoice_core.html",
@@ -2329,60 +2251,33 @@ def email_proforma_invoice(invoice_id):
     for p in pkgs:
         desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
         wt = math.ceil(float(getattr(p, "weight", 0) or 0))
-
-        # value is USD (keep as USD)
         val = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
 
-        # live calc
         ch = calculate_charges(desc, val, wt)
-
-        freight  = float(ch.get("freight", 0) or 0)
-        handling = float(ch.get("handling", 0) or 0)
-        duty     = float(ch.get("duty", 0) or 0)
-        gct      = float(ch.get("gct", 0) or 0)
-        scf      = float(ch.get("scf", 0) or 0)
-        envl     = float(ch.get("envl", 0) or 0)
-        caf      = float(ch.get("caf", 0) or 0)
-        stamp    = float(ch.get("stamp", 0) or 0)
-
-        # ✅ FIX: prefer STORED manual other charges on package
-        calc_other = float(ch.get("other_charges", 0) or 0)
-        pkg_other  = float(getattr(p, "other_charges", 0) or 0)
-
-        # remove calculated-other from grand_total, then add stored-other
-        calc_grand = float(ch.get("grand_total", 0) or 0)
-        base_total = calc_grand - calc_other
-
-        other = pkg_other if pkg_other > 0 else calc_other
-        line_total = base_total + other
-
+        line_total = float(ch.get("grand_total", 0) or 0)
         subtotal += line_total
 
         items.append({
             "house_awb": p.house_awb,
             "description": desc,
             "weight": wt,
-            "value": val,  # USD
-            "freight": freight,
-            "handling": handling,
-            "storage": handling,
-            "duty": duty,
-            "gct": gct,
-            "scf": scf,
-            "envl": envl,
-            "caf": caf,
-            "stamp": stamp,
-            "other_charges": other,  # ✅ will now show your 8000
-            "discount_due": float(getattr(p, "discount_due", 0) or 0),
+            "value": val,
+            "freight": float(ch.get("freight", 0) or 0),
+            "handling": float(ch.get("handling", 0) or 0),
+            "storage": float(ch.get("handling", 0) or 0),
+            "duty": float(ch.get("duty", 0) or 0),
+            "gct": float(ch.get("gct", 0) or 0),
+            "scf": float(ch.get("scf", 0) or 0),
+            "envl": float(ch.get("envl", 0) or 0),
+            "caf": float(ch.get("caf", 0) or 0),
+            "stamp": float(ch.get("stamp", 0) or 0),
+            "other_charges": float(ch.get("other_charges", 0) or 0),
+            "discount_due": 0.0,
         })
 
     live_subtotal = float(subtotal or 0.0)
-
     _db_subtotal, discount_total, payments_total, _db_total_due = fetch_invoice_totals_pg(invoice_id)
-    balance_due = max(
-        live_subtotal - float(discount_total or 0) - float(payments_total or 0),
-        0.0
-    )
+    balance_due = max(live_subtotal - discount_total - payments_total, 0.0)
 
     invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
 
@@ -2417,7 +2312,10 @@ def email_proforma_invoice(invoice_id):
     # 4) Generate PDF
     # -----------------------------
     try:
-        pdf_bytes = HTML(string=html, base_url=request.url_root).write_pdf()
+        pdf_bytes = HTML(
+            string=html,
+            base_url=request.url_root
+        ).write_pdf()
     except Exception as e:
         current_app.logger.exception("PDF generation failed")
         return jsonify(ok=False, error=str(e)), 500
@@ -2453,7 +2351,7 @@ def email_proforma_invoice(invoice_id):
     """
 
     # -----------------------------
-    # 6) Send via email_utils
+    # 6) Send via email_utils ✅
     # -----------------------------
     email_utils.send_email(
         to_email=customer_email,

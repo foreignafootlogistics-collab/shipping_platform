@@ -1,38 +1,43 @@
+# app/calculator.py
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from app.calculator_data import calculate_charges, CATEGORIES, get_freight
 from flask_wtf.csrf import validate_csrf, CSRFError
-from wtforms import ValidationError
 
-calculator_bp = Blueprint('calculator', __name__)
+from app.calculator_data import calculate_charges, CATEGORIES
+
+calculator_bp = Blueprint("calculator", __name__, url_prefix="/calculator")
+
 
 @calculator_bp.route("/calculate", methods=["POST"], strict_slashes=False)
 @login_required
 def calculator_ajax():
     """
-    AJAX endpoint to calculate customs charges based on category, invoice, and weight.
-    Accepts CSRF token from JSON payload.
+    Global calculator endpoint used by BOTH admin + customer + shipment modal.
+    Expects JSON:
+      { csrf_token, category, invoice_usd, weight }
+    Returns:
+      calculate_charges() result dict
     """
-    from app.models import CalculatorLog, db  # Lazy import to prevent circular import
+    # Lazy import to prevent circular import
+    from app.models import CalculatorLog
+    from app.extensions import db
 
-    # Read JSON payload
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     if not data:
         return jsonify({"error": "No input data provided"}), 400
 
-    # Validate CSRF token manually
+    # CSRF
     csrf_token = data.get("csrf_token")
     try:
         validate_csrf(csrf_token)
     except CSRFError as e:
         return jsonify({"error": f"CSRF validation failed: {str(e)}"}), 400
 
-    # Extract inputs
-    category = data.get("category")
+    # Inputs
+    category = (data.get("category") or "").strip()
     invoice_usd = data.get("invoice_usd")
     weight = data.get("weight")
 
-    # ----- Manual validation -----
     errors = []
 
     if category not in CATEGORIES:
@@ -55,27 +60,28 @@ def calculator_ajax():
     if errors:
         return jsonify({"error": errors}), 400
 
-    # ----- Perform calculation -----
     try:
         result = calculate_charges(category, invoice_usd, weight)
 
-        # Log the calculation
-        calc_log = CalculatorLog(
-            user_id=current_user.id,
-            category=data['category'],
-            value_usd=data['invoice_usd'],  # ✅ correct
-            duty_amount=result['duty'],
-            scf_amount=result['scf'],
-            envl_amount=result['envl'],
-            caf_amount=result['caf'],
-            gct_amount=result['gct'],
-            total_amount=result['grand_total']
-        )
+        # Optional log (safe)
+        try:
+            calc_log = CalculatorLog(
+                user_id=current_user.id,
+                category=category,
+                value_usd=invoice_usd,
+                duty_amount=float(result.get("duty") or 0),
+                scf_amount=float(result.get("scf") or 0),
+                envl_amount=float(result.get("envl") or 0),
+                caf_amount=float(result.get("caf") or 0),
+                gct_amount=float(result.get("gct") or 0),
+                total_amount=float(result.get("grand_total") or 0),
+            )
+            db.session.add(calc_log)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
-        db.session.add(calc_log)
-        db.session.commit()
-
-        return jsonify(result)
+        return jsonify(result), 200
 
     except Exception as e:
         return jsonify({"error": f"Calculation failed: {str(e)}"}), 500

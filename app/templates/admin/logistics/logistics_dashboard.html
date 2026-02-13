@@ -752,6 +752,31 @@
           </div>
         </div>
       </div>
+      
+      <!-- ✅ Shipment Finance Invoice Preview Modal (Supplier Cost) -->
+      <div class="modal fade" id="shipmentFinanceInvoiceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">Shipment Finance Invoice</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body" id="shipmentFinanceInvoiceBody">
+              <p class="text-muted mb-0">Loading shipment invoice…</p>
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                Close
+              </button>
+              <button type="button" class="btn btn-purple" id="btnPrintShipmentFinance">
+                Print / Save
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Rename Shipment Modal -->
       <div class="modal fade" id="renameShipmentModal" tabindex="-1" aria-hidden="true">
@@ -788,11 +813,212 @@
 
     {# ---------------- UPLOAD PACKAGES TAB ---------------- #}
     {% if active_tab == 'uploadPackages' %}
-    <div class="tab-pane show active" id="uploadPackages" role="tabpanel" aria-labelledby="upload-tab">
-      {# (keep your upload code as-is) #}
-      {{ super() }}
+    <div class="tab-pane show active"
+         id="uploadPackages"
+         role="tabpanel"
+         aria-labelledby="upload-tab">
+
+      <div class="card shadow-sm mt-3 border-0">
+
+        <div class="card-header text-white"
+             style="background-color:#4a148c; border-top-left-radius:.5rem; border-top-right-radius:.5rem;">
+          <h4 class="mb-0">Upload Packages from Excel/CSV</h4>
+        </div>
+
+        <div class="card-body p-4">
+
+          <!-- 1) Upload-for-Preview Form -->
+          <form id="uploadForm"
+                method="POST"
+                enctype="multipart/form-data"
+                action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
+
+            {{ upload_form.hidden_tag() }}
+            <input type="hidden" name="tab" value="uploadPackages">
+            <input type="hidden" name="stage" value="preview">
+
+            <div class="mb-3">
+              {{ upload_form.file.label(class_="form-label") }}
+              {{ upload_form.file(class_="form-control", accept=".xlsx,.csv") }}
+
+              {% for error in upload_form.file.errors %}
+                <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+
+            <div class="d-flex align-items-center gap-2">
+              {{ upload_form.submit(class_="btn btn-purple", id="uploadBtn", value="Preview All") }}
+
+              <a href="{{ url_for('static', filename='templates/sample_upload.xlsx') }}"
+                 class="btn btn-outline-purple">
+                Download Sample
+              </a>
+
+              <div id="spinner"
+                   class="spinner-border text-purple ms-2"
+                   role="status"
+                   style="display:none;">
+                <span class="visually-hidden">Uploading...</span>
+              </div>
+            </div>
+          </form>
+
+          <!-- Messages -->
+          {% if message %}
+            <div class="alert alert-success mt-4">
+              {{ message }}
+            </div>
+          {% endif %}
+
+          {% if errors and errors|length %}
+            <div class="alert alert-danger mt-4">
+              <ul class="mb-0">
+                {% for error in errors %}
+                  <li>{{ error }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+
+          <!-- 2) Full Preview Table + Confirm -->
+          {% if preview_headers and preview_rows %}
+
+            <hr class="my-4">
+
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <h5 class="mb-0">Preview All Rows</h5>
+
+              {% if summary_counts %}
+                <div class="small">
+                  <span class="badge badge-purple">Total: {{ summary_counts.total }}</span>
+                  <span class="badge badge-purple-soft">Valid: {{ summary_counts.valid }}</span>
+                  <span class="badge bg-danger">Invalid: {{ summary_counts.invalid }}</span>
+                </div>
+              {% endif %}
+
+              {% if preview_token and summary_counts and summary_counts.invalid %}
+                <a class="btn btn-sm btn-outline-danger"
+                   href="{{ url_for('logistics.download_preview_invalid', token=preview_token) }}">
+                  <i class="fas fa-file-csv me-1"></i> Download Invalid Rows
+                </a>
+              {% endif %}
+            </div>
+
+            <div class="table-responsive border rounded shadow-sm">
+              <table id="previewTable"
+                     class="table table-sm table-bordered table-striped align-middle mb-0">
+
+                <thead class="bg-purple text-white">
+                  <tr>
+                    <th style="width:30px;">
+                      <input type="checkbox" id="selectAllPreview">
+                    </th>
+
+                    {% for h in preview_headers %}
+                      <th>{{ h }}</th>
+                    {% endfor %}
+
+                    <th>Status</th>
+                    <th style="display:none;">__row_index</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {% for row in preview_rows %}
+                    {% set i = loop.index0 %}
+                    {% set errs = (preview_errors.get(i) or preview_errors.get(i|string)) if preview_errors else None %}
+
+                    <tr class="{% if errs %}table-danger{% else %}table-light{% endif %}">
+                      <td>
+                        <input type="checkbox"
+                               class="row-select"
+                               value="{{ i }}"
+                               {% if not errs %}checked{% endif %}>
+                      </td>
+
+                      {% for h in preview_headers %}
+                        {% set val = row.get(h) %}
+                        <td class="{% if errs and ('Missing ' ~ h.replace('_',' ').title()) in errs %}bg-warning-subtle{% endif %}">
+                          {{ '' if val is none else val }}
+                        </td>
+                      {% endfor %}
+
+                      <td>
+                        {% if not errs %}
+                          <span class="badge badge-purple">Valid</span>
+                        {% else %}
+                          <span class="badge bg-danger">Invalid</span>
+                          <div class="small text-muted mt-1">
+                            {% for e in errs %}
+                              <div>• {{ e }}</div>
+                            {% endfor %}
+                          </div>
+                        {% endif %}
+                      </td>
+
+                      <td style="display:none;">{{ i }}</td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+
+              </table>
+            </div>
+
+            <!-- Confirm form -->
+            <form id="confirmForm"
+                  method="POST"
+                  action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
+                  class="mt-3 d-flex flex-wrap align-items-end gap-2"
+                  onsubmit="return handleConfirmSubmit(event);">
+
+              {{ upload_form.csrf_token }}
+              <input type="hidden" name="tab" value="uploadPackages">
+              <input type="hidden" name="stage" value="confirm">
+              <input type="hidden" name="preview_token" value="{{ preview_token }}">
+              <input type="hidden" id="selectedIndicesInput" name="selected_indices" value="[]">
+
+              <div>
+                <label class="form-label mb-1 text-purple">Batch Size (optional)</label>
+                <input type="number"
+                       name="batch_size"
+                       class="form-control form-control-sm border-purple"
+                       placeholder="e.g. 50">
+                <div class="form-text">Limit per submit to avoid timeouts.</div>
+              </div>
+
+              <div class="ms-auto d-flex align-items-center gap-2">
+                <button type="button"
+                        id="selectValidBtn"
+                        class="btn btn-outline-purple btn-sm">
+                  Select All Valid
+                </button>
+
+                <button type="submit"
+                        class="btn btn-purple btn-sm">
+                  <i class="fas fa-check-circle me-1"></i> Import Selected
+                </button>
+
+                <a href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
+                   class="btn btn-outline-danger btn-sm"
+                   onclick="return confirm('Cancel this upload and discard preview?');">
+                  <i class="fas fa-times-circle me-1"></i> Cancel Upload
+                </a>
+              </div>
+            </form>
+
+          {% endif %}
+          {# end if preview_headers and preview_rows #}
+
+        </div>
+        <!-- /card-body -->
+
+      </div>
+      <!-- /card -->
+
     </div>
+    <!-- /uploadPackages tab-pane -->
     {% endif %}
+
 
   </div>
 </div>
@@ -1803,6 +2029,341 @@ async function openInvoicePreview(selectedPkgIds) {
   const modalEl = document.getElementById('bulkInvoicePreviewModal');
   const modal = new bootstrap.Modal(modalEl);
   modal.show();
+}
+
+/* =====================================
+   SHIPMENT FINANCE INVOICE (OPTION A)
+===================================== */
+
+function openShipmentFinanceInvoiceModalWithHtml(html) {
+  const bodyEl = document.getElementById('shipmentFinanceInvoiceBody');
+  if (bodyEl) bodyEl.innerHTML = html;
+
+  const modalEl = document.getElementById('shipmentFinanceInvoiceModal');
+  if (!modalEl) {
+    alert("Shipment finance invoice modal not found.");
+    return;
+  }
+
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.show();
+}
+
+
+async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
+
+  const url = "{{ url_for('logistics.shipment_finance_invoice_preview_json', shipment_id=0) }}"
+    .replace("/0/", `/${shipmentId}/`);
+
+  try {
+
+    const r = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": "{{ csrf_token() }}",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: JSON.stringify({ package_ids: packageIds || [] })
+    });
+
+    const data = await r.json();
+
+    if (!r.ok || !data.ok) {
+      console.error("Finance preview-json failed:", r.status, data);
+      alert(`⚠️ Finance invoice preview failed (${r.status}). ${data.error || ""}`);
+      return;
+    }
+
+    const fmt2 = (n) => Number(n || 0).toFixed(2);
+
+    const usd_to_jmd     = Number(data.usd_to_jmd || 0);
+    const pkgCount       = Number(data.package_count || 0);
+    const freightUsd     = Number(data.freight_usd || 0);
+    const freightJmd     = freightUsd * usd_to_jmd;
+    const rateUsdPerKg   = Number(data.rate_usd_per_kg || 0);
+
+    let rowsHtml = "";
+
+    /* ===== Freight Row ===== */
+    rowsHtml += `
+      <tr>
+        <td><strong>Freight</strong></td>
+        <td class="text-end">${pkgCount}</td>
+        <td class="text-end">$${fmt2(rateUsdPerKg)}</td>
+        <td class="text-end">$${fmt2(freightUsd)}</td>
+        <td class="text-end">${fmt2(freightJmd)}</td>
+      </tr>
+    `;
+
+    /* ===== Service Bands ===== */
+    let serviceUsdSum = 0;
+    let serviceJmdSum = 0;
+
+    (data.service_bands || []).forEach(b => {
+
+      const count    = Number(b.count || 0);
+      const rateUsd  = Number(b.rate_usd || 0);
+      const lineUsd  = Number(b.line_usd || 0);
+      const lineJmd  = lineUsd * usd_to_jmd;
+
+      serviceUsdSum += lineUsd;
+      serviceJmdSum += lineJmd;
+
+      rowsHtml += `
+        <tr>
+          <td>${b.band}</td>
+          <td class="text-end">${count}</td>
+          <td class="text-end">$${fmt2(rateUsd)}</td>
+          <td class="text-end">$${fmt2(lineUsd)}</td>
+          <td class="text-end">${fmt2(lineJmd)}</td>
+        </tr>
+      `;
+    });
+
+    rowsHtml += `
+      <tr class="table-light fw-bold">
+        <td colspan="3" class="text-end">Service Total</td>
+        <td class="text-end">$${fmt2(serviceUsdSum)}</td>
+        <td class="text-end">${fmt2(serviceJmdSum)}</td>
+      </tr>
+    `;
+
+    const tableUsdTotal = freightUsd + serviceUsdSum;
+    const tableJmdTotal = freightJmd + serviceJmdSum;
+
+    /* ===== Full HTML ===== */
+    const html = `
+      <div class="mb-2">
+        <div class="d-flex justify-content-between align-items-center">
+          <h6 class="mb-0 fw-bold text-purple">
+            Shipment Finance Invoice (Supplier Cost)
+          </h6>
+          <span class="badge bg-purple">
+            Shipment #${data.shipment_id}
+          </span>
+        </div>
+        <div class="small text-muted">
+          Packages: ${pkgCount}
+        </div>
+      </div>
+
+      <div class="row g-2 small mb-3">
+
+        <div class="col-md-3">
+          <div class="border rounded p-2">
+            <div class="text-muted">Total lbs</div>
+            <div class="fw-bold">${fmt2(data.total_lbs)}</div>
+          </div>
+        </div>
+
+        <div class="col-md-3">
+          <div class="border rounded p-2">
+            <div class="text-muted">Total kg</div>
+            <div class="fw-bold">${fmt2(data.total_kg)}</div>
+          </div>
+        </div>
+
+        <div class="col-md-3">
+          <div class="border rounded p-2">
+            <div class="text-muted">Freight (USD)</div>
+            <div class="fw-bold">$${fmt2(freightUsd)}</div>
+          </div>
+        </div>
+
+        <div class="col-md-3">
+          <div class="border rounded p-2">
+            <div class="text-muted">USD→JMD</div>
+            <div class="fw-bold">${fmt2(usd_to_jmd)}</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle">
+
+          <thead class="table-dark">
+            <tr>
+              <th>Service Band (lbs)</th>
+              <th class="text-end">Count</th>
+              <th class="text-end">Rate (USD)</th>
+              <th class="text-end">Amount (USD)</th>
+              <th class="text-end">Amount (JMD)</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+
+          <tfoot>
+            <tr class="fw-bold">
+              <th colspan="3" class="text-end">Total</th>
+              <th class="text-end">$${fmt2(tableUsdTotal)}</th>
+              <th class="text-end">${fmt2(tableJmdTotal)}</th>
+            </tr>
+          </tfoot>
+
+        </table>
+      </div>
+
+      <div class="row g-2 small mt-3">
+
+        <div class="col-md-4">
+          <div class="border rounded p-2">
+            <div class="text-muted">Subtotal (USD)</div>
+            <div class="fw-bold">$${fmt2(data.subtotal_usd)}</div>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="border rounded p-2">
+            <div class="text-muted">Subtotal (JMD)</div>
+            <div class="fw-bold">${fmt2(data.subtotal_jmd)}</div>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="border rounded p-2">
+            <div class="text-muted">Extra Service (JMD)</div>
+            <div class="fw-bold">${fmt2(data.extra_service_jmd)}</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="mt-3 border rounded p-3" style="background:#f8f9fa;">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-muted">TOTAL (JMD)</div>
+          <div class="fw-bold" style="font-size:1.6rem;">
+            ${fmt2(data.total_jmd)}
+          </div>
+        </div>
+      </div>
+    `;
+
+    openShipmentFinanceInvoiceModalWithHtml(html);
+
+  } catch (err) {
+    console.error(err);
+    alert("⚠️ Unable to load shipment finance invoice preview (JSON).");
+  }
+}
+
+
+/* ===== Print Button ===== */
+
+document.getElementById('btnPrintShipmentFinance')
+  ?.addEventListener('click', function () {
+
+    const body = document.getElementById('shipmentFinanceInvoiceBody');
+    if (!body) return;
+
+    const w = window.open('', '_blank');
+
+    w.document.write(`
+      <html>
+        <head>
+          <title>Shipment Finance Invoice</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+        </head>
+        <body>
+          ${body.innerHTML}
+        </body>
+      </html>
+    `);
+
+    w.document.close();
+    w.focus();
+    w.print();
+  });
+  
+/* ======================
+   UPLOAD SPINNER
+====================== */
+
+(function () {
+
+  const form     = document.getElementById('uploadForm');
+  const spinner  = document.getElementById('spinner');
+  const uploadBtn = document.getElementById('uploadBtn');
+
+  if (form) {
+    form.addEventListener('submit', () => {
+      if (uploadBtn) uploadBtn.disabled = true;
+      if (spinner) spinner.style.display = 'inline-block';
+    });
+  }
+
+  window.addEventListener('pageshow', () => {
+    if (uploadBtn) uploadBtn.disabled = false;
+    if (spinner) spinner.style.display = 'none';
+  });
+
+})();
+
+
+/* ==========================
+   UPLOAD PREVIEW TABLE (CSV)
+========================== */
+
+document.addEventListener('DOMContentLoaded', function () {
+
+  const tableEl = document.getElementById('previewTable');
+  if (!tableEl) return;
+
+  const getRowCheckboxes = () =>
+    Array.from(document.querySelectorAll('#previewTable input.row-select'));
+
+  const selectAll = document.getElementById('selectAllPreview');
+
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      const checked = this.checked;
+
+      getRowCheckboxes().forEach(cb => {
+        cb.checked = checked;
+      });
+    });
+  }
+
+  const selectValidBtn = document.getElementById('selectValidBtn');
+
+  if (selectValidBtn) {
+    selectValidBtn.addEventListener('click', function () {
+
+      getRowCheckboxes().forEach(cb => {
+        const tr = cb.closest('tr');
+        const isInvalid = tr && tr.classList.contains('table-danger');
+
+        cb.checked = !isInvalid;
+      });
+
+    });
+  }
+
+});
+
+
+function handleConfirmSubmit(e) {
+
+  const table = document.getElementById('previewTable');
+  if (!table) return true;
+
+  const checkboxes = table.querySelectorAll('input.row-select:checked');
+  const indices = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
+
+  if (!indices.length) {
+    if (e) e.preventDefault();
+    alert('⚠️ Please select at least one valid row to import.');
+    return false;
+  }
+
+  const hidden = document.getElementById('selectedIndicesInput');
+  if (hidden) hidden.value = JSON.stringify(indices);
+
+  return true;
 }
 
 

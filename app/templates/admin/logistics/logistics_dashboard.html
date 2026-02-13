@@ -420,7 +420,7 @@
                              id="category_{{ pkg.id }}"
                              name="category_{{ pkg.id }}"
                              value="{{ pkg.category or 'Other' }}">
-                      <input type="hidden" id="locked_{{ pkg.id }}" value="{{ 1 if pkg.pricing_locked else 0 }}">
+                      <input type="hidden" id="locked_{{ pkg.id }}" name="locked_{{ pkg.id }}" value="{{ 1 if pkg.pricing_locked else 0 }}">
                       <!-- ✅ Hidden manual override fields -->
                       <input type="hidden" name="duty_{{ pkg.id }}"    id="duty_{{ pkg.id }}"    value="{{ pkg.duty or 0 }}">
                       <input type="hidden" name="gct_{{ pkg.id }}"     id="gct_{{ pkg.id }}"     value="{{ pkg.gct or 0 }}">

@@ -107,7 +107,6 @@ def normalize_tab(raw: str | None) -> str:
     t = TAB_ALIASES.get(t, t)
     return t if t in ALLOWED_TABS else "prealert"
 
-
 def _preview_dir() -> str:
     try:
         base = current_app.instance_path
@@ -374,20 +373,76 @@ def _parse_dt_maybe(v):
 
 def _normalize_weight(w):
     """
-    Make sure weight is a clean float and never negative.
-    Adjust the rounding/logic if you have special rules.
+    Normalize weight to a positive float and
+    round UP to the nearest whole pound.
     """
     try:
         val = float(w or 0)
     except Exception:
         return 0.0
 
-    if val < 0:
-        val = 0.0
+    if val <= 0:
+        return 0.0
 
-    # If you want, you can round or enforce a minimum:
-    # return max(0.0, round(val, 2))
-    return val
+    # Always round UP to nearest whole lb
+    return float(math.ceil(val))
+
+def _effective_value(p):
+    """
+    Your existing logic can live here.
+    Fallback to package value or declared_value.
+    """
+    try:
+        v = getattr(p, "value", None)
+        if v not in (None, "", 0, "0", 0.0, "0.0"):
+            return float(v)
+    except Exception:
+        pass
+
+    try:
+        dv = getattr(p, "declared_value", None)
+        if dv not in (None, "", 0, "0", 0.0, "0.0"):
+            return float(dv)
+    except Exception:
+        pass
+
+    return 50.0  # default
+
+
+def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float, weight: float):
+    """
+    One official calculator+writer used by bulk shipment action.
+    """
+    category = (category or getattr(p, "category", None) or "Other").strip() or "Other"
+
+    # normalize / protect
+    try:
+        invoice_val = float(invoice_val or 0)
+    except Exception:
+        invoice_val = 0.0
+
+    weight = _normalize_weight(weight)
+
+    # if still invalid, skip
+    if invoice_val <= 0:
+        invoice_val = 50.0
+    if weight <= 0:
+        return None
+
+    breakdown = calculate_charges(category, invoice_val, weight)
+
+    # ✅ single writer (your existing helper)
+    apply_breakdown_to_package(p, breakdown, lock=False)
+
+    # keep core fields in sync
+    if hasattr(p, "category"):
+        p.category = category
+
+    p.value = invoice_val
+    if hasattr(p, "declared_value"):
+        p.declared_value = invoice_val
+
+    return breakdown
 
 
 def move_package_to_shipment(package: Package, shipment: ShipmentLog | None):
@@ -2000,111 +2055,40 @@ def bulk_shipment_action(shipment_id):
             form_cat = (request.form.get(f"category_{p.id}") or "").strip()
             category = form_cat or (getattr(p, "category", None) or "Other")
 
-            # ✅ IMPORTANT:
-            # Do NOT treat hidden "0" manual fields as overrides.
-            # Only allow manual overrides when package is locked (we already skip locked above),
-            # so for bulk calc, manual overrides are ignored.
-            # (Manual pricing should be done via the calculator modal + lock toggle.)
-            manual = {
-                "duty": None, "gct": None, "scf": None, "envl": None,
-                "caf": None, "stamp": None, "freight": None, "handling": None,
-                "other_charges": None
-            }
-            has_any_manual = False  # bulk calc never uses hidden overrides now
-
-            existing_due = float(getattr(p, "amount_due", 0) or 0)
-            if existing_due > 0 and not has_any_manual:
-                # already priced (and not manually overriding) → skip
-                skipped += 1
-                continue
+                      
 
             # ---------- invoice value ----------
-            # ✅ fallback to DB if missing/blank
-            try:
-                invoice_val = float(str(form_val).strip()) if form_val not in (None, "", "None") else float(p.value or 0)
-            except Exception:
-                invoice_val = float(p.value or 0)
+            if form_val in (None, "", "None"):
+                invoice_val = float(_effective_value(p))
+            else:
+                try:
+                    invoice_val = float(str(form_val).strip())
+                except Exception:
+                    invoice_val = float(_effective_value(p))
+
 
             # ---------- weight ----------
-            # ✅ fallback to DB if missing/blank
-            try:
-                weight = float(str(form_weight).strip()) if form_weight not in (None, "", "None") else float(p.weight or 0)
-            except Exception:
-                weight = float(p.weight or 0)
+            if form_weight in (None, "", "None"):
+                weight = float(getattr(p, "weight", 0) or 0)
+            else:
+                try:
+                    weight = float(str(form_weight).strip())
+                except Exception:
+                    weight = float(getattr(p, "weight", 0) or 0)
 
-            weight = _normalize_weight(weight)
 
-            # ✅ SAFETY: never overwrite with a bogus 0/0 calc
-            # If weight/value are zero, skip (prevents wiping totals)
-            if (invoice_val <= 0) or (weight <= 0):
+            breakdown = _bulk_calc_apply_to_package(
+                p,
+                category=category,
+                invoice_val=invoice_val,
+                weight=weight
+            )
+
+            # helper returns None if invalid/protected
+            if not breakdown:
                 skipped += 1
                 continue
 
-            # base breakdown (this will compute freight etc)
-            breakdown = calculate_charges(category, invoice_val, weight)
-
-            # apply manual overrides (none in bulk mode)
-            for k, v in manual.items():
-                if v is not None:
-                    breakdown[k] = v
-
-            # recompute totals
-            duty  = float(breakdown.get("duty", 0) or 0)
-            scf   = float(breakdown.get("scf", 0) or 0)
-            envl  = float(breakdown.get("envl", 0) or 0)
-            caf   = float(breakdown.get("caf", 0) or 0)
-            gct   = float(breakdown.get("gct", 0) or 0)
-            stamp = float(breakdown.get("stamp", 0) or 0)
-
-            customs_total = duty + scf + envl + caf + gct + stamp
-            breakdown["customs_total"] = customs_total
-
-            freight  = float(breakdown.get("freight", 0) or 0)
-            handling = float(breakdown.get("handling", 0) or 0)
-            other    = float(breakdown.get("other_charges", 0) or 0)
-
-            freight_total = freight + handling + other
-            breakdown["freight_total"] = freight_total
-
-            grand_total = customs_total + freight_total
-            breakdown["grand_total"] = grand_total
-
-            # ✅ SAFETY: if calc came back 0 but inputs were valid, don't wipe
-            if (invoice_val > 0 and weight > 0 and grand_total <= 0):
-                skipped += 1
-                continue
-
-            # persist
-            if hasattr(p, "category"):
-                p.category = category
-
-            # Keep values in sync
-            p.value = invoice_val
-            if hasattr(p, "declared_value"):
-                p.declared_value = invoice_val
-
-            if hasattr(p, "amount_due"):
-                p.amount_due = grand_total
-            if hasattr(p, "grand_total"):
-                p.grand_total = grand_total
-            if hasattr(p, "customs_total"):
-                p.customs_total = customs_total
-
-            if hasattr(p, "duty"):  p.duty  = duty
-            if hasattr(p, "scf"):   p.scf   = scf
-            if hasattr(p, "envl"):  p.envl  = envl
-            if hasattr(p, "caf"):   p.caf   = caf
-            if hasattr(p, "gct"):   p.gct   = gct
-            if hasattr(p, "stamp"): p.stamp = stamp
-
-            if hasattr(p, "freight_fee"):
-                p.freight_fee = freight
-            if hasattr(p, "storage_fee"):
-                p.storage_fee = handling
-            if hasattr(p, "freight_total"):
-                p.freight_total = freight_total
-            if hasattr(p, "other_charges"):
-                p.other_charges = other
 
             updated += 1
 
@@ -2692,52 +2676,6 @@ def bulk_invoice_finalize_json():
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
-@logistics_bp.route('/shipmentlog/bulk-calc-outstanding', methods=['POST'])
-@admin_required
-def bulk_calc_outstanding():
-    payload = request.get_json(silent=True) or {}
-    rows = payload.get('rows') or []
-    if not rows:
-        return jsonify({"results": []})
-
-    # map id -> incoming values
-    wanted = {int(r["pkg_id"]): r for r in rows if "pkg_id" in r}
-    pkgs = (
-        db.session.query(Package.id, Package.value, Package.weight)
-        .filter(Package.id.in_(list(wanted.keys())))
-        .all()
-    )
-
-    results = []
-    for pid, db_value, db_weight in pkgs:
-        r = wanted[pid]
-        invoice = r.get("invoice")
-        weight  = r.get("weight")
-
-        # ✅ No Package.category in your model → always default
-        category = (r.get("category") or "Other")
-
-        # Invoice fallback
-        if invoice in (None, '', 0, '0', 0.0, '0.0'):
-            invoice = float(db_value or 0) if db_value not in (None, 0) else _effective_value(db.session.get(Package, pid))
-
-        else:
-            invoice = float(invoice)
-
-        if weight in (None, '', 0, '0', 0.0, '0.0'):
-            weight = float(db_weight or 0)
-
-        weight_eff = _normalize_weight(weight)
-        breakdown = calculate_charges(category, float(invoice), float(weight_eff))
-
-        results.append({
-            "pkg_id": pid,
-            "invoice": float(invoice),
-            "grand_total": float(breakdown.get("grand_total", 0)),
-            "breakdown": breakdown
-        })
-
-    return jsonify({"results": results})
 
 @logistics_bp.route("/packages/<int:pkg_id>/lock-pricing", methods=["POST"])
 @admin_required

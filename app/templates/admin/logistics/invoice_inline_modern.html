@@ -1,4 +1,35 @@
-{% set inv_uid = (invoice.id if invoice and invoice.id is not none else (invoice.number if invoice and invoice.number else 'inv')) | string | replace(' ', '_') %}
+{# ================= SAFE TOP SECTION ================= #}
+
+{# FIX 3: safe modal UID even if invoice.id is None (proforma) #}
+{% set inv_uid = (
+  (invoice.id if invoice and invoice.id is not none else
+   invoice.number if invoice and invoice.number else
+   'inv')
+) | string | replace(' ', '_') %}
+
+{# FIX 1: safe invoice display number (works for ORM invoice OR dict invoice OR proforma) #}
+{% set _inv_no =
+  (invoice.invoice_number if invoice.invoice_number is defined else
+   invoice.number if invoice.number is defined else
+   invoice.get('invoice_number') if invoice is mapping else
+   invoice.get('number') if invoice is mapping else
+   None)
+%}
+
+{% set _inv_id =
+  (invoice.id if invoice.id is defined else
+   invoice.get('id') if invoice is mapping else
+   None)
+%}
+
+{% if _inv_no %}
+  {% set inv_no = _inv_no %}
+{% elif _inv_id is not none %}
+  {% set inv_no = 'INV' ~ '%05d'|format(_inv_id|int) %}
+{% else %}
+  {% set inv_no = 'PROFORMA' %}
+{% endif %}
+
 
 <div class="invoice-wrapper mx-auto my-4">
   <!-- =================== DESKTOP / TABLET LAYOUT =================== -->
@@ -8,7 +39,7 @@
       <!-- Header with Action Icons -->
       <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
-          <h5 class="fw-bold mb-0">{{ invoice.number }}</h5>
+          <h5 class="fw-bold mb-0">{{ inv_no }}</h5>
           <small class="text-muted">
             Invoice Date:
             {% if invoice.date is string %}
@@ -60,10 +91,14 @@
           <button class="btn btn-outline-danger btn-sm" title="Delete Invoice">
             <i class="fas fa-trash"></i>
           </button>
-          <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#receiptModal-{{ inv_uid }}" title="View Receipt / Invoice">
+          <button class="btn btn-outline-primary btn-sm"
+                  data-bs-toggle="modal"
+                  data-bs-target="#receiptModal-{{ inv_uid }}"
+                  title="View Receipt / Invoice">
             <i class="fas fa-file-invoice"></i>
           </button>
         </div>
+
         <!-- Right: Balance -->
         <div>
           <span class="fw-bold text-danger">
@@ -97,7 +132,7 @@
                 {{ p.house_awb }}
               </td>
               <td>{{ p.description }}</td>
-              <td>{{ p.tracking_number }}</td>
+              <td>{{ p.tracking_number or '-' }}</td>
               <td>{{ p.weight }}</td>
               <td>${{ '%.2f'|format(p.value or 0) }}</td>
               <td class="fw-bold text-danger">JMD {{ '%.2f'|format(p.amount_due or 0) }}</td>
@@ -124,7 +159,7 @@
                title="View Breakdown"></i>
             AWB: {{ p.house_awb }}
           </small><br>
-          <small class="text-muted">Tracking #: {{ p.tracking_number }}</small>
+          <small class="text-muted">Tracking #: {{ p.tracking_number or '-' }}</small>
 
           <div class="d-flex justify-content-between mt-2">
             <span><strong>LBS:</strong> {{ p.weight }}</span>
@@ -196,14 +231,14 @@
                 <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="height:50px;" class="me-3">
                 <div>
                   <div class="fw-bold">Foreign A Foot Logistics Limited</div>
-                  Sam Stewart Avenue<br>
-                  Spanish Town, St. Catherine<br>
+                  Unit 7, Lot C22, Cedar Manor<br>
+                  Gregory Park, St. Catherine<br>
                   1-876-210-4291<br>
                   <a href="mailto:foreignafootlogistics@gmail.com">foreignafootlogistics@gmail.com</a>
                 </div>
                 <div class="ms-auto text-end">
                   <div class="fw-bold text-uppercase">PACKAGE PROFORMA INVOICE</div>
-                  <div class="fs-5">{{ invoice.number }}</div>
+                  <div class="fs-5">{{ inv_no }}</div>
                   <div>Branch: {{ invoice.branch or 'Main Branch' }}</div>
                   <div>Staff: {{ invoice.staff or 'FAFL ADMIN' }}</div>
                 </div>
@@ -227,21 +262,21 @@
                     <td>{{ pkg.house_awb }}</td>
                     <td>
                       Weight: {{ pkg.weight }} Lbs<br>
-                      USD Value: ${{ pkg.value }}<br>
+                      USD Value: ${{ '%.2f'|format(pkg.value or 0) }}<br>
                       {{ pkg.description }}
                     </td>
                     <td>
-                      Freight: ${{ pkg.freight or 0 }}<br>
-                      Storage: ${{ pkg.storage or 0 }}
+                      Freight: ${{ '%.2f'|format(pkg.freight or 0) }}<br>
+                      Storage: ${{ '%.2f'|format(pkg.storage or 0) }}
                     </td>
                     <td>
-                      Duty: ${{ pkg.duty or 0 }}<br>
-                      SCF: ${{ pkg.scf or 0 }}<br>
-                      ENVL: ${{ pkg.envl or 0 }}<br>
-                      CAF: ${{ pkg.caf or 0 }}<br>
-                      GCT: ${{ pkg.gct or 0 }}
+                      Duty: ${{ '%.2f'|format(pkg.duty or 0) }}<br>
+                      SCF: ${{ '%.2f'|format(pkg.scf or 0) }}<br>
+                      ENVL: ${{ '%.2f'|format(pkg.envl or 0) }}<br>
+                      CAF: ${{ '%.2f'|format(pkg.caf or 0) }}<br>
+                      GCT: ${{ '%.2f'|format(pkg.gct or 0) }}
                     </td>
-                    <td>${{ pkg.discount_due or 0 }}</td>
+                    <td>${{ '%.2f'|format(pkg.discount_due or 0) }}</td>
                   </tr>
                   {% endfor %}
                 </tbody>
@@ -249,16 +284,16 @@
 
               <div class="d-flex justify-content-end fw-bold mt-3">
                 <div>
-                  Sub-Total: JMD {{ invoice.subtotal }}<br>
-                  Total: JMD {{ invoice.total_due }}
+                  Sub-Total: JMD {{ '%.2f'|format(invoice.subtotal or 0) }}<br>
+                  Total: JMD {{ '%.2f'|format(invoice.total_due or 0) }}
                 </div>
               </div>
 
-              <!-- Footer actions -->
               <div class="d-flex justify-content-end mt-3 gap-2">
                 <button class="btn btn-sm btn-outline-primary">📧 Email Proforma</button>
                 <button class="btn btn-sm btn-outline-secondary">🖨 Print Proforma</button>
               </div>
+
             </div>
           </div>
         </div>
@@ -327,6 +362,7 @@
                 <tr><td>Weight</td><td>{{ p.weight }} lbs</td></tr>
                 <tr><td>Value (USD)</td><td>${{ '%.2f'|format(p.value or 0) }}</td></tr>
               </table>
+
               <h6 class="fw-bold mt-3">Breakdown</h6>
               <ul class="list-unstyled small">
                 <li>Freight: JMD {{ '%.2f'|format(p.freight_fee or 0) }}</li>
@@ -347,15 +383,18 @@
     </div>
   </div>
   {% endfor %}
+
 </div>
+
 
 <style>
 .awb-icon { transition: color 0.2s ease-in-out; }
 .awb-icon:hover { color: #6f42c1 !important; }
+
 .invoice-wrapper {
-  max-width: 850px;  /* controls how wide the invoice can get */
+  max-width: 850px;
   background: #fff;
-  border-radius: 12px; /* rounder corners = squarer look */
+  border-radius: 12px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.08);
   padding: 20px;
 }
@@ -363,4 +402,3 @@
   .invoice-wrapper { max-width: 95%; padding: 15px; }
 }
 </style>
-

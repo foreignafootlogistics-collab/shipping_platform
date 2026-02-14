@@ -1362,28 +1362,21 @@ def invoice_create(package_id):
 @admin_bp.route('/invoices/user/<int:user_id>', methods=['GET'], endpoint='view_customer_invoice')
 @admin_required
 def view_customer_invoice(user_id):
-    # 1) Fetch the user via SQLAlchemy
     user = db.session.get(User, user_id)
     if not user:
         flash("User not found.", "danger")
         return redirect(url_for('admin.dashboard'))
 
-    # 2) Fetch this user's packages that are NOT yet attached to an invoice
-    #    (pro-forma style view)
     pkgs = (
         Package.query
         .filter(
             Package.user_id == user.id,
             Package.invoice_id.is_(None)
         )
-        .order_by(
-            asc(getattr(Package, "date_received", Package.created_at))
-        )
+        .order_by(asc(getattr(Package, "date_received", Package.created_at)))
         .all()
     )
 
-    # If you want to show an empty invoice when there are no packages,
-    # you can keep going; or you could redirect/flash instead.
     items = []
     totals = dict(
         duty=0, scf=0, envl=0, caf=0, gct=0,
@@ -1393,43 +1386,60 @@ def view_customer_invoice(user_id):
 
     for p in pkgs:
         desc = p.description or "Miscellaneous"
-        wt   = float(p.weight or 0)
-        val  = float(p.value or 0)
+        wt   = float(getattr(p, "weight", 0) or 0)
+        val  = float(getattr(p, "value", 0) or 0)
 
-        # Use the charges already stored on the package (no recalculation)
+        # ✅ FIX: define tracking safely
+        tracking = (
+            getattr(p, "tracking_number", None)
+            or getattr(p, "tracking", None)
+            or getattr(p, "tracking_no", None)
+            or ""
+        )
+
+        # charges already stored
         duty          = float(getattr(p, "duty", 0) or 0)
         scf           = float(getattr(p, "scf", 0) or 0)
         envl          = float(getattr(p, "envl", 0) or 0)
         caf           = float(getattr(p, "caf", 0) or 0)
         gct           = float(getattr(p, "gct", 0) or 0)
         stamp         = float(getattr(p, "stamp", 0) or 0)
-        freight       = float(getattr(p, "freight", 0) or 0)
-        handling      = float(getattr(p, "handling", 0) or 0)
+
+        # freight/handling can live in different columns depending on your model
+        freight  = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
+        handling = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
+
         other_charges = float(getattr(p, "other_charges", 0) or 0)
-        grand_total   = float(
-            getattr(p, "grand_total", None)
-            or getattr(p, "amount_due", 0)
-            or 0
-        )
+        grand_total   = float(getattr(p, "amount_due", 0) or getattr(p, "grand_total", 0) or 0)
 
         items.append({
             "id": p.id,
             "house_awb": p.house_awb,
             "description": desc,
+            "tracking_number": tracking,     # ✅ REQUIRED by your template
             "weight": wt,
             "value_usd": val,
+
             "freight": freight,
-            "storage": getattr(p, "storage", 0) or 0,
+            "storage": handling,
+
+            # ✅ aliases your breakdown modal/template uses
+            "freight_fee": freight,
+            "storage_fee": handling,
+
             "duty": duty,
             "scf": scf,
             "envl": envl,
             "caf": caf,
             "gct": gct,
+            "stamp": stamp,
+
             "other_charges": other_charges,
-            "discount_due": getattr(p, "discount_due", 0) or 0,
+            "discount_due": float(getattr(p, "discount_due", 0) or 0),
+
+            "amount_due": grand_total,       # ✅ REQUIRED by your template
         })
 
-        # accumulate totals
         totals["duty"]          += duty
         totals["scf"]           += scf
         totals["envl"]          += envl
@@ -1442,32 +1452,53 @@ def view_customer_invoice(user_id):
         totals["grand_total"]   += grand_total
 
     invoice_dict = {
-        "id": None,
+        "id": int(user.id),
         "number": f"PROFORMA-{user.id}",
         "date": datetime.utcnow(),
         "customer_code": getattr(user, "registration_number", ""),
         "customer_name": getattr(user, "full_name", ""),
-        # If you later want subtotal vs fees, you can split grand_total here;
-        # for now we just treat everything as one total.
-        "subtotal": float(totals["grand_total"] or 0),
-        "total_due": float(totals["grand_total"] or 0),
+        "branch": "Main Branch",
+        "staff": getattr(current_user, "full_name", "FAFL ADMIN"),
 
+        # Optional but used in template
+        "credit_available": float(getattr(user, "wallet_balance", 0) or 0),
+
+        subtotal = float(totals["grand_total"] or 0.0)
+
+        # Proforma has no payments yet, but keep structure consistent
+        discount_total = float(totals.get("discount_total", 0.0) or 0.0)
+        payments_total = 0.0
+
+        total_due = max(subtotal - discount_total - payments_total, 0.0)
+
+        # ✅ IMPORTANT: pass FULL package keys the template expects
         "packages": [
             {
                 "id": i["id"],
                 "house_awb": i["house_awb"],
                 "description": i["description"],
+                "tracking_number": i["tracking_number"],   # ✅
                 "weight": i["weight"],
                 "value": i["value_usd"],
-                "freight": i["freight"],
-                "storage": i["storage"],
+
+                "freight": i.get("freight", 0),
+                "storage": i.get("storage", 0),
+
+                # ✅ for AWB modal (your template uses these names)
+                "freight_fee": i.get("freight_fee", i.get("freight", 0)),
+                "storage_fee": i.get("storage_fee", i.get("storage", 0)),
+
                 "duty": i["duty"],
                 "scf": i["scf"],
                 "envl": i["envl"],
                 "caf": i["caf"],
                 "gct": i["gct"],
+                "stamp": i["stamp"],
+
                 "other_charges": i["other_charges"],
                 "discount_due": i["discount_due"],
+
+                "amount_due": i.get("amount_due", 0),
             }
             for i in items
         ],
@@ -1479,6 +1510,7 @@ def view_customer_invoice(user_id):
         USD_TO_JMD=USD_TO_JMD,
         proforma_user_id=user.id,
     )
+
 
 @admin_bp.route('/invoice/mark_paid', methods=['POST'])
 @admin_required

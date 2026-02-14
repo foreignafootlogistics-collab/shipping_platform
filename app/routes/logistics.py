@@ -387,28 +387,6 @@ def _normalize_weight(w):
     # Always round UP to nearest whole lb
     return float(math.ceil(val))
 
-def _effective_value(p):
-    """
-    Your existing logic can live here.
-    Fallback to package value or declared_value.
-    """
-    try:
-        v = getattr(p, "value", None)
-        if v not in (None, "", 0, "0", 0.0, "0.0"):
-            return float(v)
-    except Exception:
-        pass
-
-    try:
-        dv = getattr(p, "declared_value", None)
-        if dv not in (None, "", 0, "0", 0.0, "0.0"):
-            return float(dv)
-    except Exception:
-        pass
-
-    return 50.0  # default
-
-
 def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float, weight: float):
     """
     One official calculator+writer used by bulk shipment action.
@@ -2565,9 +2543,10 @@ def bulk_invoice_finalize_json():
     Prevents empty invoices.
     """
     data = request.get_json(silent=True) or {}
+    shipment_id = data.get("shipment_id")  # optional
     selections = data.get('selections') or []
     if not selections:
-        return jsonify({"created": 0, "invoices": [], "skipped": {}})
+        return jsonify({"ok": False, "created": 0, "invoices": [], "skipped": {}, "error": "No selections provided."}), 400
 
     created = 0
     out = []
@@ -2687,20 +2666,29 @@ def bulk_invoice_finalize_json():
 
         db.session.commit()
 
+        redirect_url = None
+        try:
+            if shipment_id:
+                redirect_url = url_for("logistics.shipment_log", shipment_id=shipment_id)
+        except Exception:
+            redirect_url = None
+
         return jsonify({
+            "ok": True,
             "created": created,
             "invoices": out,
             "skipped": {
                 "detained": skipped_detained,
                 "already_invoiced": skipped_invoiced,
                 "empty_selection": skipped_empty
-            }
+            },
+            "redirect_url": redirect_url
         })
 
     except Exception as e:
         current_app.logger.exception("Error in bulk_invoice_finalize_json")
         db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @logistics_bp.route("/packages/<int:pkg_id>/lock-pricing", methods=["POST"])

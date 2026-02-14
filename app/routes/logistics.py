@@ -2115,9 +2115,196 @@ def bulk_shipment_action(shipment_id):
         flash(f"{len(package_ids)} package(s) marked Received at Local Port.", "success")
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-    else:
-        flash("⚠️ Unknown action selected.", "danger")
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+    # ✅ READY FOR PICKUP EMAILS
+    elif action == "notify_ready":
+
+        users = (
+            db.session.query(User)
+            .join(Package, Package.user_id == User.id)
+            .filter(Package.id.in_(package_ids))
+            .distinct(User.id)
+            .all()
+        )
+
+        from app.utils.email_utils import send_email, compose_ready_pickup_email
+
+        for idx, u in enumerate(users):
+            _email_throttle(idx)
+
+            pkgs = Package.query.filter(
+                Package.id.in_(package_ids),
+                Package.user_id == u.id
+            ).all()
+
+            rows = [{
+                "shipper": getattr(p, 'merchant', None) or getattr(p, 'shipper', None),
+                "house_awb": p.house_awb,
+                "tracking_number": p.tracking_number,
+                "weight": p.weight
+            } for p in pkgs]
+
+            subject, plain, html = compose_ready_pickup_email(u.full_name, rows)
+
+            send_email(u.email, subject, plain, html)
+
+            _log_in_app_message(
+                u.id,
+                subject or "Packages ready for pickup",
+                plain or "Your packages are ready for pickup. Please log in to view details."
+            )
+
+        db.session.commit()
+
+        flash(
+            f"{len(package_ids)} package(s) marked Ready and notifications sent.",
+            "success"
+        )
+
+        return redirect(url_for(
+            'logistics.logistics_dashboard',
+            shipment_id=shipment_id,
+            tab="shipmentLog"
+        ))
+
+
+    # ✅ SEND INVOICE EMAILS
+    elif action == "send_invoices":
+
+        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
+
+        if not pkgs:
+            flash("No matching packages found for the selected items.", "warning")
+            return redirect(url_for(
+                'logistics.logistics_dashboard',
+                shipment_id=shipment_id,
+                tab="shipmentLog"
+            ))
+
+        invoice_ids = sorted({p.invoice_id for p in pkgs if p.invoice_id})
+
+        if not invoice_ids:
+            flash("The selected packages are not attached to any invoices yet.", "warning")
+            return redirect(url_for(
+                'logistics.logistics_dashboard',
+                shipment_id=shipment_id,
+                tab="shipmentLog"
+            ))
+
+        rows = (
+            db.session.query(Invoice, User)
+            .join(User, Invoice.user_id == User.id)
+            .filter(Invoice.id.in_(invoice_ids))
+            .all()
+        )
+
+        if not rows:
+            flash("No invoices found for the selected packages.", "warning")
+            return redirect(url_for(
+                'logistics.logistics_dashboard',
+                shipment_id=shipment_id,
+                tab="shipmentLog"
+            ))
+
+        from app.utils import email_utils
+
+        sent = 0
+        failed = []
+
+        for idx, (inv, user) in enumerate(rows):
+            _email_throttle(idx)
+
+            if not user.email:
+                failed.append("(no email on file)")
+                continue
+
+            amount_due = float(
+                inv.amount_due or inv.grand_total or inv.amount or 0
+            )
+
+            invoice_dict = {
+                "number": inv.invoice_number or f"INV-{inv.id}",
+                "date": getattr(inv, "date_issued", None) or getattr(inv, "created_at", None),
+                "total_due": amount_due,
+                "packages": []
+            }
+
+            inv_pkgs = Package.query.filter(Package.invoice_id == inv.id).all()
+
+            for p in inv_pkgs:
+                invoice_dict["packages"].append({
+                    "house_awb": p.house_awb or "-",
+                    "merchant": getattr(p, "merchant", None) or getattr(p, "shipper", None) or "-",
+                    "tracking_number": p.tracking_number or "-",
+                    "weight": float(p.weight or 0),
+                })
+
+            ok = email_utils.send_invoice_email(
+                to_email=user.email,
+                full_name=user.full_name or user.email,
+                invoice=invoice_dict,
+                pdf_bytes=None,
+                recipient_user_id=user.id
+            )
+
+            if ok:
+                sent += 1
+
+                _log_in_app_message(
+                    user.id,
+                    f"Invoice Ready: {invoice_dict['number']}",
+                    (
+                        f"Hi {user.full_name or user.email},\n\n"
+                        f"Foreign a Foot Logistics Limited has billed you for {len(inv_pkgs)} package(s). "
+                        f"Your invoice {invoice_dict['number']} is ready.\n"
+                        f"Total Amount Due: JMD {amount_due:,.2f}\n\n"
+                        "— Foreign A Foot Logistics Limited"
+                    )
+                )
+            else:
+                failed.append(user.email)
+
+        db.session.commit()
+
+        if sent:
+            flash(f"Invoice emails sent for {sent} invoice(s).", "success")
+
+        if failed:
+            flash("Some invoice emails failed: " + ", ".join(failed), "danger")
+
+        return redirect(url_for(
+            'logistics.logistics_dashboard',
+            shipment_id=shipment_id,
+            tab="shipmentLog"
+        ))
+
+
+    # ✅ REMOVE FROM SHIPMENT
+    elif action == "remove_from_shipment":
+
+        db.session.execute(
+            shipment_packages.delete().where(
+                shipment_packages.c.shipment_id == shipment_id,
+                shipment_packages.c.package_id.in_(package_ids)
+            )
+        )
+
+        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
+
+        for p in pkgs:
+            p.status = "Overseas"
+
+        db.session.commit()
+
+        flash(
+            f"Removed {len(package_ids)} package(s) from shipment {shipment_id}.",
+            "success"
+        )
+
+        return redirect(url_for(
+            'logistics.logistics_dashboard',
+            shipment_id=shipment_id,
+            tab="shipmentLog"
+        ))
 
 
 

@@ -818,6 +818,7 @@ def logistics_dashboard():
         shipments_parsed.append({
             "id": s.id,
             "sl_id": s.sl_id,
+            "sl_name": s.sl_name,
             "created_at": s.created_at,
         })
 
@@ -1032,9 +1033,10 @@ def logistics_dashboard():
         selected_shipment={
             "id": selected_shipment.id,
             "sl_id": selected_shipment.sl_id,
+            "sl_name": selected_shipment.sl_name, 
             "created_at": selected_shipment.created_at,
-        } if selected_shipment else None,
-        selected_shipment_id=selected_shipment_id,
+        } if selected_shipment else None,                  
+        selected_shipment_id=selected_shipment_id,        
         shipment_packages=shipment_pkg_rows,
         all_packages=parsed_packages,
 
@@ -1808,8 +1810,7 @@ def _next_sl_id():
 def rename_shipment(shipment_id):
     s = ShipmentLog.query.get_or_404(shipment_id)
 
-    new_name = request.form.get("sl_name", "").strip()
-
+    new_name = (request.form.get("sl_name") or "").strip()
     if not new_name:
         flash("Shipment name cannot be empty.", "warning")
         return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
@@ -1817,7 +1818,10 @@ def rename_shipment(shipment_id):
     s.sl_name = new_name
     db.session.commit()
 
-    flash("Shipment renamed successfully.", "success")
+    # ✅ PROOF (shows what DB has right after commit)
+    db.session.refresh(s)
+    flash(f"✅ Saved: sl_name='{s.sl_name}' for {s.sl_id} (id={s.id})", "success")
+
     return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
 
 
@@ -3071,8 +3075,13 @@ def api_update_package(pkg_id):
         "caf": "caf",
         "stamp": "stamp",
         "customs_total": "customs_total",
+        "freight": "freight_fee",
         "freight_fee": "freight_fee",
+ 
+        "handling": "handling_fee",
         "handling_fee": "handling_fee",
+        "storage_fee": "handling_fee",
+
         "freight_total": "freight_total",
         "grand_total": "grand_total",
         "other_charges": "other_charges",

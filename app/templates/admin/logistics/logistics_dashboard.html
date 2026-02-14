@@ -153,18 +153,24 @@
           </div>
 
           <ul class="list-group shadow-sm">
-            {% if shipments %}
+            {% if shipments and shipments|length %}
               {% for s in shipments %}
+                {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
                 <li class="list-group-item d-flex justify-content-between align-items-start border-0
-                           {% if selected_shipment and s.id == (selected_shipment.id if selected_shipment else None) %}active bg-purple text-white{% endif %}">
-                  <a class="flex-grow-1 text-decoration-none
-                            {% if selected_shipment and s.id == (selected_shipment.id if selected_shipment else None) %}text-white{% else %}text-dark{% endif %}"
+                           {% if is_active %}active bg-purple text-white{% endif %}">
+        <a class="flex-grow-1 text-decoration-none
+                           {% if is_active %}text-white{% else %}text-dark{% endif %}"
                      href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog', shipment_id=s.id) }}">
                     <strong>{{ s.sl_name or s.sl_id }}</strong>
-                    <small class="text-muted">{{ s.sl_id }}</small><br>
-                    <small class="text-muted {% if selected_shipment and s.id == (selected_shipment.id if selected_shipment else None) %}text-light{% endif %}">
-                      {{ (s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
+                    {% if s.sl_name %}
+                    <small class="text-muted d-block {% if is_active %}text-light{% endif %}">
+                      {{ s.sl_id }}
                     </small>
+                  {% endif %}
+
+                  <small class="text-muted d-block {% if is_active %}text-light{% endif %}">
+                    {{ (s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
+                  </small>
                   </a>
                 </li>
               {% endfor %}
@@ -187,11 +193,19 @@
             <div class="d-flex align-items-center gap-2">
               <h5 class="fw-bold text-purple mb-0">
                 🚚 Shipment Packages -
-                <span id="shipmentNameDisplay">{{ selected_shipment.sl_name or selected_shipment.sl_id }}</span>
+                <span id="shipmentNameDisplay">
+                  {{ selected_shipment.sl_name or selected_shipment.sl_id }}
+                </span>
+
+                {% if selected_shipment.sl_name %}
+                  <span class="badge bg-light text-dark border ms-2">
+                    Ref: {{ selected_shipment.sl_id }}
+                  </span>
+                {% endif %}
               </h5>
 
               <button class="btn btn-sm btn-outline-purple" data-bs-toggle="modal" data-bs-target="#renameShipmentModal">
-                ✏️ Rename
+                ✏️
               </button>
             </div>
             {% endif %}
@@ -471,7 +485,7 @@
                   <option value="">Select…</option>
                   {% for s in shipments %}
                     {% if not selected_shipment or s.id != selected_shipment.id %}
-                      <option value="{{ s.id }}">{{ s.sl_id }}</option>
+                      <option value="{{ s.id }}">{{ s.sl_name or s.sl_id }}</option>
                     {% endif %}
                   {% endfor %}
                 </select>
@@ -1023,6 +1037,9 @@
 
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+{{ super() }}
 
 <script>
 /* ============================================================
@@ -1119,7 +1136,7 @@ function parseWeightFromRow(tr) {
 }
 
 /* ==========================
-   DATATABLES
+   DATATABLES (FIXED)
    ========================== */
 let dt = null;
 let dtInitialized = false;
@@ -1144,7 +1161,6 @@ function installShipmentFilterHook() {
     if (f.name && !userText.includes(f.name)) return false;
     if (f.reg && !userText.includes(f.reg)) return false;
     if (f.tracking && !pkgText.includes(f.tracking)) return false;
-
     if (f.wMin != null && w < f.wMin) return false;
     if (f.wMax != null && w > f.wMax) return false;
 
@@ -1160,60 +1176,80 @@ function bindShipmentLengthSelect() {
 
   sel.addEventListener('change', function () {
     const len = Number(this.value || 10);
-    if (dt) dt.page.len(len).draw();
+    if (dt) dt.page.len(len).draw(false);
   });
-
-  syncShipmentLengthSelect();
 }
 
 function syncShipmentLengthSelect() {
   const sel = document.getElementById('shipmentLengthSelect');
   if (!sel) return;
-  const current = (dt && typeof dt.page.len === 'function') ? dt.page.len() : 10;
+  const current = (dt && dt.page && typeof dt.page.len === 'function') ? dt.page.len() : 10;
   sel.value = String(current);
 }
 
 function initShipmentTable() {
   if (dtInitialized) return;
-  if (!hasDataTables()) return;
+  if (!hasDataTables()) {
+    console.warn("DataTables not available (missing JS/CSS or super()).");
+    return;
+  }
 
   const $table = $('#shipmentTable');
   if (!$table.length) return;
-  if ($.fn.DataTable.isDataTable('#shipmentTable')) return;
+
+  // If already initialized, just bind dropdown
+  if ($.fn.DataTable.isDataTable('#shipmentTable')) {
+    dt = $table.DataTable();
+    bindShipmentLengthSelect();
+    syncShipmentLengthSelect();
+    dtInitialized = true;
+    return;
+  }
 
   installShipmentFilterHook();
 
   dt = $table.DataTable({
     pageLength: 10,
-    lengthChange: true,
-    lengthMenu: [[10, 25, 50, 100, 500, 1000], [10, 25, 50, 100, 500, 1000]],
+    lengthChange: false,
+    pagingType: "simple_numbers",
     dom:
-      "<'shipment-topbar d-flex justify-content-between align-items-center mb-2'<'shipment-pager-top'p><'shipment-show-top d-flex align-items-center gap-2'<'small text-muted'>l>>" +
+      "<'shipment-topbar d-flex justify-content-between align-items-center mb-2'<'shipment-pager-top'p>>" +
       "rt" +
-      "<'d-none'<'col-12'i><'col-12'p>>",
+      "<'d-none'i>",
     order: [[2, 'asc']],
     columnDefs: [{ orderable: false, targets: [0, 1] }],
-    language: { emptyTable: 'No packages in this shipment.' }
+    language: {
+      emptyTable: "No packages in this shipment.",
+      paginate: { previous: "«", next: "»" }
+    }
   });
+
   window.dt = dt;
 
   bindShipmentLengthSelect();
+  syncShipmentLengthSelect();
 
+  // ✅ keep your checkbox logic working after paging
+  dt.on('draw', function () {
+    updateShipmentHeaderCheckbox();
+    syncShipmentLengthSelect();
+  });
+
+  // ✅ prevent header click sorting toggles
   $(document)
     .off('click.shipmentHeader', '#shipmentTable thead th:first-child, #selectAll')
     .on('click.shipmentHeader', '#shipmentTable thead th:first-child, #selectAll', function (e) {
       e.stopPropagation();
     });
 
-  dt.on('draw.shipment', function () {
-    updateShipmentHeaderCheckbox();
-    syncShipmentLengthSelect();
-  });
-
   dtInitialized = true;
   updateShipmentHeaderCheckbox();
-  syncShipmentLengthSelect();
 }
+
+/* ✅ Run it */
+document.addEventListener('DOMContentLoaded', function () {
+  initShipmentTable();
+});
 
 /* ==========================
    FILTERS bind
@@ -2653,7 +2689,64 @@ document.addEventListener('input', function(e){
 
   .shipment-bulkbar { row-gap: .5rem; }
 
-  .shipment-topbar .dataTables_paginate { margin: 0 !important; }
+  /* ============================================================
+     ✅ Pagination look: « 1 2 » like screenshot
+     ============================================================ */
+  .shipment-topbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+  }
+
+  /* keep pager left */
+  .shipment-topbar .shipment-pager-top{
+    display:flex;
+    align-items:center;
+  }
+
+  /* remove weird spacing DT adds */
+  .shipment-topbar .dataTables_paginate { margin: 0 !important; padding: 0 !important; }
+  .shipment-topbar .dataTables_paginate ul.pagination { margin: 0 !important; }
+
+  /* DataTables pagination buttons */
+  .shipment-topbar .dataTables_paginate .paginate_button{
+    padding: 6px 10px !important;
+    margin: 0 2px !important;
+    border: 1px solid #e6e6e6 !important;
+    border-radius: 6px !important;
+    background: #fff !important;
+    color: #4a148c !important;
+    font-weight: 600;
+    box-shadow: none !important;
+  }
+
+  .shipment-topbar .dataTables_paginate .paginate_button:hover{
+    background: rgba(74,20,140,0.08) !important;
+    border-color: rgba(74,20,140,0.25) !important;
+    color: #4a148c !important;
+  }
+
+  /* active page */
+  .shipment-topbar .dataTables_paginate .paginate_button.current{
+    background: #4a148c !important;
+    color: #fff !important;
+    border-color: #4a148c !important;
+  }
+
+  /* disabled arrows */
+  .shipment-topbar .dataTables_paginate .paginate_button.disabled{
+    opacity: .45;
+    cursor: not-allowed !important;
+  }
+
+  /* If DT adds focus outline */
+  .shipment-topbar .dataTables_paginate .paginate_button:focus{
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  /* (Optional) if you still use any DT length control elsewhere */
   .shipment-show-top .dataTables_length { margin: 0 !important; }
   .shipment-show-top .dataTables_length label{
     display:flex; align-items:center; gap:8px; margin:0; white-space:nowrap;

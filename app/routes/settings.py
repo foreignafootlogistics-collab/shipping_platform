@@ -100,10 +100,11 @@ def update_display():
 @admin_required(roles=["superadmin"])
 def manage_settings():
     settings = _get_settings_row(create_if_missing=True)
-    # You can return the ORM object directly; Jinja supports dot-access.
-    # If your template previously used dict-style (settings['company_name']),
-    # switch it to settings.company_name.
-    return render_template('admin/settings/manage_settings.html', settings=settings)
+    admin_rates = AdminRate.query.order_by(AdminRate.max_weight.asc()).all()
+    return render_template('admin/settings/manage_settings.html',
+                           settings=settings,
+                           admin_rates=admin_rates)
+
 
 
 # -----------------------------
@@ -176,8 +177,8 @@ def update_rates():
         settings.weight_round_method     = request.form.get('weight_round_method') or "round_up"
 
         # --- Customs / Duty tab values ---
-        settings.customs_enabled       = bool(request.form.get('customs_enabled'))  # checkbox
-        settings.customs_exchange_rate = f('customs_exchange_rate')
+        settings.customs_enabled       = ('customs_enabled' in request.form)  # checkbox
+        settings.customs_exchange_rate = f('customs_exchange_rate', 165.0)
         settings.diminis_point_usd     = f('diminis_point_usd')
         settings.default_duty_rate     = f('default_duty_rate')
         settings.insurance_rate        = f('insurance_rate')
@@ -194,7 +195,7 @@ def update_rates():
         for rate in AdminRate.query.all():
             field_name = f"rate_{rate.max_weight}"
             if field_name in request.form:
-                rate.rate = f(field_name, float(rate.rate_jmd or 0))
+                rate.rate = f(field_name, rate.rate or 0)
 
         db.session.commit()
         flash("Rates & Fees updated successfully.", "success")

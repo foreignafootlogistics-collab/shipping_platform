@@ -1904,8 +1904,14 @@ def invoice_breakdown(package_id):
 
     ch = calculate_charges(desc, value, weight)
 
+    # ✅ USE SAVED DB VALUES FIRST (manual overrides)
+    freight_db  = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
+    handling_db = float(getattr(p, "handling_fee", getattr(p, "handling", 0)) or 0)
+
+    freight_val  = freight_db  if freight_db  > 0 else float(ch.get("freight", 0) or 0)
+    handling_val = handling_db if handling_db > 0 else float(ch.get("handling", 0) or 0)
+
     payload = {
-        # core breakdown
         "duty":          float(ch.get("duty", 0) or 0),
         "gct":           float(ch.get("gct", 0) or 0),
         "scf":           float(ch.get("scf", 0) or 0),
@@ -1913,19 +1919,19 @@ def invoice_breakdown(package_id):
         "caf":           float(ch.get("caf", 0) or 0),
         "stamp":         float(ch.get("stamp", 0) or 0),
 
-        # totals
         "customs_total": float(ch.get("customs_total", 0) or 0),
-        "freight":       float(ch.get("freight", 0) or 0),
-        "handling":      float(ch.get("handling", 0) or 0),
+
+        # ✅ NOW THESE SHOW MANUAL VALUES
+        "freight":       freight_val,
+        "handling":      handling_val,
+
         "freight_total": float(ch.get("freight_total", 0) or 0),
+        "other_charges": float(getattr(p, "other_charges", 0) or ch.get("other_charges", 0) or 0),
 
-        # IMPORTANT: name must match your modal field
-        "other_charges": float(ch.get("other_charges", 0) or 0),
+        # ✅ IMPORTANT: if you want the total to match manual values too,
+        # you must use saved totals (if you store them), else it will still show calc grand_total
+        "grand_total":   float(getattr(p, "amount_due", 0) or getattr(p, "grand_total", 0) or ch.get("grand_total", 0) or 0),
 
-        # grand total (JMD)
-        "grand_total":   float(ch.get("grand_total", 0) or 0),
-
-        # also return these so the modal can prefill top fields
         "category": desc,
         "weight": weight,
         "value": value,

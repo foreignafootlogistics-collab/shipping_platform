@@ -1654,10 +1654,21 @@ function updateShipmentHeaderCheckbox() {
     const catRow = (catHidden?.value || '').trim();
     if (categorySelect) categorySelect.value = catBtn || catRow || 'Other';
 
-    // ✅ pull current values
-    const { weight, value } = getRowWeightValue(pkgId);
-    if (weightInput) weightInput.value = weight;
-    if (valueInput)  valueInput.value  = value;
+    // ✅ Use what the user typed in the modal.
+    // Only fall back to row values if the modal fields are blank.
+    let weight = (weightInput?.value || "").trim();
+    let value  = (valueInput?.value  || "").trim();
+
+    if (weight === "" || value === "") {
+      const row = getRowWeightValue(pkgId);
+
+      if (weight === "") weight = row.weight;
+      if (value  === "") value  = row.value;
+
+      if (weightInput) weightInput.value = weight;
+      if (valueInput)  valueInput.value  = value;
+    }
+
 
     // preload overrides
     const getHidden = (id) => Number(document.getElementById(id)?.value || 0).toFixed(2);
@@ -1688,10 +1699,10 @@ function updateShipmentHeaderCheckbox() {
       return;
     }
 
-    // ✅ refresh weight/value from row right before calculation
-    const { weight, value } = getRowWeightValue(pkgId);
-    if (weightInput) weightInput.value = weight;
-    if (valueInput)  valueInput.value  = value;
+    // ✅ USE WHAT'S IN THE MODAL (do NOT pull from table here)
+    const weight = Number(weightInput?.value || 0);
+    const value  = Number(valueInput?.value  || 0);
+
 
     try {
       const res = await fetch("{{ url_for('logistics.api_calculate_charges') }}", {
@@ -2516,6 +2527,22 @@ function handleConfirmSubmit(e) {
   return true;
 }
 
+document.addEventListener('input', function(e){
+  if (!e.target) return;
+  if (!e.target.id) return;
+
+  const m = e.target.id.match(/^(weight|value)_(\d+)$/);
+  if (!m) return;
+
+  const field = m[1];
+  const pkgId  = m[2];
+
+  const openPkg = (document.getElementById('chargesPkgId')?.value || '').trim();
+  if (openPkg !== pkgId) return;
+
+  if (field === 'weight') document.getElementById('chargesWeight').value = e.target.value;
+  if (field === 'value')  document.getElementById('chargesValue').value  = e.target.value;
+});
 
 /* ==========================
    PACKAGE ATTACHMENTS (ADMIN)

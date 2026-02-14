@@ -160,7 +160,8 @@ def calculate_charges(category, invoice_usd, weight, *, settings=None):
         settings = Settings.query.get(1)
 
     # ---------- SETTINGS ----------
-    customs_enabled = bool(getattr(settings, "customs_enabled", True)) if settings else True
+    customs_enabled = True if (settings and getattr(settings, "customs_enabled", None) is None) else bool(getattr(settings, "customs_enabled", True)) if settings else True
+
 
     usd_to_jmd = _to_float(getattr(settings, "customs_exchange_rate", None), USD_TO_JMD_FALLBACK) if settings else USD_TO_JMD_FALLBACK
     diminimis_usd = _to_float(getattr(settings, "diminis_point_usd", None), DIMINIMIS_USD_FALLBACK) if settings else DIMINIMIS_USD_FALLBACK

@@ -595,7 +595,7 @@ class Settings(db.Model):
     customs_enabled       = db.Column(db.Boolean, default=True)
 
     # “Customs Exchange Rate”
-    customs_exchange_rate = db.Column(db.Numeric(10, 4), default=155)
+    customs_exchange_rate = db.Column(db.Numeric(10, 4), default=165)
 
     # “GCT 25 (%)”
     gct_25_rate           = db.Column(db.Numeric(5, 2), default=25)

@@ -2956,11 +2956,61 @@ def delete_package(package_id):
 @admin_required
 def api_calculate_charges():
     data = request.get_json() or {}
-    invoice = float(data.get('invoice') or data.get('invoice_usd') or 50)
-    category = data.get('category')
-    weight = float(data.get('weight') or 0)
-    result = calculate_charges(category, invoice, weight)
-    return jsonify(result)
+
+    category = (data.get('category') or 'Other').strip()
+
+    # weight
+    try:
+        weight = float(data.get('weight') or 0)
+    except (TypeError, ValueError):
+        weight = 0.0
+
+    # usd value
+    raw_usd = data.get('invoice_usd')
+    if raw_usd is None or raw_usd == "":
+        raw_usd = data.get('value') or data.get('value_usd') or data.get('invoice') or 0
+
+    try:
+        invoice_usd = float(raw_usd or 0)
+    except (TypeError, ValueError):
+        invoice_usd = 0.0
+
+    r = calculate_charges(category, invoice_usd, weight) or {}
+
+    # ✅ normalize keys so frontend ALWAYS works
+    def pick(*keys, default=0.0):
+        for k in keys:
+            v = r.get(k, None)
+            if v is not None and v != "":
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    pass
+        return float(default)
+
+    payload = {
+        "duty":          pick("duty", "duty_amount"),
+        "gct":           pick("gct", "gct_amount"),
+        "scf":           pick("scf", "scf_amount"),
+        "envl":          pick("envl", "envl_amount"),
+        "caf":           pick("caf", "caf_amount"),
+        "stamp":         pick("stamp", "stamp_amount"),
+
+        "customs_total": pick("customs_total", "customs", "customs_amount", "customs_total_amount"),
+        "freight":       pick("freight", "freight_fee", "freight_amount"),
+        "handling":      pick("handling", "handling_fee", "storage_fee", "handling_amount"),
+        "other_charges": pick("other_charges", "other", "other_fee", "other_amount"),
+
+        "freight_total": pick("freight_total", "freight_and_fees_total", "service_total"),
+        "grand_total":   pick("grand_total", "total_amount", "total", "amount_due"),
+
+        # helpful echo
+        "category": category,
+        "weight": weight,
+        "invoice_usd": invoice_usd,
+    }
+
+    return jsonify(payload)
 
 @logistics_bp.route('/api/package/<int:pkg_id>', methods=['POST'])
 @admin_required

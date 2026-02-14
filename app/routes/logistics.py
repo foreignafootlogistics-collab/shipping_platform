@@ -1995,7 +1995,7 @@ def bulk_shipment_action(shipment_id):
     bulk_form = PackageBulkActionForm()
     invoice_finalize_form = InvoiceFinalizeForm()
 
-    package_ids = [int(x) for x in request.form.getlist('package_ids') if str(x).isdigit()]
+    package_ids = sorted({int(x) for x in request.form.getlist('package_ids') if str(x).isdigit()})
     action = (request.form.get('action') or '').strip()
 
     if not action or not package_ids:

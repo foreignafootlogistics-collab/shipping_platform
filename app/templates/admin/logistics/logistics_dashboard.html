@@ -1303,12 +1303,17 @@ document.addEventListener('DOMContentLoaded', function () {
 })();
 
 /* ============================================================
-   ✅ KEY FIX: Ensure DT pagination still posts weight/value/overrides
+ ✅ KEY FIX: Ensure DT pagination still posts weight/value/overrides
    - We copy the selected rows’ fields into hidden inputs before submit.
    ============================================================ */
 function rebuildHiddenPostPayloadForSelected(form, ids) {
   // remove old
   document.getElementById('selectedIdsContainer')?.remove();
+
+  // ✅ Re-enable checkboxes in case a previous submit disabled them
+  form.querySelectorAll('input.package-checkbox[name="package_ids"]').forEach(cb => {
+    cb.disabled = false;
+  });
 
   const holder = document.createElement('div');
   holder.id = 'selectedIdsContainer';
@@ -1326,10 +1331,9 @@ function rebuildHiddenPostPayloadForSelected(form, ids) {
 
   function getValById(prefix, id) {
     const el = document.getElementById(prefix + id);
-    if (!el) return null;     // ✅ return null instead of ""
+    if (!el) return null; // ✅ return null instead of ""
     return el.value;
   }
-
 
   ids.forEach(id => {
     appendHidden('package_ids', id);
@@ -1340,15 +1344,21 @@ function rebuildHiddenPostPayloadForSelected(form, ids) {
     appendHidden(`category_${id}`, getValById('category_', id));
 
     // manual overrides
-    appendHidden(`duty_${id}`,    getValById('duty_', id));
-    appendHidden(`gct_${id}`,     getValById('gct_', id));
-    appendHidden(`scf_${id}`,     getValById('scf_', id));
-    appendHidden(`envl_${id}`,    getValById('envl_', id));
-    appendHidden(`caf_${id}`,     getValById('caf_', id));
-    appendHidden(`stamp_${id}`,   getValById('stamp_', id));
-    appendHidden(`freight_${id}`, getValById('freight_', id));
-    appendHidden(`handling_${id}`,getValById('handling_', id));
-    appendHidden(`other_${id}`,   getValById('other_', id));
+    appendHidden(`duty_${id}`,     getValById('duty_', id));
+    appendHidden(`gct_${id}`,      getValById('gct_', id));
+    appendHidden(`scf_${id}`,      getValById('scf_', id));
+    appendHidden(`envl_${id}`,     getValById('envl_', id));
+    appendHidden(`caf_${id}`,      getValById('caf_', id));
+    appendHidden(`stamp_${id}`,    getValById('stamp_', id));
+    appendHidden(`freight_${id}`,  getValById('freight_', id));
+    appendHidden(`handling_${id}`, getValById('handling_', id));
+    appendHidden(`other_${id}`,    getValById('other_', id));
+  });
+
+  // ✅ CRITICAL FIX: prevent posting package_ids twice
+  // (checkboxes + hidden inputs were doubling your count)
+  form.querySelectorAll('input.package-checkbox[name="package_ids"]').forEach(cb => {
+    cb.disabled = true;
   });
 
   // ✅ Disable ALL visible row inputs so ONLY our hidden selected payload is posted
@@ -1369,6 +1379,7 @@ function rebuildHiddenPostPayloadForSelected(form, ids) {
 
   form.appendChild(holder);
 }
+
 
 /* ============================================================
    BULK ACTION handler (FINAL FIXED)

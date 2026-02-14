@@ -2247,19 +2247,7 @@ def bulk_shipment_action(shipment_id):
             )
 
             if ok:
-                sent += 1
-
-                _log_in_app_message(
-                    user.id,
-                    f"Invoice Ready: {invoice_dict['number']}",
-                    (
-                        f"Hi {user.full_name or user.email},\n\n"
-                        f"Foreign a Foot Logistics Limited has billed you for {len(inv_pkgs)} package(s). "
-                        f"Your invoice {invoice_dict['number']} is ready.\n"
-                        f"Total Amount Due: JMD {amount_due:,.2f}\n\n"
-                        "— Foreign A Foot Logistics Limited"
-                    )
-                )
+                sent += 1                
             else:
                 failed.append(user.email)
 
@@ -3324,7 +3312,7 @@ def set_invoice_status(invoice_id):
 
     if new_status == 'paid':
         inv.status = 'paid'
-        inv.date_paid = datetime.now(timezone.utc)
+        inv.date_paid = datetime.now(timezone.utc),
     else:
         inv.status = new_status
         inv.date_paid = None

@@ -95,9 +95,11 @@
   <!-- HEADER -->
   <div class="proforma-header">
     <div class="proforma-logo">
-      {% if logo_url %}
-        <img src="{{ logo_url }}" alt="Logo">
+      {% set logo = logo_url or config.get("LOGO_URL") %}
+      {% if logo %}
+        <img src="{{ logo }}" alt="Logo">
       {% endif %}
+
     </div>
 
     <div class="proforma-company">

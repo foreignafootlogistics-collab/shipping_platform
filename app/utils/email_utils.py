@@ -168,6 +168,8 @@ def log_email_to_messages(
             db.session.rollback()
         except Exception:
             pass
+
+
 def send_email_smtp(
     to_email: str,
     subject: str,
@@ -400,47 +402,16 @@ def send_email(
     attachments: list[tuple[bytes, str, str]] | None = None,
     recipient_user_id: int | None = None,
     reply_to: str | None = None,
-    force_new_connection: bool = False,  # kept for compat with your existing calls
+    force_new_connection: bool = False,  # kept for compat
 ) -> bool:
-    """
-    Router:
-      - If USE_SENDGRID_API=1 -> SendGrid Web API (bulk-friendly)
-      - else -> SMTP fallback
-    Also logs to in-app Messages when recipient_user_id is provided.
-    """
-
     use_api = (os.getenv("USE_SENDGRID_API", "0").strip().lower() in ("1", "true", "yes", "on"))
-
-    # If attachments exist, prefer SMTP (unless you later add SendGrid attachments)
     has_attachments = bool(attachments)
 
-    if use_api and not has_attachments:
-        # Wrap branding here too so SendGrid emails look identical
-        # Reuse SMTP wrapper via send_email_smtp's internal wrapper? We’ll do a small inline wrap:
-        def _wrap_with_branding_for_api(inner_html: str) -> str:
-            inner_html = (inner_html or "").strip()
-            if f'{_BRAND_WRAPPER_MARKER}="1"' in inner_html or _BRAND_WRAPPER_MARKER in inner_html:
-                return inner_html
-
-            # Same wrapper as SMTP
-            return send_email_smtp(
-                to_email="noop@example.com",
-                subject="noop",
-                plain_body="noop",
-                html_body=inner_html,
-            ) and inner_html  # (won't be used)
-        # ↑ ignore; we won't call smtp. Instead, do a direct wrap by calling your existing wrapper logic:
-        # So: simplest = call the same HTML wrapper used in SMTP by duplicating it:
-        # (To avoid complexity, we'll just use the SMTP sender for wrapping without sending)
-        # Better: just wrap inline using the same HTML as in send_email_smtp.
-        # For now: reuse the SMTP wrapper by duplicating it (keep consistent):
-        # We'll just call the SMTP wrapper function by re-building it here:
-
-        def _wrap(inner_html: str) -> str:
-            inner_html = (inner_html or "").strip()
-            if f'{_BRAND_WRAPPER_MARKER}="1"' in inner_html or _BRAND_WRAPPER_MARKER in inner_html:
-                return inner_html
-            return f"""<!doctype html>
+    def _wrap(inner_html: str) -> str:
+        inner_html = (inner_html or "").strip()
+        if f'{_BRAND_WRAPPER_MARKER}="1"' in inner_html or _BRAND_WRAPPER_MARKER in inner_html:
+            return inner_html
+        return f"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;">
   <div style="width:100%;padding:24px 0;">
@@ -489,6 +460,8 @@ def send_email(
   </div>
 </body></html>""".strip()
 
+    # ✅ SendGrid path (no attachments)
+    if use_api and not has_attachments:
         wrapped_html = _wrap(html_body or "")
 
         ok = send_email_sendgrid_api(
@@ -507,7 +480,7 @@ def send_email(
 
         return ok
 
-    # Fallback: SMTP (attachments supported here)
+    # ✅ SMTP fallback (attachments supported)
     return send_email_smtp(
         to_email=to_email,
         subject=subject,
@@ -520,11 +493,12 @@ def send_email(
 
 
 
+
 # ==========================================================
 #  CORE EMAIL FUNCTION (SMTP)
 #  ✅ Branding wrapper + utf-8 + attachments + reply-to
 # ==========================================================
-def send_email(
+def send_email_smtp_only(
     to_email: str,
     subject: str,
     plain_body: str,
@@ -942,11 +916,11 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 
         rows_html.append(f"""
 <tr>
-  <td style="padding:8px;border:1px solid #eee;">{house or '-'}</td>
-  <td style="padding:8px;border:1px solid #eee; text-align:center;">{rounded}</td>
-  <td style="padding:8px;border:1px solid #eee;">{tracking or '-'}</td>
-  <td style="padding:8px;border:1px solid #eee;">{desc or '-'}</td>
-  <td style="padding:8px;border:1px solid #eee; color:#d97706; font-weight:bold;">{status or 'Overseas'}</td>
+  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{house or '-'}</td>
+  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee; text-align:center;">{rounded}</td>
+  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{tracking or '-'}</td>
+  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{desc or '-'}</td>
+  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee; color:#d97706; font-weight:bold;">{status or 'Overseas'}</td>
 </tr>
 """)
 
@@ -990,20 +964,23 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 <p style="margin:0 0 10px 0;">Hello {full_name},</p>
 <p style="margin:0 0 14px 0;">Great news – we’ve received a new package overseas for you. Package details:</p>
 
-<table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; margin:16px 0;">
-  <thead>
-    <tr style="background:#f5f2fb; color:#4a148c;">
-      <th style="padding:8px; text-align:left; border:1px solid #eee;">House AWB/Control #</th>
-      <th style="padding:8px; text-align:center; border:1px solid #eee;">Rounded Weight (lbs)</th>
-      <th style="padding:8px; text-align:left; border:1px solid #eee;">Tracking #</th>
-      <th style="padding:8px; text-align:left; border:1px solid #eee;">Description</th>
-      <th style="padding:8px; text-align:left; border:1px solid #eee;">Status</th>
-    </tr>
-  </thead>
-  <tbody>
-    {''.join(rows_html)}
-  </tbody>
-</table>
+<div style="width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:16px 0;">
+  <table cellpadding="0" cellspacing="0"
+         style="border-collapse:collapse; width:100%; min-width:720px;">
+    <thead>
+      <tr style="background:#f5f2fb; color:#4a148c;">
+        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee;">House AWB/Control #</th>
+        <th style="padding:8px 10px; font-size:13px; text-align:center; border:1px solid #eee;">Rounded Weight (lbs)</th>
+        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee;">Tracking #</th>
+        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee;">Description</th>
+        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee;">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {''.join(rows_html)}
+    </tbody>
+  </table>
+</div>
 
 <p style="margin:16px 0 0 0; color:#111827;">
   Customs requires a proper invoice for all packages.<br>
@@ -1037,11 +1014,7 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 # ==========================================================
 #  INVOICE EMAIL (INLINE HTML DESIGN — LIGHT BACKGROUND)
 # ==========================================================
-# ==========================================================
-#  INVOICE EMAIL (INLINE HTML DESIGN — LIGHT BACKGROUND)
-# ==========================================================
-from datetime import datetime
-from math import ceil
+
 
 def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_user_id=None):
     """
@@ -1121,7 +1094,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
 
     rows_block = "\n".join(row_html) if row_html else """
       <tr>
-        <td colspan="4" style="padding:14px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:14px;">
+        <td colspan="4" style="padding:10px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:13px;">
           No packages found on this invoice.
         </td>
       </tr>
@@ -1169,20 +1142,23 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
                   <div style="height:14px;"></div>
 
                   <!-- TABLE -->
-                  <table width="100%" cellpadding="0" cellspacing="0"
-                         style="border-collapse:collapse; background:#ffffff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;">
+                  <div style="width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:12px 0;">
+                    <table width="100%" cellpadding="0" cellspacing="0"
+                           style="border-collapse:collapse; background:#ffffff;
+                           border:1px solid #e5e7eb; border-radius:10px;
+                           overflow:hidden; min-width:720px;">
                     <thead>
                       <tr style="background:#f5f2fb;">
-                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #e5e7eb;">
+                        <th align="left" style="padding:8px 10px; color:#4A148C; font-family:Arial, sans-serif; font-size:13px; font-weight:800; border-right:1px solid #e5e7eb;">
                           AWB/BL
                         </th>
-                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #e5e7eb;">
+                        <th align="left" style="padding:8px 10px; color:#4A148C; font-family:Arial, sans-serif; font-size:13px; font-weight:800; border-right:1px solid #e5e7eb;">
                           Merchant
                         </th>
-                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800; border-right:1px solid #e5e7eb;">
+                        <th align="left" style="padding:8px 10px; color:#4A148C; font-family:Arial, sans-serif; font-size:13px; font-weight:800; border-right:1px solid #e5e7eb;">
                           Tracking #
                         </th>
-                        <th align="left" style="padding:12px 14px; color:#4A148C; font-family:Arial, sans-serif; font-size:16px; font-weight:800;">
+                        <th align="left" style="padding:8px 10px; color:#4A148C; font-family:Arial, sans-serif; font-size:13px; font-weight:800;">
                           Weight
                         </th>
                       </tr>
@@ -1191,6 +1167,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
                       {rows_block}
                     </tbody>
                   </table>
+                  </div>
 
                   <div style="height:18px;"></div>
 
@@ -1484,11 +1461,11 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
 
         rows_html.append(f"""
 <tr>
-  <td style="padding:8px; border:1px solid #eee;">{shipper}</td>
-  <td style="padding:8px; border:1px solid #eee;">{awb}</td>
-  <td style="padding:8px; border:1px solid #eee;">{track}</td>
+  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{shipper}</td>
+  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{awb}</td>
+  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{track}</td>
   <td style="padding:8px; border:1px solid #eee; text-align:center;">{w_up}</td>
-  <td style="padding:8px; border:1px solid #eee; color:#16a34a; font-weight:700;">
+  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee; color:#16a34a; font-weight:700;">
     Ready for Pickup/Delivery
   </td>
 </tr>
@@ -1516,20 +1493,23 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
 
 <p style="margin:0 0 10px 0;">We’ve prepared the following item(s) for pickup or delivery:</p>
 
-<table style="width:100%; border-collapse:collapse; margin:12px 0;">
-  <thead>
-    <tr style="background:#f3ecff; color:#4a148c;">
-      <th style="padding:8px; border:1px solid #eee; text-align:left;">Shipper</th>
-      <th style="padding:8px; border:1px solid #eee; text-align:left;">Airway Bill</th>
-      <th style="padding:8px; border:1px solid #eee; text-align:left;">Tracking #</th>
-      <th style="padding:8px; border:1px solid #eee; text-align:center;">Weight (lbs)</th>
-      <th style="padding:8px; border:1px solid #eee; text-align:left;">Status</th>
-    </tr>
-  </thead>
-  <tbody>
-    {''.join(rows_html) if rows_html else '<tr><td colspan="5" style="padding:8px; border:1px solid #eee;">No package details</td></tr>'}
-  </tbody>
-</table>
+<div style="width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:12px 0;">
+  <table cellpadding="0" cellspacing="0"
+         style="width:100%; border-collapse:collapse; min-width:720px;">
+    <thead>
+      <tr style="background:#f3ecff; color:#4a148c;">
+        <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:left;">Shipper</th>
+        <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:left;">Airway Bill</th>
+        <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:left;">Tracking #</th>
+        <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:center;">Weight (lbs)</th>
+        <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:left;">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {''.join(rows_html) if rows_html else '<tr><td colspan="5" style="padding:8px 10px; font-size:13px; border:1px solid #eee;">No package details</td></tr>'}
+    </tbody>
+  </table>
+</div>
 
 <div style="margin-top:14px;">
   <p style="margin:0 0 6px 0;"><strong>Pickup Location:</strong> Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</p>

@@ -16,6 +16,18 @@
    None)
 %}
 
+{% set inv_date =
+  (invoice.date_issued if invoice.date_issued is defined and invoice.date_issued else
+   invoice.date_submitted if invoice.date_submitted is defined and invoice.date_submitted else
+   invoice.created_at if invoice.created_at is defined and invoice.created_at else
+   invoice.date if invoice.date is defined and invoice.date else
+   invoice.get('date_issued') if invoice is mapping and invoice.get('date_issued') else
+   invoice.get('date_submitted') if invoice is mapping and invoice.get('date_submitted') else
+   invoice.get('created_at') if invoice is mapping and invoice.get('created_at') else
+   invoice.get('date') if invoice is mapping else
+   None)
+%}
+
 {% set _inv_id =
   (invoice.id if invoice.id is defined else
    invoice.get('id') if invoice is mapping else
@@ -42,10 +54,10 @@
           <h5 class="fw-bold mb-0">{{ inv_no }}</h5>
           <small class="text-muted">
             Invoice Date:
-            {% if invoice.date is string %}
-              {{ invoice.date }}
+            {% if inv_date is string %}
+              {{ inv_date }}
             {% else %}
-              {{ invoice.date.strftime('%Y-%m-%d') if invoice.date else '' }}
+              {{ inv_date.strftime('%Y-%m-%d') if inv_date else '' }}
             {% endif %}
           </small>
         </div>
@@ -217,10 +229,10 @@
             <div class="card-header bg-light d-flex justify-content-between align-items-center">
               <h5 class="mb-0 fw-bold">Receipt/Invoice</h5>
               <small class="text-muted">
-                {% if invoice.date is string %}
-                  {{ invoice.date }}
+                {% if inv_date is string %}
+                  {{ inv_date }}
                 {% else %}
-                  {{ invoice.date.strftime('%b %d, %Y, %I:%M %p') if invoice.date else '' }}
+                  {{ inv_date.strftime('%b %d, %Y, %I:%M %p') if inv_date else '' }}
                 {% endif %}
               </small>
             </div>

@@ -8,7 +8,7 @@ import json
 import time
 import random
 from io import StringIO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
@@ -2750,7 +2750,7 @@ def bulk_invoice_finalize_json():
     # ✅ Toggle this:
     # If True: reuse an existing pending invoice for that user (append packages)
     # If False: always create a NEW invoice (still prevents empty/duplicates)
-    REUSE_PENDING_INVOICE = True
+    REUSE_PENDING_INVOICE = False
 
     try:
         for sel in selections:
@@ -2822,8 +2822,8 @@ def bulk_invoice_finalize_json():
                     user_id=uid,
                     invoice_number=inv_number,
                     status="pending",
-                    date_submitted=datetime.utcnow(),
-                    date_issued=datetime.utcnow(),
+                    date_submitted=datetime.now(timezone.utc),
+                    date_issued=datetime.now(timezone.utc),
                     grand_total=0,
                     amount_due=0,
                     amount=0,
@@ -3324,7 +3324,7 @@ def set_invoice_status(invoice_id):
 
     if new_status == 'paid':
         inv.status = 'paid'
-        inv.date_paid = datetime.utcnow()
+        inv.date_paid = datetime.now(timezone.utc)
     else:
         inv.status = new_status
         inv.date_paid = None

@@ -157,8 +157,8 @@
 
 {% set lock_docs = (status_l in ['ready for pick up', 'delivered']) %}
 {% set is_paid = (status_l in ['delivered']) %}
-{% set show_amount = (status_l in ['ready for pick up','delivered']) %}
 {% set amount_to_show = (_amount_due if _amount_due is not none else 0) %}
+{% set show_amount = (_invoice_id is not none) %}
 
 <td class="text-center align-middle">
   <button type="button"
@@ -233,21 +233,94 @@
 </td>
 
 <td class="text-center">
-  {% if show_amount %}
-    <div class="fw-semibold">{{ amount_to_show|jmd }}</div>
 
-    {% if is_paid %}
-      <div class="mt-1 d-flex justify-content-center">
-        <img
-          src="{{ url_for('static', filename='images/paid-stamp.png') }}"
-          alt="PAID"
-          style="height:36px; opacity:0.85; transform: rotate(-8deg);"
-        >
-      </div>
+  {% set status_l = (_status or '')|lower %}
+  {% set has_invoice = (_invoice_id is not none and _invoice_id != 0) %}
+
+  {# values from fetch_packages_normalized #}
+  {% set inv_total   = pkg.invoice_total if pkg.invoice_total is defined else pkg.get('invoice_total') %}
+  {% set inv_paid    = pkg.invoice_paid_sum if pkg.invoice_paid_sum is defined else pkg.get('invoice_paid_sum') %}
+  {% set inv_balance = pkg.invoice_balance if pkg.invoice_balance is defined else pkg.get('invoice_balance') %}
+  {% set inv_is_paid = pkg.invoice_paid if pkg.invoice_paid is defined else pkg.get('invoice_paid') %}
+
+  {# fallback if those are missing #}
+  {% set inv_total = inv_total if inv_total is not none else (_amount_due if _amount_due is not none else 0) %}
+  {% set inv_paid = inv_paid if inv_paid is not none else 0 %}
+  {% set inv_balance = inv_balance if inv_balance is not none else inv_total %}
+  {% set inv_is_paid = true if inv_is_paid else false %}
+
+  {# partial paid #}
+  {% set is_partial = (has_invoice and (inv_paid|float > 0) and (inv_balance|float > 0)) %}
+
+  {# ===================== NOT INVOICED: AUTO-HIDE AMOUNT ===================== #}
+  {% if not has_invoice %}
+    {% if status_l == 'overseas' %}
+      <span class="text-muted small">Awaiting Processing</span>
+    {% elif status_l == 'received at local port' %}
+      <span class="text-warning small fw-semibold">Processing Charges</span>
+    {% else %}
+      <span class="text-muted small">Not Invoiced</span>
     {% endif %}
+
+  {# ===================== INVOICED: SHOW BALANCE / PAID ===================== #}
   {% else %}
-    —
+
+    {# READY FOR PICK UP: show BALANCE (not package amount) #}
+    {% if status_l == 'ready for pick up' %}
+      <div class="fw-semibold text-danger">
+        {{ (inv_balance or 0)|jmd }}
+      </div>
+
+      {% if is_partial %}
+        <div class="small text-primary mt-1 fw-semibold">
+          Partial Paid • Paid {{ (inv_paid or 0)|jmd }}
+        </div>
+      {% endif %}
+
+      <div class="small text-muted mt-1">
+        Invoice Total {{ (inv_total or 0)|jmd }}
+      </div>
+
+    {# DELIVERED: show BALANCE (usually 0) + PAID stamp if paid #}
+    {% elif status_l == 'delivered' %}
+      <div class="fw-semibold">
+        {{ (inv_total or 0)|jmd }}
+      </div>
+
+      {% if inv_is_paid or (inv_balance|float <= 0.00001) %}
+        <div class="mt-1 d-flex justify-content-center">
+          <img
+            src="{{ url_for('static', filename='images/paid-stamp.png') }}"
+            alt="PAID"
+            style="height:36px; opacity:0.85; transform: rotate(-8deg);"
+          >
+        </div>
+      {% else %}
+        <div class="small text-danger mt-1 fw-semibold">
+          Balance {{ (inv_balance or 0)|jmd }}
+        </div>
+
+        {% if is_partial %}
+          <div class="small text-primary mt-1 fw-semibold">
+            Partial Paid • Paid {{ (inv_paid or 0)|jmd }}
+          </div>
+        {% endif %}
+      {% endif %}
+
+    {# any other status but invoiced #}
+    {% else %}
+      <div class="fw-semibold text-muted small">Invoiced</div>
+      <div class="small text-muted mt-1">Balance {{ (inv_balance or 0)|jmd }}</div>
+
+      {% if is_partial %}
+        <div class="small text-primary mt-1 fw-semibold">
+          Partial Paid • Paid {{ (inv_paid or 0)|jmd }}
+        </div>
+      {% endif %}
+    {% endif %}
+
   {% endif %}
+
 </td>
 
 {% endif %}

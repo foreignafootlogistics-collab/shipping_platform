@@ -1210,6 +1210,10 @@ def generate_invoice_route(user_id):
                 or 0
             )
 
+            p.amount_due = grand_total
+
+            p.invoice_id = inv.id
+
             # build a ch-like dict for view_lines (so your render below still works)
             ch = {
                 "duty": duty,
@@ -1513,7 +1517,14 @@ def view_customer_invoice(user_id):
     invoice_dict = {
         "id": int(user.id),
         "number": f"PROFORMA-{user.id}",
-        "date": datetime.utcnow(),
+
+        "date": now_utc,
+
+    # ✅ add these so the same template works for real invoices AND proforma
+        "date_issued": now_utc,
+        "date_submitted": now_utc,
+        "created_at": now_utc,
+
         "customer_code": getattr(user, "registration_number", ""),
         "customer_name": getattr(user, "full_name", ""),
         "branch": "Main Branch",

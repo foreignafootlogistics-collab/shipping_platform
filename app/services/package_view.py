@@ -207,6 +207,10 @@ def fetch_packages_normalized(
             # ✅ NEW
             "invoice_paid": bool(meta["is_paid"]) if meta else False,
             "invoice_balance": float(meta["balance"]) if meta else None,
+
+            "invoice_total": float(meta["total"]) if meta else None,
+            "invoice_paid_sum": float(meta["paid_sum"]) if meta else None,
+
         }
 
         d["effective_value"] = _effective_value_dict(d)

@@ -1138,21 +1138,23 @@ def mark_notification_read(nid):
 @admin_required
 def generate_invoice_route(user_id):
     user = User.query.get_or_404(user_id)
-    packages = (Package.query
-                .filter_by(user_id=user.id, invoice_id=None)
-                .order_by(Package.created_at.asc())
-                .all())
+
+    packages = (
+        Package.query
+        .filter_by(user_id=user.id, invoice_id=None)
+        .order_by(Package.created_at.asc())
+        .all()
+    )
+
     if not packages:
         flash("No packages available to invoice.", "warning")
         return redirect(url_for('admin.dashboard'))
 
     if request.method != 'POST':
-        return render_template("admin/invoice_confirm.html",
-                               user=user, packages=packages)
+        return render_template("admin/invoice_confirm.html", user=user, packages=packages)
 
     # create invoice shell
     invoice_number = f"INV-{user.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-
     now = datetime.utcnow()
 
     inv = Invoice(
@@ -1178,48 +1180,99 @@ def generate_invoice_route(user_id):
         wt   = float(p.weight or 0)
         val  = float(getattr(p, "value", 0) or 0)
 
-        # calculate full breakdown
-        ch = calculate_charges(desc, val, wt)
+        # ✅ NEW: if package already has saved/manual charges, DO NOT overwrite them
+        has_saved_charges = any([
+            float(getattr(p, "duty", 0) or 0) > 0,
+            float(getattr(p, "scf", 0) or 0) > 0,
+            float(getattr(p, "envl", 0) or 0) > 0,
+            float(getattr(p, "caf", 0) or 0) > 0,
+            float(getattr(p, "gct", 0) or 0) > 0,
+            float(getattr(p, "stamp", 0) or 0) > 0,
+            float(getattr(p, "other_charges", 0) or 0) > 0,
+            float(getattr(p, "amount_due", 0) or 0) > 0,
+        ])
 
-        duty          = float(ch.get("duty", 0) or 0)
-        scf           = float(ch.get("scf", 0) or 0)
-        envl          = float(ch.get("envl", 0) or 0)
-        caf           = float(ch.get("caf", 0) or 0)
-        gct           = float(ch.get("gct", 0) or 0)
-        stamp         = float(ch.get("stamp", 0) or 0)
-        freight       = float(ch.get("freight", 0) or 0)
-        handling      = float(ch.get("handling", 0) or 0)
-        other_charges = float(ch.get("other_charges", 0) or 0)
-        grand_total   = float(ch.get("grand_total", 0) or 0)
+        if has_saved_charges:
+            duty          = float(getattr(p, "duty", 0) or 0)
+            scf           = float(getattr(p, "scf", 0) or 0)
+            envl          = float(getattr(p, "envl", 0) or 0)
+            caf           = float(getattr(p, "caf", 0) or 0)
+            gct           = float(getattr(p, "gct", 0) or 0)
+            stamp         = float(getattr(p, "stamp", 0) or 0)
 
-        # --- persist breakdown onto the Package row ---
-        p.category      = desc
-        p.value         = val
-        p.weight        = wt
-        p.duty          = duty
-        p.scf           = scf
-        p.envl          = envl
-        p.caf           = caf
-        p.gct           = gct
-        p.stamp         = stamp
-        p.customs_total = float(ch.get("customs_total", 0) or 0)
+            freight       = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
+            handling      = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
 
-        # map freight / handling to whichever columns exist
-        if hasattr(p, "freight_fee"):
-            p.freight_fee = freight
+            other_charges = float(getattr(p, "other_charges", 0) or 0)
+            grand_total   = float(
+                getattr(p, "amount_due", 0)
+                or getattr(p, "grand_total", 0)
+                or 0
+            )
+
+            # build a ch-like dict for view_lines (so your render below still works)
+            ch = {
+                "duty": duty,
+                "scf": scf,
+                "envl": envl,
+                "caf": caf,
+                "gct": gct,
+                "stamp": stamp,
+                "freight": freight,
+                "handling": handling,
+                "other_charges": other_charges,
+                "grand_total": grand_total,
+                "customs_total": float(getattr(p, "customs_total", 0) or 0),
+                "freight_total": float(getattr(p, "freight_total", 0) or 0),
+                "discount_due": float(getattr(p, "discount_due", 0) or 0),
+            }
+
+            # ✅ still link package to invoice (do not change charges)
+            p.invoice_id = inv.id
+
         else:
-            p.freight = freight
+            # calculate full breakdown (only when nothing saved)
+            ch = calculate_charges(desc, val, wt)
 
-        if hasattr(p, "storage_fee"):
-            p.storage_fee = handling
-        else:
-            p.handling = handling
+            duty          = float(ch.get("duty", 0) or 0)
+            scf           = float(ch.get("scf", 0) or 0)
+            envl          = float(ch.get("envl", 0) or 0)
+            caf           = float(ch.get("caf", 0) or 0)
+            gct           = float(ch.get("gct", 0) or 0)
+            stamp         = float(ch.get("stamp", 0) or 0)
+            freight       = float(ch.get("freight", 0) or 0)
+            handling      = float(ch.get("handling", 0) or 0)
+            other_charges = float(ch.get("other_charges", 0) or 0)
+            grand_total   = float(ch.get("grand_total", 0) or 0)
 
-        p.other_charges = other_charges
-        p.amount_due    = grand_total      # what we already relied on
-        p.invoice_id    = inv.id
+            # --- persist breakdown onto the Package row ---
+            p.category      = desc
+            p.value         = val
+            p.weight        = wt
+            p.duty          = duty
+            p.scf           = scf
+            p.envl          = envl
+            p.caf           = caf
+            p.gct           = gct
+            p.stamp         = stamp
+            p.customs_total = float(ch.get("customs_total", 0) or 0)
 
-        # aggregate invoice totals
+            # map freight / handling to whichever columns exist
+            if hasattr(p, "freight_fee"):
+                p.freight_fee = freight
+            else:
+                p.freight = freight
+
+            if hasattr(p, "storage_fee"):
+                p.storage_fee = handling
+            else:
+                p.handling = handling
+
+            p.other_charges = other_charges
+            p.amount_due    = grand_total
+            p.invoice_id    = inv.id
+
+        # aggregate invoice totals (works for both branches)
         totals["duty"]          += duty
         totals["scf"]           += scf
         totals["envl"]          += envl
@@ -1232,7 +1285,7 @@ def generate_invoice_route(user_id):
         totals["grand_total"]   += grand_total
 
         view_lines.append({
-            "house_awb":  p.house_awb,
+            "house_awb":   p.house_awb,
             "description": desc,
             "weight":      wt,
             "value_usd":   val,
@@ -1255,14 +1308,14 @@ def generate_invoice_route(user_id):
     db.session.commit()
 
     invoice_dict = {
-        "id":           inv.id,
-        "user_id":      user.id,
-        "number":       inv.invoice_number,
-        "date":         inv.date_submitted,
+        "id":            inv.id,
+        "user_id":       user.id,
+        "number":        inv.invoice_number,
+        "date":          inv.date_submitted,
         "customer_code": getattr(user, "registration_number", ""),
         "customer_name": getattr(user, "full_name", ""),
-        "subtotal":     totals["grand_total"],
-        "total_due":    totals["grand_total"],
+        "subtotal":      totals["grand_total"],
+        "total_due":     totals["grand_total"],
         "packages": [{
             "house_awb":      x["house_awb"],
             "description":    x["description"],
@@ -1279,6 +1332,7 @@ def generate_invoice_route(user_id):
             "discount_due":   x.get("discount_due", 0),
         } for x in view_lines],
     }
+
     flash(f"Invoice {invoice_number} generated successfully!", "success")
     return render_template("admin/invoice_view.html", invoice=invoice_dict)
 
@@ -1708,15 +1762,18 @@ def view_invoice(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
     user = inv.user if hasattr(inv, "user") else None
 
-    # packages for the table (LIVE calc like proforma: ceil weight)
     packages = []
-    rows = Package.query.filter_by(invoice_id=invoice_id).order_by(Package.created_at.asc()).all()
+    rows = (
+        Package.query
+        .filter_by(invoice_id=invoice_id)
+        .order_by(Package.created_at.asc())
+        .all()
+    )
 
     for p in rows:
         desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
 
-        wt_raw = float(getattr(p, "weight", 0) or 0)
-        wt = int(math.ceil(wt_raw))  # ✅ round up like proforma
+        wt = float(getattr(p, "weight", 0) or 0)
 
         val = float(
             getattr(p, "value", None)
@@ -1725,19 +1782,33 @@ def view_invoice(invoice_id):
             or 0
         )
 
-        ch = calculate_charges(desc, val, wt)
-        due = float(ch.get("grand_total", 0) or 0)
+        # ✅ USE SAVED DB VALUES (manual overrides will show)
+        freight = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
+        storage = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
+
+        due = float(getattr(p, "amount_due", None) or getattr(p, "grand_total", 0) or 0)
 
         packages.append({
             "id": p.id,
             "house_awb": p.house_awb,
             "description": desc,
-            "merchant": getattr(p, "merchant", None),
-            "weight": wt,          # show rounded weight
+            "tracking_number": getattr(p, "tracking_number", "") or "",
+            "weight": wt,
             "value_usd": val,
-            "amount_due": due,     # ✅ matches proforma
-        })
 
+            # optional: include breakdown fields if your modal needs them later
+            "freight_fee": freight,
+            "storage_fee": storage,
+            "duty": float(getattr(p, "duty", 0) or 0),
+            "scf": float(getattr(p, "scf", 0) or 0),
+            "envl": float(getattr(p, "envl", 0) or 0),
+            "caf": float(getattr(p, "caf", 0) or 0),
+            "gct": float(getattr(p, "gct", 0) or 0),
+            "stamp": float(getattr(p, "stamp", 0) or 0),
+            "other_charges": float(getattr(p, "other_charges", 0) or 0),
+
+            "amount_due": due,
+        })
 
     preview_subtotal = sum(float(x.get("amount_due", 0) or 0) for x in packages)
 
@@ -1752,15 +1823,12 @@ def view_invoice(invoice_id):
         - float(payments_total or 0),
         0.0
     )
-        
-    
 
-    # Make a dict that still feels like the ORM object in Jinja
     invoice_dict = {
         "id": inv.id,
         "user_id": inv.user_id,
-        "user": user,                         # so invoice.user.* works
-        "invoice_number": inv.invoice_number, # so invoice.invoice_number works
+        "user": user,
+        "invoice_number": inv.invoice_number,
         "grand_total": float(inv.grand_total or subtotal or 0),
         "date_issued": (
             inv.date_issued
@@ -1778,10 +1846,9 @@ def view_invoice(invoice_id):
         "amount_due": float(getattr(inv, "amount_due", total_due) or 0.0),
         "packages": packages,
         "preview_subtotal": float(preview_subtotal),
-        "preview_discount_total": float(discount_total or 0),
-        "preview_payments_total": float(payments_total or 0),
+        "preview_discount_total": float(preview_discount_total),
+        "preview_payments_total": float(preview_payments_total),
         "preview_total_due": float(preview_balance_due),
-
     }
 
     # ---------- authorised signers ----------
@@ -1802,8 +1869,8 @@ def view_invoice(invoice_id):
             authorized_signers = [
                 (u.full_name or u.email)
                 for u in User.query.filter_by(is_admin=True)
-                                  .order_by(User.full_name.asc())
-                                  .all()
+                                   .order_by(User.full_name.asc())
+                                   .all()
             ]
         except Exception:
             authorized_signers = []

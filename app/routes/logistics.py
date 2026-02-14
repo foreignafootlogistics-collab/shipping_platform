@@ -2648,9 +2648,21 @@ def bulk_invoice_finalize_json():
                 # OPTIONAL: mark status
                 # p.status = "Invoiced"
 
+                # ✅ guard: if amount_due empty, fall back to grand_total or 0
+                if getattr(p, "amount_due", None) in (None, ""):
+                    p.amount_due = float(getattr(p, "grand_total", 0) or 0)
+
             # Recompute invoice totals based on ALL packages attached
             inv_pkgs = Package.query.filter(Package.invoice_id == inv.id).all()
-            inv_total = float(sum(float(x.amount_due or 0.0) for x in inv_pkgs))
+
+            def pkg_due(x):
+                return float(
+                    getattr(x, "amount_due", None)
+                    or getattr(x, "grand_total", None)
+                    or 0.0
+                )
+
+            inv_total = float(sum(pkg_due(x) for x in inv_pkgs))
 
             inv.grand_total = inv_total
             inv.amount_due  = inv_total
@@ -2673,6 +2685,25 @@ def bulk_invoice_finalize_json():
         except Exception:
             redirect_url = None
 
+        if created > 0:
+            parts = [
+                f"✅ {created} invoice{'s' if created != 1 else ''} generated"
+            ]
+
+            if skipped_detained > 0:
+                parts.append(f"{skipped_detained} detained skipped")
+
+            if skipped_invoiced > 0:
+                parts.append(f"{skipped_invoiced} already invoiced skipped")
+
+            if skipped_empty > 0:
+                parts.append(f"{skipped_empty} empty selection skipped")
+
+            message = ". ".join(parts) + "."
+        else:
+            message = "⚠️ No invoices were generated (nothing eligible)."
+
+
         return jsonify({
             "ok": True,
             "created": created,
@@ -2682,7 +2713,8 @@ def bulk_invoice_finalize_json():
                 "already_invoiced": skipped_invoiced,
                 "empty_selection": skipped_empty
             },
-            "redirect_url": redirect_url
+            "redirect_url": redirect_url,
+            "message": message
         })
 
     except Exception as e:
@@ -2690,6 +2722,187 @@ def bulk_invoice_finalize_json():
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
 
+@logistics_bp.route('/shipmentlog/invoices/purge-json', methods=['POST'])
+@admin_required
+def purge_shipment_invoices_json():
+    """
+    Purge (delete) ALL unpaid/unfinalized invoices associated with packages in a shipment.
+
+    Rules:
+      - Only affects invoices attached to packages currently in this shipment
+      - Skips invoices with status paid/partial
+      - Skips invoices that have ANY payments
+      - Detaches packages from invoice (invoice_id = None)
+      - Deletes invoice ONLY if it ends up with zero packages
+
+    Input JSON:
+      { "shipment_id": 123, "package_ids": [optional...] }
+
+    If package_ids is provided: only purge invoices related to those selected packages
+    (still limited to this shipment).
+    """
+    data = request.get_json(silent=True) or {}
+    shipment_id = int(data.get("shipment_id") or 0)
+    selected_pkg_ids = data.get("package_ids") or []
+
+    if not shipment_id:
+        return jsonify({"ok": False, "purged": 0, "skipped": {}, "message": "Missing shipment_id"}), 400
+
+    # normalize selected ids if provided
+    pkg_filter_ids = []
+    for x in selected_pkg_ids:
+        try:
+            n = int(x)
+            if n > 0:
+                pkg_filter_ids.append(n)
+        except Exception:
+            pass
+    pkg_filter_ids = list(set(pkg_filter_ids))
+
+    purged = 0
+    skipped_paid_or_partial = 0
+    skipped_has_payments = 0
+    skipped_not_found = 0
+    detached_packages = 0
+    deleted_invoices = 0
+
+    try:
+        # 1) get package ids that are currently in this shipment (via association table)
+        # IMPORTANT: ensure shipment_packages is imported in this file
+        # from app.models import shipment_packages
+        q = (
+            db.session.query(shipment_packages.c.package_id)
+            .filter(shipment_packages.c.shipment_id == shipment_id)
+        )
+
+        shipment_pkg_ids = [int(r[0]) for r in q.all()]
+
+        if not shipment_pkg_ids:
+            return jsonify({
+                "ok": True,
+                "purged": 0,
+                "skipped": {"paid_or_partial": 0, "has_payments": 0, "not_found": 0},
+                "detached_packages": 0,
+                "deleted_invoices": 0,
+                "message": "⚠️ No packages found in this shipment."
+            })
+
+        # 2) if user selected specific packages, limit to those (and still ensure they are in shipment)
+        if pkg_filter_ids:
+            shipment_pkg_ids = [pid for pid in shipment_pkg_ids if pid in set(pkg_filter_ids)]
+            if not shipment_pkg_ids:
+                return jsonify({
+                    "ok": True,
+                    "purged": 0,
+                    "skipped": {"paid_or_partial": 0, "has_payments": 0, "not_found": 0},
+                    "detached_packages": 0,
+                    "deleted_invoices": 0,
+                    "message": "⚠️ None of the selected packages belong to this shipment."
+                })
+
+        # 3) find invoice_ids attached to those packages
+        invoice_ids = (
+            db.session.query(Package.invoice_id)
+            .filter(Package.id.in_(shipment_pkg_ids))
+            .filter(Package.invoice_id.isnot(None))
+            .distinct()
+            .all()
+        )
+        invoice_ids = [int(r[0]) for r in invoice_ids if r and r[0]]
+
+        if not invoice_ids:
+            return jsonify({
+                "ok": True,
+                "purged": 0,
+                "skipped": {"paid_or_partial": 0, "has_payments": 0, "not_found": 0},
+                "detached_packages": 0,
+                "deleted_invoices": 0,
+                "message": "⚠️ No invoices found for packages in this shipment."
+            })
+
+        # 4) purge invoices safely
+        for inv_id in invoice_ids:
+            inv = Invoice.query.get(inv_id)
+            if not inv:
+                skipped_not_found += 1
+                continue
+
+            st = (getattr(inv, "status", "") or "").strip().lower()
+            if st in ("paid", "partial"):
+                skipped_paid_or_partial += 1
+                continue
+
+            # If ANY payments exist, skip (do NOT delete financial history)
+            has_payment = (
+                db.session.query(Payment.id)
+                .filter(Payment.invoice_id == inv.id)
+                .limit(1)
+                .first()
+            )
+            if has_payment:
+                skipped_has_payments += 1
+                continue
+
+            # Detach ONLY packages in this shipment from this invoice
+            affected_pkgs = (
+                Package.query
+                .filter(Package.invoice_id == inv.id)
+                .filter(Package.id.in_(shipment_pkg_ids))
+                .all()
+            )
+            if not affected_pkgs:
+                # invoice exists but none of its packages are in this shipment now
+                continue
+
+            for p in affected_pkgs:
+                p.invoice_id = None
+                detached_packages += 1
+
+            db.session.flush()
+
+            # If invoice has no packages left, delete it
+            remaining = (
+                db.session.query(Package.id)
+                .filter(Package.invoice_id == inv.id)
+                .limit(1)
+                .first()
+            )
+            if not remaining:
+                db.session.delete(inv)
+                deleted_invoices += 1
+
+            purged += 1
+
+        db.session.commit()
+
+        message = f"✅ Purged {purged} invoice(s). Detached {detached_packages} package(s). Deleted {deleted_invoices} invoice(s)."
+        if purged == 0:
+            message = "⚠️ No invoices were purged (all were paid/partial or had payments)."
+
+        redirect_url = None
+        try:
+            redirect_url = url_for("logistics.shipment_log", shipment_id=shipment_id)
+        except Exception:
+            redirect_url = None
+
+        return jsonify({
+            "ok": True,
+            "purged": purged,
+            "detached_packages": detached_packages,
+            "deleted_invoices": deleted_invoices,
+            "skipped": {
+                "paid_or_partial": skipped_paid_or_partial,
+                "has_payments": skipped_has_payments,
+                "not_found": skipped_not_found,
+            },
+            "redirect_url": redirect_url,
+            "message": message
+        })
+
+    except Exception as e:
+        current_app.logger.exception("Error in purge_shipment_invoices_json")
+        db.session.rollback()
+        return jsonify({"ok": False, "error": str(e), "message": "❌ Purge failed."}), 500
 
 @logistics_bp.route("/packages/<int:pkg_id>/lock-pricing", methods=["POST"])
 @admin_required

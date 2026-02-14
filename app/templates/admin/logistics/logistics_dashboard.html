@@ -282,6 +282,7 @@
                   <option value="notify_ready">📣 Email: Ready for Pick-Up</option>
                   <option value="send_invoices">📧 Email: Invoices (Totals)</option>
                   <option value="remove_from_shipment">🗑 Remove from this Shipment</option>
+                  <option value="purge_shipment_invoices">🧹 Purge Shipment Invoices (Unpaid Only)</option>
                 </select>
 
                 <button type="button"
@@ -1361,6 +1362,48 @@ async function handleShipmentApply(e) {
     return;
   }
 
+  if (action === 'purge_shipment_invoices') {
+    const shipmentId = getShipmentIdFromUrl();
+    if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
+
+    // optional: allow purge for selected packages only (if any were checked)
+    // if none checked, it purges all invoices tied to this shipment
+    const proceed = confirm(
+      ids.length
+        ? `Purge invoices for ${ids.length} selected package(s)?\n\nOnly UNPAID invoices with NO payments will be removed.`
+        : `Purge ALL unpaid invoices for this shipment?\n\nOnly UNPAID invoices with NO payments will be removed.`
+    );
+    if (!proceed) return;
+
+    try {
+      const res = await fetch("{{ url_for('logistics.purge_shipment_invoices_json') }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-CSRFToken": "{{ csrf_token() }}",
+          "X-Requested-With": "XMLHttpRequest"
+        },
+        body: JSON.stringify({ shipment_id: shipmentId, package_ids: ids })
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || data.ok === false) {
+        throw new Error((data && (data.message || data.error)) || `HTTP ${res.status}`);
+      }
+
+      alert(data.message || "✅ Purge complete.");
+      if (data.redirect_url) window.location.href = data.redirect_url;
+      else window.location.reload();
+
+    } catch (err) {
+      console.error(err);
+      alert("❌ Purge failed.\n\n" + (err?.message || err));
+    }
+
+    return;
+  }
+
   if (!ids.length) { alert('⚠️ Please select at least one package.'); return; }
 
   if (action === 'generate_invoice') {
@@ -1879,11 +1922,18 @@ window.finalizeInvoicesFromModal = async function (e) {
       bootstrap.Modal.getInstance(modalEl)?.hide();
     }
 
+    // ✅ show prompt first
+    if (data && data.message) {
+      alert(data.message);
+    }
+
+    // Redirect if provided
     if (data && data.redirect_url) {
       window.location.href = data.redirect_url;
     } else {
       window.location.reload();
     }
+
 
   } catch (err) {
     console.error(err);

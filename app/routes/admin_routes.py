@@ -1451,6 +1451,11 @@ def view_customer_invoice(user_id):
         totals["other_charges"] += other_charges
         totals["grand_total"]   += grand_total
 
+    subtotal = float(totals["grand_total"] or 0.0)
+    discount_total = float(totals.get("discount_total", 0.0) or 0.0)
+    payments_total = 0.0
+    total_due = max(subtotal - discount_total - payments_total, 0.0)
+
     invoice_dict = {
         "id": int(user.id),
         "number": f"PROFORMA-{user.id}",
@@ -1463,13 +1468,10 @@ def view_customer_invoice(user_id):
         # Optional but used in template
         "credit_available": float(getattr(user, "wallet_balance", 0) or 0),
 
-        subtotal = float(totals["grand_total"] or 0.0)
-
-        # Proforma has no payments yet, but keep structure consistent
-        discount_total = float(totals.get("discount_total", 0.0) or 0.0)
-        payments_total = 0.0
-
-        total_due = max(subtotal - discount_total - payments_total, 0.0)
+        "subtotal": subtotal,
+        "discount_total": discount_total,
+        "payments_total": payments_total,
+        "total_due": total_due,
 
         # ✅ IMPORTANT: pass FULL package keys the template expects
         "packages": [

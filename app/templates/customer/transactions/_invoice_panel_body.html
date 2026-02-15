@@ -1,3 +1,4 @@
+{# customer/transactions/_invoice_panel_body.html #}
 {# NO extends - panel partial #}
 
 <div class="mxk-card">
@@ -13,7 +14,10 @@
         </div>
       </div>
 
-      {% set is_paid = (invoice.total_due or 0) <= 0 %}
+      {# ✅ Determine paid/pending safely #}
+      {% set status_l = (invoice.status or '')|lower %}
+      {% set is_paid = (status_l in ['paid','complete','completed','success','successful']) or ((invoice.total_due or 0) <= 0) %}
+
       <span class="badge rounded-pill {% if is_paid %}bg-success{% else %}bg-warning text-dark{% endif %}">
         {% if is_paid %}PAID{% else %}PENDING{% endif %}
       </span>
@@ -27,8 +31,35 @@
       </div>
 
       <div class="text-end">
-        <div class="small text-muted">Amount Owed</div>
-        <div class="h5 fw-bold mb-0">{{ (invoice.total_due or 0)|jmd }}</div>
+        <div class="small text-muted">
+          {% if is_paid %}
+            Amount Paid
+          {% else %}
+            Amount Owed
+          {% endif %}
+        </div>
+
+        <div class="h5 fw-bold mb-0">
+          {% if is_paid %}
+            {{ (invoice.subtotal or 0)|jmd }}
+          {% else %}
+            {{ (invoice.total_due or 0)|jmd }}
+          {% endif %}
+        </div>
+
+        {# ✅ Pending helper text #}
+        {% if not is_paid %}
+          <div class="small text-warning fw-semibold mt-1">
+            Awaiting Payment
+          </div>
+        {% endif %}
+
+        {# ✅ OPTIONAL: show last method if you pass invoice.last_method #}
+        {% if is_paid and invoice.last_method %}
+          <div class="small text-muted mt-1">
+            Paid via {{ invoice.last_method }}
+          </div>
+        {% endif %}
       </div>
     </div>
   </div>

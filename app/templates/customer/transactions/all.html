@@ -90,7 +90,8 @@
           <div class="input-group">
             <span class="input-group-text"><i class="bi bi-search"></i></span>
             <input name="q" value="{{ q or '' }}" class="form-control"
-                   placeholder="Search by Reference / Invoice ID / Receipt...">
+                   placeholder="Search by Invoice ID / Reference...">
+
           </div>
         </div>
 
@@ -99,6 +100,7 @@
             <option value="" {% if not status %}selected{% endif %}>All Status</option>
             <option value="paid" {% if status=='paid' %}selected{% endif %}>Paid</option>
             <option value="pending" {% if status=='pending' %}selected{% endif %}>Pending</option>
+            <option value="partial" {% if status=='partial' %}selected{% endif %}>Partial</option>
           </select>
         </div>
 
@@ -142,19 +144,27 @@
             <th style="width:210px;">Date</th>
             <th style="width:150px;">Status</th>
             <th style="width:140px;">Method</th>
-            <th style="width:170px;" class="text-end">Amount (JMD)</th>
+            <th style="width:170px;" class="text-end">Amount Due</th>
+            <th style="width:170px;" class="text-end">Amount Paid</th>
+            <th style="width:170px;" class="text-end">Amount Owed</th>
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
           <tr class="transaction-row" data-url="{{ r.view_url }}" data-pdf="{{ r.pdf_url }}">
             <td>
-              {% if r.type == "payment" %}
-                <span class="badge rounded-pill bg-success">Payment</span>
-              {% else %}
+              {% set st = (r.status or '')|lower %}
+              {% set is_paid = (st == 'paid') %}
+              <span class="d-inline-flex align-items-center gap-2">
+                {% if is_paid %}
+                  <i class="bi bi-lock-fill text-success" title="Closed / Paid"></i>
+                {% else %}
+                  <i class="bi bi-unlock-fill text-warning" title="Open / Pending"></i>
+                {% endif %}
                 <span class="badge rounded-pill bg-purple">Invoice</span>
-              {% endif %}
+              </span>
             </td>
+
 
             <td>
               <div class="ref-main">{{ r.reference_main }}</div>
@@ -163,34 +173,51 @@
               {% endif %}
 
               <div class="mt-1 d-flex gap-3 small">
-                <a href="#" class="txn-open text-primary"><i class="bi bi-eye-fill"></i> View</a>
-                {% if r.pdf_url %}
-                  <a href="{{ r.pdf_url }}" class="text-danger" target="_blank" rel="noopener">
-                    <i class="bi bi-file-earmark-pdf-fill"></i> PDF
-                  </a>
-                {% endif %}
+                <a href="#" class="txn-open text-primary">
+                  <i class="bi bi-eye-fill"></i> View
+                </a>                
               </div>
             </td>
 
             <td class="text-nowrap">
-              {{ r.date.strftime("%Y-%m-%d %H:%M") if r.date else "" }}
+              {% if r.date %}
+                {{ r.date.strftime("%b %d, %Y") }} • {{ r.date.strftime("%I:%M %p").lstrip("0") }}
+              {% endif %}
             </td>
 
             <td class="text-nowrap">
-              {% if (r.status or '')|lower == 'paid' %}
+              {% set st = (r.status or '')|lower %}
+              {% if st == 'paid' %}
                 <span class="badge bg-success">PAID</span>
+              {% elif st == 'partial' %}
+                <span class="badge bg-info text-dark">PARTIAL</span>
               {% else %}
                 <span class="badge bg-warning text-dark">PENDING</span>
               {% endif %}
             </td>
 
-            <td class="text-nowrap">{{ r.method or "—" }}</td>
+            <td class="text-nowrap">
+              {% set st = (r.status or '')|lower %}
+              {% if st == 'pending' %}
+                <span class="text-warning fw-semibold">Awaiting Payment</span>
+              {% else %}
+                {{ r.method if r.method else "—" }}
+              {% endif %}
+            </td>
+            <td class="text-end fw-bold">J$ {{ "{:,.2f}".format(r.amount_due or 0) }}</td>
 
-            <td class="text-end fw-bold">{{ "{:,.2f}".format(r.amount or 0) }}</td>
+            <td class="text-end fw-bold">J$ {{ "{:,.2f}".format(r.amount_paid or 0) }}</td>
+
+            <td class="text-end fw-bold">
+              <span class="px-2 py-1 d-inline-block {% if (r.amount_owed or 0) > 0 %}text-danger txn-owed{% endif %}">
+                J$ {{ "{:,.2f}".format(r.amount_owed or 0) }}
+              </span>
+            </td>
+
           </tr>
           {% else %}
           <tr>
-            <td colspan="6" class="text-center py-4 text-muted">No transactions found</td>
+            <td colspan="8" class="text-center py-4 text-muted">No transactions found</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -204,35 +231,65 @@
       <div class="card shadow-sm mb-3 transaction-card" data-url="{{ r.view_url }}" data-pdf="{{ r.pdf_url }}">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center">
-            <span class="badge {% if r.type=='payment' %}bg-success{% else %}bg-purple{% endif %} rounded-pill">
-              {{ r.type|title }}
+            {% set is_paid = ((r.status or '')|lower == 'paid') %}
+            <span class="badge bg-purple rounded-pill d-inline-flex align-items-center gap-2">
+              {% if is_paid %}
+                <i class="bi bi-lock-fill"></i>
+              {% else %}
+                <i class="bi bi-unlock-fill"></i>
+              {% endif %}
+              Invoice
             </span>
-            {% if (r.status or '')|lower == 'paid' %}
+
+            {% set st = (r.status or '')|lower %}
+            {% if st == 'paid' %}
               <span class="badge bg-success">PAID</span>
+            {% elif st == 'partial' %}
+              <span class="badge bg-info text-dark">PARTIAL</span>
             {% else %}
               <span class="badge bg-warning text-dark">PENDING</span>
             {% endif %}
           </div>
 
-          <div class="mt-2 fw-bold">{{ r.reference_main }}</div>
+          <div class="mt-2 fw-bold ref-main">{{ r.reference_main }}</div>
           {% if r.reference_sub %}<div class="small text-muted">{{ r.reference_sub }}</div>{% endif %}
 
           <div class="small text-muted mt-2">
-            {{ r.date.strftime("%Y-%m-%d %H:%M") if r.date else "" }}
-          </div>
-
-          <div class="d-flex justify-content-between align-items-center mt-2">
-            <div class="fw-bold">J$ {{ "{:,.2f}".format(r.amount or 0) }}</div>
-            <div class="text-muted">{{ r.method or "—" }}</div>
-          </div>
-
-          <div class="mt-2 d-flex gap-3 small">
-            <a href="#" class="txn-open text-primary"><i class="bi bi-eye-fill"></i> View</a>
-            {% if r.pdf_url %}
-              <a href="{{ r.pdf_url }}" class="text-danger" target="_blank" rel="noopener">
-                <i class="bi bi-file-earmark-pdf-fill"></i> PDF
-              </a>
+            {% if r.date %}
+               {{ r.date.strftime("%b %d, %Y") }} • {{ r.date.strftime("%I:%M %p").lstrip("0") }}
             {% endif %}
+          </div>
+
+          <div class="mt-2 small">
+            <div class="d-flex justify-content-between">
+              <span class="text-muted">Amount Due</span>
+              <span class="fw-bold">J$ {{ "{:,.2f}".format(r.amount_due or 0) }}</span>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span class="text-muted">Amount Paid</span>
+              <span class="fw-bold">J$ {{ "{:,.2f}".format(r.amount_paid or 0) }}</span>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span class="text-muted">Amount Owed</span>
+              <span class="fw-bold {% if (r.amount_owed or 0) > 0 %}text-danger{% endif %}">
+                J$ {{ "{:,.2f}".format(r.amount_owed or 0) }}
+             </span>
+            </div>
+          </div>
+
+          <div class="small text-muted mt-2">
+            <span class="me-2">Method:</span>
+            {% set st = (r.status or '')|lower %}
+            {% if st == 'pending' %}
+              <span class="text-warning fw-semibold">Awaiting Payment</span>
+            {% else %}
+              {{ r.method or "—" }}
+            {% endif %}
+          </div>          
+          <div class="mt-2 d-flex gap-3 small">
+            <a href="#" class="txn-open text-primary">
+              <i class="bi bi-eye-fill"></i> View
+            </a>
           </div>
         </div>
       </div>
@@ -464,6 +521,19 @@
   @media (max-width: 576px){
     .txn-panel{ width:100%; right:-100%; }
   }
+
+  .txn-table td.text-nowrap { letter-spacing: .2px; }
+  .txn-owed{
+    background:#fff7ed;
+    border-radius:8px;
+ }
+ .txn-table thead th{
+   position: sticky;
+   top: 0;
+   z-index: 2;
+   background: var(--fafl-purple) !important;
+ }
+
 </style>
 {% endblock %}
 

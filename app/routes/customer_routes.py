@@ -2,7 +2,7 @@
 import os, re, io
 import math
 from math import ceil
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
@@ -569,7 +569,9 @@ from datetime import datetime, timedelta
 @customer_bp.route("/transactions/all", methods=["GET"])
 @customer_required
 def transactions_all():
+    # -------------------------
     # pagination
+    # -------------------------
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=10)
 
@@ -579,22 +581,17 @@ def transactions_all():
     if page < 1:
         page = 1
 
+    # -------------------------
     # filters
+    # -------------------------
     q = (request.args.get("q") or "").strip()
-    status = (request.args.get("status") or "").strip().lower()  # paid | pending | ""
+    status = (request.args.get("status") or "").strip().lower()  # paid | pending | partial | ""
     days = request.args.get("days", type=int)  # 7 | 30 | None
 
     invoices = (
         Invoice.query
         .filter(Invoice.user_id == current_user.id)
         .order_by(Invoice.date_submitted.desc().nullslast(), Invoice.id.desc())
-        .all()
-    )
-
-    payments = (
-        Payment.query
-        .filter(Payment.user_id == current_user.id)
-        .order_by(Payment.created_at.desc().nullslast(), Payment.id.desc())
         .all()
     )
 
@@ -607,66 +604,103 @@ def transactions_all():
         except Exception:
             return 0.0
 
-    def _is_paid(s: str) -> bool:
-        s = (s or "").strip().lower()
-        return s in ("paid", "complete", "completed", "success", "successful")
+    def normalize_method(m):
+        m = (m or "").strip().lower()
+        if m in ("cash",):
+            return "Cash"
+        if m in ("card", "credit", "debit"):
+            return "Card"
+        if m in ("bank", "bank transfer", "transfer"):
+            return "Bank Transfer"
+        if m in ("wallet",):
+            return "Wallet"
+        return m.title() if m else ""
 
     rows = []
 
-    # Bills / Invoices
+    # -------------------------
+    # build rows (invoice-only)
+    # -------------------------
     for inv in invoices:
-        amount = _num(getattr(inv, "amount_due", None))
-        if amount <= 0:
-            amount = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
+        inv_total = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
 
-        inv_status = (getattr(inv, "status", "") or "").strip() or "Pending"
+        payments_list = getattr(inv, "payments", None) or []
+        paid_sum = 0.0
+        latest_payment = None
+
+        if payments_list:
+            # latest payment
+            payments_sorted = sorted(
+                payments_list,
+                key=lambda x: (getattr(x, "created_at", None) or datetime.utcnow(), getattr(x, "id", 0)),
+                reverse=True
+            )
+            latest_payment = payments_sorted[0]
+
+            # total paid
+            paid_sum = sum(_num(getattr(p, "amount_jmd", 0)) for p in payments_list)
+
+        owed = max(inv_total - paid_sum, 0.0)
+
+        # status buckets
+        if owed <= 0 and inv_total > 0:
+            inv_status = "paid"
+        elif paid_sum > 0:
+            inv_status = "partial"
+        else:
+            inv_status = "pending"
+
         inv_date = _dt(inv.date_issued or inv.date_submitted or getattr(inv, "created_at", None))
+
+        # method label
+        if inv_status in ("paid", "partial"):
+            method_label = normalize_method(getattr(latest_payment, "method", "")) if latest_payment else ""
+            method_label = method_label or "—"
+        else:
+            method_label = "Awaiting Payment"
 
         rows.append({
             "type": "invoice",
             "date": inv_date,
             "reference_main": inv.invoice_number or f"INV-{inv.id}",
             "reference_sub": "",
-            "status": inv_status,
-            "method": "—",
-            "amount": amount,
+            "status": inv_status,        # paid | partial | pending
+            "method": method_label,      # Cash/Card/Bank Transfer/Wallet
+            "amount_due": inv_total,
+            "amount_paid": paid_sum,
+            "amount_owed": owed,
             "view_url": url_for("customer.bill_invoice_modal", invoice_id=inv.id),
             "pdf_url": url_for("customer.invoice_pdf", invoice_id=inv.id),
+            "is_paid": (inv_status == "paid"),
         })
 
-    # Payments
-    for p in payments:
-        pay_date = _dt(getattr(p, "created_at", None))
-        rows.append({
-            "type": "payment",
-            "date": pay_date,
-            "reference_main": f"RCPT-{p.id}",
-            "reference_sub": f"Invoice ID: {p.invoice_id}" if p.invoice_id else "",
-            "status": "Paid",
-            "method": (p.method or "Cash"),
-            "amount": _num(getattr(p, "amount_jmd", 0)),
-            "view_url": url_for("customer.receipt_modal", payment_id=p.id),
-            "pdf_url": url_for("customer.receipt_pdf_inline", payment_id=p.id),
-        })
-
-    # ---- DATE FILTER (applies to BOTH lists) ----
+    # -------------------------
+    # DATE FILTER
+    # -------------------------
     if days in (7, 30):
         cutoff = datetime.utcnow() - timedelta(days=days)
         rows = [r for r in rows if (r.get("date") or datetime.utcnow()) >= cutoff]
 
-    # ---- SEARCH FILTER ----
+    # -------------------------
+    # SEARCH FILTER
+    # -------------------------
     if q:
         ql = q.lower()
+
         def _hay(r):
             return f"{r.get('reference_main','')} {r.get('reference_sub','')}".lower()
+
         rows = [r for r in rows if ql in _hay(r)]
 
-    # ---- STATUS FILTER ----
-    if status == "paid":
-        rows = [r for r in rows if _is_paid(r.get("status"))]
-    elif status == "pending":
-        rows = [r for r in rows if not _is_paid(r.get("status"))]
+    # -------------------------
+    # STATUS FILTER
+    # -------------------------
+    if status in ("paid", "pending", "partial"):
+        rows = [r for r in rows if (r.get("status") == status)]
 
+    # -------------------------
+    # SORT + PAGINATE
+    # -------------------------
     rows.sort(key=lambda r: r["date"], reverse=True)
 
     total = len(rows)
@@ -678,11 +712,15 @@ def transactions_all():
     end = start + per_page
     page_rows = rows[start:end]
 
+    # -------------------------
     # summary metrics
-    total_shipments = total
-    total_owed = sum(r["amount"] for r in rows if not _is_paid(r.get("status")))
-    pending_count = sum(1 for r in rows if not _is_paid(r.get("status")))
-    billing_records = total
+    # -------------------------
+    invoice_count = len(invoices)
+    total_shipments = invoice_count
+    billing_records = invoice_count
+
+    total_owed = sum((r.get("amount_owed") or 0) for r in rows)
+    pending_count = sum(1 for r in rows if (r.get("amount_owed") or 0) > 0)
 
     return render_template(
         "customer/transactions/all.html",
@@ -692,16 +730,15 @@ def transactions_all():
         total=total,
         total_pages=total_pages,
         per_page_options=allowed,
-        # keep filter state
         q=q,
         status=status,
         days=days,
-        # cards
         total_shipments=total_shipments,
         total_owed=total_owed,
         pending_count=pending_count,
         billing_records=billing_records,
     )
+
 
 @customer_bp.route("/transactions/receipts/<int:payment_id>/modal")
 @customer_required

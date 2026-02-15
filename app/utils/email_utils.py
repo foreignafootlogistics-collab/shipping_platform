@@ -1217,7 +1217,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
             w = float(p.get("weight") or 0)
         except Exception:
             w = 0.0
-        plain_lines.append(f"{awb} | {merchant} | {tracking} | {int(round(w))}")
+        plain_lines.append(f"{awb} | {merchant} | {tracking} | {int(ceil(w))}")
     plain_lines.append("")
     plain_lines.append(f"Total Due: ${total_due_num:,.2f}")
     plain_lines.append("")

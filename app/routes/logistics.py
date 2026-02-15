@@ -7,6 +7,7 @@ import uuid
 import json
 import time
 import random
+import bcrypt
 from io import StringIO
 from datetime import datetime, timedelta, timezone
 
@@ -92,6 +93,26 @@ def _is_internal_user(u) -> bool:
 
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+
+def ensure_unassigned_user():
+    u = User.query.filter_by(registration_number="UNASSIGNED").first()
+    if u:
+        return u
+
+    hashed_pw = bcrypt.hashpw(b"UNASSIGNED-DO-NOT-LOGIN", bcrypt.gensalt())
+    u = User(
+        full_name="Unassigned Customer",
+        email="unassigned@faflcourier.local",
+        password=hashed_pw,
+        registration_number="UNASSIGNED",
+        role="customer",
+        wallet_balance=0,
+    )
+    db.session.add(u)
+    db.session.commit()
+    return u
 
 
 def normalize_tab(raw: str | None) -> str:
@@ -601,7 +622,7 @@ def logistics_dashboard():
     message = None
     errors = []
 
-    unassigned = User.query.filter(User.registration_number == 'UNASSIGNED').first()
+    unassigned = ensure_unassigned_user()
     unassigned_id = unassigned.id if unassigned else None
 
     # New preview context
@@ -1084,41 +1105,76 @@ def logistics_dashboard():
 # Bulk Assign to user (code/email) + optional reset Unassigned -> Overseas
 # --------------------------------------------------------------------------------------
 @logistics_bp.route('/packages/bulk-assign', methods=['POST'])
-@admin_required
+@admin_required(roles=['operations'])   # ✅ match your dashboard role
 def bulk_assign_packages():
     user_code  = (request.form.get('user_code') or '').strip()
-    reset_flag = request.form.get('reset_status') == '1'
+    reset_flag = (request.form.get('reset_status') == '1')
     pkg_ids    = [int(x) for x in request.form.getlist('package_ids') if str(x).isdigit()]
 
     if not pkg_ids:
         flash("No packages selected.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
+
     if not user_code:
         flash("Please enter a customer code or email.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
 
-    user = (User.query
-            .filter(or_(User.registration_number == user_code,
-                        func.lower(User.email) == func.lower(user_code)))
-            .first())
+    # ✅ Find user by reg number (case-insensitive) OR email (case-insensitive)
+    user = (
+        User.query
+        .filter(
+            or_(
+                func.upper(User.registration_number) == user_code.upper(),
+                func.lower(User.email) == func.lower(user_code),
+            )
+        )
+        .first()
+    )
+
     if not user:
         flash(f"No user found for “{user_code}”.", "danger")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
+
+    # ✅ Prevent assigning TO UNASSIGNED by mistake
+    if (user.registration_number or "").upper() == "UNASSIGNED":
+        flash("Enter a real customer code (cannot assign to UNASSIGNED).", "warning")
+        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
 
     pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
+    if not pkgs:
+        flash("No valid packages found.", "warning")
+        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
+
     updated = 0
+    skipped_invoiced = 0
+
     for p in pkgs:
+        # Optional safety: don't allow moving invoiced packages
+        if getattr(p, "invoice_id", None):
+            skipped_invoiced += 1
+            continue
+
         if reset_flag and (p.status or "").strip().lower() == "unassigned":
             p.status = "Overseas"
+
         p.user_id = user.id
         updated += 1
-    db.session.commit()
 
-    msg = f"Assigned {updated} package(s)"
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Database error assigning packages: {e}", "danger")
+        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
+
+    msg = f"Assigned {updated} package(s) to {user.registration_number}."
     if reset_flag:
         msg += " (reset Unassigned → Overseas where applicable)"
-    flash(msg + ".", "success")
-    return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+    if skipped_invoiced:
+        msg += f" Skipped {skipped_invoiced} invoiced package(s)."
+    flash(msg, "success")
+
+    return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
 
 @logistics_bp.route("/shipments/<int:shipment_id>/packages/delete", methods=["POST"])
 @admin_required

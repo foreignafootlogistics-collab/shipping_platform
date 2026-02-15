@@ -581,7 +581,7 @@
           action="{{ url_for('logistics.bulk_assign_packages') }}"
           class="modal-content"
           id="bulkAssignForm">
-      {{ csrf_token() }}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="modal-header">
         <h5 class="modal-title" id="bulkAssignLabel">Assign Selected Packages to Customer</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>

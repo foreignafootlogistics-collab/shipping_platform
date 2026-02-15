@@ -1448,17 +1448,19 @@ def manage_account(id: int):
     address   = (request.form.get('address') or '').strip()
     referral  = (request.form.get('referral_code') or '').strip()
 
-    # is_active in the form is your UI value; store into is_enabled in DB
-    is_enabled_val = bool(int(request.form.get('is_active', 1)))  # default enabled
+    # UI checkbox/radio -> store into DB field
+    # (default enabled if missing)
+    is_enabled_val = bool(int(request.form.get('is_active', 1)))
 
     # --------- basic validation ----------
     if not email:
         flash("Email is required.", "danger")
         return redirect(_back_to_view_user_url(id))
 
-    # --------- email uniqueness check (friendly) ----------
+    # --------- email uniqueness check ----------
     # If changing email, ensure no other user already has it
-    if email != (user.email or '').lower():
+    current_email = (user.email or '').strip().lower()
+    if email != current_email:
         existing = db.session.execute(
             select(User.id).where(User.email == email, User.id != user.id)
         ).scalar_one_or_none()
@@ -1467,23 +1469,21 @@ def manage_account(id: int):
             return redirect(_back_to_view_user_url(id))
 
     # --------- apply updates ----------
-    user.full_name = full_name or user.full_name
+    user.full_name = full_name
     user.email = email
     user.mobile = mobile
     user.address = address
-    user.referral_code = referral or None  # keep unique constraint cleaner
-    user.is_enabled = is_enabled_val       # ✅ real DB field
+    user.referral_code = referral or None     # helps with unique constraint
+    user.is_enabled = is_enabled_val          # ✅ real DB column
 
     try:
         _safe_commit()
         flash("Account updated successfully.", "success")
     except IntegrityError:
         db.session.rollback()
-        # Most likely referral_code unique collision
         flash("Could not save changes: referral code or email already exists.", "danger")
 
     return redirect(_back_to_view_user_url(id))
-
 
 
 @accounts_bp.route('/users/<int:id>/wallet', methods=['POST'])

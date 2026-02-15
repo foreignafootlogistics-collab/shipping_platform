@@ -57,6 +57,10 @@ class User(db.Model, UserMixin):
         # Flask-Login checks this to allow the user to be authenticated
         return bool(self.is_enabled)
 
+    @is_active.setter
+    def is_active(self, value):
+        self.is_enabled = bool(value)
+
 
     @property
     def initials_color(self):

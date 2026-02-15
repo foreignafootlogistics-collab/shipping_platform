@@ -21,7 +21,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from werkzeug.utils import secure_filename
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, and_, select
 from sqlalchemy.exc import IntegrityError
 from urllib.parse import urlparse, urljoin
 
@@ -172,7 +172,6 @@ def _safe_commit():
 # -------------------------
 # Manage Users
 # -------------------------
-from sqlalchemy import func, or_, and_
 
 @accounts_bp.route('/manage-users', methods=['GET', 'POST'])
 @admin_required
@@ -1431,12 +1430,10 @@ def delete_account(id: int):
         next=next_url
     )
 
-
-
 # -------------------------
 # Manage Account (simple editor)
 # -------------------------
-@accounts_bp.route('/manage_account/<int:id>', methods=['GET', 'POST'])
+@accounts_bp.route('/manage_account/<int:id>', methods=['POST'])
 @admin_required
 def manage_account(id: int):
     user = db.session.get(User, id)
@@ -1444,34 +1441,49 @@ def manage_account(id: int):
         flash("User not found.", "danger")
         return redirect(url_for('accounts_profiles.manage_users'))
 
-    if request.method == 'POST':
-        user.full_name = request.form.get('full_name')
-        user.email = request.form.get('email')
-        user.mobile = request.form.get('mobile')
-        user.address = request.form.get('address')
-        user.referral_code = request.form.get('referral_code')
-        user.authorized_person = request.form.get('authorized_person')
+    # --------- pull form values (trim) ----------
+    full_name = (request.form.get('full_name') or '').strip()
+    email     = (request.form.get('email') or '').strip().lower()
+    mobile    = (request.form.get('mobile') or '').strip()
+    address   = (request.form.get('address') or '').strip()
+    referral  = (request.form.get('referral_code') or '').strip()
 
-        val = bool(int(request.form.get('is_active', 0)))
+    # is_active in the form is your UI value; store into is_enabled in DB
+    is_enabled_val = bool(int(request.form.get('is_active', 1)))  # default enabled
 
-        # ✅ set a real DB field, not Flask-Login's is_active property
-        if hasattr(user, 'active'):
-            user.active = val
-        elif hasattr(user, 'is_enabled'):
-            user.is_enabled = val
-        elif hasattr(user, 'enabled'):
-            user.enabled = val
-        elif hasattr(user, 'status'):
-            user.status = "Active" if val else "Inactive"
-        else:
-            raise AttributeError("No writable active/status field found on User model.")
-
-        _safe_commit()
-
-        flash('Account updated successfully.', 'success')
+    # --------- basic validation ----------
+    if not email:
+        flash("Email is required.", "danger")
         return redirect(_back_to_view_user_url(id))
 
-    return render_template('admin/accounts_profiles/view_user.html', user=user)
+    # --------- email uniqueness check (friendly) ----------
+    # If changing email, ensure no other user already has it
+    if email != (user.email or '').lower():
+        existing = db.session.execute(
+            select(User.id).where(User.email == email, User.id != user.id)
+        ).scalar_one_or_none()
+        if existing:
+            flash("That email is already in use by another account.", "danger")
+            return redirect(_back_to_view_user_url(id))
+
+    # --------- apply updates ----------
+    user.full_name = full_name or user.full_name
+    user.email = email
+    user.mobile = mobile
+    user.address = address
+    user.referral_code = referral or None  # keep unique constraint cleaner
+    user.is_enabled = is_enabled_val       # ✅ real DB field
+
+    try:
+        _safe_commit()
+        flash("Account updated successfully.", "success")
+    except IntegrityError:
+        db.session.rollback()
+        # Most likely referral_code unique collision
+        flash("Could not save changes: referral code or email already exists.", "danger")
+
+    return redirect(_back_to_view_user_url(id))
+
 
 
 @accounts_bp.route('/users/<int:id>/wallet', methods=['POST'])

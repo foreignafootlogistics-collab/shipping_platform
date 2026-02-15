@@ -39,6 +39,8 @@ class User(db.Model, UserMixin):
     referrer_id = db.Column(db.Integer)
     is_admin = db.Column(db.Boolean, default=False)
     last_login = db.Column(db.DateTime, nullable=True)
+    is_enabled = db.Column(db.Boolean, default=True)
+
 
     # Relationships
     wallet = db.relationship('Wallet', back_populates='user', uselist=False)
@@ -49,6 +51,12 @@ class User(db.Model, UserMixin):
     scheduled_deliveries = db.relationship('ScheduledDelivery', back_populates='user', lazy='dynamic')
     authorized_pickups = db.relationship('AuthorizedPickup', back_populates='user', lazy='dynamic')
     notifications = db.relationship('Notification', back_populates='user', lazy='dynamic')
+
+    @property
+    def is_active(self):
+        # Flask-Login checks this to allow the user to be authenticated
+        return bool(self.is_enabled)
+
 
     @property
     def initials_color(self):

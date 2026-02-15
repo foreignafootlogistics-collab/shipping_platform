@@ -1432,6 +1432,7 @@ def delete_account(id: int):
     )
 
 
+
 # -------------------------
 # Manage Account (simple editor)
 # -------------------------
@@ -1449,8 +1450,22 @@ def manage_account(id: int):
         user.mobile = request.form.get('mobile')
         user.address = request.form.get('address')
         user.referral_code = request.form.get('referral_code')
-        user.authorized_person = request.form.get('authorized_person')  # your model doesn’t have this; safe to ignore in template
-        user.is_active = bool(int(request.form.get('is_active', 0)))
+        user.authorized_person = request.form.get('authorized_person')
+
+        val = bool(int(request.form.get('is_active', 0)))
+
+        # ✅ set a real DB field, not Flask-Login's is_active property
+        if hasattr(user, 'active'):
+            user.active = val
+        elif hasattr(user, 'is_enabled'):
+            user.is_enabled = val
+        elif hasattr(user, 'enabled'):
+            user.enabled = val
+        elif hasattr(user, 'status'):
+            user.status = "Active" if val else "Inactive"
+        else:
+            raise AttributeError("No writable active/status field found on User model.")
+
         _safe_commit()
 
         flash('Account updated successfully.', 'success')

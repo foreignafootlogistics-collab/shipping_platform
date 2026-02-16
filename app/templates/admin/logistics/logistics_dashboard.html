@@ -381,13 +381,11 @@
                       {% if atts and atts|length %}
                         <div class="mt-1 d-flex flex-wrap gap-2 pkg-attach-wrap">
                           {% for a in atts %}
-                            <a class="badge text-decoration-none"
-                               style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
+                            <a class="pkg-attach-icon"
                                target="_blank"
                                href="{{ url_for('logistics.admin_view_package_attachment', attachment_id=a.id) }}"
-                               title="{{ a.original_name }}">
-                              <i class="fa-solid fa-paperclip me-1"></i>
-                              {{ (a.original_name or 'file')[:18] }}{% if (a.original_name or '')|length > 18 %}…{% endif %}
+                               title="{{ a.original_name or 'Attachment' }}">
+                              <i class="bi bi-paperclip"></i>                              
                             </a>
 
                             <form method="POST"
@@ -2773,5 +2771,26 @@ document.addEventListener('input', function(e){
     display:flex; align-items:center; gap:8px; margin:0; white-space:nowrap;
   }
   .shipment-show-top .dataTables_length select { min-width: 90px; }
+
+  .pkg-attach-icon{
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(74,20,140,.35);
+    background: #f5f0fa;
+    color: #4a148c;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 12px;
+    line-height: 1;
+  }
+
+  .pkg-attach-icon:hover{
+    background: rgba(74,20,140,.10);
+    color: #4a148c;
+  }
+
 </style>
 {% endblock %}

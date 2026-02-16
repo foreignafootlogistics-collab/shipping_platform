@@ -188,7 +188,7 @@
                   <div class="d-flex flex-wrap gap-2">
                     {% for a in pkg.attachments %}
                       <div class="d-inline-flex align-items-center gap-1">
-                        {% set f = (a.file_name or '')|string %}
+                        {% set f = (a.file_url if a.file_url is defined else (a.file_name or ''))|string %}
 
                         {% if f.startswith("http://") or f.startswith("https://") %}
                           <a class="btn btn-sm btn-outline-secondary"
@@ -208,8 +208,7 @@
                           </a>
 
                           <button type="button"
-                                  class="btn btn-sm"
-                                  style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .40rem;"
+                                  class="btn btn-sm btn-outline-danger"
                                   title="Delete attachment"
                                   {% if lock_docs %}disabled{% endif %}
                                   onclick="deleteAttachment('{{ a.id }}', '{{ pkg.id }}')">

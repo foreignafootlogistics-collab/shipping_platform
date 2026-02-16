@@ -494,24 +494,28 @@ def package_upload_docs(pkg_id):
 def view_package_attachment(attachment_id):
     a = PackageAttachment.query.get_or_404(attachment_id)
 
-    # only owner can view
     if a.package.user_id != current_user.id:
         abort(403)
 
-    # ✅ Prefer Cloudinary URL (new)
     url = (getattr(a, "file_url", None) or getattr(a, "file_name", None) or "").strip()
+
+    # ✅ Cloudinary (new + old)
     if url.startswith(("http://", "https://")):
+        original = (getattr(a, "original_name", "") or "").lower()
+
+        # If it was a PDF but URL has no .pdf extension, add it
+        if original.endswith(".pdf") and not url.lower().endswith(".pdf"):
+            url = url + ".pdf"
+
         return redirect(url)
 
-    # ---------------------------------------
-    # Legacy disk fallback (old attachments)
-    # ---------------------------------------
+    # -------- legacy disk fallback --------
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
     if not upload_folder:
         current_app.logger.error("INVOICE_UPLOAD_FOLDER not configured")
         abort(500)
 
-    file_path = os.path.join(upload_folder, url)  # url holds filename in legacy case
+    file_path = os.path.join(upload_folder, url)
     if not os.path.exists(file_path):
         current_app.logger.warning("Attachment file missing: %s", file_path)
         abort(404)
@@ -525,39 +529,44 @@ def view_package_attachment(attachment_id):
 @customer_bp.route("/packages/attachments/<int:attachment_id>/delete", methods=["POST"])
 @login_required
 def delete_package_attachment_customer(attachment_id):
-    """
-    Customer deletes an attachment they uploaded, only if:
-    - attachment belongs to a package owned by current_user
-    - package is NOT Ready for Pick Up or Delivered (locked)
-    Deletes from DB and disk.
-    """
     a = PackageAttachment.query.get_or_404(attachment_id)
 
-    # Ensure this attachment belongs to a package owned by this customer
     if not a.package or a.package.user_id != current_user.id:
         abort(403)
 
-    # Lock if package is already finalized
     s = (a.package.status or "").strip()
     if s in ("Ready for Pick Up", "Delivered"):
         flash("This package is locked, so attachments can't be deleted.", "warning")
         return redirect(url_for("customer.view_packages"))
 
-    # Delete file from disk (best effort)
+    # ✅ Delete from Cloudinary if we have public_id
     try:
-        upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
-        fp = os.path.join(upload_folder, a.file_name)
-        if upload_folder and os.path.exists(fp):
-            os.remove(fp)
+        pub_id = getattr(a, "cloud_public_id", None)
+        rtype  = getattr(a, "cloud_resource_type", None) or "raw"
+        if pub_id:
+            from app.utils.cloudinary_storage import delete_cloudinary_file
+            delete_cloudinary_file(pub_id, resource_type=rtype)
+    except Exception:
+        pass
+
+    # ✅ Legacy disk delete only if file_name is NOT a URL
+    try:
+        fname = (getattr(a, "file_name", "") or "").strip()
+        if fname and not fname.startswith(("http://", "https://")):
+            upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+            if upload_folder:
+                fp = os.path.join(upload_folder, fname)
+                if os.path.exists(fp):
+                    os.remove(fp)
     except Exception:
         pass
 
     db.session.delete(a)
     db.session.commit()
-    flash("Attachment deleted.", "success")
 
-    # Return to packages list (and optionally reopen modal via hash)
+    flash("Attachment deleted.", "success")
     return redirect(url_for("customer.view_packages"))
+
 
 @customer_bp.route('/update_declared_value', methods=['POST'])
 @login_required

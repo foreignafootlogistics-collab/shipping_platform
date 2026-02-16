@@ -384,7 +384,7 @@
                             <a class="badge text-decoration-none"
                                style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c;"
                                target="_blank"
-                               href="{{ url_for('logistics.view_package_attachment', attachment_id=a.id) }}"
+                               href="{{ url_for('logistics.admin_view_package_attachment', attachment_id=a.id) }}"
                                title="{{ a.original_name }}">
                               <i class="fa-solid fa-paperclip me-1"></i>
                               {{ (a.original_name or 'file')[:18] }}{% if (a.original_name or '')|length > 18 %}…{% endif %}

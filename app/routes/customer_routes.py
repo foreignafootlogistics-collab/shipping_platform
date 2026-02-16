@@ -472,13 +472,13 @@ def package_upload_docs(pkg_id):
 
             db.session.add(PackageAttachment(
                 package_id=pkg.id,
-                file_name=url,           # ✅ store URL
+                file_name=url,           # keep existing behavior
+                file_url=url,            # ✅ REQUIRED (NOT NULL in DB)
                 original_name=original
             ))
             saved_any = True
 
             # OPTIONAL: keep “main invoice” field in sync too
-            # (only set if empty, or always overwrite — your choice)
             if not getattr(pkg, "invoice_file", None):
                 pkg.invoice_file = url
 

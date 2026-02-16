@@ -869,13 +869,45 @@ def logistics_dashboard():
 
     shipment_pkg_rows = []
     if selected_shipment:
-        # eager load user to avoid N+1 in template
-        rows = (db.session.query(Package, User.full_name, User.registration_number)
-                .join(User, Package.user_id == User.id)
-                .join(shipment_packages, shipment_packages.c.package_id == Package.id)
-                .filter(shipment_packages.c.shipment_id == selected_shipment.id)
-                .all())
+
+        # 1) get packages in shipment (+ user display fields)
+        rows = (
+            db.session.query(Package, User.full_name, User.registration_number)
+            .join(User, Package.user_id == User.id)
+            .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+            .filter(shipment_packages.c.shipment_id == selected_shipment.id)
+            .order_by(Package.id.desc())
+            .all()
+        )
+
+        shipment_pkg_ids = [p.id for (p, _, _) in rows]
+
+        # 2) load attachments in ONE query
+        attachments_by_pkg = {}
+        if shipment_pkg_ids:
+            att_rows = (
+                db.session.query(
+                    PackageAttachment.id,
+                    PackageAttachment.package_id,
+                    PackageAttachment.original_name,
+                    PackageAttachment.file_name,
+                )
+                .filter(PackageAttachment.package_id.in_(shipment_pkg_ids))
+                .order_by(PackageAttachment.id.desc())
+                .all()
+            )
+
+            for att_id, pkg_id, original_name, file_name in att_rows:
+                attachments_by_pkg.setdefault(pkg_id, []).append({
+                    "id": att_id,
+                    "original_name": original_name,
+                    "file_name": file_name,
+                })
+
+        # 3) build final dict rows INCLUDING attachments
         for p, full_name, reg in rows:
+            atts = attachments_by_pkg.get(p.id, [])
+
             shipment_pkg_rows.append({
                 "id": p.id,
                 "user_id": p.user_id,
@@ -895,7 +927,12 @@ def logistics_dashboard():
                 "epc": getattr(p, "epc", 0),
                 "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
                 "invoice_id": p.invoice_id,
+
+                # ✅ NEW
+                "att_count": len(atts),
+                "attachments": atts,
             })
+
 
     # ----------------------------------------------------------------------------------
     # View Packages table (filters + pagination) ORM version

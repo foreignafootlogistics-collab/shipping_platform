@@ -1066,6 +1066,12 @@ window.UPDATE_PKG_URL   = "{{ url_for('logistics.api_update_package', pkg_id=0) 
 window.INVOICE_PREVIEW_URL  = "{{ url_for('logistics.bulk_invoice_preview') }}";
 window.INVOICE_FINALIZE_URL = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
 
+window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}";
+function attachUrl(id){
+  return window.ATTACH_UPLOAD_URL.replace(/0$/, String(id));
+}
+
+
 
 function apiUrl(base, id) {
   // base ends with "/0"
@@ -2592,9 +2598,9 @@ document.addEventListener('input', function(e){
 });
 
 /* ==========================
-   PACKAGE ATTACHMENTS (ADMIN)
+   PACKAGE ATTACHMENTS (ADMIN - MODAL ONLY)
    ========================== */
-(function attachAdminFilesNew(){
+(function attachAdminFiles(){
   const modalEl  = document.getElementById('attachInvoiceModal');
   if (!modalEl) return;
 
@@ -2606,11 +2612,12 @@ document.addEventListener('input', function(e){
 
   let currentPkgId = null;
 
+  // Open modal
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('.js-open-attach');
     if (!btn) return;
 
-    currentPkgId = btn.getAttribute('data-pkg-id') || btn.getAttribute('data-pkg') || '';
+    currentPkgId = btn.getAttribute('data-pkg-id') || '';
 
     if (pkgIdInput) pkgIdInput.value = currentPkgId;
     if (pkgLbl) pkgLbl.textContent = currentPkgId || '—';
@@ -2625,7 +2632,7 @@ document.addEventListener('input', function(e){
     if (!pkgId) { alert('Package id missing.'); return; }
 
     const files = fileInput?.files;
-    if (!files || !files.length) { alert('Please choose at least one file.'); return; }
+    if (!files || !files.length) { alert('Please choose a file.'); return; }
 
     const csrf = document.getElementById('attachCsrfToken')?.value || '';
     const fd = new FormData();
@@ -2634,36 +2641,39 @@ document.addEventListener('input', function(e){
 
     if (statusEl) statusEl.textContent = 'Uploading…';
 
-    const url = `/admin/logistics/packages/${pkgId}/attachments`;
+    const url = attachUrl(pkgId);
 
-    let res, data = {};
     try {
-      res = await fetch(url, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }, body: fd });
-      try { data = await res.json(); } catch (e) {}
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: fd
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        alert(data.error || `Upload failed (HTTP ${res.status}).`);
+        return;
+      }
+
+      if (statusEl) statusEl.textContent = 'Uploaded!';
+      bootstrap.Modal.getInstance(modalEl)?.hide();
+      setTimeout(() => window.location.reload(), 400);
+
     } catch (err) {
       console.error(err);
-      if (statusEl) statusEl.textContent = '';
-      alert('Upload failed (network error).');
-      return;
+      alert('Upload failed.');
     }
-
-    if (!res.ok || !data.success) {
-      if (statusEl) statusEl.textContent = '';
-      alert(data.error || `Upload failed (HTTP ${res.status}).`);
-      return;
-    }
-
-    if (statusEl) statusEl.textContent = 'Uploaded!';
-    bootstrap.Modal.getInstance(modalEl)?.hide();
-    setTimeout(() => window.location.reload(), 350);
   }
 
-  uploadBtn?.addEventListener('click', (e) => { e.preventDefault(); doUpload(); });
-
-  modalEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); doUpload(); }
+  uploadBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    doUpload();
   });
+
 })();
+
 </script>
 
 <style>

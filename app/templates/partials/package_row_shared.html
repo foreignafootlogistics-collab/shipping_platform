@@ -107,15 +107,17 @@
         {% set aname = (a.original_name if a.original_name is defined else a.get('original_name')) %}
         {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
 
-        <div class="d-inline-flex align-items-center gap-1">
-          <a class="btn btn-sm"
-             style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
-             target="_blank"
-             href="{{ url_for('logistics.view_package_attachment', attachment_id=aid) }}"
-             title="{{ aname or fname }}">
-            <i class="fa-solid fa-file-lines"></i>
-          </a>
-        </div>
+        {% if aid %}
+          <div class="d-inline-flex align-items-center gap-1">
+            <a class="btn btn-sm"
+               style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
+               target="_blank"           
+               href="{{ url_for('logistics.admin_view_package_attachment', attachment_id=aid) }}"
+               title="{{ aname or fname }}">
+              <i class="fa-solid fa-file-lines"></i>
+            </a>
+          </div>
+        {% endif %}
       {% endfor %}
     </div>
   {% endif %}

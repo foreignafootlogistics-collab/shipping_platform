@@ -525,6 +525,21 @@ def _email_throttle(i: int, base: float | None = None):
 
     time.sleep(max(0.0, base + random.uniform(0, jitter)))
 
+def _redirect_or_send_attachment(path_or_url: str):
+    u = (path_or_url or "").strip()
+    if u.startswith(("http://", "https://")):
+        return redirect(u)
+
+    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+    if not upload_folder:
+        abort(500)
+
+    fp = os.path.join(upload_folder, u)
+    if not os.path.exists(fp):
+        abort(404)
+
+    return send_from_directory(upload_folder, u, as_attachment=False)
+
 
 # --------------------------------------------------------------------------------------
 # Prealerts
@@ -1185,9 +1200,15 @@ def delete_packages_from_shipment(shipment_id):
         return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
 
     # IMPORTANT: only delete packages that are in THIS shipment
-    pkgs = (Package.query
-            .filter(Package.id.in_(package_ids), Package.shipment_id == shipment_id)
-            .all())
+    pkgs = (
+        Package.query
+        .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+        .filter(
+            shipment_packages.c.shipment_id == shipment_id,
+            Package.id.in_(package_ids)
+        )
+        .all()
+    )
 
     if not pkgs:
         flash("No matching packages found in this shipment.", "warning")
@@ -1202,44 +1223,36 @@ def delete_packages_from_shipment(shipment_id):
 
 
 @logistics_bp.route("/admin/packages/<int:package_id>/attachments", methods=["POST"])
-@login_required
-def admin_upload_package_attachments(package_id):
-    if not _is_internal_user(current_user):
-        abort(403)
-
+@admin_required
+def admin_upload_package_attachments(package_id):    
     pkg = Package.query.get_or_404(package_id)
 
     files = request.files.getlist("attachments")
     if not files:
         return jsonify(success=False, error="No files uploaded."), 400
 
-    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
-    if not upload_folder:
-        return jsonify(success=False, error="Upload folder not configured."), 500
+    from app.utils.files import allowed_file
+    from app.utils.cloudinary_storage import upload_package_attachment
 
-    os.makedirs(upload_folder, exist_ok=True)
-
-    allowed = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
     created = []
 
     for f in files:
         if not f or not f.filename:
             continue
 
-        original = f.filename
-        safe = secure_filename(original)
-        ext = os.path.splitext(safe)[1].lower()
+        original = f.filename.strip()
+        if not allowed_file(original):
+            return jsonify(success=False, error=f"File type not allowed: {original}"), 400
 
-        if ext and ext not in allowed:
-            return jsonify(success=False, error=f"File type not allowed: {ext}"), 400
-
-        stored = f"{uuid.uuid4().hex}{ext}"
-        f.save(os.path.join(upload_folder, stored))
+        url, public_id, rtype = upload_package_attachment(f)
 
         att = PackageAttachment(
             package_id=pkg.id,
-            file_name=stored,
-            original_name=original
+            file_name=url,     # legacy synced (Option A)
+            file_url=url,      # new
+            original_name=original,
+            cloud_public_id=public_id,
+            cloud_resource_type=rtype,
         )
         db.session.add(att)
         db.session.flush()
@@ -1247,7 +1260,7 @@ def admin_upload_package_attachments(package_id):
         created.append({
             "id": att.id,
             "original_name": att.original_name,
-            "view_url": url_for("logistics.view_package_attachment", attachment_id=att.id),
+            "view_url": url_for("logistics.admin_view_package_attachment", attachment_id=att.id),
             "delete_url": url_for("logistics.delete_package_attachment_admin", attachment_id=att.id),
         })
 
@@ -1255,50 +1268,48 @@ def admin_upload_package_attachments(package_id):
     return jsonify(success=True, attachments=created)
 
 
+
 @logistics_bp.route("/admin/package-attachments/<int:attachment_id>/delete", methods=["POST"])
-@login_required
+@admin_required
 def delete_package_attachment_admin(attachment_id):
     if not _is_internal_user(current_user):
         abort(403)
 
     att = PackageAttachment.query.get_or_404(attachment_id)
 
-    # delete file from disk if it's not a URL
-    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
-    if upload_folder and att.file_name and not (att.file_name.startswith("http://") or att.file_name.startswith("https://")):
-        try:
-            fp = os.path.join(upload_folder, att.file_name)
-            if os.path.exists(fp):
-                os.remove(fp)
-        except Exception:
-            current_app.logger.exception("Failed deleting attachment file")
+    # ✅ delete from Cloudinary if we have public_id
+    from app.utils.cloudinary_storage import delete_cloudinary_file
+    if getattr(att, "cloud_public_id", None):
+        delete_cloudinary_file(att.cloud_public_id, att.cloud_resource_type or "raw")
 
     db.session.delete(att)
     db.session.commit()
-
-    # return back
     return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
-@logistics_bp.route("/package-attachment/<int:attachment_id>")
-@login_required
-@admin_required  # or whatever you use for admin access
-def view_package_attachment(attachment_id):
+
+@logistics_bp.route("/admin/package-attachment/<int:attachment_id>")
+@admin_required
+def admin_view_package_attachment(attachment_id):
+    if not _is_internal_user(current_user):
+        abort(403)
+
     a = PackageAttachment.query.get_or_404(attachment_id)
 
-    # ✅ Cloudinary URL
-    if a.file_name and str(a.file_name).startswith(("http://", "https://")):
-        return redirect(a.file_name)
+    url = (getattr(a, "file_url", None) or getattr(a, "file_name", None) or "").strip()
+    if url.startswith(("http://", "https://")):
+        return redirect(url)
 
-    # ✅ legacy disk file fallback (if you still have older uploads)
+    # legacy disk fallback (optional)
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
     if not upload_folder:
         abort(500)
 
-    fp = os.path.join(upload_folder, a.file_name)
+    fp = os.path.join(upload_folder, url)
     if not os.path.exists(fp):
         abort(404)
 
-    return send_from_directory(upload_folder, a.file_name, as_attachment=False)
+    return send_from_directory(upload_folder, url, as_attachment=False)
+
 
 
 
@@ -2571,7 +2582,6 @@ def shipment_calc_charges():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 @logistics_bp.route("/packages/<int:pkg_id>/charges/save", methods=["POST"])
-@login_required
 @admin_required
 def api_save_package_charges(pkg_id):
     pkg = Package.query.get_or_404(pkg_id)

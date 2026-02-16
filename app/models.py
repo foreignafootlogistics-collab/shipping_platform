@@ -285,13 +285,25 @@ class PackageAttachment(db.Model):
         index=True
     )
 
-    file_name = db.Column(db.String(255), nullable=False)   # stored filename
-    original_name = db.Column(db.String(255))               # what user uploaded
+    # ✅ LEGACY column still exists in DB (keep it during transition)
+    file_name = db.Column(db.String(255), nullable=False)
+
+    # ✅ NEW Cloudinary URL (secure_url)
+    file_url = db.Column(db.Text, nullable=False)
+
+    original_name = db.Column(db.String(255))
+
+    cloud_public_id = db.Column(db.String(255), nullable=True)
+    cloud_resource_type = db.Column(db.String(20), nullable=True)  # "image" or "raw"
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    # ✅ Matches Package.attachments
     package = db.relationship("Package", back_populates="attachments")
 
+    @property
+    def url(self):
+        # templates can use a.url and it works for old + new rows
+        return self.file_url or self.file_name
 
 class ShipmentLog(db.Model):
     __tablename__ = 'shipment_log'

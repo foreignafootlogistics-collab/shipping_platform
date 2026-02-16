@@ -119,17 +119,15 @@ def create_app():
     # ------------------------------------------------------
     # ✅ CLOUDINARY CONFIG + INIT (PUT IT HERE)
     # ------------------------------------------------------
-    app.config["CLOUDINARY_CLOUD_NAME"] = cfg.CLOUDINARY_CLOUD_NAME
-    app.config["CLOUDINARY_API_KEY"] = cfg.CLOUDINARY_API_KEY
-    app.config["CLOUDINARY_API_SECRET"] = cfg.CLOUDINARY_API_SECRET
+    app.config["CLOUDINARY_CLOUD_NAME"] = os.getenv("CLOUDINARY_CLOUD_NAME") or getattr(cfg, "CLOUDINARY_CLOUD_NAME", None)
+    app.config["CLOUDINARY_API_KEY"] = os.getenv("CLOUDINARY_API_KEY") or getattr(cfg, "CLOUDINARY_API_KEY", None)
+    app.config["CLOUDINARY_API_SECRET"] = os.getenv("CLOUDINARY_API_SECRET") or getattr(cfg, "CLOUDINARY_API_SECRET", None)
 
     from app.utils.cloudinary_storage import init_cloudinary
-    init_cloudinary(app)
+    cloud_ok = init_cloudinary(app)
 
-    if not (app.config["CLOUDINARY_CLOUD_NAME"] and 
-            app.config["CLOUDINARY_API_KEY"] and 
-            app.config["CLOUDINARY_API_SECRET"]):
-        app.logger.warning("Cloudinary env vars missing - invoice uploads will not work.")
+    if not cloud_ok:
+        app.logger.warning("Cloudinary env vars missing - uploads may not work.")
       
   
     app.config['PROFILE_UPLOAD_FOLDER'] = str(PROFILE_UPLOAD_FOLDER)

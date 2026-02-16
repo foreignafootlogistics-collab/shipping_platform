@@ -1,7 +1,19 @@
 # app/utils/files.py
+import os
 
-# Example: Excel uploads only
-EXCEL_ALLOWED_EXTENSIONS = {"xlsx"}
+ALLOWED_EXTENSIONS = {
+    "pdf",
+    "png", "jpg", "jpeg",
+    "xls", "xlsx",
+}
 
-def allowed_file(filename: str, allowed: set[str] = EXCEL_ALLOWED_EXTENSIONS) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in allowed
+IMAGE_EXTENSIONS = {"png", "jpg", "jpeg"}
+RAW_EXTENSIONS = {"pdf", "xls", "xlsx"}
+
+def get_ext(filename: str) -> str:
+    return (os.path.splitext(filename or "")[1].lower().lstrip("."))
+
+def allowed_file(filename: str) -> bool:
+    ext = get_ext(filename)
+    return ext in ALLOWED_EXTENSIONS
+

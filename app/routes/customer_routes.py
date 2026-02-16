@@ -96,6 +96,23 @@ def _invoice_folder():
 
 EMAIL_REGEX = re.compile(r"[^@]+@[^@]+\.[^@]+")
 
+
+def _redirect_or_send_attachment(path_or_url: str):
+    u = (path_or_url or "").strip()
+    if u.startswith(("http://", "https://")):
+        return redirect(u)
+
+    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+    if not upload_folder:
+        abort(500)
+
+    fp = os.path.join(upload_folder, u)
+    if not os.path.exists(fp):
+        abort(404)
+
+    return send_from_directory(upload_folder, u, as_attachment=False)
+
+
 # -----------------------------
 # Jinja filters
 # -----------------------------
@@ -475,30 +492,33 @@ def package_upload_docs(pkg_id):
 @customer_bp.route("/package-attachment/<int:attachment_id>")
 @login_required
 def view_package_attachment(attachment_id):
-    attachment = PackageAttachment.query.get_or_404(attachment_id)
+    a = PackageAttachment.query.get_or_404(attachment_id)
 
     # only owner can view
-    if attachment.package.user_id != current_user.id:
+    if a.package.user_id != current_user.id:
         abort(403)
 
-    # ✅ NEW: if stored as a Cloudinary URL, redirect to it
-    if attachment.file_name and str(attachment.file_name).startswith(("http://", "https://")):
-        return redirect(attachment.file_name)
+    # ✅ Prefer Cloudinary URL (new)
+    url = (getattr(a, "file_url", None) or getattr(a, "file_name", None) or "").strip()
+    if url.startswith(("http://", "https://")):
+        return redirect(url)
 
-    # otherwise: legacy disk file
+    # ---------------------------------------
+    # Legacy disk fallback (old attachments)
+    # ---------------------------------------
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
     if not upload_folder:
         current_app.logger.error("INVOICE_UPLOAD_FOLDER not configured")
         abort(500)
 
-    file_path = os.path.join(upload_folder, attachment.file_name)
+    file_path = os.path.join(upload_folder, url)  # url holds filename in legacy case
     if not os.path.exists(file_path):
         current_app.logger.warning("Attachment file missing: %s", file_path)
         abort(404)
 
     return send_from_directory(
         directory=upload_folder,
-        path=attachment.file_name,
+        path=url,
         as_attachment=False
     )
 

@@ -10,6 +10,8 @@ import random
 import bcrypt
 from io import StringIO
 from datetime import datetime, timedelta, timezone
+import requests
+from flask import stream_with_context
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
@@ -1296,10 +1298,35 @@ def admin_view_package_attachment(attachment_id):
     a = PackageAttachment.query.get_or_404(attachment_id)
 
     url = (getattr(a, "file_url", None) or getattr(a, "file_name", None) or "").strip()
-    if url.startswith(("http://", "https://")):
-        return redirect(url)
+    display_name = (getattr(a, "original_name", None) or getattr(a, "file_name", None) or "attachment").strip()
+    safe_name = secure_filename(display_name) or "attachment"
 
-    # legacy disk fallback (optional)
+    if url.startswith(("http://", "https://")):
+        r = requests.get(url, stream=True, timeout=30)
+        if r.status_code != 200:
+            abort(404)
+
+        lower = safe_name.lower()
+        if lower.endswith(".pdf"):
+            content_type = "application/pdf"
+        elif lower.endswith((".jpg", ".jpeg")):
+            content_type = "image/jpeg"
+        elif lower.endswith(".png"):
+            content_type = "image/png"
+        else:
+            content_type = r.headers.get("Content-Type") or "application/octet-stream"
+
+        def generate():
+            for chunk in r.iter_content(8192):
+                if chunk:
+                    yield chunk
+
+        resp = Response(stream_with_context(generate()), mimetype=content_type)
+        resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        return resp
+
+    # legacy disk fallback (keep yours)
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
     if not upload_folder:
         abort(500)
@@ -1309,6 +1336,7 @@ def admin_view_package_attachment(attachment_id):
         abort(404)
 
     return send_from_directory(upload_folder, url, as_attachment=False)
+
 
 
 

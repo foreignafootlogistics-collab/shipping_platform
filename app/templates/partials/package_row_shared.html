@@ -158,11 +158,13 @@
 
 {# ===================== CUSTOMER MODE ===================== #}
 
+{% set status_l = (_status or '')|lower %}
 {% set lock_docs = (status_l in ['ready for pick up', 'delivered']) %}
 {% set is_paid = (status_l in ['delivered']) %}
 {% set amount_to_show = (_amount_due if _amount_due is not none else 0) %}
 {% set show_amount = (_invoice_id is not none) %}
 
+{# ---------------- DOCS COLUMN (UPLOAD ONLY) ---------------- #}
 <td class="text-center align-middle">
   <button type="button"
           class="btn btn-sm btn-outline-secondary {% if lock_docs %}disabled{% endif %}"
@@ -171,14 +173,9 @@
           title="Upload Invoices">
     <i class="fas {% if lock_docs %}fa-lock{% else %}fa-file-upload{% endif %}"></i>
   </button>
-
-  {% if _attachments and (_attachments|length > 0) %}
-    <div class="small text-success mt-1">
-      <i class="fas fa-check-circle"></i>
-    </div>
-  {% endif %}
 </td>
 
+{# ---------------- HOUSE AWB / STATUS COLUMN ---------------- #}
 <td class="pkg-cell">
   {% set status = _status %}
   {% include "partials/status_vars.html" %}
@@ -187,6 +184,7 @@
   <div class="small text-muted mt-1">VAL: ${{ "%.2f"|format(dv or 0) }}</div>
 </td>
 
+{# ---------------- DESCRIPTION + ATTACHMENTS COLUMN ---------------- #}
 <td>
   {{ _desc or "-" }}
 
@@ -194,18 +192,24 @@
     <div class="small mt-1 d-flex gap-2 flex-wrap">
       {% for a in _attachments %}
         {% set aid = a.id if a.id is defined else a.get('id') %}
-        {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
-        {% set f = (fname or '')|string %}
+        {% if aid %}
+          {# Try to detect PDF by name WITHOUT .endswith() #}
+          {% set display_name = ((a.original_name if a.original_name is defined else a.get('original_name')) 
+                                or (a.file_name if a.file_name is defined else a.get('file_name')) 
+                                or '')|string %}
+          {% set lower_name = display_name|lower %}
+          {% set is_pdf = ('.pdf' in lower_name) %}
+          {% set is_img  = ('.jpg' in lower_name) or ('.jpeg' in lower_name) or ('.png' in lower_name) %}
 
-        {% if f.startswith("http://") or f.startswith("https://") %}
-          <a class="pkg-attachment" href="{{ f }}" target="_blank">
-            <i class="fas fa-file-alt"></i>
-          </a>
-        {% else %}
           <a class="pkg-attachment"
              href="{{ url_for('customer.view_package_attachment', attachment_id=aid) }}"
-             target="_blank">
-            <i class="fas fa-file-alt"></i>
+             target="_blank"
+             rel="noopener"
+             title="{{ display_name or 'Attachment' }}">
+            <i class="fas
+              {{ 'fa-file-pdf' if is_pdf else ('fa-file-image' if is_img else 'fa-file-alt') }}">
+            </i>
+
           </a>
         {% endif %}
       {% endfor %}
@@ -213,8 +217,10 @@
   {% endif %}
 </td>
 
+{# ---------------- TRACKING COLUMN ---------------- #}
 <td>{{ _tracking or "-" }}</td>
 
+{# ---------------- WEIGHT COLUMN ---------------- #}
 <td class="text-center">
   {% if _weight is not none %}
     {{ (_weight|float)|round(0,'ceil')|int }}
@@ -223,6 +229,7 @@
   {% endif %}
 </td>
 
+{# ---------------- DATE RECEIVED COLUMN ---------------- #}
 <td class="text-center">
   {% if _date_received %}
     {% if _date_received.strftime is defined %}
@@ -235,9 +242,9 @@
   {% endif %}
 </td>
 
+{# ---------------- AMOUNT DUE COLUMN ---------------- #}
 <td class="text-center">
 
-  {% set status_l = (_status or '')|lower %}
   {% set has_invoice = (_invoice_id is not none and _invoice_id != 0) %}
 
   {# values from fetch_packages_normalized #}
@@ -340,6 +347,6 @@
   {% endif %}
 
 </td>
-
 {% endif %}
 </tr>
+

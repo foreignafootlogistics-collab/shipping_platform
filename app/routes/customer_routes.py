@@ -9,11 +9,14 @@ from flask import (
     current_app, flash, jsonify, send_from_directory, 
     send_file, abort
 )
+from io import BytesIO
+from flask import Response, stream_with_context
 from flask_login import login_required, current_user, login_user, logout_user
 from werkzeug.utils import secure_filename
 import mimetypes
 import bcrypt
 import sqlalchemy as sa
+import requests
 
 from app.forms import ReferralForm  
 from app.forms import (
@@ -55,6 +58,7 @@ from sqlalchemy import func, or_
 # Email class from Flask-Mail (alias to avoid clash)
 from flask_mail import Message as MailMessage
 from sqlalchemy.orm import selectinload
+
 
 customer_bp = Blueprint('customer', __name__, template_folder='templates/customer')
 
@@ -468,13 +472,15 @@ def package_upload_docs(pkg_id):
             original = f.filename.strip()
 
             # ✅ upload to Cloudinary, store URL
-            url = upload_invoice_image(f)
+            url, public_id, rtype = upload_invoice_image(f)
 
             db.session.add(PackageAttachment(
                 package_id=pkg.id,
                 file_name=url,           # keep existing behavior
                 file_url=url,            # ✅ REQUIRED (NOT NULL in DB)
-                original_name=original
+                original_name=original,
+                cloud_public_id=public_id,
+                cloud_resource_type=rtype,
             ))
             saved_any = True
 
@@ -489,42 +495,74 @@ def package_upload_docs(pkg_id):
     )
     return redirect(url_for("customer.view_packages"))
 
+
+import os, mimetypes, requests
+from flask import Response, abort, current_app, send_from_directory, stream_with_context
+from werkzeug.utils import secure_filename
+
 @customer_bp.route("/package-attachment/<int:attachment_id>")
 @login_required
 def view_package_attachment(attachment_id):
     a = PackageAttachment.query.get_or_404(attachment_id)
 
-    if a.package.user_id != current_user.id:
+    if not a.package or a.package.user_id != current_user.id:
         abort(403)
 
     url = (getattr(a, "file_url", None) or getattr(a, "file_name", None) or "").strip()
 
-    # ✅ Cloudinary (new + old)
+    display_name = (
+        (getattr(a, "original_name", None) or "").strip()
+        or (getattr(a, "file_name", None) or "").strip()
+        or "attachment"
+    )
+    safe_name = secure_filename(display_name) or "attachment"
+
     if url.startswith(("http://", "https://")):
-        original = (getattr(a, "original_name", "") or "").lower()
+        try:
+            r = requests.get(url, stream=True, timeout=30)
+        except Exception:
+            abort(502)
 
-        # If it was a PDF but URL has no .pdf extension, add it
-        if original.endswith(".pdf") and not url.lower().endswith(".pdf"):
-            url = url + ".pdf"
+        if r.status_code != 200:
+            abort(404)
 
-        return redirect(url)
+        lower = safe_name.lower()
+        if lower.endswith(".pdf"):
+            content_type = "application/pdf"
+        elif lower.endswith((".jpg", ".jpeg")):
+            content_type = "image/jpeg"
+        elif lower.endswith(".png"):
+            content_type = "image/png"
+        else:
+            content_type = r.headers.get("Content-Type") or "application/octet-stream"
 
-    # -------- legacy disk fallback --------
+        def generate():
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+
+        resp = Response(stream_with_context(generate()), mimetype=content_type)
+        resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        return resp
+
+    # legacy disk fallback
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
     if not upload_folder:
-        current_app.logger.error("INVOICE_UPLOAD_FOLDER not configured")
         abort(500)
 
-    file_path = os.path.join(upload_folder, url)
-    if not os.path.exists(file_path):
-        current_app.logger.warning("Attachment file missing: %s", file_path)
+    fp = os.path.join(upload_folder, url)
+    if not os.path.exists(fp):
         abort(404)
 
-    return send_from_directory(
-        directory=upload_folder,
-        path=url,
-        as_attachment=False
-    )
+    guessed_type, _ = mimetypes.guess_type(fp)
+    resp = send_from_directory(upload_folder, url, as_attachment=False)
+    if guessed_type:
+        resp.headers["Content-Type"] = guessed_type
+    resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
 
 @customer_bp.route("/packages/attachments/<int:attachment_id>/delete", methods=["POST"])
 @login_required

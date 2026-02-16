@@ -102,9 +102,9 @@ def upload_package_attachment(file_storage):
 
 
 def upload_invoice_image(file_storage):
-    # keeps backward compatibility with your current code
-    url, _, _ = upload_file(file_storage, folder="fafl/invoices")
-    return url
+    # keep name, but return full metadata like the others
+    return upload_file(file_storage, folder="fafl/invoices")
+
 
 
 # ---------------------------------------

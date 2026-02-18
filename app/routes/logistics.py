@@ -46,6 +46,12 @@ from app.utils.wallet import process_first_shipment_bonus
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
 
+from app.utils.unassigned import (
+    ensure_unassigned_user,
+    get_unassigned_user_id,
+    is_pkg_unassigned,
+)
+
 
 # Base URL for links used in emails (fallback to Render URL)
 DASHBOARD_URL = os.environ.get(
@@ -96,25 +102,6 @@ def _is_internal_user(u) -> bool:
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
-
-def ensure_unassigned_user():
-    u = User.query.filter_by(registration_number="UNASSIGNED").first()
-    if u:
-        return u
-
-    hashed_pw = bcrypt.hashpw(b"UNASSIGNED-DO-NOT-LOGIN", bcrypt.gensalt())
-    u = User(
-        full_name="Unassigned Customer",
-        email="unassigned@faflcourier.local",
-        password=hashed_pw,
-        registration_number="UNASSIGNED",
-        role="customer",
-        wallet_balance=0,
-    )
-    db.session.add(u)
-    db.session.commit()
-    return u
 
 
 def normalize_tab(raw: str | None) -> str:
@@ -639,8 +626,8 @@ def logistics_dashboard():
     message = None
     errors = []
 
-    unassigned = ensure_unassigned_user()
-    unassigned_id = unassigned.id if unassigned else None
+    unassigned_id = get_unassigned_user_id()
+
 
     # New preview context
     preview_headers = None
@@ -1202,8 +1189,8 @@ def bulk_assign_packages():
     updated = 0
     skipped_invoiced = 0
 
-    unassigned = ensure_unassigned_user()
-    unassigned_id = unassigned.id if unassigned else None
+    unassigned_id = get_unassigned_user_id()
+
 
 
     for p in pkgs:
@@ -1977,8 +1964,8 @@ def create_shipment():
         return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
     # ✅ BLOCK UNASSIGNED packages from being shipped
-    unassigned = ensure_unassigned_user()
-    unassigned_id = unassigned.id if unassigned else None
+    unassigned_id = get_unassigned_user_id()
+
 
     if unassigned_id:
         bad = (
@@ -2114,8 +2101,8 @@ def move_packages_between_shipments():
                                 shipment_id=from_id or None))
 
     # ✅ BLOCK UNASSIGNED from being moved into any shipment
-    unassigned = ensure_unassigned_user()
-    unassigned_id = unassigned.id if unassigned else None
+    unassigned_id = get_unassigned_user_id()
+
     if unassigned_id:
         bad_count = (
             db.session.query(func.count(Package.id))
@@ -2174,14 +2161,12 @@ def bulk_shipment_action(shipment_id):
     # ---------------------------------------------------------
     # UNASSIGNED LOCK (single source of truth)
     # ---------------------------------------------------------
-    unassigned = ensure_unassigned_user()
-    unassigned_id = unassigned.id if unassigned else None
+    unassigned_id = get_unassigned_user_id()
 
-    def is_unassigned_pkg(p: Package) -> bool:
-        try:
-            return unassigned_id is not None and int(getattr(p, "user_id", 0) or 0) == int(unassigned_id)
-        except Exception:
-            return False
+    blocked_unassigned = [p for p in pkgs_all if is_pkg_unassigned(p)]
+    eligible_pkgs      = [p for p in pkgs_all if not is_pkg_unassigned(p)]
+    skipped_unassigned = len(blocked_unassigned)
+
 
     # -------------------------
     # helper: safe float

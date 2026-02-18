@@ -1146,6 +1146,18 @@ def generate_invoice_route(user_id):
         .all()
     )
 
+    from app.utils.unassigned import is_pkg_unassigned
+
+    # ✅ BLOCK: if any package is UNASSIGNED, stop
+    bad = [p for p in packages if is_unassigned_package(p)]
+    if bad:
+        flash(
+            f"Cannot generate invoice: {len(bad)} package(s) are UNASSIGNED. "
+            "Assign them to a customer first.",
+            "danger"
+        )
+        return redirect(url_for('admin.dashboard'))
+
     if not packages:
         flash("No packages available to invoice.", "warning")
         return redirect(url_for('admin.dashboard'))
@@ -1347,6 +1359,12 @@ def invoice_create(package_id):
     pkg = Package.query.get_or_404(package_id)
     calc = None
 
+    from app.utils.unassigned import is_pkg_unassigned
+
+    if is_pkg_unassigned(pkg):
+        flash("Cannot create invoice: this package is UNASSIGNED. Assign it to a customer first.", "danger")
+        return redirect(request.referrer or url_for("admin.dashboard"))
+
     if request.method == "POST":
         try:
             category      = request.form.get("category") or (pkg.description or "Miscellaneous")
@@ -1434,6 +1452,14 @@ def view_customer_invoice(user_id):
         .order_by(asc(getattr(Package, "date_received", Package.created_at)))
         .all()
     )
+
+    from app.utils.unassigned import is_pkg_unassigned
+
+    bad = [p for p in pkgs if is_pkg_unassigned(p)]
+    if bad:
+        flash(f"Cannot view/generate proforma: {len(bad)} package(s) are UNASSIGNED. Assign them first.", "danger")
+        return redirect(url_for("admin.dashboard"))
+
 
     items = []
     totals = dict(

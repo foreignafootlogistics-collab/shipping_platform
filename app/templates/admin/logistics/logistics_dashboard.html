@@ -291,6 +291,7 @@
                   <option value="received_local_port">📍 Received at Local Port</option>
                   <option value="ready">✅ Mark Ready for Pick Up</option>
                   <option value="revert_overseas">↩️ Revert to Overseas</option>
+                  <option value="delivered">📦 Mark Delivered (Lock)</option>
                   <option value="generate_invoice">🧾 Generate Invoice</option>
                   <option value="finance_invoice">💼 Finance Invoice</option>
                   <option value="notify_ready">📣 Email: Ready for Pick-Up</option>
@@ -1385,108 +1386,114 @@ function rebuildHiddenPostPayloadForSelected(form, ids) {
 }
 
 
-/* ============================================================
-   BULK ACTION handler (FINAL FIXED)
-   ============================================================ */
 async function handleShipmentApply(e) {
   if (e && e.preventDefault) e.preventDefault();
 
   const form = document.getElementById('shipmentForm');
   if (!form) { console.error('shipmentForm not found'); return; }
 
-  const actionSel = form.querySelector('select[name="action"]');
-  const action = actionSel ? actionSel.value : '';
-  if (!action) { alert('⚠️ Please select an action.'); return; }
+  const applyBtn = document.getElementById('shipmentApplyBtn');
+  if (applyBtn) applyBtn.disabled = true;
 
-  // gather selected IDs (across all DT pages)
-  let ids = [];
-  if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-    ids = dt.$('.package-checkbox:checked').map(function () { return this.value; }).get();
-  } else {
-    ids = Array.from(document.querySelectorAll('.package-checkbox:checked')).map(cb => cb.value);
-  }
+  try {
+    const actionSel = form.querySelector('select[name="action"]');
+    const action = actionSel ? actionSel.value : '';
+    if (!action) { alert('⚠️ Please select an action.'); return; }
 
-  if (action === 'finance_invoice') {
-    const shipmentId = getShipmentIdFromUrl();
-    if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
-    await openShipmentFinanceInvoicePreviewJSON(shipmentId, []);
-    return;
-  }
-
-  if (action === 'purge_shipment_invoices') {
-    const shipmentId = getShipmentIdFromUrl();
-    if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
-
-    // optional: allow purge for selected packages only (if any were checked)
-    // if none checked, it purges all invoices tied to this shipment
-    const proceed = confirm(
-      ids.length
-        ? `Purge invoices for ${ids.length} selected package(s)?\n\nOnly UNPAID invoices with NO payments will be removed.`
-        : `Purge ALL unpaid invoices for this shipment?\n\nOnly UNPAID invoices with NO payments will be removed.`
-    );
-    if (!proceed) return;
-
-    try {
-      const res = await fetch("{{ url_for('logistics.purge_shipment_invoices_json') }}", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "X-CSRFToken": "{{ csrf_token() }}",
-          "X-Requested-With": "XMLHttpRequest"
-        },
-        body: JSON.stringify({ shipment_id: shipmentId, package_ids: ids })
-      });
-
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !data || data.ok === false) {
-        throw new Error((data && (data.message || data.error)) || `HTTP ${res.status}`);
-      }
-
-      alert(data.message || "✅ Purge complete.");
-      if (data.redirect_url) window.location.href = data.redirect_url;
-      else window.location.reload();
-
-    } catch (err) {
-      console.error(err);
-      alert("❌ Purge failed.\n\n" + (err?.message || err));
+    // gather selected IDs (across all DT pages)
+    let ids = [];
+    if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+      ids = dt.$('.package-checkbox:checked').map(function () { return this.value; }).get();
+    } else {
+      ids = Array.from(document.querySelectorAll('.package-checkbox:checked')).map(cb => cb.value);
     }
 
-    return;
+    // Shipment-level actions (no selection required)
+    if (action === 'finance_invoice') {
+      const shipmentId = getShipmentIdFromUrl();
+      if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
+      await openShipmentFinanceInvoicePreviewJSON(shipmentId, []);
+      return;
+    }
+
+    if (action === 'purge_shipment_invoices') {
+      const shipmentId = getShipmentIdFromUrl();
+      if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
+
+      const proceed = confirm(
+        ids.length
+          ? `Purge invoices for ${ids.length} selected package(s)?\n\nOnly UNPAID invoices with NO payments will be removed.`
+          : `Purge ALL unpaid invoices for this shipment?\n\nOnly UNPAID invoices with NO payments will be removed.`
+      );
+      if (!proceed) return;
+
+      try {
+        const res = await fetch("{{ url_for('logistics.purge_shipment_invoices_json') }}", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-CSRFToken": "{{ csrf_token() }}",
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify({ shipment_id: shipmentId, package_ids: ids })
+        });
+
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data || data.ok === false) {
+          throw new Error((data && (data.message || data.error)) || `HTTP ${res.status}`);
+        }
+
+        alert(data.message || "✅ Purge complete.");
+        if (data.redirect_url) window.location.href = data.redirect_url;
+        else window.location.reload();
+
+      } catch (err) {
+        console.error(err);
+        alert("❌ Purge failed.\n\n" + (err?.message || err));
+      }
+      return;
+    }
+
+    // Package-level actions (selection required)
+    if (!ids.length) { alert('⚠️ Please select at least one package.'); return; }
+
+    if (action === 'generate_invoice') {
+      try { await openInvoicePreview(ids); }
+      catch (err) { console.error(err); alert('⚠️ Could not load invoice preview.'); }
+      return;
+    }
+
+    if (action === 'move') {
+      const holder = document.getElementById('movePackageIdsContainer');
+      if (holder) holder.innerHTML = '';
+      ids.forEach(id => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'package_ids';
+        input.value = id;
+        holder.appendChild(input);
+      });
+
+      const fromInput = document.querySelector('#moveShipmentForm input[name="from_shipment_id"]');
+      if (fromInput) fromInput.value = getShipmentIdFromUrl() || fromInput.value || 0;
+
+      const modalEl = document.getElementById('moveShipmentModal');
+      if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      return;
+    }
+
+    // ✅ DT-safe payload
+    rebuildHiddenPostPayloadForSelected(form, ids);
+
+    if (!confirm(`Perform "${action}" on ${ids.length} package(s)?`)) return;
+    form.submit();
+
+  } finally {
+    // If we submitted the form, page reloads anyway.
+    // If we returned early, we must re-enable button.
+    if (applyBtn) applyBtn.disabled = false;
   }
-
-  if (!ids.length) { alert('⚠️ Please select at least one package.'); return; }
-
-  if (action === 'generate_invoice') {
-    try { await openInvoicePreview(ids); }
-    catch (err) { console.error(err); alert('⚠️ Could not load invoice preview.'); }
-    return;
-  }
-
-  if (action === 'move') {
-    const holder = document.getElementById('movePackageIdsContainer');
-    if (holder) holder.innerHTML = '';
-    ids.forEach(id => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'package_ids';
-      input.value = id;
-      holder.appendChild(input);
-    });
-
-    const fromInput = document.querySelector('#moveShipmentForm input[name="from_shipment_id"]');
-    if (fromInput) fromInput.value = getShipmentIdFromUrl() || fromInput.value || 0;
-
-    const modalEl = document.getElementById('moveShipmentModal');
-    if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    return;
-  }
-
-  // ✅ DT-safe payload
-  rebuildHiddenPostPayloadForSelected(form, ids);
-
-  if (!confirm(`Perform "${action}" on ${ids.length} package(s)?`)) return;
-  form.submit();
 }
 
 /* ==========================

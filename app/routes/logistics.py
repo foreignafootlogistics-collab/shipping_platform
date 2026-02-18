@@ -2607,6 +2607,94 @@ def shipment_finance_invoice_preview_html(shipment_id):
         usd_to_jmd=usd_to_jmd,
     )
 
+@logistics_bp.route(
+    "/shipmentlog/<int:shipment_id>/finance-invoice/preview-json",
+    methods=["POST"],
+    endpoint="shipment_finance_invoice_preview_json"
+)
+@admin_required
+def shipment_finance_invoice_preview_json(shipment_id):
+    payload = request.get_json(silent=True) or {}
+    package_ids = payload.get("package_ids") or []
+
+    ShipmentLog.query.get_or_404(shipment_id)
+
+    q = (
+        Package.query
+        .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+        .filter(shipment_packages.c.shipment_id == shipment_id)
+    )
+
+    if package_ids:
+        clean_ids = []
+        for x in package_ids:
+            try:
+                clean_ids.append(int(x))
+            except Exception:
+                pass
+        if clean_ids:
+            q = q.filter(Package.id.in_(clean_ids))
+
+    pkgs = q.all()
+    if not pkgs:
+        return jsonify({"ok": False, "error": "No packages found for this shipment selection."}), 404
+
+    # --- SAME math as HTML version ---
+    total_weight_lbs = sum(float(p.weight or 0) for p in pkgs)
+    total_weight_kg  = total_weight_lbs * 0.45359237
+
+    base_rate_usd_per_kg = 3.0
+    base_freight_usd = total_weight_kg * base_rate_usd_per_kg
+
+    def w(p): return float(p.weight or 0)
+
+    c_0_10     = sum(1 for p in pkgs if 0 < w(p) <= 10)
+    c_10_25    = sum(1 for p in pkgs if 10 < w(p) <= 25)
+    c_25_50    = sum(1 for p in pkgs if 25 < w(p) <= 50)
+    c_50_100   = sum(1 for p in pkgs if 50 < w(p) <= 100)
+    c_100_plus = sum(1 for p in pkgs if w(p) > 100)
+
+    service_usd_total = (
+        (1.60 * c_0_10) +
+        (2.15 * c_10_25) +
+        (4.65 * c_25_50) +
+        (7.00 * c_50_100) +
+        (9.00 * c_100_plus)
+    )
+
+    usd_to_jmd = float(current_app.config.get("USD_TO_JMD", 165) or 165)
+    service_jmd_total = service_usd_total * usd_to_jmd
+    service_charge_jmd = float(current_app.config.get("SHIPMENT_SERVICE_JMD", 5000) or 5000)
+
+    total_usd = base_freight_usd + service_usd_total
+    total_jmd = (total_usd * usd_to_jmd) + service_charge_jmd
+
+    return jsonify({
+        "ok": True,
+        "shipment_id": shipment_id,
+        "package_count": len(pkgs),
+
+        "total_lbs": round(total_weight_lbs, 2),
+        "total_kg": round(total_weight_kg, 2),
+
+        "base_rate_usd_per_kg": base_rate_usd_per_kg,
+        "base_freight_usd": round(base_freight_usd, 2),
+
+        "c_0_10": c_0_10,
+        "c_10_25": c_10_25,
+        "c_25_50": c_25_50,
+        "c_50_100": c_50_100,
+        "c_100_plus": c_100_plus,
+
+        "service_usd_total": round(service_usd_total, 2),
+        "service_jmd_total": round(service_jmd_total, 2),
+        "service_charge_jmd": round(service_charge_jmd, 2),
+
+        "total_usd": round(total_usd, 2),
+        "total_jmd": round(total_jmd, 2),
+        "usd_to_jmd": usd_to_jmd,
+    }), 200
+
 
 @logistics_bp.route("/shipmentlog/calc-charges", methods=["GET"])
 @admin_required

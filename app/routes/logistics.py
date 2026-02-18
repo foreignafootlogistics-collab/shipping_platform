@@ -25,7 +25,6 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from sqlalchemy import func, or_, and_, asc, desc, cast
 from sqlalchemy.types import Date
-from sqlalchemy.sql import func
 
 from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
@@ -173,7 +172,11 @@ def _normalize_headers(cols):
 
 def _read_any_table(file_storage) -> pd.DataFrame:
     raw = file_storage.read()
-    file_storage.seek(0)
+    try:
+        file_storage.seek(0)
+    except Exception:
+        pass
+
     try:
         return pd.read_excel(io.BytesIO(raw))
     except Exception:
@@ -299,12 +302,21 @@ def _apply_pkg_filters(q, unassigned_id=None, date_from=None, date_to=None):
     # ✅ Always use the same date expression everywhere
     dt_expr = func.date(func.coalesce(Package.date_received, Package.created_at))
 
-    # 🔧 Cast string params to DATE so Postgres is happy
-    if date_from:
-        q = q.filter(dt_expr >= cast(date_from, Date))
+    def _safe_date(s: str):
+        try:
+            return datetime.strptime(str(s).strip(), "%Y-%m-%d").date()
+        except Exception:
+            return None
 
-    if date_to:
-        q = q.filter(dt_expr <= cast(date_to, Date))
+    df = _safe_date(date_from)
+    dt = _safe_date(date_to)
+
+    if df:
+        q = q.filter(dt_expr >= df)
+
+    if dt:
+        q = q.filter(dt_expr <= dt)
+ 
 
     if house:
         q = q.filter(Package.house_awb.ilike(f"%{house.strip()}%"))
@@ -2153,6 +2165,8 @@ def bulk_shipment_action(shipment_id):
 
     package_ids = sorted({int(x) for x in request.form.getlist('package_ids') if str(x).isdigit()})
     action = (request.form.get('action') or '').strip()
+    force = (request.form.get("force") == "1")  # admin override
+
 
     if not action or not package_ids:
         flash("⚠️ Please select both an action and at least one package.", "warning")
@@ -2161,11 +2175,7 @@ def bulk_shipment_action(shipment_id):
     # ---------------------------------------------------------
     # UNASSIGNED LOCK (single source of truth)
     # ---------------------------------------------------------
-    unassigned_id = get_unassigned_user_id()
-
-    blocked_unassigned = [p for p in pkgs_all if is_pkg_unassigned(p)]
-    eligible_pkgs      = [p for p in pkgs_all if not is_pkg_unassigned(p)]
-    skipped_unassigned = len(blocked_unassigned)
+    unassigned_id = get_unassigned_user_id()   
 
 
     # -------------------------
@@ -2190,9 +2200,21 @@ def bulk_shipment_action(shipment_id):
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     # Split into eligible vs blocked
-    blocked_unassigned = [p for p in pkgs_all if is_unassigned_pkg(p)]
-    eligible_pkgs = [p for p in pkgs_all if not is_unassigned_pkg(p)]
+    blocked_unassigned = [p for p in pkgs_all if is_pkg_unassigned(p)]
+    eligible_pkgs      = [p for p in pkgs_all if not is_pkg_unassigned(p)]
     skipped_unassigned = len(blocked_unassigned)
+
+    # -------------------------
+    # LOCK PROTECTION
+    # -------------------------
+    def _is_locked(p):
+        return bool(getattr(p, "is_locked", False))
+
+    locked_pkgs   = [p for p in eligible_pkgs if _is_locked(p)]
+    editable_pkgs = [p for p in eligible_pkgs if (not _is_locked(p)) or force]
+
+    skipped_locked = len(locked_pkgs) if not force else 0
+
 
     # ---------------------------------------------------------
     # ACTIONS
@@ -2272,42 +2294,51 @@ def bulk_shipment_action(shipment_id):
     # STATUS CHANGES (blocked for UNASSIGNED)
     # -------------------------
     elif action == "ready":
-        for p in eligible_pkgs:
+        for p in editable_pkgs:
             p.status = "Ready for Pick Up"
+
         db.session.commit()
 
-        msg = f"{len(eligible_pkgs)} package(s) marked Ready for Pick Up."
+        msg = f"{len(editable_pkgs)} package(s) marked Ready for Pick Up."
+        if skipped_locked:
+            msg += f" 🔒 Skipped {skipped_locked} LOCKED package(s)."
         if skipped_unassigned:
             msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
-        flash(msg, "success" if eligible_pkgs else "warning")
+        flash(msg, "success" if editable_pkgs else "warning")
+
 
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "revert_overseas":
-        for p in eligible_pkgs:
+        for p in editable_pkgs:
             p.status = "Overseas"
             if hasattr(p, "received_date"):
                 p.received_date = None
             if hasattr(p, "date_received"):
                 p.date_received = None
         db.session.commit()
-
-        msg = f"{len(eligible_pkgs)} package(s) reverted back to Overseas."
+        
+        msg = f"{len(editable_pkgs)} package(s) reverted back to Overseas."
+        if skipped_locked:
+            msg += f" 🔒 Skipped {skipped_locked} LOCKED package(s)."
         if skipped_unassigned:
             msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
-        flash(msg, "success" if eligible_pkgs else "warning")
+        flash(msg, "success" if editable_pkgs else "warning")
+
 
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "received_local_port":
-        for p in eligible_pkgs:
+        for p in editable_pkgs:
             p.status = "Received at Local Port"
         db.session.commit()
 
         msg = f"{len(eligible_pkgs)} package(s) marked Received at Local Port."
+        if skipped_locked:
+            msg += f" 🔒 Skipped {skipped_locked} LOCKED package(s)."
         if skipped_unassigned:
             msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
-        flash(msg, "success" if eligible_pkgs else "warning")
+        flash(msg, "success" if editable_pkgs else "warning")
 
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
@@ -2449,6 +2480,15 @@ def bulk_shipment_action(shipment_id):
 
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
+
+    elif action == "delivered":
+        for p in editable_pkgs:
+            p.status = "Delivered"
+            p.is_locked = True
+            p.locked_reason = "Auto-locked: delivered"
+            p.locked_at = datetime.now(timezone.utc)
+        db.session.commit()
+
     # -------------------------
     # REMOVE FROM SHIPMENT (blocked for UNASSIGNED)
     # -------------------------
@@ -2457,7 +2497,7 @@ def bulk_shipment_action(shipment_id):
             flash("🚫 All selected packages are UNASSIGNED. Assign them to a customer first.", "warning")
             return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-        eligible_ids = [p.id for p in eligible_pkgs]
+        eligible_ids = [p.id for p in editable_pkgs]
 
         db.session.execute(
             shipment_packages.delete().where(
@@ -2466,16 +2506,17 @@ def bulk_shipment_action(shipment_id):
             )
         )
 
-        for p in eligible_pkgs:
+        for p in editable_pkgs:
             p.status = "Overseas"
 
         db.session.commit()
 
         msg = f"Removed {len(eligible_ids)} package(s) from shipment {shipment_id} and reset to Overseas."
+        if skipped_locked:
+            msg += f" 🔒 Skipped {skipped_locked} LOCKED package(s)."
         if skipped_unassigned:
             msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
-        flash(msg, "success")
-
+        flash(msg, "success")       
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     else:
@@ -2483,134 +2524,41 @@ def bulk_shipment_action(shipment_id):
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
 
-@logistics_bp.route('/shipmentlog/<int:shipment_id>/finance-invoice/preview-json', methods=['POST'])
-@admin_required
-def shipment_finance_invoice_preview_json(shipment_id):
-    payload = request.get_json(silent=True) or {}
-    package_ids = payload.get("package_ids") or []
-
-    if not shipment_id or shipment_id <= 0:
-        return jsonify({"ok": False, "error": "Invalid shipment id."}), 400
-
-    ShipmentLog.query.get_or_404(shipment_id)
-
-    USD_TO_JMD = float(current_app.config.get("USD_TO_JMD", 165) or 165)
-
-    # ✅ explicit association join (reliable)
-    q = (Package.query
-         .join(shipment_packages, shipment_packages.c.package_id == Package.id)
-         .filter(shipment_packages.c.shipment_id == shipment_id))
-
-    if package_ids:
-        q = q.filter(Package.id.in_(package_ids))
-
-    pkgs = q.all()
-    if not pkgs:
-        return jsonify({"ok": False, "error": "No packages found for this shipment selection."}), 404
-
-    total_lbs = sum(float(p.weight or 0) for p in pkgs)
-    total_kg = (total_lbs / 2.2) if total_lbs else 0.0
-
-    base_rate_usd_per_kg = 3.0
-    freight_usd = total_kg * base_rate_usd_per_kg
-
-    bands = [
-        ("0-10",       0.0,   10.0,   1.60),
-        ("10.01-25",  10.01,  25.0,   2.15),
-        ("25.01-50",  25.01,  50.0,   4.65),
-        ("50.01-100", 50.01, 100.0,   7.00),
-        ("100.01+",  100.01, 10**9,  9.00),
-    ]
-
-    band_rows = []
-    service_usd_total = 0.0
-
-    for label, lo, hi, rate_usd in bands:
-        count = 0
-        for p in pkgs:
-            w = float(p.weight or 0)
-            if w >= lo and w <= hi:
-                count += 1
-
-        line_usd = count * rate_usd
-        service_usd_total += line_usd
-
-        band_rows.append({
-            "band": label,
-            "count": count,
-            "rate_usd": float(rate_usd),
-            "line_usd": round(line_usd, 2),
-        })
-
-    extra_service_jmd = 5000.0
-
-    subtotal_usd = freight_usd + service_usd_total
-    subtotal_jmd = subtotal_usd * USD_TO_JMD
-    total_jmd = subtotal_jmd + extra_service_jmd
-
-    return jsonify({
-        "ok": True,
-        "shipment_id": shipment_id,
-        "package_count": len(pkgs),
-
-        "total_lbs": round(total_lbs, 2),
-        "total_kg": round(total_kg, 2),
-
-        "usd_to_jmd": USD_TO_JMD,
-        "base_rate_usd_per_kg": base_rate_usd_per_kg,
-        "freight_usd": round(freight_usd, 2),
-
-        "service_bands": band_rows,
-        "service_usd_total": round(service_usd_total, 2),
-
-        "extra_service_jmd": round(extra_service_jmd, 2),
-
-        "subtotal_usd": round(subtotal_usd, 2),
-        "subtotal_jmd": round(subtotal_jmd, 2),
-        "total_jmd": round(total_jmd, 2),
-    })
-
-
-
 @logistics_bp.route("/shipmentlog/<int:shipment_id>/finance-invoice/preview", methods=["GET"])
 @admin_required
 def shipment_finance_invoice_preview_html(shipment_id):
-    # 1) Load shipment + its packages
     shipment = ShipmentLog.query.get_or_404(shipment_id)
 
-    # NOTE: adjust this filter if your FK is named differently
-    packages = (Package.query
-                .filter_by(shipment_id=shipment_id)
-                .all())
+    # ✅ correct: use association table
+    packages = (
+        Package.query
+        .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+        .filter(shipment_packages.c.shipment_id == shipment_id)
+        .all()
+    )
 
-    # 2) Compute totals
     total_packages = len(packages)
-    total_weight_lbs = sum((p.weight or 0) for p in packages)
-    total_weight_kg = (total_weight_lbs / 2.2) if total_weight_lbs else 0
 
-    # Base freight: USD $3 per kg
+    # totals
+    total_weight_lbs = sum(float(p.weight or 0) for p in packages)
+    total_weight_kg  = total_weight_lbs * 0.45359237  # accurate lbs -> kg
+
+    # base freight
     base_rate_usd_per_kg = 3.0
     base_freight_usd = total_weight_kg * base_rate_usd_per_kg
 
-    # 3) Service charge rules
-    service_charge_jmd = 5000.0  # fixed
+    # count by brackets (lbs)
+    def w(p): 
+        return float(p.weight or 0)
 
-    # Count packages by weight bracket (lbs)
-    def in_range(w, lo, hi=None):
-        if w is None:
-            return False
-        if hi is None:
-            return w > lo
-        return (w >= lo) and (w <= hi)
+    c_0_10     = sum(1 for p in packages if 0 < w(p) <= 10)
+    c_10_25    = sum(1 for p in packages if 10 < w(p) <= 25)
+    c_25_50    = sum(1 for p in packages if 25 < w(p) <= 50)
+    c_50_100   = sum(1 for p in packages if 50 < w(p) <= 100)
+    c_100_plus = sum(1 for p in packages if w(p) > 100)
 
-    c_0_10     = sum(1 for p in packages if in_range(p.weight, 0, 10))
-    c_10_25    = sum(1 for p in packages if (p.weight or 0) > 10 and (p.weight or 0) <= 25)
-    c_25_50    = sum(1 for p in packages if (p.weight or 0) > 25 and (p.weight or 0) <= 50)
-    c_50_100   = sum(1 for p in packages if (p.weight or 0) > 50 and (p.weight or 0) <= 100)
-    c_100_plus = sum(1 for p in packages if (p.weight or 0) > 100)
-
-    # USD charges per package count
-    extra_usd = (
+    # ✅ service total USD (this was missing)
+    service_usd_total = (
         (1.60 * c_0_10) +
         (2.15 * c_10_25) +
         (4.65 * c_25_50) +
@@ -2618,44 +2566,45 @@ def shipment_finance_invoice_preview_html(shipment_id):
         (9.00 * c_100_plus)
     )
 
-    # Convert USD extras to JMD
     usd_to_jmd = float(current_app.config.get("USD_TO_JMD", 165) or 165)
-    extra_jmd = extra_usd * usd_to_jmd
+    service_jmd_total = service_usd_total * usd_to_jmd
 
-    # Totals
-    total_usd = base_freight_usd + extra_usd
+    # fixed additional service in JMD
+    service_charge_jmd = float(current_app.config.get("SHIPMENT_SERVICE_JMD", 5000) or 5000)
+
+    # totals
+    total_usd = base_freight_usd + service_usd_total
     total_jmd = (total_usd * usd_to_jmd) + service_charge_jmd
-
-    service_jmd_total = (service_usd_total or 0) * (usd_to_jmd or 0)
-
-    # --- Total package weight in Jamaica ---
-    # (if your weights are already in lbs, keep as-is; if they are in kg, flip the formulas)
-    total_weight_lbs = sum((p.weight or 0) for p in packages)
-    total_weight_kg  = total_weight_lbs * 0.45359237  # lbs -> kg
 
     return render_template(
         "admin/logistics/_shipment_finance_invoice_preview.html",
         shipment=shipment,
+        shipment_id=shipment_id,
+
         packages=packages,
         total_packages=total_packages,
         total_weight_lbs=total_weight_lbs,
         total_weight_kg=total_weight_kg,
+
         base_rate_usd_per_kg=base_rate_usd_per_kg,
         base_freight_usd=base_freight_usd,
-        service_charge_jmd=service_charge_jmd,
+
         c_0_10=c_0_10,
         c_10_25=c_10_25,
         c_25_50=c_25_50,
         c_50_100=c_50_100,
         c_100_plus=c_100_plus,
-        extra_usd=extra_usd,
-        extra_jmd=extra_jmd,
-        total_usd=total_usd,
-        total_jmd=total_jmd,
-        usd_to_jmd=usd_to_jmd,
 
         service_usd_total=service_usd_total,
         service_jmd_total=service_jmd_total,
+
+        service_charge_jmd=service_charge_jmd,
+        extra_usd=service_usd_total,   # optional if you still use it elsewhere
+        extra_jmd=service_jmd_total,   # optional
+
+        total_usd=total_usd,
+        total_jmd=total_jmd,
+        usd_to_jmd=usd_to_jmd,
     )
 
 
@@ -2713,7 +2662,7 @@ def api_save_package_charges(pkg_id):
     return jsonify({"ok": True})
 
 
-@logistics_bp.route('/api/package/<int:pkg_id>', methods=['GET'])
+@logistics_bp.route('/api/package/<int:pkg_id>', methods=['GET'], endpoint='api_get_package')
 @admin_required
 def api_get_package(pkg_id):
     p = db.session.get(Package, pkg_id)
@@ -3371,7 +3320,7 @@ def api_calculate_charges():
 
     return jsonify(payload)
 
-@logistics_bp.route('/api/package/<int:pkg_id>', methods=['POST'])
+@logistics_bp.route('/api/package/<int:pkg_id>', methods=['POST'], endpoint='api_update_package')
 @admin_required
 def api_update_package(pkg_id):
     data = request.get_json(silent=True) or {}

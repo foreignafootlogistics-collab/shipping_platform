@@ -197,6 +197,11 @@ class Package(db.Model):
     pricing_locked_at = db.Column(db.DateTime, nullable=True)
     pricing_locked_by = db.Column(db.Integer, nullable=True)
 
+    is_locked = db.Column(db.Boolean, default=False, nullable=False)
+    locked_reason = db.Column(db.String(120), nullable=True)
+    locked_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+
     # Weight / Value
     weight = db.Column(db.Float, default=0.00)
     declared_value = db.Column(db.Float)

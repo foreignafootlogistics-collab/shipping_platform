@@ -1639,11 +1639,14 @@ def mark_invoice_paid():
         inv.amount_due = float(total_due)
         prev_status = inv.status
 
+        from app.utils.invoice_totals import lock_delivered_packages_for_invoice
+
         if inv.amount_due <= 0:
             inv.status = "paid"
-            inv.date_paid = datetime.utcnow()
+            inv.date_paid = datetime.now(timezone.utc)
             if prev_status != "paid":
-                mark_invoice_packages_delivered(inv.id)
+                lock_delivered_packages_for_invoice(inv.id, reason="Invoice fully paid")
+
         elif float(payments_total) > 0:
             inv.status = "partial"
             inv.date_paid = None
@@ -2114,13 +2117,16 @@ def add_payment(invoice_id):
 
     previous_status = inv.status
 
+    from app.utils.invoice_totals import lock_delivered_packages_for_invoice
+
     if new_due <= 0:
         inv.status = "paid"
         if hasattr(inv, "date_paid"):
-            inv.date_paid = datetime.utcnow()
-
+            inv.date_paid = datetime.now(timezone.utc)
+ 
         if previous_status != "paid":
-            mark_invoice_packages_delivered(inv.id)
+            lock_delivered_packages_for_invoice(inv.id, reason="Invoice fully paid")
+
 
     elif 0 < new_due < base_total:
         inv.status = "partial"

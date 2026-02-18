@@ -57,3 +57,16 @@ def mark_invoice_packages_delivered(invoice_id: int):
         {"status": "delivered"},
         synchronize_session=False
     )
+
+def lock_delivered_packages_for_invoice(invoice_id: int, reason: str = "Invoice paid"):
+    pkgs = Package.query.filter_by(invoice_id=invoice_id).all()
+    now = datetime.now(timezone.utc)
+
+    for p in pkgs:
+        p.status = "delivered"
+        p.is_locked = True
+        p.locked_reason = reason
+        p.locked_at = now
+
+    db.session.commit()
+    return len(pkgs)

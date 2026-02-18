@@ -88,7 +88,7 @@
               {{ "%.2f"|format(base_rate_usd_per_kg or 0) }} USD/kg
             </div>
           </td>
-          <td class="text-center">—</td>
+          <td class="text-center">{{ total_packages or 0 }}</td>
           <td class="text-end">{{ "%.2f"|format(base_rate_usd_per_kg or 0) }}</td>
           <td class="text-end">{{ "%.2f"|format(base_freight_usd or 0) }}</td>
         </tr>

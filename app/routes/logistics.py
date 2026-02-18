@@ -1202,16 +1202,25 @@ def bulk_assign_packages():
     updated = 0
     skipped_invoiced = 0
 
+    unassigned = ensure_unassigned_user()
+    unassigned_id = unassigned.id if unassigned else None
+
+
     for p in pkgs:
         # Optional safety: don't allow moving invoiced packages
         if getattr(p, "invoice_id", None):
             skipped_invoiced += 1
             continue
 
-        if reset_flag and (p.status or "").strip().lower() == "unassigned":
-            p.status = "Overseas"
+        was_unassigned_user = (unassigned_id and p.user_id == unassigned_id)
 
         p.user_id = user.id
+
+        if was_unassigned_user:
+            p.status = "Overseas"   # ✅ always unlock by assigning to real customer
+        elif reset_flag and (p.status or "").strip().lower() == "unassigned":
+           p.status = "Overseas"
+
         updated += 1
 
     try:
@@ -1967,24 +1976,38 @@ def create_shipment():
         flash("No packages selected.", "warning")
         return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
+    # ✅ BLOCK UNASSIGNED packages from being shipped
+    unassigned = ensure_unassigned_user()
+    unassigned_id = unassigned.id if unassigned else None
+
+    if unassigned_id:
+        bad = (
+            Package.query
+            .filter(Package.id.in_(pkg_ids), Package.user_id == unassigned_id)
+            .all()
+        )
+        if bad:
+            flash(
+                f"🚫 {len(bad)} selected package(s) are UNASSIGNED. "
+                "Assign them to a customer before creating a shipment.",
+                "danger"
+            )
+            return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+
     try:
-        # 1) Create the shipment log record
         sl = ShipmentLog(sl_id=_next_sl_id())
         db.session.add(sl)
-        db.session.flush()  # so sl.id is available
+        db.session.flush()
 
-        # 2) Load selected packages
         pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
         if not pkgs:
             db.session.rollback()
             flash("No matching packages found.", "warning")
             return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
-        # 3) Move each package to THIS shipment (and off any others)
         for p in pkgs:
             move_package_to_shipment(p, sl)
 
-        # Safety: if for some reason nothing ended up on this shipment
         if not sl.packages:
             db.session.rollback()
             flash("No packages could be added to the shipment.", "warning")
@@ -1992,13 +2015,13 @@ def create_shipment():
 
         db.session.commit()
         flash(f"Shipment {sl.sl_id} created with {len(sl.packages)} package(s).", "success")
-        return redirect(url_for('logistics.logistics_dashboard',
-                                shipment_id=sl.id,
-                                tab="shipmentLog"))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=sl.id, tab="shipmentLog"))
+
     except Exception as e:
         db.session.rollback()
         flash(f"Error creating shipment: {e}", "danger")
         return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+
 
 @logistics_bp.route('/shipmentlog/create-empty', methods=['POST', 'GET'])
 @admin_required
@@ -2077,7 +2100,6 @@ def move_packages_between_shipments():
     from_id = request.form.get('from_shipment_id', type=int)
     to_id   = request.form.get('to_shipment_id', type=int)
 
-    # Support both: list of inputs OR comma-separated string
     raw_ids = request.form.getlist('package_ids')
     if not raw_ids:
         csv_ids = (request.form.get('package_ids') or '')
@@ -2090,6 +2112,22 @@ def move_packages_between_shipments():
         return redirect(url_for('logistics.logistics_dashboard',
                                 tab='shipmentLog',
                                 shipment_id=from_id or None))
+
+    # ✅ BLOCK UNASSIGNED from being moved into any shipment
+    unassigned = ensure_unassigned_user()
+    unassigned_id = unassigned.id if unassigned else None
+    if unassigned_id:
+        bad_count = (
+            db.session.query(func.count(Package.id))
+            .filter(Package.id.in_(pkg_ids), Package.user_id == unassigned_id)
+            .scalar()
+            or 0
+        )
+        if bad_count:
+            flash("🚫 UNASSIGNED packages cannot be moved into shipments. Assign them to a customer first.", "danger")
+            return redirect(url_for('logistics.logistics_dashboard',
+                                    tab='shipmentLog',
+                                    shipment_id=from_id or None))
 
     to_sl = db.session.get(ShipmentLog, to_id)
     if not to_sl:
@@ -2107,7 +2145,6 @@ def move_packages_between_shipments():
 
     moved = 0
     for p in pkgs:
-        # 🔁 use the helper that enforces ONE shipment per package
         move_package_to_shipment(p, to_sl)
         moved += 1
 
@@ -2134,6 +2171,18 @@ def bulk_shipment_action(shipment_id):
         flash("⚠️ Please select both an action and at least one package.", "warning")
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
+    # ---------------------------------------------------------
+    # UNASSIGNED LOCK (single source of truth)
+    # ---------------------------------------------------------
+    unassigned = ensure_unassigned_user()
+    unassigned_id = unassigned.id if unassigned else None
+
+    def is_unassigned_pkg(p: Package) -> bool:
+        try:
+            return unassigned_id is not None and int(getattr(p, "user_id", 0) or 0) == int(unassigned_id)
+        except Exception:
+            return False
+
     # -------------------------
     # helper: safe float
     # -------------------------
@@ -2149,16 +2198,31 @@ def bulk_shipment_action(shipment_id):
         except ValueError:
             return None
 
+    # Load selected packages ONCE
+    pkgs_all = Package.query.filter(Package.id.in_(package_ids)).all()
+    if not pkgs_all:
+        flash("No matching packages found.", "warning")
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
+    # Split into eligible vs blocked
+    blocked_unassigned = [p for p in pkgs_all if is_unassigned_pkg(p)]
+    eligible_pkgs = [p for p in pkgs_all if not is_unassigned_pkg(p)]
+    skipped_unassigned = len(blocked_unassigned)
+
+    # ---------------------------------------------------------
+    # ACTIONS
+    # ---------------------------------------------------------
+
     # 🔹 Server-side Calculate Outstanding
     if action == "calc_outstanding":
-        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
         updated = 0
-        skipped = 0
+        skipped_locked = 0
+        skipped_invalid = 0
 
-        for p in pkgs:
+        for p in eligible_pkgs:
             # ✅ Respect lock: locked packages should NOT be recalculated in bulk
             if bool(getattr(p, "pricing_locked", False)):
-                skipped += 1
+                skipped_locked += 1
                 continue
 
             # weight/value from form (DT-safe hidden payload should include these)
@@ -2169,8 +2233,6 @@ def bulk_shipment_action(shipment_id):
             form_cat = (request.form.get(f"category_{p.id}") or "").strip()
             category = form_cat or (getattr(p, "category", None) or "Other")
 
-                      
-
             # ---------- invoice value ----------
             if form_val in (None, "", "None"):
                 invoice_val = float(_effective_value(p))
@@ -2179,7 +2241,6 @@ def bulk_shipment_action(shipment_id):
                     invoice_val = float(str(form_val).strip())
                 except Exception:
                     invoice_val = float(_effective_value(p))
-
 
             # ---------- weight ----------
             if form_weight in (None, "", "None"):
@@ -2190,7 +2251,6 @@ def bulk_shipment_action(shipment_id):
                 except Exception:
                     weight = float(getattr(p, "weight", 0) or 0)
 
-
             breakdown = _bulk_calc_apply_to_package(
                 p,
                 category=category,
@@ -2200,60 +2260,86 @@ def bulk_shipment_action(shipment_id):
 
             # helper returns None if invalid/protected
             if not breakdown:
-                skipped += 1
+                skipped_invalid += 1
                 continue
-
 
             updated += 1
 
         db.session.commit()
 
-        flash(
+        msg = (
             f"Calculated outstanding for {updated} package(s). "
-            f"Skipped {skipped} already priced / locked / protected.",
-            "success"
+            f"Skipped {skipped_locked} locked and {skipped_invalid} invalid."
         )
+        if skipped_unassigned:
+            msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s) (assign to a customer first)."
+        flash(msg, "success" if updated else "warning")
+
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-    # keep remaining actions unchanged...
+    # Placeholder (kept)
     elif action == "generate_invoice":
+        if skipped_unassigned:
+            flash(f"🚫 Skipped {skipped_unassigned} UNASSIGNED package(s). Assign them to a customer first.", "warning")
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
+    # -------------------------
+    # STATUS CHANGES (blocked for UNASSIGNED)
+    # -------------------------
     elif action == "ready":
-        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
-        for p in pkgs:
+        for p in eligible_pkgs:
             p.status = "Ready for Pick Up"
         db.session.commit()
-        flash(f"{len(package_ids)} package(s) marked Ready for Pick Up.", "success")
+
+        msg = f"{len(eligible_pkgs)} package(s) marked Ready for Pick Up."
+        if skipped_unassigned:
+            msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
+        flash(msg, "success" if eligible_pkgs else "warning")
+
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "revert_overseas":
-        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
-        for p in pkgs:
+        for p in eligible_pkgs:
             p.status = "Overseas"
             if hasattr(p, "received_date"):
                 p.received_date = None
             if hasattr(p, "date_received"):
                 p.date_received = None
         db.session.commit()
-        flash(f"{len(package_ids)} package(s) reverted back to Overseas.", "success")
+
+        msg = f"{len(eligible_pkgs)} package(s) reverted back to Overseas."
+        if skipped_unassigned:
+            msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
+        flash(msg, "success" if eligible_pkgs else "warning")
+
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
     elif action == "received_local_port":
-        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
-        for p in pkgs:
+        for p in eligible_pkgs:
             p.status = "Received at Local Port"
         db.session.commit()
-        flash(f"{len(package_ids)} package(s) marked Received at Local Port.", "success")
+
+        msg = f"{len(eligible_pkgs)} package(s) marked Received at Local Port."
+        if skipped_unassigned:
+            msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
+        flash(msg, "success" if eligible_pkgs else "warning")
+
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-    # ✅ READY FOR PICKUP EMAILS
+    # -------------------------
+    # READY FOR PICKUP EMAILS (blocked for UNASSIGNED)
+    # -------------------------
     elif action == "notify_ready":
+        # only users tied to eligible packages
+        eligible_ids = [p.id for p in eligible_pkgs]
+        if not eligible_ids:
+            flash("🚫 All selected packages are UNASSIGNED. Assign them to a customer first.", "warning")
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
         users = (
             db.session.query(User)
             .join(Package, Package.user_id == User.id)
-            .filter(Package.id.in_(package_ids))
+            .filter(Package.id.in_(eligible_ids))
             .distinct(User.id)
             .all()
         )
@@ -2264,7 +2350,7 @@ def bulk_shipment_action(shipment_id):
             _email_throttle(idx)
 
             pkgs = Package.query.filter(
-                Package.id.in_(package_ids),
+                Package.id.in_(eligible_ids),
                 Package.user_id == u.id
             ).all()
 
@@ -2276,7 +2362,6 @@ def bulk_shipment_action(shipment_id):
             } for p in pkgs]
 
             subject, plain, html = compose_ready_pickup_email(u.full_name, rows)
-
             send_email(u.email, subject, plain, html)
 
             _log_in_app_message(
@@ -2287,40 +2372,27 @@ def bulk_shipment_action(shipment_id):
 
         db.session.commit()
 
-        flash(
-            f"{len(package_ids)} package(s) marked Ready and notifications sent.",
-            "success"
-        )
+        msg = f"Notifications sent for {len(eligible_ids)} package(s)."
+        if skipped_unassigned:
+            msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
+        flash(msg, "success")
 
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-
-    # ✅ SEND INVOICE EMAILS
+    # -------------------------
+    # SEND INVOICE EMAILS (blocked for UNASSIGNED)
+    # -------------------------
     elif action == "send_invoices":
+        if not eligible_pkgs:
+            flash("🚫 All selected packages are UNASSIGNED. Assign them to a customer first.", "warning")
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
-
-        if not pkgs:
-            flash("No matching packages found for the selected items.", "warning")
-            return redirect(url_for(
-                'logistics.logistics_dashboard',
-                shipment_id=shipment_id,
-                tab="shipmentLog"
-            ))
-
-        invoice_ids = sorted({p.invoice_id for p in pkgs if p.invoice_id})
-
+        invoice_ids = sorted({p.invoice_id for p in eligible_pkgs if p.invoice_id})
         if not invoice_ids:
-            flash("The selected packages are not attached to any invoices yet.", "warning")
-            return redirect(url_for(
-                'logistics.logistics_dashboard',
-                shipment_id=shipment_id,
-                tab="shipmentLog"
-            ))
+            flash("The eligible selected packages are not attached to any invoices yet.", "warning")
+            if skipped_unassigned:
+                flash(f"🚫 Also skipped {skipped_unassigned} UNASSIGNED package(s).", "warning")
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
         rows = (
             db.session.query(Invoice, User)
@@ -2331,11 +2403,7 @@ def bulk_shipment_action(shipment_id):
 
         if not rows:
             flash("No invoices found for the selected packages.", "warning")
-            return redirect(url_for(
-                'logistics.logistics_dashboard',
-                shipment_id=shipment_id,
-                tab="shipmentLog"
-            ))
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
         from app.utils import email_utils
 
@@ -2345,13 +2413,15 @@ def bulk_shipment_action(shipment_id):
         for idx, (inv, user) in enumerate(rows):
             _email_throttle(idx)
 
+            # extra safety: never email the UNASSIGNED user
+            if unassigned_id and int(getattr(user, "id", 0) or 0) == int(unassigned_id):
+                continue
+
             if not user.email:
                 failed.append("(no email on file)")
                 continue
 
-            amount_due = float(
-                inv.amount_due or inv.grand_total or inv.amount or 0
-            )
+            amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
 
             invoice_dict = {
                 "number": inv.invoice_number or f"INV-{inv.id}",
@@ -2361,7 +2431,6 @@ def bulk_shipment_action(shipment_id):
             }
 
             inv_pkgs = Package.query.filter(Package.invoice_id == inv.id).all()
-
             for p in inv_pkgs:
                 invoice_dict["packages"].append({
                     "house_awb": p.house_awb or "-",
@@ -2379,53 +2448,54 @@ def bulk_shipment_action(shipment_id):
             )
 
             if ok:
-                sent += 1                
+                sent += 1
             else:
                 failed.append(user.email)
 
         db.session.commit()
 
         if sent:
-            flash(f"Invoice emails sent for {sent} invoice(s).", "success")
-
+            msg = f"Invoice emails sent for {sent} invoice(s)."
+            if skipped_unassigned:
+                msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
+            flash(msg, "success")
         if failed:
             flash("Some invoice emails failed: " + ", ".join(failed), "danger")
 
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
-
-    # ✅ REMOVE FROM SHIPMENT
+    # -------------------------
+    # REMOVE FROM SHIPMENT (blocked for UNASSIGNED)
+    # -------------------------
     elif action == "remove_from_shipment":
+        if not eligible_pkgs:
+            flash("🚫 All selected packages are UNASSIGNED. Assign them to a customer first.", "warning")
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
+        eligible_ids = [p.id for p in eligible_pkgs]
 
         db.session.execute(
             shipment_packages.delete().where(
                 shipment_packages.c.shipment_id == shipment_id,
-                shipment_packages.c.package_id.in_(package_ids)
+                shipment_packages.c.package_id.in_(eligible_ids)
             )
         )
 
-        pkgs = Package.query.filter(Package.id.in_(package_ids)).all()
-
-        for p in pkgs:
+        for p in eligible_pkgs:
             p.status = "Overseas"
 
         db.session.commit()
 
-        flash(
-            f"Removed {len(package_ids)} package(s) from shipment {shipment_id}.",
-            "success"
-        )
+        msg = f"Removed {len(eligible_ids)} package(s) from shipment {shipment_id} and reset to Overseas."
+        if skipped_unassigned:
+            msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
+        flash(msg, "success")
 
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            shipment_id=shipment_id,
-            tab="shipmentLog"
-        ))
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
+    else:
+        flash(f"Unknown action: {action}", "danger")
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 
 
 @logistics_bp.route('/shipmentlog/<int:shipment_id>/finance-invoice/preview-json', methods=['POST'])
@@ -2437,15 +2507,14 @@ def shipment_finance_invoice_preview_json(shipment_id):
     if not shipment_id or shipment_id <= 0:
         return jsonify({"ok": False, "error": "Invalid shipment id."}), 400
 
-    # ensure shipment exists
     ShipmentLog.query.get_or_404(shipment_id)
 
     USD_TO_JMD = float(current_app.config.get("USD_TO_JMD", 165) or 165)
 
-    # packages in shipment via relationship join
+    # ✅ explicit association join (reliable)
     q = (Package.query
-         .join(Package.shipments)
-         .filter(ShipmentLog.id == shipment_id))
+         .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+         .filter(shipment_packages.c.shipment_id == shipment_id))
 
     if package_ids:
         q = q.filter(Package.id.in_(package_ids))
@@ -2454,15 +2523,12 @@ def shipment_finance_invoice_preview_json(shipment_id):
     if not pkgs:
         return jsonify({"ok": False, "error": "No packages found for this shipment selection."}), 404
 
-    # totals
     total_lbs = sum(float(p.weight or 0) for p in pkgs)
     total_kg = (total_lbs / 2.2) if total_lbs else 0.0
 
-    # freight (USD/kg)
     base_rate_usd_per_kg = 3.0
     freight_usd = total_kg * base_rate_usd_per_kg
 
-    # service bands (per package by lbs)
     bands = [
         ("0-10",       0.0,   10.0,   1.60),
         ("10.01-25",  10.01,  25.0,   2.15),
@@ -2491,7 +2557,6 @@ def shipment_finance_invoice_preview_json(shipment_id):
             "line_usd": round(line_usd, 2),
         })
 
-    # fixed extra service charge (JMD)
     extra_service_jmd = 5000.0
 
     subtotal_usd = freight_usd + service_usd_total
@@ -2506,7 +2571,6 @@ def shipment_finance_invoice_preview_json(shipment_id):
         "total_lbs": round(total_lbs, 2),
         "total_kg": round(total_kg, 2),
 
-        # ✅ keys the modal JS expects
         "usd_to_jmd": USD_TO_JMD,
         "base_rate_usd_per_kg": base_rate_usd_per_kg,
         "freight_usd": round(freight_usd, 2),
@@ -3443,7 +3507,7 @@ def set_invoice_status(invoice_id):
 
     if new_status == 'paid':
         inv.status = 'paid'
-        inv.date_paid = datetime.now(timezone.utc),
+        inv.date_paid = datetime.now(timezone.utc)
     else:
         inv.status = new_status
         inv.date_paid = None

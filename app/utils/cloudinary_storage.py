@@ -1,6 +1,7 @@
 # app/utils/cloudinary_storage.py
 
 import os
+import uuid
 import mimetypes
 import requests
 from urllib.parse import urlsplit, urlunsplit
@@ -91,61 +92,54 @@ def _ensure_extension_in_url(url: str | None, ext: str, resource_type: str) -> s
 # ---------------------------------------
 def upload_file(file_storage, folder="fafl/uploads"):
     """
-    Uploads ANY supported file type to Cloudinary.
+    Upload ANY supported file type to Cloudinary.
     Returns: (url, public_id, resource_type)
 
-    - images -> resource_type=image
-    - pdf/xls/xlsx/etc -> resource_type=raw
-
-    ✅ IMPORTANT:
-    We do NOT mutate Cloudinary secure_url for raw uploads.
-    Cloudinary URLs are already correct; modifying them can cause 404.
-
-    ✅ EXTRA IMPORTANT for PDFs:
-    We set format="pdf" so Cloudinary finalizes the asset as a PDF and produces a stable URL.
+    ✅ Fix: for RAW uploads (pdf/xls/xlsx), ensure public_id has NO extension.
     """
     if not file_storage:
         return None, None, None
 
     filename = secure_filename(file_storage.filename or "")
     ext = os.path.splitext(filename)[1].lower()  # ".pdf", ".jpg", etc
+    base = os.path.splitext(filename)[0]         # "invoice_jl18nf" (no ext)
 
     is_image = ext in (".jpg", ".jpeg", ".png")
     resource_type = "image" if is_image else "raw"
 
-    upload_kwargs = dict(
-        folder=folder,
+    # ✅ Critical: public_id must NOT include extension
+    # Keep folder structure, add unique suffix to prevent collisions
+    clean_base = secure_filename(base) or "file"
+    unique = uuid.uuid4().hex[:10]
+    public_id = f"{folder}/{clean_base}_{unique}"
+
+    result = cloudinary.uploader.upload(
+        file_storage,
         resource_type=resource_type,
         type="upload",
         access_mode="public",
-        use_filename=True,
-        unique_filename=True,
+
+        # ✅ we control the public_id ourselves
+        public_id=public_id,
+        use_filename=False,
+        unique_filename=False,
         overwrite=False,
     )
 
-    # ✅ force PDF format when uploading a PDF as raw
-    if ext == ".pdf":
-        upload_kwargs["format"] = "pdf"
-
-    result = cloudinary.uploader.upload(file_storage, **upload_kwargs)
-
     url = result.get("secure_url") or result.get("url")
 
-    # Optional debug logging (Render logs)
+    # Debug (Render logs)
     try:
+        from flask import current_app
         current_app.logger.warning(
-            "[CLOUD UPLOAD] folder=%s filename=%s ext=%s resource_type=%s secure_url=%s public_id=%s",
+            "[CLOUD UPLOAD] folder=%s filename=%s ext=%s resource_type=%s secure_url=%s public_id=%s format=%s",
             folder, filename, ext, resource_type,
-            result.get("secure_url"), result.get("public_id")
+            result.get("secure_url"), result.get("public_id"), result.get("format")
         )
     except Exception:
         pass
 
-    return (
-        url,
-        result.get("public_id"),
-        result.get("resource_type"),
-    )
+    return url, result.get("public_id"), result.get("resource_type")
 
 
 # ---------------------------------------

@@ -170,16 +170,14 @@ def upload_invoice_image_meta(file_storage):
 def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
     """
     Serve a Prealert invoice inline.
-    - If invoice_filename is a remote URL (Cloudinary), try streaming.
-      If Cloudinary returns non-200, fallback to redirect (browser fetches directly).
-    - Else, serve from local INVOICE_UPLOAD_FOLDER.
+    - Remote Cloudinary/URL: stream through server and set correct Content-Type + inline filename
+      (sniffs PDF/JPG/PNG from first bytes so it works even when URL has no .pdf)
+    - Local disk fallback: serve from INVOICE_UPLOAD_FOLDER
     """
+
     u = (getattr(pa, "invoice_filename", "") or "").strip()
     if not u:
-        current_app.logger.warning(
-            "[PREALERT INVOICE] Missing invoice_filename for pa_id=%s",
-            getattr(pa, "id", None)
-        )
+        current_app.logger.warning("[PREALERT INVOICE] Missing invoice_filename pa_id=%s", getattr(pa, "id", None))
         abort(404)
 
     num = getattr(pa, "prealert_number", None) or getattr(pa, "id", None)
@@ -196,44 +194,60 @@ def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
     # -------------------------
     if u.startswith(("http://", "https://")):
         u = _fix_bad_ext_url(u)
-
         current_app.logger.warning("[PREALERT INVOICE] Fetch remote url=%s", u)
 
         try:
-            r = requests.get(u, stream=True, timeout=30, allow_redirects=True)
+            r = requests.get(u, stream=True, timeout=30)
         except Exception as e:
-            current_app.logger.exception("[PREALERT INVOICE] requests failed: %s", e)
-            return redirect(u)
+            current_app.logger.exception("[PREALERT INVOICE] requests.get failed: %s", e)
+            abort(502)
 
+        # If Cloudinary blocks direct fetch (401/403) you CAN redirect,
+        # but redirect often fails for raw PDFs. Better to abort.
         if r.status_code != 200:
-            current_app.logger.warning(
-                "[PREALERT INVOICE] Remote status=%s -> redirect fallback. url=%s",
-                r.status_code, u
-            )
-            return redirect(u)
+            current_app.logger.warning("[PREALERT INVOICE] Remote status=%s url=%s", r.status_code, u)
+            abort(404)
 
-        lower = u.lower()
-        if lower.endswith(".pdf"):
-            content_type = "application/pdf"
-            if not safe_name.lower().endswith(".pdf"):
-                safe_name += ".pdf"
-        elif lower.endswith((".jpg", ".jpeg")):
-            content_type = "image/jpeg"
-            if not safe_name.lower().endswith((".jpg", ".jpeg")):
-                safe_name += ".jpg"
-        elif lower.endswith(".png"):
-            content_type = "image/png"
-            if not safe_name.lower().endswith(".png"):
-                safe_name += ".png"
-        else:
-            content_type = r.headers.get("Content-Type") or "application/octet-stream"
+        it = r.iter_content(chunk_size=8192)
+
+        # Read first chunk to sniff file type
+        first = next(it, b"") or b""
+
+        def sniff(first_bytes: bytes):
+            fb = first_bytes[:8]
+            if fb.startswith(b"%PDF-"):
+                return "application/pdf", ".pdf"
+            if fb.startswith(b"\xFF\xD8\xFF"):
+                return "image/jpeg", ".jpg"
+            if fb.startswith(b"\x89PNG\r\n\x1a\n"):
+                return "image/png", ".png"
+
+            # fallback to server header if present
+            ct = (r.headers.get("Content-Type") or "").split(";")[0].strip() or "application/octet-stream"
+            ext = ""
+            if ct == "application/pdf":
+                ext = ".pdf"
+            elif ct == "image/jpeg":
+                ext = ".jpg"
+            elif ct == "image/png":
+                ext = ".png"
+            return ct, ext
+
+        content_type, ext = sniff(first)
+
+        # Ensure filename extension matches detected type
+        if ext and not safe_name.lower().endswith(ext):
+            safe_name = safe_name + ext
 
         def generate():
-            for chunk in r.iter_content(chunk_size=8192):
+            if first:
+                yield first
+            for chunk in it:
                 if chunk:
                     yield chunk
 
         resp = Response(stream_with_context(generate()), mimetype=content_type)
+        resp.headers["Content-Type"] = content_type
         resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
         resp.headers["X-Content-Type-Options"] = "nosniff"
         return resp
@@ -253,7 +267,6 @@ def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
     resp = send_from_directory(upload_folder, u, as_attachment=False)
     if guessed_type:
         resp.headers["Content-Type"] = guessed_type
-
     resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp

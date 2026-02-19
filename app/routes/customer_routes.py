@@ -297,13 +297,11 @@ def prealert_invoice(prealert_id):
 
 
 
-@customer_bp.route('/prealerts/view')
+@customer_bp.route("/prealerts/invoice/<int:prealert_id>")
 @login_required
-def prealerts_view():
-    prealerts = (Prealert.query
-                 .filter_by(customer_id=current_user.id)
-                 .order_by(Prealert.created_at.desc()).all())
-    return render_template('customer/prealerts_view.html', prealerts=prealerts)
+def prealert_invoice(prealert_id):
+    pa = Prealert.query.filter_by(id=prealert_id, customer_id=current_user.id).first_or_404()
+    return serve_prealert_invoice_file(pa, download_name_prefix="prealert")
 
 
 # -----------------------------

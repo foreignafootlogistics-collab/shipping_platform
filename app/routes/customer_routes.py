@@ -248,19 +248,23 @@ def customer_dashboard():
 @login_required
 def prealerts_create():
     form = PreAlertForm()
+
     if form.validate_on_submit():
-        filename = None
-        if form.invoice.data:
-            file = form.invoice.data
-            if file and getattr(file, "filename", ""):
-                original = file.filename.strip()
-                if original and allowed_file(original):
-                    from app.utils.cloudinary_storage import upload_invoice_image
-                    filename = upload_invoice_image(file)   # store URL in invoice_filename
+        invoice_url = None
 
+        if form.invoice.data and getattr(form.invoice.data, "filename", ""):
+            f = form.invoice.data
+            original = (f.filename or "").strip()
 
+            if original and allowed_file(original):
+                from app.utils.cloudinary_storage import upload_prealert_invoice
+                invoice_url, public_id, resource_type = upload_prealert_invoice(f)
+            else:
+                flash("Invalid invoice file type. Allowed: pdf, jpg, jpeg, png.", "warning")
+                return render_template('customer/prealerts_create.html', form=form)
 
         prealert_number = generate_prealert_number()
+
         pa = Prealert(
             prealert_number=prealert_number,
             customer_id=current_user.id,
@@ -270,15 +274,65 @@ def prealerts_create():
             purchase_date=form.purchase_date.data,
             package_contents=form.package_contents.data,
             item_value_usd=float(form.item_value_usd.data or 0),
-            invoice_filename=filename,
+            invoice_filename=invoice_url,  # ✅ Cloudinary URL stored here
             created_at=datetime.now(timezone.utc),
         )
+
         db.session.add(pa)
         db.session.commit()
 
         flash(f"Pre-alert PA-{prealert_number} submitted successfully!", "success")
         return redirect(url_for('customer.prealerts_view'))
+
     return render_template('customer/prealerts_create.html', form=form)
+
+
+@customer_bp.route("/prealerts/invoice/<int:prealert_id>")
+@login_required
+def prealert_invoice(prealert_id):
+    pa = Prealert.query.filter_by(id=prealert_id, customer_id=current_user.id).first_or_404()
+
+    url = (pa.invoice_filename or "").strip()
+    if not url:
+        abort(404)
+
+    # if it's already a URL, stream it and force inline
+    if url.startswith(("http://", "https://")):
+        try:
+            r = requests.get(url, stream=True, timeout=30)
+        except Exception:
+            abort(502)
+
+        if r.status_code != 200:
+            abort(404)
+
+        # guess type from url
+        lower = url.lower()
+        if ".pdf" in lower:
+            content_type = "application/pdf"
+            filename = "prealert-invoice.pdf"
+        elif ".png" in lower:
+            content_type = "image/png"
+            filename = "prealert-invoice.png"
+        elif ".jpg" in lower or ".jpeg" in lower:
+            content_type = "image/jpeg"
+            filename = "prealert-invoice.jpg"
+        else:
+            content_type = r.headers.get("Content-Type") or "application/octet-stream"
+            filename = "prealert-invoice"
+
+        def generate():
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+
+        resp = Response(stream_with_context(generate()), mimetype=content_type)
+        resp.headers["Content-Disposition"] = f'inline; filename="{filename}"'
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        return resp
+
+    # legacy disk fallback (if you ever stored local file names before)
+    return _redirect_or_send_attachment(url)
 
 
 @customer_bp.route('/prealerts/view')
@@ -464,14 +518,13 @@ def package_upload_docs(pkg_id):
         request.files.get("invoice_file_3"),
     ]
 
-    from app.utils.cloudinary_storage import upload_invoice_image
+    from app.utils.cloudinary_storage import upload_package_attachment
 
     saved_any = False
     for f in files:
         if f and f.filename and allowed_file(f.filename):
             original = f.filename.strip()
-
-            # ✅ upload to Cloudinary, store URL
+            
             url, public_id, rtype = upload_invoice_image(f)
 
             db.session.add(PackageAttachment(
@@ -542,6 +595,8 @@ def view_package_attachment(attachment_id):
                     yield chunk
 
         resp = Response(stream_with_context(generate()), mimetype=content_type)
+        if content_type == "application/pdf":
+            resp.headers["Content-Type"] = "application/pdf"
         resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
         resp.headers["X-Content-Type-Options"] = "nosniff"
         return resp

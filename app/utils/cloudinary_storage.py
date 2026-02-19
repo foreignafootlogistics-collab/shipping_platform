@@ -38,11 +38,10 @@ def _ensure_extension_in_url(url: str | None, ext: str, resource_type: str) -> s
         return url
 
     ext = (ext or "").lower()
-    if not ext.startswith("."):
-        ext = f".{ext}" if ext else ""
+    if ext and not ext.startswith("."):
+        ext = f".{ext}"
 
     if resource_type == "raw" and ext:
-        # If it already ends with .pdf/.xlsx etc, don't double-append
         if not url.lower().endswith(ext):
             url = url + ext
 
@@ -91,20 +90,27 @@ def upload_file(file_storage, folder="fafl/uploads"):
 
 
 # ---------------------------------------
-# Specific wrappers (optional but clean)
+# Specific wrappers
 # ---------------------------------------
 def upload_prealert_invoice(file_storage):
+    # Returns full metadata
     return upload_file(file_storage, folder="fafl/prealerts")
 
 
 def upload_package_attachment(file_storage):
+    # Returns full metadata
     return upload_file(file_storage, folder="fafl/package_attachments")
 
 
+# ✅ BACKWARD COMPAT: old code expects URL only
 def upload_invoice_image(file_storage):
-    # keep name, but return full metadata like the others
-    return upload_file(file_storage, folder="fafl/invoices")
+    url, _, _ = upload_file(file_storage, folder="fafl/invoices")
+    return url
 
+
+# ✅ NEW: for your PackageAttachment columns (file_url, cloud_public_id, cloud_resource_type)
+def upload_invoice_image_meta(file_storage):
+    return upload_file(file_storage, folder="fafl/invoices")
 
 
 # ---------------------------------------
@@ -118,4 +124,3 @@ def delete_cloudinary_file(public_id, resource_type="raw"):
         return True
     except Exception:
         return False
-

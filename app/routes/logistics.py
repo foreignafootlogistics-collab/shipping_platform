@@ -8,6 +8,7 @@ import json
 import time
 import random
 import bcrypt
+import mimetypes
 from io import StringIO
 from datetime import datetime, timedelta, timezone
 import requests
@@ -573,6 +574,7 @@ def prealerts(user_id=None):
         for p in rows:
             code_number = p.prealert_number or p.id  # fallback for old rows
             prealerts_data.append({
+                "id": p.id,
                 "code": f"PA-{code_number:05d}",
                 "customer_name": customer.full_name,
                 "registration_number": customer.registration_number,
@@ -603,6 +605,7 @@ def prealerts(user_id=None):
         for prealert, full_name, reg_no in rows:
             code_number = prealert.prealert_number or prealert.id
             prealerts_data.append({
+                "id": prealert.id,
                 "code": f"PA-{code_number:05d}",
                 "customer_name": full_name,
                 "registration_number": reg_no,
@@ -624,6 +627,67 @@ def prealerts(user_id=None):
         customer_name=customer_name,
         registration_number=registration_number,
     )
+
+@logistics_bp.route("/prealerts/invoice/<int:prealert_id>")
+@admin_required
+def admin_prealert_invoice(prealert_id):
+    pa = Prealert.query.get_or_404(prealert_id)
+
+    url = (pa.invoice_filename or "").strip()
+    if not url:
+        abort(404)
+
+    # If it's already a Cloudinary URL (or any URL), stream it inline
+    if url.startswith(("http://", "https://")):
+        try:
+            r = requests.get(url, stream=True, timeout=30)
+        except Exception:
+            abort(502)
+
+        if r.status_code != 200:
+            abort(404)
+
+        lower = url.lower()
+        if ".pdf" in lower:
+            content_type = "application/pdf"
+            filename = "prealert-invoice.pdf"
+        elif ".png" in lower:
+            content_type = "image/png"
+            filename = "prealert-invoice.png"
+        elif ".jpg" in lower or ".jpeg" in lower:
+            content_type = "image/jpeg"
+            filename = "prealert-invoice.jpg"
+        else:
+            content_type = r.headers.get("Content-Type") or "application/octet-stream"
+            filename = "prealert-invoice"
+
+        def generate():
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+
+        resp = Response(stream_with_context(generate()), mimetype=content_type)
+        resp.headers["Content-Disposition"] = f'inline; filename="{filename}"'
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        return resp
+
+    # Legacy disk fallback (old stored filenames)
+    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+    if not upload_folder:
+        abort(500)
+
+    fp = os.path.join(upload_folder, url)
+    if not os.path.exists(fp):
+        abort(404)
+
+    guessed_type, _ = mimetypes.guess_type(fp)
+    resp = send_from_directory(upload_folder, url, as_attachment=False)
+    if guessed_type:
+        resp.headers["Content-Type"] = guessed_type
+    resp.headers["Content-Disposition"] = f'inline; filename="{os.path.basename(url)}"'
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
 # --------------------------------------------------------------------------------------
 # Dashboard (Tabs: prealert, view_packages, shipmentLog, uploadPackages)
 # --------------------------------------------------------------------------------------
@@ -675,6 +739,7 @@ def logistics_dashboard():
         for prealert, full_name, reg_no in rows:
             code_number = prealert.prealert_number or prealert.id  # fallback
             prealerts_data.append({
+                "id": prealert.id,
                 "code": f"PA-{code_number:05d}",
                 "customer_name": full_name,
                 "registration_number": reg_no,

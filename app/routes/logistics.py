@@ -1405,35 +1405,71 @@ def delete_package_attachment_admin(attachment_id):
 @logistics_bp.route("/admin/package-attachment/<int:attachment_id>")
 @admin_required
 def admin_view_package_attachment(attachment_id):
+
     if not _is_internal_user(current_user):
         abort(403)
 
     a = PackageAttachment.query.get_or_404(attachment_id)
 
-    url = (getattr(a, "file_url", None) or getattr(a, "file_name", None) or "").strip()
-    if not url:
-        abort(404)
+    url = (
+        getattr(a, "file_url", None)
+        or getattr(a, "file_name", None)
+        or ""
+    ).strip()
 
-    # ✅ normalize odd URL formats
-    if url.startswith("//"):
-        url = "https:" + url
-    elif url.startswith("res.cloudinary.com"):
-        url = "https://" + url
+    display_name = (
+        getattr(a, "original_name", None)
+        or getattr(a, "file_name", None)
+        or "attachment"
+    ).strip()
 
-    # ✅ Remote file: redirect (prevents Cloudinary 400s + query/ext weirdness)
+    safe_name = secure_filename(display_name) or "attachment"
+
     if url.startswith(("http://", "https://")):
-        return redirect(_fix_bad_ext_url(url))
+        r = requests.get(url, stream=True, timeout=30)
+
+        if r.status_code != 200:
+            abort(404)
+
+        lower = safe_name.lower()
+
+        if lower.endswith(".pdf"):
+            content_type = "application/pdf"
+        elif lower.endswith((".jpg", ".jpeg")):
+            content_type = "image/jpeg"
+        elif lower.endswith(".png"):
+            content_type = "image/png"
+        else:
+            content_type = r.headers.get("Content-Type") or "application/octet-stream"
+
+        def generate():
+            for chunk in r.iter_content(8192):
+                if chunk:
+                    yield chunk
+
+        resp = Response(
+            stream_with_context(generate()),
+            mimetype=content_type
+        )
+
+        resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+
+        return resp
 
     # legacy disk fallback (keep yours)
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+
     if not upload_folder:
         abort(500)
 
     fp = os.path.join(upload_folder, url)
+
     if not os.path.exists(fp):
         abort(404)
 
     return send_from_directory(upload_folder, url, as_attachment=False)
+
 
 
 

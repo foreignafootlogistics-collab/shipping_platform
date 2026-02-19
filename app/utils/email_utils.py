@@ -647,6 +647,11 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
     """
     Sends an email when FAFL receives a new package overseas.
     Includes a button/link for the customer to upload their invoice.
+
+    ✅ FIX (Yahoo mobile):
+    - Yahoo mobile often breaks overflow-x scrolling inside emails.
+    - We force the 5-column table to FIT within phone width (compact font/padding + fixed layout + column widths),
+      so all columns show without stacking.
     """
     subject = f"Foreign A Foot Logistics Limited received a new package overseas for FAFL #{reg_number}"
     upload_url = f"{DASHBOARD_URL}/customer/packages"
@@ -661,13 +666,24 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
         status = getattr(p, "status", None) if not isinstance(p, dict) else p.get("status")
         rounded = ceil(weight or 0)
 
+        # ✅ UPDATED row styles (compact + wrapping) to ensure all columns render on Yahoo mobile
         rows_html.append(f"""
 <tr>
-  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee; white-space:nowrap;">{house or '-'}</td>
-  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:center; white-space:nowrap;">{rounded}</td>
-  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee; white-space:nowrap;">{tracking or '-'}</td>
-  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee; white-space:normal; word-break:break-word; overflow-wrap:anywhere;">{desc or '-'}</td>
-  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee; color:#d97706; font-weight:bold; white-space:nowrap;">{status or 'Overseas'}</td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+    {house or '-'}
+  </td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; text-align:center; white-space:nowrap;">
+    {rounded}
+  </td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+    {tracking or '-'}
+  </td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+    {desc or '-'}
+  </td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; color:#d97706; font-weight:bold; word-break:break-word; overflow-wrap:anywhere;">
+    {status or 'Overseas'}
+  </td>
 </tr>
 """)
 
@@ -707,44 +723,36 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
     ]
     plain_body = "\n".join(plain_lines)
 
-    # ✅ UPDATED: scroll-safe wrapper that works better in mobile Gmail (no stacking)
+    # ✅ UPDATED table: no overflow scroll wrapper; fixed layout + column widths so Yahoo shows all columns
     html_body = f"""
 <p style="margin:0 0 10px 0;">Hello {full_name},</p>
 <p style="margin:0 0 14px 0;">Great news – we’ve received a new package overseas for you. Package details:</p>
 
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:16px 0;">
-  <tr>
-    <td style="padding:0; mso-line-height-rule:exactly;">
-      <div style="width:100%; max-width:100%; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; border:1px solid #eee; border-radius:10px;">
-        <table cellpadding="0" cellspacing="0" width="720"
-               style="border-collapse:collapse; width:720px; min-width:720px; table-layout:fixed;">
-          <thead>
-            <tr style="background:#f5f2fb; color:#4a148c;">
-              <th width="160" style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee; white-space:nowrap;">
-                House AWB/Control #
-              </th>
-              <th width="140" style="padding:8px 10px; font-size:13px; text-align:center; border:1px solid #eee; white-space:nowrap;">
-                Rounded Weight (lbs)
-              </th>
-              <th width="170" style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee; white-space:nowrap;">
-                Tracking #
-              </th>
-              <th width="170" style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee; white-space:normal; word-break:break-word; overflow-wrap:anywhere;">
-                Description
-              </th>
-              <th width="80" style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee; white-space:nowrap;">
-                Status
-              </th>
-            </tr>
-          </thead>
+<table cellpadding="0" cellspacing="0" width="100%"
+       style="border-collapse:collapse; width:100%; table-layout:fixed;">
+  <thead>
+    <tr style="background:#f5f2fb; color:#4a148c;">
+      <th width="22%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+        House AWB/Control #
+      </th>
+      <th width="14%" style="padding:6px 6px; font-size:11.5px; text-align:center; border:1px solid #eee; white-space:nowrap;">
+        Wt (lbs)
+      </th>
+      <th width="22%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+        Tracking #
+      </th>
+      <th width="28%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+        Description
+      </th>
+      <th width="14%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+        Status
+      </th>
+    </tr>
+  </thead>
 
-          <tbody>
-            {''.join(rows_html)}
-          </tbody>
-        </table>
-      </div>
-    </td>
-  </tr>
+  <tbody>
+    {''.join(rows_html)}
+  </tbody>
 </table>
 
 <p style="margin:16px 0 0 0; color:#111827;">

@@ -1,11 +1,18 @@
 # app/utils/cloudinary_storage.py
 
 import os
-from werkzeug.utils import secure_filename
+import mimetypes
+import requests
 from urllib.parse import urlsplit, urlunsplit
+
 import cloudinary
 import cloudinary.uploader
 
+from werkzeug.utils import secure_filename
+from flask import (
+    current_app, abort, Response, stream_with_context,
+    send_from_directory, redirect
+)
 
 
 def init_cloudinary(app) -> bool:
@@ -29,10 +36,36 @@ def init_cloudinary(app) -> bool:
     )
     return True
 
+
+# -----------------------------
+# URL helpers
+# -----------------------------
+def _fix_bad_ext_url(u: str) -> str:
+    """
+    Fix URLs like:
+      .../file?x=1.pdf  -> .../file.pdf?x=1
+    """
+    if not u:
+        return u
+
+    parts = urlsplit(u)
+    if not parts.query:
+        return u
+
+    for ext in (".pdf", ".jpg", ".jpeg", ".png", ".xlsx", ".xls"):
+        if parts.query.lower().endswith(ext):
+            new_query = parts.query[: -len(ext)]
+            new_path = (parts.path or "") + ext
+            return urlunsplit((parts.scheme, parts.netloc, new_path, new_query, parts.fragment))
+
+    return u
+
+
 def _ensure_extension_in_url(url: str | None, ext: str, resource_type: str) -> str | None:
     """
-    Cloudinary 'raw' URLs sometimes come back without extension.
-    Add the extension to the PATH (before ?query/#fragment) so browsers preview inline.
+    ⚠️ NOTE:
+    We do NOT use this for Cloudinary secure_url anymore because mutating Cloudinary URLs
+    can lead to 404s for raw uploads. Kept only for backwards compat if something else references it.
     """
     if not url:
         return url
@@ -41,43 +74,16 @@ def _ensure_extension_in_url(url: str | None, ext: str, resource_type: str) -> s
     if ext and not ext.startswith("."):
         ext = f".{ext}"
 
-    # Only needed for raw uploads (pdf/xlsx/etc)
     if resource_type != "raw" or not ext:
         return url
 
     parts = urlsplit(url)
     path = parts.path or ""
-
-    # If the path already ends with .pdf/.xlsx etc, don't add again
     if path.lower().endswith(ext):
         return url
 
-    # Add extension to the PATH only (NOT after querystring)
     new_path = path + ext
     return urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
-
-def _fix_bad_ext_url(u: str) -> str:
-    """
-    Fix URLs like: .../file?x=1.pdf  -> .../file.pdf?x=1
-    Only applies if it looks like a bad append.
-    """
-    if not u:
-        return u
-
-    parts = urlsplit(u)
-    if not parts.query:
-        return u  # no query, nothing to fix
-
-    # if query ends with ".pdf" etc, it's likely wrong
-    for ext in (".pdf", ".jpg", ".jpeg", ".png", ".xlsx", ".xls"):
-        if parts.query.lower().endswith(ext):
-            # remove ext from query and append to path
-            new_query = parts.query[: -len(ext)]
-            new_path = (parts.path or "") + ext
-            return urlunsplit((parts.scheme, parts.netloc, new_path, new_query, parts.fragment))
-
-    return u
-
 
 
 # ---------------------------------------
@@ -90,7 +96,13 @@ def upload_file(file_storage, folder="fafl/uploads"):
 
     - images -> resource_type=image
     - pdf/xls/xlsx/etc -> resource_type=raw
-    - ensures extension is present in URL for raw files (important for inline viewing)
+
+    ✅ IMPORTANT:
+    We do NOT mutate Cloudinary secure_url for raw uploads.
+    Cloudinary URLs are already correct; modifying them can cause 404.
+
+    ✅ EXTRA IMPORTANT for PDFs:
+    We set format="pdf" so Cloudinary finalizes the asset as a PDF and produces a stable URL.
     """
     if not file_storage:
         return None, None, None
@@ -98,10 +110,10 @@ def upload_file(file_storage, folder="fafl/uploads"):
     filename = secure_filename(file_storage.filename or "")
     ext = os.path.splitext(filename)[1].lower()  # ".pdf", ".jpg", etc
 
-    resource_type = "image" if ext in (".jpg", ".jpeg", ".png") else "raw"
+    is_image = ext in (".jpg", ".jpeg", ".png")
+    resource_type = "image" if is_image else "raw"
 
-    result = cloudinary.uploader.upload(
-        file_storage,
+    upload_kwargs = dict(
         folder=folder,
         resource_type=resource_type,
         type="upload",
@@ -111,8 +123,23 @@ def upload_file(file_storage, folder="fafl/uploads"):
         overwrite=False,
     )
 
+    # ✅ force PDF format when uploading a PDF as raw
+    if ext == ".pdf":
+        upload_kwargs["format"] = "pdf"
+
+    result = cloudinary.uploader.upload(file_storage, **upload_kwargs)
+
     url = result.get("secure_url") or result.get("url")
-    url = _ensure_extension_in_url(url, ext, resource_type)
+
+    # Optional debug logging (Render logs)
+    try:
+        current_app.logger.warning(
+            "[CLOUD UPLOAD] folder=%s filename=%s ext=%s resource_type=%s secure_url=%s public_id=%s",
+            folder, filename, ext, resource_type,
+            result.get("secure_url"), result.get("public_id")
+        )
+    except Exception:
+        pass
 
     return (
         url,
@@ -125,12 +152,10 @@ def upload_file(file_storage, folder="fafl/uploads"):
 # Specific wrappers
 # ---------------------------------------
 def upload_prealert_invoice(file_storage):
-    # Returns full metadata
     return upload_file(file_storage, folder="fafl/prealerts")
 
 
 def upload_package_attachment(file_storage):
-    # Returns full metadata
     return upload_file(file_storage, folder="fafl/package_attachments")
 
 
@@ -146,6 +171,101 @@ def upload_invoice_image_meta(file_storage):
 
 
 # ---------------------------------------
+# Serve Prealert Invoice (inline)
+# ---------------------------------------
+def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
+    """
+    Serve a Prealert invoice inline.
+    - If invoice_filename is a remote URL (Cloudinary), try streaming.
+      If Cloudinary returns non-200, fallback to redirect (browser fetches directly).
+    - Else, serve from local INVOICE_UPLOAD_FOLDER.
+    """
+    u = (getattr(pa, "invoice_filename", "") or "").strip()
+    if not u:
+        current_app.logger.warning(
+            "[PREALERT INVOICE] Missing invoice_filename for pa_id=%s",
+            getattr(pa, "id", None)
+        )
+        abort(404)
+
+    num = getattr(pa, "prealert_number", None) or getattr(pa, "id", None)
+    safe_name = secure_filename(f"{download_name_prefix}_{num}_invoice") or "prealert_invoice"
+
+    # Normalize Cloudinary shorthand
+    if u.startswith("//"):
+        u = "https:" + u
+    elif "cloudinary.com" in u and not u.startswith(("http://", "https://")):
+        u = "https://" + u
+
+    # -------------------------
+    # Remote URL (Cloudinary)
+    # -------------------------
+    if u.startswith(("http://", "https://")):
+        u = _fix_bad_ext_url(u)
+
+        current_app.logger.warning("[PREALERT INVOICE] Fetch remote url=%s", u)
+
+        try:
+            r = requests.get(u, stream=True, timeout=30, allow_redirects=True)
+        except Exception as e:
+            current_app.logger.exception("[PREALERT INVOICE] requests failed: %s", e)
+            return redirect(u)
+
+        if r.status_code != 200:
+            current_app.logger.warning(
+                "[PREALERT INVOICE] Remote status=%s -> redirect fallback. url=%s",
+                r.status_code, u
+            )
+            return redirect(u)
+
+        lower = u.lower()
+        if lower.endswith(".pdf"):
+            content_type = "application/pdf"
+            if not safe_name.lower().endswith(".pdf"):
+                safe_name += ".pdf"
+        elif lower.endswith((".jpg", ".jpeg")):
+            content_type = "image/jpeg"
+            if not safe_name.lower().endswith((".jpg", ".jpeg")):
+                safe_name += ".jpg"
+        elif lower.endswith(".png"):
+            content_type = "image/png"
+            if not safe_name.lower().endswith(".png"):
+                safe_name += ".png"
+        else:
+            content_type = r.headers.get("Content-Type") or "application/octet-stream"
+
+        def generate():
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+
+        resp = Response(stream_with_context(generate()), mimetype=content_type)
+        resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        return resp
+
+    # -------------------------
+    # Local disk fallback
+    # -------------------------
+    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+    if not upload_folder:
+        abort(500)
+
+    fp = os.path.join(upload_folder, u)
+    if not os.path.exists(fp):
+        abort(404)
+
+    guessed_type, _ = mimetypes.guess_type(fp)
+    resp = send_from_directory(upload_folder, u, as_attachment=False)
+    if guessed_type:
+        resp.headers["Content-Type"] = guessed_type
+
+    resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
+
+
+# ---------------------------------------
 # Delete from Cloudinary
 # ---------------------------------------
 def delete_cloudinary_file(public_id, resource_type="raw"):
@@ -156,3 +276,4 @@ def delete_cloudinary_file(public_id, resource_type="raw"):
         return True
     except Exception:
         return False
+

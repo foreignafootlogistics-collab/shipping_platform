@@ -59,6 +59,8 @@ from sqlalchemy import func, or_
 # Email class from Flask-Mail (alias to avoid clash)
 from flask_mail import Message as MailMessage
 from sqlalchemy.orm import selectinload
+from app.utils.cloudinary_storage import serve_prealert_invoice_file
+
 
 
 customer_bp = Blueprint('customer', __name__, template_folder='templates/customer')
@@ -85,136 +87,6 @@ def _calc_handling(weight_lbs: float) -> float:
     elif w > 100:
         return 20000.0
     return 0.0
-
-def _fix_bad_ext_url(u: str) -> str:
-    """
-    Fix URLs like:
-      .../file?x=1.pdf  -> .../file.pdf?x=1
-    """
-    if not u:
-        return u
-
-    parts = urlsplit(u)
-    if not parts.query:
-        return u
-
-    # if query ends with an extension, it's likely wrong
-    for ext in (".pdf", ".jpg", ".jpeg", ".png", ".xlsx", ".xls"):
-        if parts.query.lower().endswith(ext):
-            new_query = parts.query[: -len(ext)]
-            new_path = (parts.path or "") + ext
-            return urlunsplit((parts.scheme, parts.netloc, new_path, new_query, parts.fragment))
-
-    return u
-
-def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
-    """
-    Serve a Prealert invoice inline.
-    - If invoice_filename is a remote URL (Cloudinary), try server-side streaming.
-      If remote returns non-200 (403/404/etc), fallback to redirect (browser fetches directly).
-    - Else, serve from local INVOICE_UPLOAD_FOLDER.
-    """
-
-    u = (getattr(pa, "invoice_filename", "") or "").strip()
-    if not u:
-        current_app.logger.warning("[PREALERT INVOICE] Missing invoice_filename for pa_id=%s", getattr(pa, "id", None))
-        abort(404)
-
-    num = getattr(pa, "prealert_number", None) or getattr(pa, "id", None)
-    safe_name = secure_filename(f"{download_name_prefix}_{num}_invoice") or "prealert_invoice"
-
-    # Normalize Cloudinary shorthand
-    if u.startswith("//"):
-        u = "https:" + u
-    elif "cloudinary.com" in u and not u.startswith(("http://", "https://")):
-        u = "https://" + u
-
-    # -------------------------
-    # Remote URL (Cloudinary)
-    # -------------------------
-    if u.startswith(("http://", "https://")):
-        u = _fix_bad_ext_url(u)
-
-        current_app.logger.info(
-            "[PREALERT INVOICE] Fetch start | pa_id=%s | url=%s",
-            getattr(pa, "id", None), u
-        )
-
-        # Some hosts block python-requests unless you look like a browser.
-        headers = {
-            "User-Agent": request.headers.get("User-Agent", "Mozilla/5.0"),
-            "Accept": "application/pdf,image/*,*/*;q=0.8",
-        }
-
-        try:
-            r = requests.get(u, stream=True, timeout=30, headers=headers, allow_redirects=True)
-        except Exception as e:
-            current_app.logger.exception("[PREALERT INVOICE] requests.get failed | pa_id=%s | err=%s", getattr(pa, "id", None), e)
-            # fallback: let browser try directly
-            return redirect(u)
-
-        current_app.logger.warning(
-            "[PREALERT INVOICE] Fetch result | pa_id=%s | status=%s | final_url=%s | content_type=%s",
-            getattr(pa, "id", None),
-            r.status_code,
-            getattr(r, "url", u),
-            r.headers.get("Content-Type")
-        )
-
-        # ✅ If remote is not accessible server-side, let browser fetch it directly
-        if r.status_code != 200:
-            current_app.logger.warning("[PREALERT INVOICE] Non-200 -> redirecting browser to remote URL")
-            return redirect(u)
-
-        # Decide content type
-        lower = (getattr(r, "url", u) or u).lower()
-        if lower.endswith(".pdf") or "application/pdf" in (r.headers.get("Content-Type") or "").lower():
-            content_type = "application/pdf"
-            if not safe_name.lower().endswith(".pdf"):
-                safe_name += ".pdf"
-        elif lower.endswith((".jpg", ".jpeg")):
-            content_type = "image/jpeg"
-            if not safe_name.lower().endswith((".jpg", ".jpeg")):
-                safe_name += ".jpg"
-        elif lower.endswith(".png"):
-            content_type = "image/png"
-            if not safe_name.lower().endswith(".png"):
-                safe_name += ".png"
-        else:
-            content_type = r.headers.get("Content-Type") or "application/octet-stream"
-
-        def generate():
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    yield chunk
-
-        resp = Response(stream_with_context(generate()), mimetype=content_type)
-        resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
-        resp.headers["X-Content-Type-Options"] = "nosniff"
-        return resp
-
-    # -------------------------
-    # Local disk fallback
-    # -------------------------
-    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
-    if not upload_folder:
-        current_app.logger.error("[PREALERT INVOICE] INVOICE_UPLOAD_FOLDER missing from config")
-        abort(500)
-
-    fp = os.path.join(upload_folder, u)
-    if not os.path.exists(fp):
-        current_app.logger.warning("[PREALERT INVOICE] Local file missing | path=%s", fp)
-        abort(404)
-
-    guessed_type, _ = mimetypes.guess_type(fp)
-    resp = send_from_directory(upload_folder, u, as_attachment=False)
-    if guessed_type:
-        resp.headers["Content-Type"] = guessed_type
-
-    resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
-    resp.headers["X-Content-Type-Options"] = "nosniff"
-    return resp
-
 
 # -----------------------------
 # Upload folders (from config)

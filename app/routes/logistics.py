@@ -45,7 +45,8 @@ from app.utils.wallet import process_first_shipment_bonus
 
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
-from app.routes.customer_routes import serve_prealert_invoice_file, _fix_bad_ext_url
+from app.utils.cloudinary_storage import serve_prealert_invoice_file
+
 
 
 from app.utils.unassigned import (

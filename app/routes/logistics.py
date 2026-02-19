@@ -564,6 +564,78 @@ def _fix_bad_ext_url(u: str) -> str:
 
     return u
 
+def serve_prealert_invoice_file(pa: Prealert, *, download_name_prefix="prealert"):
+    """
+    Serve a Prealert invoice inline (Cloudinary/remote URL streamed, or local disk file).
+    Reuses the same behavior as the customer route.
+    """
+    u = (pa.invoice_filename or "").strip()
+    if not u:
+        abort(404)
+
+    # nice filename for browser inline viewing
+    num = getattr(pa, "prealert_number", None) or pa.id
+    safe_name = secure_filename(f"{download_name_prefix}_{num}_invoice") or "prealert_invoice"
+
+    # normalize Cloudinary shorthand (optional safety)
+    if u.startswith("//"):
+        u = "https:" + u
+    elif u.startswith("res.cloudinary.com"):
+        u = "https://" + u
+
+    # ✅ Remote URL: STREAM inline like package attachment
+    if u.startswith(("http://", "https://")):
+        u = _fix_bad_ext_url(u)
+
+        try:
+            r = requests.get(u, stream=True, timeout=30)
+        except Exception:
+            abort(502)
+
+        if r.status_code != 200:
+            abort(404)
+
+        lower = u.lower()
+        if lower.endswith(".pdf"):
+            content_type = "application/pdf"
+            safe_name = safe_name + ".pdf"
+        elif lower.endswith((".jpg", ".jpeg")):
+            content_type = "image/jpeg"
+            safe_name = safe_name + ".jpg"
+        elif lower.endswith(".png"):
+            content_type = "image/png"
+            safe_name = safe_name + ".png"
+        else:
+            content_type = r.headers.get("Content-Type") or "application/octet-stream"
+
+        def generate():
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+
+        resp = Response(stream_with_context(generate()), mimetype=content_type)
+        if content_type == "application/pdf":
+            resp.headers["Content-Type"] = "application/pdf"
+        resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        return resp
+
+    # ✅ Local disk fallback
+    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+    if not upload_folder:
+        abort(500)
+
+    fp = os.path.join(upload_folder, u)
+    if not os.path.exists(fp):
+        abort(404)
+
+    guessed_type, _ = mimetypes.guess_type(fp)
+    resp = send_from_directory(upload_folder, u, as_attachment=False)
+    if guessed_type:
+        resp.headers["Content-Type"] = guessed_type
+    resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 # --------------------------------------------------------------------------------------
 # Prealerts
@@ -655,40 +727,7 @@ def prealerts(user_id=None):
 @admin_required
 def admin_prealert_invoice(prealert_id):
     pa = Prealert.query.get_or_404(prealert_id)
-
-    u = (pa.invoice_filename or "").strip()
-    if not u:
-        abort(404)
-
-    # ✅ Cloudinary (or any remote URL): redirect (fast + reliable)
-    if u.startswith("//"):
-        u = "https:" + u
-    elif u.startswith("res.cloudinary.com"):
-        u = "https://" + u
-
-    if u.startswith(("http://", "https://")):
-        return redirect(_fix_bad_ext_url(u))
-
-    # ✅ Legacy disk fallback (old stored filenames)
-    upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
-    if not upload_folder:
-        abort(500)
-
-    fp = os.path.join(upload_folder, u)
-    if not os.path.exists(fp):
-        abort(404)
-
-    guessed_type, _ = mimetypes.guess_type(fp)
-
-    # safer filename for header
-    safe_name = secure_filename(os.path.basename(u)) or "prealert-invoice"
-
-    resp = send_from_directory(upload_folder, u, as_attachment=False)
-    if guessed_type:
-        resp.headers["Content-Type"] = guessed_type
-    resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
-    resp.headers["X-Content-Type-Options"] = "nosniff"
-    return resp
+    return serve_prealert_invoice_file(pa, download_name_prefix="admin_prealert")
 
 
 # --------------------------------------------------------------------------------------

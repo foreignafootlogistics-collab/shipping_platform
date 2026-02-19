@@ -402,7 +402,11 @@
                       {% endif %}
                     </td>
 
-                    <td>{{ pkg.date_received.strftime('%Y-%m-%d') if pkg.date_received else '-' }}</td>
+                    <td>
+                      {% set d = (pkg.date_any or pkg.date_received) %}
+                      {{ (d|string)[:10] if d else '-' }}
+                    </td>
+
                     <!-- ✅ MUST HAVE name=weight_{id} -->
                     <td>
                       <input id="weight_{{ pkg.id }}"

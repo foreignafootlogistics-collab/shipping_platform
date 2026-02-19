@@ -10,7 +10,7 @@ import random
 import bcrypt
 import mimetypes
 from io import StringIO
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 import requests
 from flask import stream_with_context
 
@@ -393,6 +393,8 @@ def _parse_dt_maybe(v):
         return None
     if isinstance(v, datetime):
         return v
+    if isinstance(v, date):
+        return datetime(v.year, v.month, v.day)
     try:
         return datetime.fromisoformat(str(v))
     except Exception:
@@ -926,7 +928,12 @@ def logistics_dashboard():
         for p, full_name, reg in rows:
             atts = attachments_by_pkg.get(p.id, [])
             created_dt = _parse_dt_maybe(p.created_at)
-            recv_dt    = _parse_dt_maybe(p.date_received)
+            recv_dt = _parse_dt_maybe(
+                getattr(p, "date_received", None)
+                or getattr(p, "received_date", None)
+               or getattr(p, "created_at", None)
+            )
+
 
             shipment_pkg_rows.append({
                 "id": p.id,
@@ -2359,10 +2366,6 @@ def bulk_shipment_action(shipment_id):
     elif action == "revert_overseas":
         for p in editable_pkgs:
             p.status = "Overseas"
-            if hasattr(p, "received_date"):
-                p.received_date = None
-            if hasattr(p, "date_received"):
-                p.date_received = None
         db.session.commit()
         
         msg = f"{len(editable_pkgs)} package(s) reverted back to Overseas."

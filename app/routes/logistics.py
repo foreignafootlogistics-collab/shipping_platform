@@ -922,9 +922,9 @@ def logistics_dashboard():
                 })
 
         # 3) build final dict rows INCLUDING attachments
+        shipment_pkg_rows = []
         for p, full_name, reg in rows:
             atts = attachments_by_pkg.get(p.id, [])
-
             created_dt = _parse_dt_maybe(p.created_at)
             recv_dt    = _parse_dt_maybe(p.date_received)
 

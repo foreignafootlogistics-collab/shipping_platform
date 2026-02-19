@@ -110,15 +110,21 @@ def _fix_bad_ext_url(u: str) -> str:
 def serve_prealert_invoice_file(pa: Prealert, *, download_name_prefix="prealert"):
     """
     Serve a Prealert invoice inline (Cloudinary/remote URL streamed, or local disk file).
-    Works for:
-      - https://res.cloudinary.com/...
-      - res.cloudinary.com/...
-      - //res.cloudinary.com/...
-      - local disk filenames
+    Debug version with detailed logging.
     """
 
     u = (pa.invoice_filename or "").strip()
+
+    # 🔎 DEBUG 1 — what is stored in DB?
+    current_app.logger.info(
+        f"[PREALERT INVOICE] pa_id={pa.id} "
+        f"prealert_number={getattr(pa,'prealert_number',None)} "
+        f"raw_invoice_filename={pa.invoice_filename!r} "
+        f"stripped={u!r}"
+    )
+
     if not u:
+        current_app.logger.warning("[PREALERT INVOICE] Empty invoice_filename -> 404")
         abort(404)
 
     # nice filename
@@ -131,35 +137,59 @@ def serve_prealert_invoice_file(pa: Prealert, *, download_name_prefix="prealert"
     elif "cloudinary.com" in u and not u.startswith(("http://", "https://")):
         u = "https://" + u
 
+    # 🔎 DEBUG 2 — after normalization
+    current_app.logger.info(f"[PREALERT INVOICE] normalized_url={u!r}")
+
     # =========================
     # Remote URL (Cloudinary)
     # =========================
     if u.startswith(("http://", "https://")):
+
         u = _fix_bad_ext_url(u)
+
+        # 🔎 DEBUG 3 — final fetch URL
+        current_app.logger.info(f"[PREALERT INVOICE] fetching url={u!r}")
 
         try:
             r = requests.get(u, stream=True, timeout=30)
-        except Exception:
+
+            # 🔎 DEBUG 4 — response info
+            current_app.logger.info(
+                f"[PREALERT INVOICE] fetch_result "
+                f"status={r.status_code} "
+                f"content_type={(r.headers.get('Content-Type') or '')!r} "
+                f"final_url={getattr(r,'url','')!r}"
+            )
+
+        except Exception as e:
+            current_app.logger.exception(
+                f"[PREALERT INVOICE] requests_error url={u!r} error={e}"
+            )
             abort(502)
 
         if r.status_code != 200:
+            current_app.logger.warning(
+                f"[PREALERT INVOICE] Non-200 response -> abort 404"
+            )
             abort(404)
 
-        lower = u.lower()
-        if lower.endswith(".pdf"):
+        # Prefer header content type (more reliable than extension)
+        hdr_ct = (r.headers.get("Content-Type") or "").lower()
+
+        if "pdf" in hdr_ct:
             content_type = "application/pdf"
             if not safe_name.lower().endswith(".pdf"):
                 safe_name += ".pdf"
-        elif lower.endswith((".jpg", ".jpeg")):
-            content_type = "image/jpeg"
-            if not safe_name.lower().endswith((".jpg", ".jpeg")):
-                safe_name += ".jpg"
-        elif lower.endswith(".png"):
+        elif "png" in hdr_ct:
             content_type = "image/png"
             if not safe_name.lower().endswith(".png"):
                 safe_name += ".png"
+        elif "jpeg" in hdr_ct or "jpg" in hdr_ct:
+            content_type = "image/jpeg"
+            if not safe_name.lower().endswith(".jpg"):
+                safe_name += ".jpg"
         else:
-            content_type = r.headers.get("Content-Type") or "application/octet-stream"
+            content_type = hdr_ct or "application/octet-stream"
 
         def generate():
             for chunk in r.iter_content(chunk_size=8192):
@@ -169,27 +199,39 @@ def serve_prealert_invoice_file(pa: Prealert, *, download_name_prefix="prealert"
         resp = Response(stream_with_context(generate()), mimetype=content_type)
         resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
         resp.headers["X-Content-Type-Options"] = "nosniff"
+
+        current_app.logger.info("[PREALERT INVOICE] Streaming remote file successfully")
         return resp
 
     # =========================
     # Local disk fallback
     # =========================
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
+
     if not upload_folder:
+        current_app.logger.error("[PREALERT INVOICE] INVOICE_UPLOAD_FOLDER missing")
         abort(500)
 
     fp = os.path.join(upload_folder, u)
+
+    # 🔎 DEBUG local file path
+    current_app.logger.info(f"[PREALERT INVOICE] Local fallback path={fp!r}")
+
     if not os.path.exists(fp):
+        current_app.logger.warning("[PREALERT INVOICE] Local file not found -> 404")
         abort(404)
 
     guessed_type, _ = mimetypes.guess_type(fp)
 
     resp = send_from_directory(upload_folder, u, as_attachment=False)
+
     if guessed_type:
         resp.headers["Content-Type"] = guessed_type
 
     resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
     resp.headers["X-Content-Type-Options"] = "nosniff"
+
+    current_app.logger.info("[PREALERT INVOICE] Serving local file successfully")
     return resp
 
 # -----------------------------

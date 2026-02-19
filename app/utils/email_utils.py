@@ -494,260 +494,6 @@ def send_email(
 
 
 
-
-# ==========================================================
-#  CORE EMAIL FUNCTION (SMTP)
-#  ✅ Branding wrapper + utf-8 + attachments + reply-to
-# ==========================================================
-def send_email_smtp_only(
-    to_email: str,
-    subject: str,
-    plain_body: str,
-    html_body: str | None = None,
-    attachments: list[tuple[bytes, str, str]] | None = None,
-    recipient_user_id: int | None = None,   # logs to Messages when provided
-    reply_to: str | None = None,
-    force_new_connection: bool = False,
-) -> bool:
-    """
-    Sends email via SMTP.
-
-    ✅ IMPORTANT:
-    - Pass html_body as BODY CONTENT ONLY (no <html>, no header/logo, no footer).
-    - This function will wrap it with FAFL header + footer automatically.
-    """
-
-    def _wrap_with_branding(inner_html: str) -> str:
-        inner_html = (inner_html or "").strip()
-
-        # Don't double-wrap
-        if f'{_BRAND_WRAPPER_MARKER}="1"' in inner_html or _BRAND_WRAPPER_MARKER in inner_html:
-            return inner_html
-
-
-        return f"""<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-</head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;">
-  <div style="width:100%;padding:24px 0;">
-    <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;
-                box-shadow:0 4px 12px rgba(0,0,0,0.05);" {_BRAND_WRAPPER_MARKER}="1">
-
-      <!-- HEADER -->
-      <div style="padding:18px 22px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #e5e7eb;">
-        {_logo_img(22)}
-        <div style="font-size:16px;font-weight:700;color:#4A148C;">
-          Foreign A Foot Logistics Limited
-        </div>
-      </div>
-
-      <!-- BODY -->
-      <div style="padding:26px 24px;line-height:1.65;">
-        {inner_html}
-      </div>
-
-      <!-- FOOTER -->
-      <div style="background:#f5f2fb;padding:16px 22px;font-size:12.5px;color:#555;text-align:left;">
-
-        <div style="display:flex;justify-content:flex-start;align-items:center;gap:10px;margin-bottom:8px;">
-          {_logo_img(20)}
-          <strong>Foreign A Foot Logistics Limited</strong>
-        </div>
-
-        <!-- Address -->
-        <div style="margin-top:6px; line-height:1.6;">
-          <img src="https://cdn-icons-png.flaticon.com/512/684/684908.png"
-               alt="Location"
-               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
-          Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica
-        </div>
-
-        <!-- Contact links -->
-        <div style="margin-top:8px; line-height:1.8;">
-
-          <img src="https://cdn-icons-png.flaticon.com/512/724/724664.png"
-               alt="Phone"
-               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
-          <a href="tel:18765607764"
-             style="color:#4A148C;text-decoration:none;">
-             (876) 560-7764
-          </a>
-          <br>
-
-          <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png"
-               alt="WhatsApp"
-               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
-          <a href="https://wa.me/18762104291"
-             style="color:#4A148C;text-decoration:none;">
-             WhatsApp: (876) 210-4291
-          </a>
-          <br>
-
-          <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png"
-               alt="WhatsApp"
-               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
-          <a href="https://wa.me/18765607764"
-             style="color:#4A148C;text-decoration:none;">
-             WhatsApp: (876) 560-7764
-          </a>
-          <br>
-
-          <img src="https://cdn-icons-png.flaticon.com/512/561/561127.png"
-               alt="Email"
-               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
-          <a href="mailto:foreignafootlogistics@gmail.com"
-             style="color:#4A148C;text-decoration:none;">
-            foreignafootlogistics@gmail.com
-          </a>
-          <br>
-
-          <img src="https://cdn-icons-png.flaticon.com/512/1006/1006771.png"
-               alt="Website"
-               style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
-          <a href="{DASHBOARD_URL}"
-             style="color:#4A148C;text-decoration:none;">
-            https://app.faflcourier.com
-          </a>
-        </div>
-
-        <!-- Dashboard Button -->
-        <div style="margin-top:12px;">
-          <a href="{DASHBOARD_URL}"
-             style="display:inline-block;background:#4A148C;color:#ffffff;text-decoration:none;
-                    padding:10px 14px;border-radius:8px;font-weight:700;font-size:13px;">
-            Open Customer Dashboard
-          </a>
-        </div>
-
-      </div>    
-  </div>
-</body>
-</html>""".strip()
-
-    # Fail fast if creds missing
-    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
-        print("❌ Cannot send email: SMTP_USER / SMTP_PASS not set.")
-        return False
-
-    has_attachments = bool(attachments)
-    msg = MIMEMultipart("mixed" if has_attachments else "alternative")
-
-    msg["From"] = EMAIL_FROM or EMAIL_ADDRESS
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    if reply_to:
-        msg["Reply-To"] = reply_to
-
-    # Plain + HTML (alternative part)
-    if has_attachments:
-        alt = MIMEMultipart("alternative")
-        msg.attach(alt)
-    else:
-        alt = msg
-
-    alt.attach(MIMEText((plain_body or "").strip(), "plain", "utf-8"))
-
-    if html_body:
-        branded_html = _wrap_with_branding(html_body)
-        alt.attach(MIMEText(branded_html, "html", "utf-8"))
-
-    # Attachments
-    if has_attachments:
-        for a in attachments:
-            if isinstance(a, dict):
-                file_bytes = a.get("content", b"")
-                filename = a.get("filename", "attachment")
-                mimetype = a.get("mimetype", "application/octet-stream")
-            else:
-                file_bytes, filename, mimetype = a
-
-            if not mimetype or "/" not in mimetype:
-                mimetype = "application/octet-stream"
-
-            _, subtype = mimetype.split("/", 1)
-            part = MIMEApplication(file_bytes, _subtype=subtype)
-            part.add_header("Content-Disposition", "attachment", filename=filename)
-            msg.attach(part)
-    
-    import ssl
-
-    # ✅ Keep retries small (bulk loops should throttle, not this function)
-    try:
-        MAX_RETRIES = int(os.getenv("SMTP_MAX_RETRIES", "2"))
-    except Exception:
-        MAX_RETRIES = 2
-
-    try:
-        BACKOFF_BASE = float(os.getenv("SMTP_BACKOFF_BASE", "2"))
-    except Exception:
-        BACKOFF_BASE = 2.0
-
-    try:
-        BACKOFF_451 = float(os.getenv("SMTP_451_BACKOFF_SECONDS", "15"))
-    except Exception:
-        BACKOFF_451 = 15.0
-
-    last_err = None
-
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            timeout = 30
-            context = ssl.create_default_context()
-
-            if SMTP_PORT == 465:
-                with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=timeout, context=context) as smtp:
-                    smtp.ehlo()
-                    smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-                    smtp.send_message(msg)
-            else:
-                with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=timeout) as smtp:
-                    smtp.ehlo()
-                    smtp.starttls(context=context)
-                    smtp.ehlo()
-                    smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-                    smtp.send_message(msg)
-
-            print(f"✅ Email sent to {to_email}")
-
-            if recipient_user_id:
-                log_email_to_messages(recipient_user_id, subject, (plain_body or "").strip())
-
-            return True
-
-        except smtplib.SMTPResponseException as e:
-            last_err = f"{e.smtp_code} {e.smtp_error}"
-
-            # ✅ Yahoo deferral / temp failure:
-            # don't freeze the request for 30 minutes
-            if int(e.smtp_code or 0) == 451:
-                print(f"⏸️ SMTP 451 deferred for {to_email}. Backing off {BACKOFF_451}s then retrying...")
-                time.sleep(BACKOFF_451)
-            else:
-                sleep_for = BACKOFF_BASE * attempt
-                print(f"⚠️ SMTP error attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
-                time.sleep(sleep_for)
-
-        except (smtplib.SMTPServerDisconnected, ConnectionResetError, TimeoutError, OSError) as e:
-            last_err = str(e)
-            sleep_for = BACKOFF_BASE * attempt
-            print(f"⚠️ Connection issue attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
-            time.sleep(sleep_for)
-
-        except Exception as e:
-            last_err = str(e)
-            sleep_for = BACKOFF_BASE * attempt
-            print(f"⚠️ Unknown error attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
-            time.sleep(sleep_for)
-
-    print(f"❌ Email sending failed to {to_email}: {last_err}")
-    return False
-
-
-
-
 # ==========================================================
 #  WELCOME EMAIL (BODY ONLY)
 # ==========================================================
@@ -917,11 +663,11 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 
         rows_html.append(f"""
 <tr>
-  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{house or '-'}</td>
-  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee; text-align:center;">{rounded}</td>
-  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{tracking or '-'}</td>
-  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{desc or '-'}</td>
-  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee; color:#d97706; font-weight:bold;">{status or 'Overseas'}</td>
+  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee;">{house or '-'}</td>
+  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:center;">{rounded}</td>
+  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee;">{tracking or '-'}</td>
+  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee;">{desc or '-'}</td>
+  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee; color:#d97706; font-weight:bold;">{status or 'Overseas'}</td>
 </tr>
 """)
 
@@ -965,18 +711,29 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
 <p style="margin:0 0 10px 0;">Hello {full_name},</p>
 <p style="margin:0 0 14px 0;">Great news – we’ve received a new package overseas for you. Package details:</p>
 
-<div style="width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:16px 0;">
+<div style="display:block; width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:16px 0;">
   <table cellpadding="0" cellspacing="0"
-         style="border-collapse:collapse; width:100%; min-width:720px;">
+         style="border-collapse:collapse; width:100%; min-width:720px; table-layout:fixed;">
     <thead>
       <tr style="background:#f5f2fb; color:#4a148c;">
-        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee;">House AWB/Control #</th>
-        <th style="padding:8px 10px; font-size:13px; text-align:center; border:1px solid #eee;">Rounded Weight (lbs)</th>
-        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee;">Tracking #</th>
-        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee;">Description</th>
-        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee;">Status</th>
+        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+          House AWB/Control #
+        </th>
+        <th style="padding:8px 10px; font-size:13px; text-align:center; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+          Rounded Weight (lbs)
+        </th>
+        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+          Tracking #
+        </th>
+        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+          Description
+        </th>
+        <th style="padding:8px 10px; font-size:13px; text-align:left; border:1px solid #eee;">
+          Status
+        </th>
       </tr>
     </thead>
+
     <tbody>
       {''.join(rows_html)}
     </tbody>
@@ -1143,11 +900,11 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
                   <div style="height:14px;"></div>
 
                   <!-- TABLE -->
-                  <div style="width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:12px 0;">
+                  <div style="display:block; width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:12px 0;">
                     <table width="100%" cellpadding="0" cellspacing="0"
                            style="border-collapse:collapse; background:#ffffff;
                            border:1px solid #e5e7eb; border-radius:10px;
-                           overflow:hidden; min-width:720px;">
+                           overflow:hidden; min-width:720px; table-layout:fixed;">
                     <thead>
                       <tr style="background:#f5f2fb;">
                         <th align="left" style="padding:8px 10px; color:#4A148C; font-family:Arial, sans-serif; font-size:13px; font-weight:800; border-right:1px solid #e5e7eb;">
@@ -1462,11 +1219,11 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
 
         rows_html.append(f"""
 <tr>
-  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{shipper}</td>
-  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{awb}</td>
-  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee;">{track}</td>
+  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee;">{shipper}</td>
+  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee;">{awb}</td>
+  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee;">{track}</td>
   <td style="padding:8px; border:1px solid #eee; text-align:center;">{w_up}</td>
-  <td style="padding:8px 10px; font-size 13px; border:1px solid #eee; color:#16a34a; font-weight:700;">
+  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee; color:#16a34a; font-weight:700;">
     Ready for Pickup/Delivery
   </td>
 </tr>
@@ -1494,9 +1251,9 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
 
 <p style="margin:0 0 10px 0;">We’ve prepared the following item(s) for pickup or delivery:</p>
 
-<div style="width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:12px 0;">
+<div style="display:block; width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:12px 0;">
   <table cellpadding="0" cellspacing="0"
-         style="width:100%; border-collapse:collapse; min-width:720px;">
+         style="width:100%; border-collapse:collapse; min-width:720px; table-layout:fixed;">
     <thead>
       <tr style="background:#f3ecff; color:#4a148c;">
         <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:left;">Shipper</th>

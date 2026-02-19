@@ -51,6 +51,7 @@ from app.utils.unassigned import (
     get_unassigned_user_id,
     is_pkg_unassigned,
 )
+from urllib.parse import urlsplit, urlunsplit
 
 
 # Base URL for links used in emails (fallback to Render URL)
@@ -543,6 +544,27 @@ def _redirect_or_send_attachment(path_or_url: str):
     return send_from_directory(upload_folder, u, as_attachment=False)
 
 
+def _fix_bad_ext_url(u: str) -> str:
+    """
+    Fix URLs like:
+      .../file?x=1.pdf  -> .../file.pdf?x=1
+    """
+    if not u:
+        return u
+
+    parts = urlsplit(u)
+    if not parts.query:
+        return u
+
+    for ext in (".pdf", ".jpg", ".jpeg", ".png", ".xlsx", ".xls"):
+        if parts.query.lower().endswith(ext):
+            new_query = parts.query[: -len(ext)]
+            new_path = (parts.path or "") + ext
+            return urlunsplit((parts.scheme, parts.netloc, new_path, new_query, parts.fragment))
+
+    return u
+
+
 # --------------------------------------------------------------------------------------
 # Prealerts
 # --------------------------------------------------------------------------------------
@@ -628,65 +650,46 @@ def prealerts(user_id=None):
         registration_number=registration_number,
     )
 
+
 @logistics_bp.route("/prealerts/invoice/<int:prealert_id>")
 @admin_required
 def admin_prealert_invoice(prealert_id):
     pa = Prealert.query.get_or_404(prealert_id)
 
-    url = (pa.invoice_filename or "").strip()
-    if not url:
+    u = (pa.invoice_filename or "").strip()
+    if not u:
         abort(404)
 
-    # If it's already a Cloudinary URL (or any URL), stream it inline
-    if url.startswith(("http://", "https://")):
-        try:
-            r = requests.get(url, stream=True, timeout=30)
-        except Exception:
-            abort(502)
+    # ✅ Cloudinary (or any remote URL): redirect (fast + reliable)
+    if u.startswith("//"):
+        u = "https:" + u
+    elif u.startswith("res.cloudinary.com"):
+        u = "https://" + u
 
-        if r.status_code != 200:
-            abort(404)
+    if u.startswith(("http://", "https://")):
+        return redirect(_fix_bad_ext_url(u))
 
-        lower = url.lower()
-        if ".pdf" in lower:
-            content_type = "application/pdf"
-            filename = "prealert-invoice.pdf"
-        elif ".png" in lower:
-            content_type = "image/png"
-            filename = "prealert-invoice.png"
-        elif ".jpg" in lower or ".jpeg" in lower:
-            content_type = "image/jpeg"
-            filename = "prealert-invoice.jpg"
-        else:
-            content_type = r.headers.get("Content-Type") or "application/octet-stream"
-            filename = "prealert-invoice"
-
-        def generate():
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    yield chunk
-
-        resp = Response(stream_with_context(generate()), mimetype=content_type)
-        resp.headers["Content-Disposition"] = f'inline; filename="{filename}"'
-        resp.headers["X-Content-Type-Options"] = "nosniff"
-        return resp
-
-    # Legacy disk fallback (old stored filenames)
+    # ✅ Legacy disk fallback (old stored filenames)
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
     if not upload_folder:
         abort(500)
 
-    fp = os.path.join(upload_folder, url)
+    fp = os.path.join(upload_folder, u)
     if not os.path.exists(fp):
         abort(404)
 
     guessed_type, _ = mimetypes.guess_type(fp)
-    resp = send_from_directory(upload_folder, url, as_attachment=False)
+
+    # safer filename for header
+    safe_name = secure_filename(os.path.basename(u)) or "prealert-invoice"
+
+    resp = send_from_directory(upload_folder, u, as_attachment=False)
     if guessed_type:
         resp.headers["Content-Type"] = guessed_type
-    resp.headers["Content-Disposition"] = f'inline; filename="{os.path.basename(url)}"'
+    resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
 
 # --------------------------------------------------------------------------------------
 # Dashboard (Tabs: prealert, view_packages, shipmentLog, uploadPackages)
@@ -1408,33 +1411,18 @@ def admin_view_package_attachment(attachment_id):
     a = PackageAttachment.query.get_or_404(attachment_id)
 
     url = (getattr(a, "file_url", None) or getattr(a, "file_name", None) or "").strip()
-    display_name = (getattr(a, "original_name", None) or getattr(a, "file_name", None) or "attachment").strip()
-    safe_name = secure_filename(display_name) or "attachment"
+    if not url:
+        abort(404)
 
+    # ✅ normalize odd URL formats
+    if url.startswith("//"):
+        url = "https:" + url
+    elif url.startswith("res.cloudinary.com"):
+        url = "https://" + url
+
+    # ✅ Remote file: redirect (prevents Cloudinary 400s + query/ext weirdness)
     if url.startswith(("http://", "https://")):
-        r = requests.get(url, stream=True, timeout=30)
-        if r.status_code != 200:
-            abort(404)
-
-        lower = safe_name.lower()
-        if lower.endswith(".pdf"):
-            content_type = "application/pdf"
-        elif lower.endswith((".jpg", ".jpeg")):
-            content_type = "image/jpeg"
-        elif lower.endswith(".png"):
-            content_type = "image/png"
-        else:
-            content_type = r.headers.get("Content-Type") or "application/octet-stream"
-
-        def generate():
-            for chunk in r.iter_content(8192):
-                if chunk:
-                    yield chunk
-
-        resp = Response(stream_with_context(generate()), mimetype=content_type)
-        resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
-        resp.headers["X-Content-Type-Options"] = "nosniff"
-        return resp
+        return redirect(_fix_bad_ext_url(url))
 
     # legacy disk fallback (keep yours)
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
@@ -1446,7 +1434,6 @@ def admin_view_package_attachment(attachment_id):
         abort(404)
 
     return send_from_directory(upload_folder, url, as_attachment=False)
-
 
 
 

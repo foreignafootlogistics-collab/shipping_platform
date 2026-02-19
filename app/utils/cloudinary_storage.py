@@ -2,9 +2,10 @@
 
 import os
 from werkzeug.utils import secure_filename
-
+from urllib.parse import urlsplit, urlunsplit
 import cloudinary
 import cloudinary.uploader
+
 
 
 def init_cloudinary(app) -> bool:
@@ -28,24 +29,55 @@ def init_cloudinary(app) -> bool:
     )
     return True
 
-
 def _ensure_extension_in_url(url: str | None, ext: str, resource_type: str) -> str | None:
     """
-    Cloudinary 'raw' URLs often come back without the file extension.
-    Adding the extension helps browsers preview PDFs inline instead of forcing download.
+    Cloudinary 'raw' URLs sometimes come back without extension.
+    Add the extension to the PATH (before ?query/#fragment) so browsers preview inline.
     """
     if not url:
         return url
 
-    ext = (ext or "").lower()
+    ext = (ext or "").lower().strip()
     if ext and not ext.startswith("."):
         ext = f".{ext}"
 
-    if resource_type == "raw" and ext:
-        if not url.lower().endswith(ext):
-            url = url + ext
+    # Only needed for raw uploads (pdf/xlsx/etc)
+    if resource_type != "raw" or not ext:
+        return url
 
-    return url
+    parts = urlsplit(url)
+    path = parts.path or ""
+
+    # If the path already ends with .pdf/.xlsx etc, don't add again
+    if path.lower().endswith(ext):
+        return url
+
+    # Add extension to the PATH only (NOT after querystring)
+    new_path = path + ext
+    return urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
+
+def _fix_bad_ext_url(u: str) -> str:
+    """
+    Fix URLs like: .../file?x=1.pdf  -> .../file.pdf?x=1
+    Only applies if it looks like a bad append.
+    """
+    if not u:
+        return u
+
+    parts = urlsplit(u)
+    if not parts.query:
+        return u  # no query, nothing to fix
+
+    # if query ends with ".pdf" etc, it's likely wrong
+    for ext in (".pdf", ".jpg", ".jpeg", ".png", ".xlsx", ".xls"):
+        if parts.query.lower().endswith(ext):
+            # remove ext from query and append to path
+            new_query = parts.query[: -len(ext)]
+            new_path = (parts.path or "") + ext
+            return urlunsplit((parts.scheme, parts.netloc, new_path, new_query, parts.fragment))
+
+    return u
+
 
 
 # ---------------------------------------

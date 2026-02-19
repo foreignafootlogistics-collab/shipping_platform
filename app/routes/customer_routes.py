@@ -43,6 +43,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
+from urllib.parse import urlsplit, urlunsplit
 
 
 # Models — NO Bill model; alias Message to avoid clash with Flask-Mail's Message
@@ -84,6 +85,27 @@ def _calc_handling(weight_lbs: float) -> float:
     elif w > 100:
         return 20000.0
     return 0.0
+
+def _fix_bad_ext_url(u: str) -> str:
+    """
+    Fix URLs like:
+      .../file?x=1.pdf  -> .../file.pdf?x=1
+    """
+    if not u:
+        return u
+
+    parts = urlsplit(u)
+    if not parts.query:
+        return u
+
+    # if query ends with an extension, it's likely wrong
+    for ext in (".pdf", ".jpg", ".jpeg", ".png", ".xlsx", ".xls"):
+        if parts.query.lower().endswith(ext):
+            new_query = parts.query[: -len(ext)]
+            new_path = (parts.path or "") + ext
+            return urlunsplit((parts.scheme, parts.netloc, new_path, new_query, parts.fragment))
+
+    return u
 
 
 # -----------------------------
@@ -292,47 +314,17 @@ def prealerts_create():
 def prealert_invoice(prealert_id):
     pa = Prealert.query.filter_by(id=prealert_id, customer_id=current_user.id).first_or_404()
 
-    url = (pa.invoice_filename or "").strip()
-    if not url:
+    u = (pa.invoice_filename or "").strip()
+    if not u:
         abort(404)
 
-    # if it's already a URL, stream it and force inline
-    if url.startswith(("http://", "https://")):
-        try:
-            r = requests.get(url, stream=True, timeout=30)
-        except Exception:
-            abort(502)
+    # ✅ Cloudinary (or any remote URL): just redirect (fast + reliable)
+    if u.startswith(("http://", "https://")):
+        return redirect(_fix_bad_ext_url(u))
 
-        if r.status_code != 200:
-            abort(404)
+    # ✅ Legacy disk fallback
+    return _redirect_or_send_attachment(u)
 
-        # guess type from url
-        lower = url.lower()
-        if ".pdf" in lower:
-            content_type = "application/pdf"
-            filename = "prealert-invoice.pdf"
-        elif ".png" in lower:
-            content_type = "image/png"
-            filename = "prealert-invoice.png"
-        elif ".jpg" in lower or ".jpeg" in lower:
-            content_type = "image/jpeg"
-            filename = "prealert-invoice.jpg"
-        else:
-            content_type = r.headers.get("Content-Type") or "application/octet-stream"
-            filename = "prealert-invoice"
-
-        def generate():
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    yield chunk
-
-        resp = Response(stream_with_context(generate()), mimetype=content_type)
-        resp.headers["Content-Disposition"] = f'inline; filename="{filename}"'
-        resp.headers["X-Content-Type-Options"] = "nosniff"
-        return resp
-
-    # legacy disk fallback (if you ever stored local file names before)
-    return _redirect_or_send_attachment(url)
 
 
 @customer_bp.route('/prealerts/view')

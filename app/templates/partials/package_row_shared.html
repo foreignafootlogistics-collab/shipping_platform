@@ -12,7 +12,12 @@
 {% set _house = pkg.house_awb if pkg.house_awb is defined else pkg.get('house_awb') %}
 {% set _desc = pkg.description if pkg.description is defined else pkg.get('description') %}
 
-{% set _date_received = pkg.date_received if pkg.date_received is defined else pkg.get('date_received') %}
+{% set _date_received =
+    (pkg.date_any if pkg.date_any is defined else pkg.get('date_any'))
+    or (pkg.date_received if pkg.date_received is defined else pkg.get('date_received'))
+    or (pkg.created_at if pkg.created_at is defined else pkg.get('created_at'))
+%}
+
 {% set _weight = pkg.weight if pkg.weight is defined else pkg.get('weight') %}
 
 {% set _declared = pkg.declared_value if pkg.declared_value is defined else pkg.get('declared_value') %}

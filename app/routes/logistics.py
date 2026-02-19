@@ -132,7 +132,7 @@ def _preview_dir() -> str:
 
 
 def cleanup_preview_dir(max_age_hours: int = 24):
-    cutoff = datetime.utcnow().timestamp() - (max_age_hours * 3600)
+    cutoff = datetime.now(timezone.utc).timestamp() - (max_age_hours * 3600)
     d = _preview_dir()
     for name in os.listdir(d):
         if not name.endswith(".json"):
@@ -503,7 +503,7 @@ def _log_in_app_message(recipient_id: int, subject: str, body: str):
         recipient_id=recipient_id,
         subject=(subject or "").strip()[:255],
         body=(body or "").strip(),
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
         is_read=False,
     )
     db.session.add(m)
@@ -725,7 +725,7 @@ def logistics_dashboard():
                 "row_errors": row_errors,
                 "display_headers": original_headers,
                 "original_rows": original_rows,
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             })
             valid_count   = len(rows) - len(row_errors)
             invalid_count = len(row_errors)
@@ -803,7 +803,7 @@ def logistics_dashboard():
                 value           = float(r.get("value") or 0)
                 weight_actual   = float(r.get("weight") or 0)
                 date_raw        = r.get("date_received") or r.get("date")
-                date_received   = _parse_date_any(date_raw)
+                date_received = _parse_date_any(date_raw) or datetime.now(timezone.utc)
                 status_value    = 'Unassigned' if assigned_unassigned else 'Overseas'
 
                 p = Package(
@@ -819,7 +819,7 @@ def logistics_dashboard():
                     value=value,
                     amount_due=0,
                     status=status_value,
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(timezone.utc),
                 )
                 db.session.add(p)
                 created += 1
@@ -925,6 +925,9 @@ def logistics_dashboard():
         for p, full_name, reg in rows:
             atts = attachments_by_pkg.get(p.id, [])
 
+            created_dt = _parse_dt_maybe(p.created_at)
+            recv_dt    = _parse_dt_maybe(p.date_received)
+
             shipment_pkg_rows.append({
                 "id": p.id,
                 "user_id": p.user_id,
@@ -934,8 +937,9 @@ def logistics_dashboard():
                 "description": p.description,
                 "weight": p.weight,
                 "status": p.status,
-                "created_at": p.created_at,
-                "date_received": p.date_received,
+                "created_at": created_dt,
+                "date_received": recv_dt,
+                "date_any": recv_dt or created_dt,
                 "house_awb": p.house_awb,
                 "value": p.value,
                 "declared_value": getattr(p, "declared_value", None),
@@ -1023,8 +1027,12 @@ def logistics_dashboard():
                 "file_name": file_name,
             })
 
+    
+
     parsed_packages = []
     for p, full_name, reg, att_count in pkg_rows:
+        created_dt = _parse_dt_maybe(p.created_at)
+        recv_dt = _parse_dt_maybe(p.date_received)
 
         parsed_packages.append({
             "id": p.id,
@@ -1035,8 +1043,9 @@ def logistics_dashboard():
             "description": p.description,
             "weight": p.weight,
             "status": p.status,
-            "created_at": _parse_dt_maybe(p.created_at),
-            "date_received": _parse_dt_maybe(p.date_received),
+            "created_at": created_dt,
+            "date_received": recv_dt,
+             "date_any": recv_dt or created_dt,
             "house_awb": p.house_awb,
             "declared_value": getattr(p, "declared_value", None),
             "value": p.value,
@@ -1965,7 +1974,7 @@ def _next_sl_id():
     Global sequence that never resets.
     Format: SL-YYYYMMDD-00001 (date reflects creation day, number always increases)
     """
-    today = datetime.utcnow().strftime("%Y%m%d")
+    today = datetime.now(timezone.utc).strftime("%Y%m%d")
 
     last = (
         db.session.query(ShipmentLog.sl_id)
@@ -2929,7 +2938,8 @@ def _generate_invoice_number():
         Today last:    INV-20260109-0008
         Tomorrow next: INV-20260110-0009
     """
-    today_str = datetime.utcnow().strftime("%Y%m%d")
+    today_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+
     prefix = f"INV-{today_str}-"
 
     # Ensure any pending invoices are written enough to be query-visible

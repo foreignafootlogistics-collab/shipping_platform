@@ -45,7 +45,7 @@ from app.utils.wallet import process_first_shipment_bonus
 
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
-from app.routes.customer_routes import serve_prealert_invoice_file
+from app.routes.customer_routes import serve_prealert_invoice_file, _fix_bad_ext_url
 
 
 from app.utils.unassigned import (
@@ -545,27 +545,7 @@ def _redirect_or_send_attachment(path_or_url: str):
 
     return send_from_directory(upload_folder, u, as_attachment=False)
 
-
-def _fix_bad_ext_url(u: str) -> str:
-    """
-    Fix URLs like:
-      .../file?x=1.pdf  -> .../file.pdf?x=1
-    """
-    if not u:
-        return u
-
-    parts = urlsplit(u)
-    if not parts.query:
-        return u
-
-    for ext in (".pdf", ".jpg", ".jpeg", ".png", ".xlsx", ".xls"):
-        if parts.query.lower().endswith(ext):
-            new_query = parts.query[: -len(ext)]
-            new_path = (parts.path or "") + ext
-            return urlunsplit((parts.scheme, parts.netloc, new_path, new_query, parts.fragment))
-
-    return u
-
+  
 
 # --------------------------------------------------------------------------------------
 # Prealerts

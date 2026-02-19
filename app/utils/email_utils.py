@@ -30,7 +30,8 @@ EMAIL_PASSWORD = os.getenv("SMTP_PASS")
 EMAIL_FROM = os.getenv("SMTP_FROM", EMAIL_ADDRESS)
 
 if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
-    print("❌ SMTP credentials missing. Check SMTP_USER / SMTP_PASS env vars.")
+    print("SMTP credentials missing. Check SMTP_USER / SMTP_PASS env vars.")
+
 
 # ==========================================================
 #  EMAIL CONFIG (use environment variables in production)

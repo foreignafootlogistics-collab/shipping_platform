@@ -417,15 +417,12 @@
                               <i class="bi bi-paperclip"></i>                              
                             </a>
 
-                            <form method="POST"
-                                  action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=a.id) }}"
-                                  class="d-inline"
-                                  onsubmit="return confirm('Delete this attachment?');">
-                              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                              <button type="submit" class="btn btn-link btn-sm p-0 text-danger" title="Delete">
-                                <i class="bi bi-x-circle"></i>
-                              </button>
-                            </form>
+                            <button type="button"
+                                    class="btn btn-link btn-sm p-0 text-danger js-del-attach"
+                                    title="Delete"
+                                    data-del-url="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=a.id) }}">
+                              <i class="bi bi-x-circle"></i>
+                            </button>
                           {% endfor %}
                         </div>
                       {% endif %}
@@ -2667,13 +2664,13 @@ document.addEventListener('input', function(e){
   });
 
   async function doUpload() {
-    const pkgId = (currentPkgId || pkgIdInput?.value || '').trim();
+    const pkgId = (currentPkgId || (pkgIdInput ? pkgIdInput.value : '') || '').trim();
     if (!pkgId || pkgId === '0') { alert('Package id missing.'); return; }
 
-    const files = fileInput?.files;
+    const files = fileInput ? fileInput.files : null;
     if (!files || !files.length) { alert('Please choose a file.'); return; }
 
-    const csrf = (document.getElementById('attachCsrfToken')?.value || '').trim();
+    const csrf = (document.getElementById('attachCsrfToken')?.value || '').trim() || "{{ csrf_token() }}";
 
     const fd = new FormData();
     if (csrf) fd.append('csrf_token', csrf);
@@ -2688,15 +2685,26 @@ document.addEventListener('input', function(e){
         method: 'POST',
         headers: {
           'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRFToken': csrf
+          ...(csrf ? { 'X-CSRFToken': csrf } : {})
         },
         body: fd
       });
 
-      const data = await res.json();
+      // handle JSON OR non-JSON response safely
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      let data = null;
 
-      if (!res.ok || !data.success) {
-        alert(data.error || `Upload failed (HTTP ${res.status}).`);
+      if (ct.includes('application/json')) {
+        data = await res.json().catch(() => null);
+      } else {
+        const txt = await res.text().catch(() => '');
+        if (!res.ok) throw new Error(txt || `Upload failed (HTTP ${res.status}).`);
+        data = { success: true };
+      }
+
+      if (!res.ok || (data && data.success === false)) {
+        const msg = (data && (data.error || data.message)) || `Upload failed (HTTP ${res.status}).`;
+        alert(msg);
         if (statusEl) statusEl.textContent = 'Upload failed.';
         return;
       }
@@ -2707,7 +2715,7 @@ document.addEventListener('input', function(e){
 
     } catch (err) {
       console.error(err);
-      alert('Upload failed.');
+      alert('Upload failed.\n\n' + (err?.message || err));
       if (statusEl) statusEl.textContent = 'Upload failed.';
     }
   }
@@ -2716,7 +2724,71 @@ document.addEventListener('input', function(e){
     e.preventDefault();
     doUpload();
   });
+})();
 
+
+/* ==========================
+   DELETE ATTACHMENT (ADMIN)
+   - avoids submitting shipment bulk form
+   ========================== */
+(function deleteAdminAttachment(){
+  if (window.__faflDelAttachBound) return;
+  window.__faflDelAttachBound = true;
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.js-del-attach');
+    if (!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!confirm('Delete this attachment?')) return;
+
+    const url = btn.getAttribute('data-del-url');
+    if (!url) { alert('Delete URL missing.'); return; }
+
+    const csrf =
+      (document.getElementById('attachCsrfToken')?.value || '').trim() ||
+      (document.querySelector('#shipmentForm input[name="csrf_token"]')?.value || '').trim() ||
+      (document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '').trim() ||
+      "{{ csrf_token() }}";
+
+    const fd = new FormData();
+    if (csrf) fd.append('csrf_token', csrf);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrf ? { 'X-CSRFToken': csrf } : {})
+        },
+        body: fd
+      });
+
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      let data = null;
+
+      if (ct.includes('application/json')) {
+        data = await res.json().catch(() => null);
+      } else {
+        const txt = await res.text().catch(() => '');
+        if (!res.ok) throw new Error(txt || `Delete failed (HTTP ${res.status}).`);
+        data = { success: true };
+      }
+
+      if (!res.ok || (data && data.ok === false) || (data && data.success === false)) {
+        const msg = (data && (data.error || data.message)) || `Delete failed (HTTP ${res.status}).`;
+        alert(msg);
+        return;
+      }
+
+      window.location.reload();
+    } catch (err) {
+      console.error(err);
+      alert('Delete failed.\n\n' + (err?.message || err));
+    }
+  }, true);
 })();
 
 </script>

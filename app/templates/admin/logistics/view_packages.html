@@ -487,6 +487,7 @@
 
       <div class="modal-body">
         <input type="hidden" id="attachPkgId" value="">
+        <input type="hidden" id="attachCsrfToken" value="{{ csrf_token() }}">
 
         <div class="mb-2 small text-muted">
           Package ID: <span class="fw-semibold" id="attachPkgLabel">—</span>
@@ -1237,6 +1238,9 @@
    PACKAGE ATTACHMENTS (ADMIN) - NEW MODAL
    ========================== */
 (function attachAdminFilesNew(){
+  if (window.__attachAdminFilesNewInstalled) return;
+  window.__attachAdminFilesNewInstalled = true;
+
   const modalEl  = document.getElementById('attachInvoiceModal');
   if (!modalEl) return;
 
@@ -1270,10 +1274,7 @@
     const files = fileInput?.files;
     if (!files || !files.length) { alert('Please choose at least one file.'); return; }
 
-    const csrf =
-      document.querySelector('#bulkActionForm input[name="csrf_token"]')?.value ||
-      document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
-      '';
+    const csrf = (document.getElementById('attachCsrfToken')?.value || '').trim();
 
     const fd = new FormData();
     if (csrf) fd.append('csrf_token', csrf);
@@ -1287,7 +1288,10 @@
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: { 
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrf ? { 'X-CSRFToken': csrf } : {})
+        },
         body: fd
       });
       try { data = await res.json(); } catch (e) {}
@@ -1313,12 +1317,21 @@
     e.preventDefault();
     doUpload();
   });
-
+  fileInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      doUpload();
+    }
+  });
   modalEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       doUpload();
     }
+  });
+  modalEl.addEventListener('hidden.bs.modal', () => {
+    if (statusEl) statusEl.textContent = 'Select a file to upload.';
+    if (fileInput) fileInput.value = '';
   });
 })();
 </script>>

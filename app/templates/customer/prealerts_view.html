@@ -83,10 +83,13 @@
               <!-- Invoice -->
               <td>
                 {% if p.invoice_filename %}
-                  <a href="{{ url_for('customer.prealert_invoice', prealert_id=p.id) }}"
-                     target="_blank">
-                    View
-                  </a>
+                  <a class="btn btn-sm btn-link p-0"
+                     href="{{ url_for('customer.prealert_invoice', prealert_id=p.id) }}"
+                     target="_blank">View</a>
+
+                  <a class="btn btn-sm btn-link p-0 ms-2"
+                     href="{{ url_for('customer.prealert_invoice_download', prealert_id=p.id) }}">Download</a>
+
                 {% else %}
                   N/A
                 {% endif %}

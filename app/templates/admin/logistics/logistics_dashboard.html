@@ -72,6 +72,8 @@
               <th>Contents</th>
               <th>Value (USD)</th>
               <th>Invoice</th>
+              <th>Linked Package</th>
+              <th>Linked At</th>
               <th>Submitted On</th>
             </tr>
           </thead>
@@ -92,19 +94,46 @@
                 <td>${{ '%.2f'|format(p.item_value_usd or 0) }}</td>
                 <td>
                   {% if p.invoice_filename %}
-                    <a href="{{ url_for('logistics.admin_prealert_invoice', prealert_id=p.id) }}"
+                    <a class="btn btn-sm btn-link p-0"
+                       href="{{ url_for('logistics.admin_prealert_invoice', prealert_id=p.id) }}"
                        target="_blank">
-                      View
+                       View
                     </a>
+
+                    <a class="btn btn-sm btn-link p-0 ms-2"
+                       href="{{ url_for('logistics.admin_prealert_invoice_download', prealert_id=p.id) }}">
+                       Download
+                    </a>
+                    {% if p.invoice_original_name %}
+                      <div class="small text-muted mt-1">{{ p.invoice_original_name }}</div>
+                    {% endif %}
                   {% else %}
-                    N/A
+                    <span class="text-muted">N/A</span>
                   {% endif %}
                 </td>
+
+                <td>
+                  {% if p.linked_package_id %}
+                    <span class="badge bg-success">Linked</span>
+                    <div class="small text-muted">Pkg #{{ p.linked_package_id }}</div>
+                  {% else %}
+                    <span class="badge bg-secondary">Not linked</span>
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% if p.linked_at %}
+                    {{ p.linked_at }}
+                  {% else %}
+                    <span class="text-muted">—</span>
+                  {% endif %}
+                </td>
+                  
                 <td>{% if p.created_at %}{{ p.created_at }}{% else %}N/A{% endif %}</td>
               </tr>
               {% endfor %}
             {% else %}
-              <tr><td colspan="10" class="text-center text-muted">No pre-alert shipments found.</td></tr>
+              <tr><td colspan="12" class="text-center text-muted">No pre-alert shipments found.</td></tr>
             {% endif %}
           </tbody>
         </table>

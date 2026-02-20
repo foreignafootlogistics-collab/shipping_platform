@@ -253,6 +253,9 @@ def prealerts_create():
 
     if form.validate_on_submit():
         invoice_url = None
+        invoice_public_id = None
+        invoice_resource_type = None
+        invoice_original_name = None
 
         if form.invoice.data and getattr(form.invoice.data, "filename", ""):
             f = form.invoice.data
@@ -260,7 +263,9 @@ def prealerts_create():
 
             if original and allowed_file(original):
                 from app.utils.cloudinary_storage import upload_prealert_invoice
-                invoice_url, public_id, resource_type = upload_prealert_invoice(f)
+
+                invoice_original_name = original  # ✅ store original name
+                invoice_url, invoice_public_id, invoice_resource_type = upload_prealert_invoice(f)
             else:
                 flash("Invalid invoice file type. Allowed: pdf, jpg, jpeg, png.", "warning")
                 return render_template('customer/prealerts_create.html', form=form)
@@ -276,7 +281,15 @@ def prealerts_create():
             purchase_date=form.purchase_date.data,
             package_contents=form.package_contents.data,
             item_value_usd=float(form.item_value_usd.data or 0),
-            invoice_filename=invoice_url,  # ✅ Cloudinary URL stored here
+
+            # ✅ existing
+            invoice_filename=invoice_url,
+
+            # ✅ NEW metadata fields
+            invoice_original_name=invoice_original_name,
+            invoice_public_id=invoice_public_id,
+            invoice_resource_type=invoice_resource_type,
+
             created_at=datetime.now(timezone.utc),
         )
 
@@ -289,14 +302,18 @@ def prealerts_create():
     return render_template('customer/prealerts_create.html', form=form)
 
 
+
 @customer_bp.route("/prealerts/invoice/<int:prealert_id>")
 @login_required
 def prealert_invoice(prealert_id):
     pa = Prealert.query.filter_by(id=prealert_id, customer_id=current_user.id).first_or_404()
-    return serve_prealert_invoice_file(pa, download_name_prefix="prealert")
+    return serve_prealert_invoice_file(pa, download_name_prefix="prealert", as_attachment=False)
 
-
-
+@customer_bp.route("/prealerts/invoice/<int:prealert_id>/download")
+@login_required
+def prealert_invoice_download(prealert_id):
+    pa = Prealert.query.filter_by(id=prealert_id, customer_id=current_user.id).first_or_404()
+    return serve_prealert_invoice_file(pa, download_name_prefix="prealert", as_attachment=True)
 
 @customer_bp.route('/prealerts/view')
 @login_required

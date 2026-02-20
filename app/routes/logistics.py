@@ -451,6 +451,78 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
 
     return breakdown
 
+def _try_link_prealert_invoice_to_package(pkg: Package):
+    """
+    If a Prealert exists for this package tracking number and has an invoice uploaded,
+    create a PackageAttachment pointing to that invoice and mark Prealert as linked.
+    Safe to call multiple times (won't duplicate attachment).
+    """
+    try:
+        tracking = (pkg.tracking_number or "").strip()
+        if not tracking:
+            return
+
+        # Find most recent prealert for this tracking that has an invoice and isn't linked yet
+        pa = (
+            Prealert.query
+            .filter(func.lower(Prealert.tracking_number) == func.lower(tracking))
+            .filter(Prealert.invoice_filename.isnot(None))
+            .order_by(Prealert.id.desc())
+            .first()
+        )
+        if not pa:
+            return
+
+        # If already linked to this package, stop
+        if getattr(pa, "linked_package_id", None) == pkg.id:
+            return
+
+        # Prevent duplicate attachment on the package
+        already = (
+            PackageAttachment.query
+            .filter(PackageAttachment.package_id == pkg.id)
+            .filter(
+                or_(
+                    PackageAttachment.cloud_public_id == getattr(pa, "invoice_public_id", None),
+                    PackageAttachment.file_url == pa.invoice_filename,
+                    PackageAttachment.file_name == pa.invoice_filename,
+                )
+            )
+            .first()
+        )
+        if already:
+            # still mark prealert linked if not set
+            pa.linked_package_id = pkg.id
+            pa.linked_at = datetime.now(timezone.utc)
+            return
+
+        # Create attachment from prealert invoice metadata
+        original_name = (
+            getattr(pa, "invoice_original_name", None)
+            or "prealert-invoice"
+        )
+
+        att = PackageAttachment(
+            package_id=pkg.id,
+            file_name=pa.invoice_filename,   # keep legacy
+            file_url=pa.invoice_filename,    # new
+            original_name=original_name,
+            cloud_public_id=getattr(pa, "invoice_public_id", None),
+            cloud_resource_type=getattr(pa, "invoice_resource_type", None) or "raw",
+        )
+        db.session.add(att)
+        db.session.flush()
+
+        # Mark prealert linked
+        pa.linked_package_id = pkg.id
+        pa.linked_at = datetime.now(timezone.utc)
+
+    except Exception as e:
+        current_app.logger.exception(f"Prealert link failed for pkg {getattr(pkg,'id',None)}: {e}")
+        # Don't raise; linking should never break upload flow
+        return
+
+
 
 def move_package_to_shipment(package: Package, shipment: ShipmentLog | None):
     """
@@ -591,7 +663,7 @@ def prealerts(user_id=None):
                 "purchase_date": p.purchase_date,
                 "package_contents": p.package_contents,
                 "item_value_usd": p.item_value_usd,
-                "invoice_filename": p.invoice_filename,
+                "invoice_filename": p.invoice_filename,                
                 "created_at": p.created_at,
             })
 
@@ -623,6 +695,11 @@ def prealerts(user_id=None):
                 "package_contents": prealert.package_contents,
                 "item_value_usd": prealert.item_value_usd,
                 "invoice_filename": prealert.invoice_filename,
+                "invoice_original_name": prealert.invoice_original_name,
+                "invoice_public_id": prealert.invoice_public_id,
+                "invoice_resource_type": prealert.invoice_resource_type,
+                "linked_package_id": prealert.linked_package_id,
+                "linked_at": prealert.linked_at,
                 "created_at": prealert.created_at,
             })
     print("DEBUG prealerts count:", len(prealerts_data))
@@ -640,7 +717,13 @@ def prealerts(user_id=None):
 @admin_required
 def admin_prealert_invoice(prealert_id):
     pa = Prealert.query.get_or_404(prealert_id)
-    return serve_prealert_invoice_file(pa, download_name_prefix="admin_prealert")
+    return serve_prealert_invoice_file(pa, download_name_prefix="prealert", as_attachment=False)
+
+@logistics_bp.route("/prealerts/invoice/<int:prealert_id>/download")
+@admin_required
+def admin_prealert_invoice_download(prealert_id):
+    pa = Prealert.query.get_or_404(prealert_id)
+    return serve_prealert_invoice_file(pa, download_name_prefix="prealert", as_attachment=True)
 
 
 # --------------------------------------------------------------------------------------
@@ -669,7 +752,24 @@ def logistics_dashboard():
 
     # Work out which tab is active (use normalizer)
     raw_tab = request.args.get("tab") or request.form.get("tab")
-    tab = normalize_tab(raw_tab)   
+    tab = normalize_tab(raw_tab)
+
+    if request.method == "GET" and tab == "view_packages":
+        raw_date_from = (request.args.get("date_from") or "").strip()
+        raw_date_to   = (request.args.get("date_to") or "").strip()
+
+        if not raw_date_from and not raw_date_to:
+            today = datetime.now().strftime("%Y-%m-%d")
+
+            args = request.args.to_dict(flat=True)
+            args["tab"] = "view_packages"
+            args["date_from"] = today
+            args["date_to"] = today
+
+            return redirect(
+                url_for("logistics.logistics_dashboard", **args),
+                code=303
+            )   
 
     # If we're on the upload tab, clean up old preview files
     if tab == "uploadPackages":
@@ -705,6 +805,11 @@ def logistics_dashboard():
                 "package_contents": prealert.package_contents,
                 "item_value_usd": prealert.item_value_usd,
                 "invoice_filename": prealert.invoice_filename,
+                "invoice_original_name": prealert.invoice_original_name,
+                "invoice_public_id": prealert.invoice_public_id,
+                "invoice_resource_type": prealert.invoice_resource_type,
+                "linked_package_id": prealert.linked_package_id,
+                "linked_at": prealert.linked_at,
                 "created_at": prealert.created_at,
             })
 
@@ -824,6 +929,11 @@ def logistics_dashboard():
                     created_at=datetime.now(timezone.utc),
                 )
                 db.session.add(p)
+                db.session.flush()  # ✅ get p.id now
+
+                # ✅ AUTO-LINK prealert invoice -> package attachment
+                _try_link_prealert_invoice_to_package(p)
+
                 created += 1
 
                 if (p.status or "").lower() == "overseas":
@@ -974,13 +1084,7 @@ def logistics_dashboard():
     user_date_filter = bool(raw_date_from or raw_date_to)
 
     date_from = raw_date_from
-    date_to   = raw_date_to
-
-    # Default to today's date range when viewing packages and no filter provided
-    if tab == 'view_packages' and not date_from and not date_to:
-        today = datetime.now().strftime('%Y-%m-%d')
-        date_from = today
-        date_to   = today
+    date_to   = raw_date_to    
 
 
     att_counts_sq = (
@@ -1003,7 +1107,13 @@ def logistics_dashboard():
         .outerjoin(att_counts_sq, att_counts_sq.c.pkg_id == Package.id)
     )
 
-    pkg_q = _apply_pkg_filters(pkg_q, unassigned_id=unassigned_id)
+    pkg_q = _apply_pkg_filters(
+        pkg_q,
+        unassigned_id=unassigned_id,
+        date_from=date_from,
+        date_to=date_to
+    )
+
 
     pkg_q = pkg_q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).desc())
 
@@ -1071,6 +1181,8 @@ def logistics_dashboard():
             func.coalesce(func.sum(Package.weight), 0.0)
         ).join(User, Package.user_id == User.id),
         unassigned_id=unassigned_id,
+        date_from=date_from,
+        date_to=date_to
     )
     cnt, tw = totals_q.first()
     filtered_total_packages = int(cnt or 0)
@@ -1113,7 +1225,10 @@ def logistics_dashboard():
     user_code = request.args.get('user_code', '', type=str)
     first_name = request.args.get('first_name', '', type=str)
     last_name = request.args.get('last_name', '', type=str)
-    unassigned_only = (request.args.get('unassigned_only') or '').lower() in ('1','true','on','yes')
+    unassigned_only = (
+    (request.args.get('show_unassigned') or request.args.get('unassigned_only') or '')
+    .lower() in ('1','true','on','yes')
+)
 
     allowed_page_sizes = [10, 25, 50, 100, 500, 1000]
     prev_page   = page - 1 if page > 1 else None
@@ -1303,7 +1418,7 @@ def delete_packages_from_shipment(shipment_id):
     return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
 
 
-@logistics_bp.route("/admin/packages/<int:package_id>/attachments", methods=["POST"])
+@logistics_bp.route("/packages/<int:package_id>/attachments", methods=["POST"])
 @admin_required
 def admin_upload_package_attachments(package_id):    
     pkg = Package.query.get_or_404(package_id)
@@ -1350,7 +1465,7 @@ def admin_upload_package_attachments(package_id):
 
 
 
-@logistics_bp.route("/admin/package-attachments/<int:attachment_id>/delete", methods=["POST"])
+@logistics_bp.route("/package-attachments/<int:attachment_id>/delete", methods=["POST"])
 @admin_required
 def delete_package_attachment_admin(attachment_id):
     if not _is_internal_user(current_user):
@@ -1368,7 +1483,7 @@ def delete_package_attachment_admin(attachment_id):
     return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
 
-@logistics_bp.route("/admin/package-attachment/<int:attachment_id>")
+@logistics_bp.route("/package-attachment/<int:attachment_id>")
 @admin_required
 def admin_view_package_attachment(attachment_id):
 
@@ -1665,7 +1780,7 @@ def download_packages():
 # --------------------------------------------------------------------------------------
 # Email selected packages (group by user)
 # --------------------------------------------------------------------------------------
-@logistics_bp.route('/logistics/email-selected-packages', methods=['POST'], endpoint='email_selected_packages')
+@logistics_bp.route('/email-selected-packages', methods=['POST'], endpoint='email_selected_packages')
 @admin_required
 def email_selected_packages():
     # Get the raw ids from the form (strings)
@@ -2282,7 +2397,7 @@ def bulk_shipment_action(shipment_id):
 
         for p in eligible_pkgs:
             # ✅ Respect lock: locked packages should NOT be recalculated in bulk
-            if bool(getattr(p, "pricing_locked", False)):
+            if bool(getattr(p, "pricing_locked", False)) or bool(getattr(p, "is_locked", False)):
                 skipped_locked += 1
                 continue
 
@@ -3128,7 +3243,7 @@ def bulk_invoice_finalize_json():
         redirect_url = None
         try:
             if shipment_id:
-                redirect_url = url_for("logistics.shipment_log", shipment_id=shipment_id)
+                redirect_url = url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id)
         except Exception:
             redirect_url = None
 
@@ -3328,7 +3443,7 @@ def purge_shipment_invoices_json():
 
         redirect_url = None
         try:
-            redirect_url = url_for("logistics.shipment_log", shipment_id=shipment_id)
+            redirect_url = url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id)
         except Exception:
             redirect_url = None
 

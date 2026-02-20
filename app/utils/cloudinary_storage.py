@@ -167,12 +167,17 @@ def upload_invoice_image_meta(file_storage):
 # ---------------------------------------
 # Serve Prealert Invoice (inline)
 # ---------------------------------------
-def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
+def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert", as_attachment=False):
     """
-    Serve a Prealert invoice inline.
-    - Remote Cloudinary/URL: stream through server and set correct Content-Type + inline filename
-      (sniffs PDF/JPG/PNG from first bytes so it works even when URL has no .pdf)
-    - Local disk fallback: serve from INVOICE_UPLOAD_FOLDER
+    Serve a Prealert invoice (inline OR download).
+
+    Remote URL (Cloudinary):
+      - stream through server
+      - sniff first bytes so PDF works even if URL has no .pdf
+      - if Cloudinary blocks server fetch (401/403), fallback redirect
+
+    Local disk:
+      - send_from_directory with as_attachment
     """
 
     u = (getattr(pa, "invoice_filename", "") or "").strip()
@@ -202,15 +207,16 @@ def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
             current_app.logger.exception("[PREALERT INVOICE] requests.get failed: %s", e)
             abort(502)
 
-        # If Cloudinary blocks direct fetch (401/403) you CAN redirect,
-        # but redirect often fails for raw PDFs. Better to abort.
+        # ✅ Cloudinary sometimes blocks server fetch (401/403) but browser can fetch.
+        if r.status_code in (401, 403):
+            current_app.logger.warning("[PREALERT INVOICE] Remote status=%s -> redirect fallback url=%s", r.status_code, u)
+            return redirect(u)
+
         if r.status_code != 200:
             current_app.logger.warning("[PREALERT INVOICE] Remote status=%s url=%s", r.status_code, u)
             abort(404)
 
         it = r.iter_content(chunk_size=8192)
-
-        # Read first chunk to sniff file type
         first = next(it, b"") or b""
 
         def sniff(first_bytes: bytes):
@@ -222,7 +228,7 @@ def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
             if fb.startswith(b"\x89PNG\r\n\x1a\n"):
                 return "image/png", ".png"
 
-            # fallback to server header if present
+            # fallback to server header
             ct = (r.headers.get("Content-Type") or "").split(";")[0].strip() or "application/octet-stream"
             ext = ""
             if ct == "application/pdf":
@@ -235,7 +241,7 @@ def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
 
         content_type, ext = sniff(first)
 
-        # Ensure filename extension matches detected type
+        # ensure filename extension matches type
         if ext and not safe_name.lower().endswith(ext):
             safe_name = safe_name + ext
 
@@ -247,8 +253,9 @@ def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
                     yield chunk
 
         resp = Response(stream_with_context(generate()), mimetype=content_type)
+        disp = "attachment" if as_attachment else "inline"
         resp.headers["Content-Type"] = content_type
-        resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+        resp.headers["Content-Disposition"] = f'{disp}; filename="{safe_name}"'
         resp.headers["X-Content-Type-Options"] = "nosniff"
         return resp
 
@@ -264,12 +271,15 @@ def serve_prealert_invoice_file(pa, *, download_name_prefix="prealert"):
         abort(404)
 
     guessed_type, _ = mimetypes.guess_type(fp)
-    resp = send_from_directory(upload_folder, u, as_attachment=False)
+    resp = send_from_directory(upload_folder, u, as_attachment=as_attachment)
     if guessed_type:
         resp.headers["Content-Type"] = guessed_type
-    resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+
+    disp = "attachment" if as_attachment else "inline"
+    resp.headers["Content-Disposition"] = f'{disp}; filename="{safe_name}"'
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
 
 
 # ---------------------------------------

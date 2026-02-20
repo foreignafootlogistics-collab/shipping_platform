@@ -351,8 +351,15 @@ class Prealert(db.Model):
     item_value_usd = db.Column(db.Float)
 
     invoice_filename = db.Column(db.String)
-    prealert_number = db.Column(db.Integer)
 
+    invoice_original_name = db.Column(db.String(255), nullable=True)
+    invoice_public_id = db.Column(db.String(255), nullable=True)
+    invoice_resource_type = db.Column(db.String(20), nullable=True)  # "raw" or "image"
+    
+    linked_package_id = db.Column(db.Integer, db.ForeignKey("packages.id"), nullable=True, index=True)
+    linked_at = db.Column(db.DateTime, nullable=True)
+
+    prealert_number = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship('User', back_populates='prealerts')

@@ -1,6 +1,7 @@
 # app/utils/unassigned.py
 
 from datetime import datetime
+from flask import g
 
 from app.extensions import db
 from app.models import User
@@ -13,12 +14,10 @@ DUMMY_BCRYPT_BYTES = b"$2b$12$9b8yGx1l0vI6k3eYb0wLeO0nCq9M8lUq7G5c3kq6iZpXnq9m5m
 def ensure_unassigned_user() -> int:
     """
     Ensure there is a special UNASSIGNED user with sane defaults.
-
     Returns the user.id of the UNASSIGNED user.
     """
 
     user = User.query.filter_by(registration_number="UNASSIGNED").first()
-
     if not user:
         user = User.query.filter_by(email="unassigned@foreign-a-foot.local").first()
 
@@ -27,31 +26,43 @@ def ensure_unassigned_user() -> int:
     created_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
     if user:
+        changed = False
+
         if not user.registration_number:
             user.registration_number = "UNASSIGNED"
+            changed = True
 
         if not (user.full_name or "").strip():
             user.full_name = "UNASSIGNED"
+            changed = True
 
         if not (user.email or "").strip():
             user.email = "unassigned@foreign-a-foot.local"
+            changed = True
 
         if not (user.role or "").strip():
             user.role = "customer"
+            changed = True
 
         if not (user.date_registered or "").strip():
             user.date_registered = reg_date_str
+            changed = True
 
         if not (user.created_at or "").strip():
             user.created_at = created_str
+            changed = True
 
         if not user.password:
             user.password = DUMMY_BCRYPT_BYTES
+            changed = True
 
         if user.is_admin is None:
             user.is_admin = False
+            changed = True
 
-        db.session.commit()
+        if changed:
+            db.session.commit()
+
         return user.id
 
     new_user = User(
@@ -70,15 +81,18 @@ def ensure_unassigned_user() -> int:
     return new_user.id
 
 
-# ------------------------------------------------------------
-# Helpers for locking logic (used by routes)
-# ------------------------------------------------------------
-
 def get_unassigned_user_id() -> int:
     """
     Always returns the UNASSIGNED user's id (creates it if missing).
+    Caches per-request to avoid repeated DB hits in loops.
     """
-    return ensure_unassigned_user()
+    cached = getattr(g, "_unassigned_user_id", None)
+    if cached:
+        return int(cached)
+
+    uid = ensure_unassigned_user()
+    g._unassigned_user_id = int(uid)
+    return int(uid)
 
 
 def is_unassigned_user_id(user_id) -> bool:

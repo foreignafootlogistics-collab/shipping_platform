@@ -619,7 +619,47 @@
 </div>
 
 
-<script>  
+<script> 
+  /* =========================================================
+     KEEP DATATABLE STATE (page length, page number, search)
+     ========================================================= */
+  function savePackagesDTState() {
+    try {
+      if (!window.jQuery || !$.fn.dataTable) return;
+      if (!$.fn.dataTable.isDataTable('#packagesTable')) return;
+
+      const dt = $('#packagesTable').DataTable();
+      const st = {
+        pageLen: dt.page.len(),
+        page: dt.page(),
+        search: dt.search()
+      };
+      localStorage.setItem('VP_PACKAGES_DT_STATE', JSON.stringify(st));
+    } catch (e) {}
+  }
+
+  function restorePackagesDTState() {
+    try {
+      if (!window.jQuery || !$.fn.dataTable) return;
+      if (!$.fn.dataTable.isDataTable('#packagesTable')) return;
+
+      const raw = localStorage.getItem('VP_PACKAGES_DT_STATE');
+      if (!raw) return;
+
+      const st = JSON.parse(raw);
+      const dt = $('#packagesTable').DataTable();
+
+      if (st.pageLen) dt.page.len(st.pageLen);
+      if (typeof st.search === 'string') dt.search(st.search);
+
+      dt.draw(false);
+
+      if (typeof st.page === 'number') {
+        dt.page(st.page).draw(false);
+      }
+    } catch (e) {}
+  }
+ 
   // Toggle pricing row
   function togglePricing(pkgId) {
     document.getElementById("pricing_" + pkgId)?.classList.toggle("d-none");
@@ -778,6 +818,7 @@
     });
     form.appendChild(holder);
 
+    savePackagesDTState();
     form.submit();
   });
 
@@ -1183,6 +1224,8 @@
           pageLength: 25,
           order: []
         });
+     
+    restorePackagesDTState();
 
     // Find hidden EPC column by header attr
     var $headers    = $('#packagesTable thead th');
@@ -1310,6 +1353,8 @@
 
     if (statusEl) statusEl.textContent = 'Uploaded!';
     bootstrap.Modal.getInstance(modalEl)?.hide();
+
+    savePackagesDTState();
     setTimeout(() => window.location.reload(), 350);
   }
 

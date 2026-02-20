@@ -1069,19 +1069,53 @@
 {{ super() }}
 
 <script>
-/* ============================================================
-   FAFL Shipment Log JS (UPDATED COPY/PASTE)
-   - Keeps ALL your existing features
-   - Adds URL-for based endpoints (no hardcoding)
-   - Charges modal:
-        ✅ pulls latest row values (DT-safe)
-        ✅ calculates via calculator_ajax
-        ✅ SAVES via logistics.api_save_package_charges (correct route)
-        ✅ updates row amount_due / grand_total for later "Generate Invoice"
-   ============================================================ */
-
 const categoryRates = {{ CATEGORIES|tojson }};
 const USD_TO_JMD    = {{ USD_TO_JMD }};
+
+/* =========================================================
+   KEEP SHIPMENT DATATABLE STATE (length/page/search)
+   ========================================================= */
+function saveShipmentDTState() {
+  try {
+    if (!window.jQuery || !$.fn.dataTable) return;
+    if (!$.fn.dataTable.isDataTable('#shipmentTable')) return;
+
+    const dt2 = $('#shipmentTable').DataTable();
+    const st = {
+      pageLen: dt2.page.len(),
+      page: dt2.page(),
+      search: dt2.search()
+    };
+    localStorage.setItem('SL_SHIPMENT_DT_STATE', JSON.stringify(st));
+  } catch (e) {}
+}
+
+function restoreShipmentDTState() {
+  try {
+    if (!window.jQuery || !$.fn.dataTable) return;
+    if (!$.fn.dataTable.isDataTable('#shipmentTable')) return;
+
+    const raw = localStorage.getItem('SL_SHIPMENT_DT_STATE');
+    if (!raw) return;
+
+    const st = JSON.parse(raw);
+    const dt2 = $('#shipmentTable').DataTable();
+
+    // ✅ set length first
+    if (st.pageLen) dt2.page.len(Number(st.pageLen) || 10);
+
+    // ✅ set search next
+    if (typeof st.search === 'string') dt2.search(st.search);
+
+    // ✅ draw once
+    dt2.draw(false);
+
+    // ✅ set page last (after draw)
+    if (typeof st.page === 'number') {
+      dt2.page(st.page).draw(false);
+    }
+  } catch (e) {}
+}
 
 /* ============================================================
    ✅ URLS from Flask (prevents prefix bugs)
@@ -1212,7 +1246,10 @@ function bindShipmentLengthSelect() {
 
   sel.addEventListener('change', function () {
     const len = Number(this.value || 10);
-    if (dt) dt.page.len(len).draw(false);
+    if (dt) {
+      dt.page.len(len).draw(false);
+      saveShipmentDTState();
+    }
   });
 }
 
@@ -1259,6 +1296,9 @@ function initShipmentTable() {
       paginate: { previous: "«", next: "»" }
     }
   });
+
+  restoreShipmentDTState();
+  syncShipmentLengthSelect();
 
   window.dt = dt;
 
@@ -1518,6 +1558,7 @@ async function handleShipmentApply(e) {
     rebuildHiddenPostPayloadForSelected(form, ids);
 
     if (!confirm(`Perform "${action}" on ${ids.length} package(s)?`)) return;
+    saveShipmentDTState();
     form.submit();
 
   } finally {
@@ -1712,55 +1753,18 @@ function updateShipmentHeaderCheckbox() {
     return { weight, value };
   }
 
-  // ✅ IMPORTANT: Use relatedTarget OR lastTriggerBtn
-  chargesModal.addEventListener('show.bs.modal', function (event) {
-    const btn = event.relatedTarget || lastTriggerBtn;
+  // ✅ IMPORTANT: keep modal show handler ONLY for lock + overrides + totals
+  chargesModal.addEventListener('show.bs.modal', function () {
+    const pkgId = (pkgIdInput?.value || '').trim();
+    if (!pkgId) return;
 
-    if (!btn) {
-      console.warn("chargesModal opened but no trigger button found (relatedTarget missing).");
-      return;
-    }
-
-    const pkgId = (btn.getAttribute('data-pkg-id') || '').trim();
-    const desc  = (btn.getAttribute('data-desc') || '').trim();
-
-    if (!pkgId) {
-      console.warn("Trigger button missing data-pkg-id:", btn);
-      return;
-    }
-
-    if (pkgIdInput)   pkgIdInput.value = pkgId;
-    if (pkgDescInput) pkgDescInput.value = desc;
-
-    // ✅ load pricing lock state from row
+    // ✅ load pricing lock state from row hidden
     const lockedHidden = document.getElementById(`locked_${pkgId}`);
     setLocked((lockedHidden?.value || '0') === '1');
 
-
-    // ✅ set category (button OR hidden row OR default)
-    const catBtn = (btn.getAttribute('data-category') || '').trim();
-    const catHidden = document.getElementById(`category_${pkgId}`);
-    const catRow = (catHidden?.value || '').trim();
-    if (categorySelect) categorySelect.value = catBtn || catRow || 'Other';
-
-    // ✅ Use what the user typed in the modal.
-    // Only fall back to row values if the modal fields are blank.
-    let weight = (weightInput?.value || "").trim();
-    let value  = (valueInput?.value  || "").trim();
-
-    if (weight === "" || value === "") {
-      const row = getRowWeightValue(pkgId);
-
-      if (weight === "") weight = row.weight;
-      if (value  === "") value  = row.value;
-
-      if (weightInput) weightInput.value = weight;
-      if (valueInput)  valueInput.value  = value;
-    }
-
-
-    // preload overrides
+    // ✅ preload overrides from hidden inputs
     const getHidden = (id) => Number(document.getElementById(id)?.value || 0).toFixed(2);
+
     if (resDuty)  resDuty.value  = getHidden(`duty_${pkgId}`);
     if (resGct)   resGct.value   = getHidden(`gct_${pkgId}`);
     if (resScf)   resScf.value   = getHidden(`scf_${pkgId}`);
@@ -2711,6 +2715,7 @@ document.addEventListener('input', function(e){
 
       if (statusEl) statusEl.textContent = 'Uploaded!';
       bootstrap.Modal.getInstance(modalEl)?.hide();
+      saveShipmentDTState();
       setTimeout(() => window.location.reload(), 400);
 
     } catch (err) {
@@ -2782,7 +2787,7 @@ document.addEventListener('input', function(e){
         alert(msg);
         return;
       }
-
+      saveShipmentDTState();
       window.location.reload();
     } catch (err) {
       console.error(err);

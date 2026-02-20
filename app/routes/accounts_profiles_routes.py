@@ -1262,15 +1262,18 @@ def create_single_package_for_user(id):
     )
 
     db.session.add(pkg)
-    db.session.commit()
 
     try:
+        db.session.flush()  # ✅ gives pkg.id without committing yet
+
         from app.utils.prealert_sync import sync_prealert_invoice_to_package
-        sync_prealert_invoice_to_package(pkg)   # attaches invoice (if found) into package_attachments
-        db.session.commit()
-except Exception:
+        sync_prealert_invoice_to_package(pkg)  # attaches invoice (if found)
+
+        db.session.commit()  # ✅ commit ONCE at the end
+    except Exception:
         current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed after single package create")
         db.session.rollback()
+        return jsonify({"success": False, "error": "Could not create package"}), 500
 
     # ✅ IMPORTANT: refresh pkg so attachments relationship includes anything just added
     try:

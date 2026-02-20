@@ -931,23 +931,29 @@
 
     const form = document.getElementById('bulkActionForm');
     const actionInput = document.getElementById('bulkActionHiddenAction');
-    if (actionInput) actionInput.value = 'delete';   // handled by packages_bulk_action()
+    if (actionInput) actionInput.value = 'delete';
 
-    // Ensure all selected IDs are included
+    // remove old injected holder if present
     const holderId = 'selectedIdsContainer';
     document.getElementById(holderId)?.remove();
+
+    // inject selected IDs into form
     const holder = document.createElement('div');
     holder.id = holderId;
+
     checkboxes.forEach(cb => {
       const hidden = document.createElement('input');
       hidden.type = 'hidden';
-      hidden.name = 'package_ids';
+      hidden.name = 'package_ids[]';   // ✅ THIS is the key fix
       hidden.value = cb.value;
       holder.appendChild(hidden);
     });
+
     form.appendChild(holder);
 
-    savePackagesDTState();
+    // optional: preserve DT state if you want
+    if (typeof savePackagesDTState === 'function') savePackagesDTState();
+
     form.submit();
   });
 

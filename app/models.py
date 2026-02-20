@@ -356,14 +356,24 @@ class Prealert(db.Model):
     invoice_public_id = db.Column(db.String(255), nullable=True)
     invoice_resource_type = db.Column(db.String(20), nullable=True)  # "raw" or "image"
     
-    linked_package_id = db.Column(db.Integer, db.ForeignKey("packages.id"), nullable=True, index=True)
-    linked_at = db.Column(db.DateTime, nullable=True)
+    # ✅ Link to Package (prevents duplicates + shows which package got the invoice)
+    linked_package_id = db.Column(
+        db.Integer,
+        db.ForeignKey("packages.id"),
+        nullable=True,
+        index=True
+    )
+    linked_at = db.Column(db.DateTime(timezone=True), nullable=True)  # ✅ timezone-aware
 
     prealert_number = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship('User', back_populates='prealerts')
 
+    # ✅ optional but helpful relationship
+    linked_package = db.relationship("Package", foreign_keys=[linked_package_id])
+
+    
     def __repr__(self):
         return f"<Prealert PA-{self.prealert_number}>"
 

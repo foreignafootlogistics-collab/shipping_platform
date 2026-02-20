@@ -1264,11 +1264,25 @@ def create_single_package_for_user(id):
     db.session.add(pkg)
     db.session.commit()
 
+    try:
+        from app.utils.prealert_sync import sync_prealert_invoice_to_package
+        sync_prealert_invoice_to_package(pkg)   # attaches invoice (if found) into package_attachments
+        db.session.commit()
+except Exception:
+        current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed after single package create")
+        db.session.rollback()
+
+    # ✅ IMPORTANT: refresh pkg so attachments relationship includes anything just added
+    try:
+        db.session.refresh(pkg)
+    except Exception:
+        pass
+
     def serialize_attachment(a):
         return {
             "id": a.id,
             "original_name": getattr(a, "original_name", None) or "Attachment",
-            "view_url": url_for("logistics.view_package_attachment", attachment_id=a.id),
+            "view_url": url_for("logistics.admin_view_package_attachment", attachment_id=a.id),
             "delete_url": url_for("logistics.delete_package_attachment_admin", attachment_id=a.id),
         }
 

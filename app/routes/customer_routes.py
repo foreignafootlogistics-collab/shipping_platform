@@ -296,6 +296,22 @@ def prealerts_create():
         db.session.add(pa)
         db.session.commit()
 
+        try:
+            from app.utils.prealert_sync import sync_prealert_invoice_to_package
+
+            pkg = (Package.query
+                   .filter(Package.user_id == current_user.id)
+                   .filter(Package.tracking_number.ilike(pa.tracking_number))
+                   .order_by(Package.id.desc())
+                   .first())
+
+            if pkg:
+                sync_prealert_invoice_to_package(pkg)
+
+        except Exception:
+            current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed")
+            db.session.rollback()
+
         flash(f"Pre-alert PA-{prealert_number} submitted successfully!", "success")
         return redirect(url_for('customer.prealerts_view'))
 

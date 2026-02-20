@@ -46,6 +46,7 @@ from app.utils.wallet import process_first_shipment_bonus
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
 from app.utils.cloudinary_storage import serve_prealert_invoice_file
+from app.utils.prealert_sync import sync_package_and_prealert
 
 
 
@@ -451,76 +452,103 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
 
     return breakdown
 
-def _try_link_prealert_invoice_to_package(pkg: Package):
+def _try_link_prealert_invoice_to_package(pkg: Package) -> bool:
     """
-    If a Prealert exists for this package tracking number and has an invoice uploaded,
-    create a PackageAttachment pointing to that invoice and mark Prealert as linked.
-    Safe to call multiple times (won't duplicate attachment).
+    SAFE prealert ➜ package invoice attachment sync.
+
+    Match:
+      - same customer (Prealert.customer_id == pkg.user_id)
+      - same tracking number (case-insensitive)
+      - prealert must have an invoice uploaded
+
+    Action:
+      - create PackageAttachment on the package (dedup safe)
+      - mark Prealert.linked_package_id + linked_at
+      - DO NOT commit here (caller commits)
     """
     try:
-        tracking = (pkg.tracking_number or "").strip()
+        tracking = (getattr(pkg, "tracking_number", "") or "").strip()
         if not tracking:
-            return
+            return False
 
-        # Find most recent prealert for this tracking that has an invoice and isn't linked yet
+        customer_id = getattr(pkg, "user_id", None)
+        if not customer_id:
+            return False
+
+        # newest matching prealert for THIS customer + tracking
         pa = (
             Prealert.query
-            .filter(func.lower(Prealert.tracking_number) == func.lower(tracking))
-            .filter(Prealert.invoice_filename.isnot(None))
-            .order_by(Prealert.id.desc())
+            .filter(
+                Prealert.customer_id == customer_id,
+                Prealert.tracking_number.ilike(tracking),
+            )
+            .order_by(Prealert.created_at.desc(), Prealert.id.desc())
             .first()
         )
         if not pa:
-            return
+            return False
 
-        # If already linked to this package, stop
-        if getattr(pa, "linked_package_id", None) == pkg.id:
-            return
+        invoice_url = (getattr(pa, "invoice_filename", None) or "").strip()
+        if not invoice_url:
+            return False
 
-        # Prevent duplicate attachment on the package
-        already = (
-            PackageAttachment.query
-            .filter(PackageAttachment.package_id == pkg.id)
-            .filter(
-                or_(
-                    PackageAttachment.cloud_public_id == getattr(pa, "invoice_public_id", None),
-                    PackageAttachment.file_url == pa.invoice_filename,
-                    PackageAttachment.file_name == pa.invoice_filename,
-                )
+        # If already linked to a different package, do nothing
+        if getattr(pa, "linked_package_id", None) and int(pa.linked_package_id) != int(pkg.id):
+            return False
+
+        pub_id = (getattr(pa, "invoice_public_id", None) or "").strip()
+        rtype  = (getattr(pa, "invoice_resource_type", None) or "").strip() or "raw"
+        orig   = (getattr(pa, "invoice_original_name", None) or "").strip() or "prealert_invoice"
+
+        # Dedup: prefer matching cloud_public_id
+        existing = None
+        if pub_id:
+            existing = (
+                PackageAttachment.query
+                .filter_by(package_id=pkg.id, cloud_public_id=pub_id)
+                .first()
             )
-            .first()
-        )
-        if already:
-            # still mark prealert linked if not set
-            pa.linked_package_id = pkg.id
-            pa.linked_at = datetime.now(timezone.utc)
-            return
 
-        # Create attachment from prealert invoice metadata
-        original_name = (
-            getattr(pa, "invoice_original_name", None)
-            or "prealert-invoice"
-        )
+        # Fallback dedup: match same URL
+        if not existing:
+            existing = (
+                PackageAttachment.query
+                .filter_by(package_id=pkg.id, file_url=invoice_url)
+                .first()
+            )
 
-        att = PackageAttachment(
+        if existing:
+            # mark linked if not yet marked
+            if not getattr(pa, "linked_package_id", None):
+                pa.linked_package_id = pkg.id
+                pa.linked_at = datetime.now(timezone.utc)
+            return True
+
+        # Create attachment row from prealert invoice
+        db.session.add(PackageAttachment(
             package_id=pkg.id,
-            file_name=pa.invoice_filename,   # keep legacy
-            file_url=pa.invoice_filename,    # new
-            original_name=original_name,
-            cloud_public_id=getattr(pa, "invoice_public_id", None),
-            cloud_resource_type=getattr(pa, "invoice_resource_type", None) or "raw",
-        )
-        db.session.add(att)
-        db.session.flush()
+            file_name=invoice_url,          # legacy
+            file_url=invoice_url,           # ✅ required NOT NULL
+            original_name=orig,
+            cloud_public_id=(pub_id or None),
+            cloud_resource_type=(rtype or None),
+        ))
+
+        # Optional: mirror onto package main invoice field too
+        if not (getattr(pkg, "invoice_file", None) or "").strip():
+            pkg.invoice_file = invoice_url
 
         # Mark prealert linked
         pa.linked_package_id = pkg.id
         pa.linked_at = datetime.now(timezone.utc)
 
+        return True
+
     except Exception as e:
-        current_app.logger.exception(f"Prealert link failed for pkg {getattr(pkg,'id',None)}: {e}")
-        # Don't raise; linking should never break upload flow
-        return
+        current_app.logger.exception(
+            f"Prealert link failed for pkg {getattr(pkg,'id',None)}: {e}"
+        )
+        return False
 
 
 
@@ -929,7 +957,7 @@ def logistics_dashboard():
                     created_at=datetime.now(timezone.utc),
                 )
                 db.session.add(p)
-                db.session.flush()  # ✅ get p.id now
+                db.session.flush()  # ✅ get p.id now                
 
                 # ✅ AUTO-LINK prealert invoice -> package attachment
                 _try_link_prealert_invoice_to_package(p)
@@ -1301,7 +1329,117 @@ def logistics_dashboard():
         prealerts=prealerts_data,
     )
 
+@logistics_bp.get("/api/user-lookup")
+@admin_required  # keep it protected since it exposes customer info
+def api_user_lookup():
+    """
+    Lookup user by registration_number OR email.
+    Returns: { found: bool, user: {id, registration_number, full_name, email} }
+    """
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"found": False, "error": "Missing q"}), 400
 
+    user = None
+
+    # If it looks like an email, prefer email search
+    if "@" in q:
+        user = User.query.filter(User.email.ilike(q)).first()
+    else:
+        user = User.query.filter(User.registration_number.ilike(q)).first()
+
+        # fallback: some people paste email even without @ (rare), or reg mismatch
+        if not user:
+            user = User.query.filter(User.email.ilike(q)).first()
+
+    if not user:
+        return jsonify({"found": False}), 200
+
+    full_name = (f"{user.first_name or ''} {user.last_name or ''}").strip()
+
+    return jsonify({
+        "found": True,
+        "user": {
+            "id": user.id,
+            "registration_number": user.registration_number,
+            "full_name": full_name,
+            "email": user.email
+        }
+    }), 200
+
+@logistics_bp.post("/packages/create-single")
+@admin_required
+def create_single_package_from_view():
+    user_code = (request.form.get("user_code") or "").strip()
+    tracking  = (request.form.get("tracking_number") or "").strip()
+    house_awb = (request.form.get("house_awb") or "").strip()
+    desc      = (request.form.get("description") or "").strip()
+    status    = (request.form.get("status") or "Overseas").strip()
+
+    # numbers
+    def _num(name, default=0.0):
+        try:
+            return float(request.form.get(name) or default)
+        except Exception:
+            return float(default)
+
+    weight = _num("weight", 0.0)
+    value  = _num("value", 0.0)
+
+    if not user_code:
+        flash("Customer Reg # / Email is required.", "danger")
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
+
+    if not tracking:
+        flash("Tracking number is required.", "danger")
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
+
+    # find user by reg# or email
+    user = None
+    if "@" in user_code:
+        user = User.query.filter(User.email.ilike(user_code)).first()
+    else:
+        user = User.query.filter(User.registration_number.ilike(user_code)).first()
+        if not user:
+            user = User.query.filter(User.email.ilike(user_code)).first()
+
+    if not user:
+        flash(f"Customer not found: {user_code}", "danger")
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
+
+    # create package
+    p = Package(
+        user_id=user.id,
+        tracking_number=tracking,
+        house_awb=house_awb or None,
+        description=desc or None,
+        weight=weight or 0,
+        value=value or 0,
+        status=status or "Overseas",
+    )
+
+    db.session.add(p)
+    db.session.commit()
+
+    flash(f"Package created for {user.registration_number}: {tracking}", "success")
+
+    # return back to same filters
+    return_tab = request.form.get("return_tab") or "view_packages"
+    return redirect(url_for(
+        "logistics.logistics_dashboard",
+        tab=return_tab,
+        page=request.form.get("return_page") or 1,
+        per_page=request.form.get("return_per_page") or 25,
+        date_from=request.form.get("return_date_from") or None,
+        date_to=request.form.get("return_date_to") or None,
+        house=request.form.get("return_house") or None,
+        tracking=request.form.get("return_tracking") or None,
+        user_code=request.form.get("return_user_code") or None,
+        first_name=request.form.get("return_first_name") or None,
+        last_name=request.form.get("return_last_name") or None,
+        unassigned_only=request.form.get("return_unassigned_only") or None,
+        epc_only=request.form.get("return_epc_only") or None,
+    ))
 
 # --------------------------------------------------------------------------------------
 # Bulk Assign to user (code/email) + optional reset Unassigned -> Overseas

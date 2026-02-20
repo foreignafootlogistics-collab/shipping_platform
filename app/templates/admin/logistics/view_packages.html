@@ -4,98 +4,110 @@
 <!-- ====================== -->
 <!-- Page Title & Summary   -->
 <!-- ====================== -->
-<div class="d-flex justify-content-between align-items-center mb-2">
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
   <h2 class="mb-0">📦 View Packages</h2>
 
-  <!-- Top actions -->
-  <form method="POST"
-        id="bulkActionForm"
-        action="{{ url_for('logistics.packages_bulk_action') }}"
-        class="m-0">
-    {{ bulk_form.hidden_tag() }}
-    <input type="hidden" name="bulk_action" id="bulkActionHiddenAction" value="">
+  <div class="d-flex flex-wrap align-items-center gap-2">
 
-    <!-- ✅ KEEP FILTERS/PAGING WHEN YOU POST BULK ACTIONS -->
-    <input type="hidden" name="page" value="{{ page }}">
-    <input type="hidden" name="per_page" value="{{ per_page }}">
-    <input type="hidden" name="date_from" value="{{ date_from or '' }}">
-    <input type="hidden" name="date_to" value="{{ date_to or '' }}">
-    <input type="hidden" name="house" value="{{ house or '' }}">
-    <input type="hidden" name="tracking" value="{{ tracking or '' }}">
-    <input type="hidden" name="user_code" value="{{ user_code or '' }}">
-    <input type="hidden" name="first_name" value="{{ first_name or '' }}">
-    <input type="hidden" name="last_name" value="{{ last_name or '' }}">
-    <input type="hidden" name="unassigned_only" value="{{ '1' if unassigned_only else '' }}">
-    <input type="hidden" name="epc_only" value="{{ '1' if epc_only else '' }}">
- 
-    <div class="d-flex align-items-center action-toolbar shadow-sm">
-    
-      <!-- Move to Shipment Log -->
-      <button type="submit"
-              class="toolbar-btn"
-              title="Move to Shipment Log"
-              formaction="{{ url_for('logistics.create_shipment') }}"
-              formmethod="POST">
-        <i class="bi bi-send"></i>
-      </button>
+    <!-- Create Package -->
+    <button type="button"
+            class="btn btn-purple btn-sm d-inline-flex align-items-center gap-1"
+            data-bs-toggle="modal"
+            data-bs-target="#createSinglePackageModal"
+            title="Create a single package">
+      <i class="bi bi-plus-circle"></i>
+      <span class="d-none d-md-inline">Create Package</span>
+    </button>
 
-      <!-- Email selected packages (Overseas notification) -->
-      <button type="submit"
-              class="toolbar-btn"
-              title="Email selected package details"
-              formaction="{{ url_for('logistics.email_selected_packages') }}"
-              formmethod="POST">
-        <i class="bi bi-envelope"></i>
-      </button>
+    <!-- Top actions -->
+    <form method="POST"
+          id="bulkActionForm"
+          action="{{ url_for('logistics.packages_bulk_action') }}"
+          class="m-0">
+      {{ bulk_form.hidden_tag() }}
+      <input type="hidden" name="bulk_action" id="bulkActionHiddenAction" value="">
 
-      <!-- Send Invoice Request (stays on bulk_action route) -->
-      <button type="submit"
-              class="toolbar-btn"
-              onclick="document.getElementById('bulkActionHiddenAction').value='send_invoice_request';"
-              title="Send Invoice Request">
-        <i class="bi bi-file-earmark-text"></i>
-      </button>
+      <!-- ✅ KEEP FILTERS/PAGING WHEN YOU POST BULK ACTIONS -->
+      <input type="hidden" name="page" value="{{ page }}">
+      <input type="hidden" name="per_page" value="{{ per_page }}">
+      <input type="hidden" name="date_from" value="{{ date_from or '' }}">
+      <input type="hidden" name="date_to" value="{{ date_to or '' }}">
+      <input type="hidden" name="house" value="{{ house or '' }}">
+      <input type="hidden" name="tracking" value="{{ tracking or '' }}">
+      <input type="hidden" name="user_code" value="{{ user_code or '' }}">
+      <input type="hidden" name="first_name" value="{{ first_name or '' }}">
+      <input type="hidden" name="last_name" value="{{ last_name or '' }}">
+      <input type="hidden" name="unassigned_only" value="{{ '1' if unassigned_only else '' }}">
+      <input type="hidden" name="epc_only" value="{{ '1' if epc_only else '' }}">
 
-      <button type="button"
-              class="toolbar-btn"
-              id="btnFinanceInvoicePreview"
-              title="Finance Invoice Preview">
-        <i class="bi bi-receipt"></i>
-      </button>
+      <div class="d-flex align-items-center action-toolbar shadow-sm">
 
-      <!-- Bulk Assign to Customer (opens modal) -->
-      <button type="button"
-              id="openBulkAssignBtn"
-              class="toolbar-btn"
-              title="Assign selected package(s) to a customer"
-              data-bs-toggle="modal"
-              data-bs-target="#bulkAssignModal">
-        <i class="bi bi-person-check"></i>
-      </button>
+        <!-- Move to Shipment Log -->
+        <button type="submit"
+                class="toolbar-btn"
+                title="Move to Shipment Log"
+                formaction="{{ url_for('logistics.create_shipment') }}"
+                formmethod="POST">
+          <i class="bi bi-send"></i>
+        </button>
 
-      <!-- Mark EPC -->
-      <button type="submit"
-              name="action"
-              value="mark_epc"
-              class="toolbar-btn toolbar-btn-epc"
-              title="Mark selected as EPC">
-        <i class="bi bi-star-fill"></i>
-      </button>
+        <!-- Email selected packages (Overseas notification) -->
+        <button type="submit"
+                class="toolbar-btn"
+                title="Email selected package details"
+                formaction="{{ url_for('logistics.email_selected_packages') }}"
+                formmethod="POST">
+          <i class="bi bi-envelope"></i>
+        </button>
 
-      <!-- Clear EPC -->
-      <button type="submit"
-              name="action"
-              value="clear_epc"
-              class="toolbar-btn"
-              title="Clear EPC flag">
-        <i class="bi bi-star"></i>
-      </button>
+        <!-- Send Invoice Request (stays on bulk_action route) -->
+        <button type="submit"
+                class="toolbar-btn"
+                onclick="document.getElementById('bulkActionHiddenAction').value='send_invoice_request';"
+                title="Send Invoice Request">
+          <i class="bi bi-file-earmark-text"></i>
+        </button>
 
-    </div>
-  </form>
+        <button type="button"
+                class="toolbar-btn"
+                id="btnFinanceInvoicePreview"
+                title="Finance Invoice Preview">
+          <i class="bi bi-receipt"></i>
+        </button>
 
+        <!-- Bulk Assign to Customer (opens modal) -->
+        <button type="button"
+                id="openBulkAssignBtn"
+                class="toolbar-btn"
+                title="Assign selected package(s) to a customer"
+                data-bs-toggle="modal"
+                data-bs-target="#bulkAssignModal">
+          <i class="bi bi-person-check"></i>
+        </button>
+
+        <!-- Mark EPC -->
+        <button type="submit"
+                name="action"
+                value="mark_epc"
+                class="toolbar-btn toolbar-btn-epc"
+                title="Mark selected as EPC">
+          <i class="bi bi-star-fill"></i>
+        </button>
+
+        <!-- Clear EPC -->
+        <button type="submit"
+                name="action"
+                value="clear_epc"
+                class="toolbar-btn"
+                title="Clear EPC flag">
+          <i class="bi bi-star"></i>
+        </button>
+
+      </div>
+    </form>
+
+  </div>
 </div>
-
 {# ==== Summary just under the heading ==== #}
 <div class="alert mb-3 py-2 px-3 d-flex justify-content-between align-items-center"
      style="background-color:#4a148c; color:white; border:none; border-radius:0.5rem;">
@@ -379,7 +391,8 @@
                           user_code=user_code,
                           first_name=first_name,
                           last_name=last_name,
-                          show_unassigned=request.args.get('show_unassigned')) }}">
+                          unassigned_only=('1' if unassigned_only else None),
+                          epc_only=('1' if epc_only else None)) }}">
         &laquo;&laquo;
       </a>
     </li>
@@ -398,7 +411,8 @@
                           user_code=user_code,
                           first_name=first_name,
                           last_name=last_name,
-                          show_unassigned=request.args.get('show_unassigned')) }}">
+                          unassigned_only=('1' if unassigned_only else None),
+                          epc_only=('1' if epc_only else None)) }}">
         &laquo;
       </a>
     </li>
@@ -420,7 +434,8 @@
                             user_code=user_code,
                             first_name=first_name,
                             last_name=last_name,
-                            show_unassigned=request.args.get('show_unassigned')) }}">
+                            unassigned_only=('1' if unassigned_only else None),
+                            epc_only=('1' if epc_only else None)) }}">
           {{ p }}
         </a>
       </li>
@@ -440,7 +455,8 @@
                           user_code=user_code,
                           first_name=first_name,
                           last_name=last_name,
-                          show_unassigned=request.args.get('show_unassigned')) }}">
+                          unassigned_only=('1' if unassigned_only else None),
+                          epc_only=('1' if epc_only else None)) }}">
         &raquo;
       </a>
     </li>
@@ -459,7 +475,8 @@
                           user_code=user_code,
                           first_name=first_name,
                           last_name=last_name,
-                          show_unassigned=request.args.get('show_unassigned')) }}">
+                          unassigned_only=('1' if unassigned_only else None),
+                          epc_only=('1' if epc_only else None)) }}">
         &raquo;&raquo;
       </a>
     </li>
@@ -618,6 +635,118 @@
   </div>
 </div>
 
+<!-- ========================= -->
+<!-- Create Single Package Modal -->
+<!-- ========================= -->
+<div class="modal fade" id="createSinglePackageModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <form method="POST"
+          action="{{ url_for('logistics.create_single_package_from_view') }}"
+          class="modal-content">
+
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <!-- keep the user on same filters after submit -->
+      <input type="hidden" name="return_tab" value="view_packages">
+      <input type="hidden" name="return_page" value="{{ page }}">
+      <input type="hidden" name="return_per_page" value="{{ per_page }}">
+      <input type="hidden" name="return_date_from" value="{{ date_from or '' }}">
+      <input type="hidden" name="return_date_to" value="{{ date_to or '' }}">
+      <input type="hidden" name="return_house" value="{{ house or '' }}">
+      <input type="hidden" name="return_tracking" value="{{ tracking or '' }}">
+      <input type="hidden" name="return_user_code" value="{{ user_code or '' }}">
+      <input type="hidden" name="return_first_name" value="{{ first_name or '' }}">
+      <input type="hidden" name="return_last_name" value="{{ last_name or '' }}">
+      <input type="hidden" name="return_unassigned_only" value="{{ '1' if unassigned_only else '' }}">
+      <input type="hidden" name="return_epc_only" value="{{ '1' if epc_only else '' }}">
+
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-box-seam me-1"></i> Create Single Package
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- User code (auto-filled from filter; locked by JS) -->
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Customer Reg # or Email</label>
+
+          <div class="input-group">
+            <input type="text"
+                   class="form-control"
+                   name="user_code"
+                   id="createPkgUserCode"
+                   placeholder="FAFL10462 or user@email.com"
+                   required>
+            <button class="btn btn-outline-secondary d-none"
+                    type="button"
+                    id="unlockCreatePkgUser"
+                    title="Edit customer">
+              <i class="bi bi-pencil"></i>
+            </button>
+          </div>
+
+          <div id="createPkgUserDisplay"
+               class="small text-muted mt-1 d-none"></div>
+
+          <div class="form-text">
+            If you filtered View Packages by a customer, it will auto-fill and lock here.
+          </div>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="row g-3">
+          <div class="col-12 col-md-6">
+            <label class="form-label fw-semibold">Tracking #</label>
+            <input type="text" class="form-control" name="tracking_number" placeholder="e.g. 1Z..." required>
+          </div>
+
+          <div class="col-12 col-md-6">
+            <label class="form-label fw-semibold">House AWB</label>
+            <input type="text" class="form-control" name="house_awb" placeholder="e.g. 06978687">
+          </div>
+
+          <div class="col-12">
+            <label class="form-label fw-semibold">Description</label>
+            <input type="text" class="form-control" name="description" placeholder="e.g. Shoes / Phone case">
+          </div>
+
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Weight (lbs)</label>
+            <input type="number" step="0.01" min="0" class="form-control" name="weight" placeholder="0.00" required>
+          </div>
+
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Item Value (USD)</label>
+            <input type="number" step="0.01" min="0" class="form-control" name="value" placeholder="0.00">
+          </div>
+
+          <div class="col-12 col-md-4">
+            <label class="form-label fw-semibold">Status</label>
+            <select class="form-select" name="status">
+              <option value="Overseas" selected>Overseas</option>
+              <option value="Unassigned">Unassigned</option>
+              <option value="Ready">Ready</option>
+              <option value="Detained">Detained</option>
+            </select>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-purple">
+          <i class="bi bi-check2-circle me-1"></i> Create Package
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
 
 <script> 
   /* =========================================================
@@ -671,7 +800,7 @@
    ================================ */
 
   // helper for JSON POST (only define if not already defined on this page)
-  async function postJSON(url, body) {
+  window.postJSON = window.postJSON || (async function(url, body) {
     const r = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1379,7 +1508,111 @@
     if (fileInput) fileInput.value = '';
   });
 })();
-</script>>
+
+/* =====================================================
+   AUTO-FILL + LOCK USER FIELD + AJAX NAME LOOKUP
+   ===================================================== */
+(function enhancedAutoFillUser(){
+  const modalEl = document.getElementById('createSinglePackageModal');
+  if (!modalEl) return;
+
+  const filterInput = document.getElementById('user_code');
+  const modalInput  = document.getElementById('createPkgUserCode');
+  const displayDiv  = document.getElementById('createPkgUserDisplay');
+  const unlockBtn   = document.getElementById('unlockCreatePkgUser');
+
+  const lookupUrl = "{{ url_for('logistics.api_user_lookup') }}";
+
+  function lockField() {
+    modalInput.readOnly = true;
+    modalInput.classList.add('bg-light');
+    unlockBtn.classList.remove('d-none');
+  }
+
+  function unlockField() {
+    modalInput.readOnly = false;
+    modalInput.classList.remove('bg-light');
+    unlockBtn.classList.add('d-none');
+    displayDiv.classList.add('d-none');
+    displayDiv.textContent = '';
+  }
+
+  async function lookupAndShow(q) {
+    const val = (q || '').trim();
+    if (!val) return;
+
+    displayDiv.classList.remove('d-none');
+    displayDiv.textContent = "Looking up customer…";
+
+    try {
+      const res = await fetch(`${lookupUrl}?q=${encodeURIComponent(val)}`, {
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        displayDiv.textContent = `Using customer: ${val} (lookup error)`;
+        return;
+      }
+
+      if (!data.found || !data.user) {
+        displayDiv.textContent = `Using customer: ${val} (not found)`;
+        return;
+      }
+
+      const u = data.user;
+      const name = (u.full_name || '').trim();
+      const reg  = (u.registration_number || '').trim();
+
+      // Prefer showing reg + name
+      if (reg && name) {
+        displayDiv.textContent = `Using customer: ${reg} — ${name}`;
+      } else if (reg) {
+        displayDiv.textContent = `Using customer: ${reg}`;
+      } else if (name) {
+        displayDiv.textContent = `Using customer: ${val} — ${name}`;
+      } else {
+        displayDiv.textContent = `Using customer: ${val}`;
+      }
+
+    } catch (err) {
+      console.error(err);
+      displayDiv.textContent = `Using customer: ${val} (lookup failed)`;
+    }
+  }
+
+  // When modal opens, auto-fill from filter and lock
+  modalEl.addEventListener('show.bs.modal', function () {
+    const filterUserCode = (filterInput?.value || '').trim();
+
+    if (filterUserCode) {
+      modalInput.value = filterUserCode;
+      lockField();
+      lookupAndShow(filterUserCode);
+    } else {
+      modalInput.value = '';
+      unlockField();
+    }
+  });
+
+  // Pencil unlock
+  unlockBtn?.addEventListener('click', function(){
+    unlockField();
+    modalInput.focus();
+  });
+
+  // If user edits manually after unlocking, do lookup after pause
+  let t = null;
+  modalInput?.addEventListener('input', function(){
+    if (modalInput.readOnly) return; // locked = ignore
+    clearTimeout(t);
+    const v = modalInput.value;
+    t = setTimeout(() => lookupAndShow(v), 450);
+  });
+
+})();
+</script>
 
 <style>
 .badge-epc{

@@ -1265,16 +1265,10 @@
 
   async function doUpload() {
     const pkgId = (currentPkgId || pkgIdInput?.value || '').trim();
-    if (!pkgId) {
-      alert('Package id missing.');
-      return;
-    }
+    if (!pkgId) { alert('Package id missing.'); return; }
 
     const files = fileInput?.files;
-    if (!files || !files.length) {
-      alert('Please choose at least one file.');
-      return;
-    }
+    if (!files || !files.length) { alert('Please choose at least one file.'); return; }
 
     const csrf =
       document.querySelector('#bulkActionForm input[name="csrf_token"]')?.value ||
@@ -1283,24 +1277,17 @@
 
     const fd = new FormData();
     if (csrf) fd.append('csrf_token', csrf);
-
     for (const f of files) fd.append('attachments', f);
 
     if (statusEl) statusEl.textContent = 'Uploading…';
 
-    // ✅ Correct URL for your blueprint:
-    // logistics_bp = /admin/logistics
-    // route = /admin/packages/<id>/attachments
     const url = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}".replace('0', pkgId);
 
     let res, data = {};
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: 
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRFToken': csrf
-        },
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
         body: fd
       });
       try { data = await res.json(); } catch (e) {}
@@ -1317,31 +1304,16 @@
       return;
     }
 
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest('.js-open-attach');
-      if (!btn) return;
-
-      if (!window.bootstrap || !bootstrap.Modal) {
-        alert("Bootstrap modal is not available on this page.");
-        return;
-      }
-
-      currentPkgId = btn.getAttribute('data-pkg-id') || btn.getAttribute('data-pkg') || '';
-
-    
     if (statusEl) statusEl.textContent = 'Uploaded!';
     bootstrap.Modal.getInstance(modalEl)?.hide();
-
     setTimeout(() => window.location.reload(), 350);
   }
 
-  // Upload button
   uploadBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     doUpload();
   });
 
-  // Also allow pressing Enter inside modal to upload (optional)
   modalEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -1349,9 +1321,7 @@
     }
   });
 })();
-
-
-</script>
+</script>>
 
 <style>
 .badge-epc{

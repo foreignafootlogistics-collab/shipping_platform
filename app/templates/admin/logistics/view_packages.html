@@ -814,7 +814,7 @@
       throw new Error('Request failed: ' + txt);
     }
     return r.json();
-  }
+  });
 
   async function openInvoicePreview(selectedPkgIds) {
     console.log('openInvoicePreview, ids =', selectedPkgIds);
@@ -944,7 +944,7 @@
     checkboxes.forEach(cb => {
       const hidden = document.createElement('input');
       hidden.type = 'hidden';
-      hidden.name = 'package_ids[]';   // ✅ THIS is the key fix
+      hidden.name = 'package_ids';   // ✅ THIS is the key fix
       hidden.value = cb.value;
       holder.appendChild(hidden);
     });

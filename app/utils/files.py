@@ -5,6 +5,7 @@ ALLOWED_EXTENSIONS = {
     "pdf",
     "png", "jpg", "jpeg",
     "xls", "xlsx",
+    "webp"
 }
 
 IMAGE_EXTENSIONS = {"png", "jpg", "jpeg"}

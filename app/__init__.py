@@ -25,7 +25,7 @@ login_manager.login_view = 'auth.login'
 login_manager.login_message = "Please log in to access this page."
 login_manager.login_message_category = "warning"
 
-ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png'}
+ALLOWED_EXTENSIONS = {'pdf', 'jpg', 'jpeg', 'png', 'webp'}
 
 def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS

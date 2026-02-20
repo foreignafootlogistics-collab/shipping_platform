@@ -1297,7 +1297,10 @@
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: 
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrf
+        },
         body: fd
       });
       try { data = await res.json(); } catch (e) {}

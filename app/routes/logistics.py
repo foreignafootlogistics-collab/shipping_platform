@@ -1386,6 +1386,7 @@ def create_single_package_from_view():
     weight = _num("weight", 0.0)
     value  = _num("value", 0.0)
 
+    # ---- required validations ----
     if not user_code:
         flash("Customer Reg # / Email is required.", "danger")
         return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
@@ -1394,7 +1395,7 @@ def create_single_package_from_view():
         flash("Tracking number is required.", "danger")
         return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
-    # find user by reg# or email
+    # ---- find user by reg# or email ----
     user = None
     if "@" in user_code:
         user = User.query.filter(User.email.ilike(user_code)).first()
@@ -1407,7 +1408,46 @@ def create_single_package_from_view():
         flash(f"Customer not found: {user_code}", "danger")
         return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
-    # create package
+    # ✅ Prevent duplicates: if package with same tracking already exists for this user
+    existing = (
+        Package.query
+        .filter(Package.user_id == user.id)
+        .filter(Package.tracking_number == tracking)
+        .order_by(Package.id.desc())
+        .first()
+    )
+
+    if existing:
+        # Try to link the prealert to the already-existing package
+        try:
+            from app.utils.prealert_sync import sync_prealert_invoice_to_package
+            sync_prealert_invoice_to_package(existing)
+            db.session.commit()
+        except Exception:
+            current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed for existing package")
+            db.session.rollback()
+
+        flash(f"Package already exists for {user.registration_number}: {tracking}", "warning")
+
+        # return back to same filters
+        return_tab = request.form.get("return_tab") or "view_packages"
+        return redirect(url_for(
+            "logistics.logistics_dashboard",
+            tab=return_tab,
+            page=request.form.get("return_page") or 1,
+            per_page=request.form.get("return_per_page") or 25,
+            date_from=request.form.get("return_date_from") or None,
+            date_to=request.form.get("return_date_to") or None,
+            house=request.form.get("return_house") or None,
+            tracking=request.form.get("return_tracking") or None,
+            user_code=request.form.get("return_user_code") or None,
+            first_name=request.form.get("return_first_name") or None,
+            last_name=request.form.get("return_last_name") or None,
+            unassigned_only=request.form.get("return_unassigned_only") or None,
+            epc_only=request.form.get("return_epc_only") or None,
+        ))
+
+    # ---- create new package ----
     p = Package(
         user_id=user.id,
         tracking_number=tracking,
@@ -1419,6 +1459,19 @@ def create_single_package_from_view():
     )
 
     db.session.add(p)
+
+    # ✅ Get an ID without committing yet
+    db.session.flush()
+
+    # ✅ Link prealert + attach invoice (if any)
+    try:
+        from app.utils.prealert_sync import sync_prealert_invoice_to_package
+        sync_prealert_invoice_to_package(p)
+    except Exception:
+        # Don't block package creation
+        current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed after create-single (will still save package)")
+
+    # ✅ One commit for everything
     db.session.commit()
 
     flash(f"Package created for {user.registration_number}: {tracking}", "success")
@@ -1440,7 +1493,6 @@ def create_single_package_from_view():
         unassigned_only=request.form.get("return_unassigned_only") or None,
         epc_only=request.form.get("return_epc_only") or None,
     ))
-
 # --------------------------------------------------------------------------------------
 # Bulk Assign to user (code/email) + optional reset Unassigned -> Overseas
 # --------------------------------------------------------------------------------------

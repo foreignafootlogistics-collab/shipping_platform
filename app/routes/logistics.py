@@ -1420,7 +1420,10 @@ def delete_packages_from_shipment(shipment_id):
 
 @logistics_bp.route("/packages/<int:package_id>/attachments", methods=["POST"])
 @admin_required
-def admin_upload_package_attachments(package_id):    
+def admin_upload_package_attachments(package_id): 
+    if not _is_internal_user(current_user):
+        abort(403)
+   
     pkg = Package.query.get_or_404(package_id)
 
     files = request.files.getlist("attachments")
@@ -1438,9 +1441,16 @@ def admin_upload_package_attachments(package_id):
 
         original = f.filename.strip()
         if not allowed_file(original):
-            return jsonify(success=False, error=f"File type not allowed: {original}"), 400
+            continue
 
-        url, public_id, rtype = upload_package_attachment(f)
+        try:
+            url, public_id, rtype = upload_package_attachment(f)
+        except Exception as e:
+            current_app.logger.exception("[ADMIN ATTACH UPLOAD] cloud upload failed")
+            return jsonify(success=False, error="Upload failed (cloud error)."), 500
+
+        if not url:
+            return jsonify(success=False, error="Upload failed (no URL returned)."), 500
 
         att = PackageAttachment(
             package_id=pkg.id,
@@ -1459,6 +1469,9 @@ def admin_upload_package_attachments(package_id):
             "view_url": url_for("logistics.admin_view_package_attachment", attachment_id=att.id),
             "delete_url": url_for("logistics.delete_package_attachment_admin", attachment_id=att.id),
         })
+
+    if not created:
+        return jsonify(success=False, error="No valid files were uploaded."), 400
 
     db.session.commit()
     return jsonify(success=True, attachments=created)
@@ -1480,6 +1493,10 @@ def delete_package_attachment_admin(attachment_id):
 
     db.session.delete(att)
     db.session.commit()
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(success=True)
+
     return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
 

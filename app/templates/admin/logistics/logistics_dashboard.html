@@ -1096,9 +1096,12 @@ window.UPDATE_PKG_URL   = "{{ url_for('logistics.api_update_package', pkg_id=0) 
 window.INVOICE_PREVIEW_URL  = "{{ url_for('logistics.bulk_invoice_preview') }}";
 window.INVOICE_FINALIZE_URL = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
 
-window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}";
-function attachUrl(id){
-  return window.ATTACH_UPLOAD_URL.replace(/0$/, String(id));
+window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}"; // .../packages/0/attachments
+
+function attachUrl(id) {
+  const sid = String(id || '').trim();
+  // replace "/0/" with "/<id>/" (only the first match)
+  return window.ATTACH_UPLOAD_URL.replace('/0/', `/${sid}/`);
 }
 
 
@@ -2653,7 +2656,7 @@ document.addEventListener('input', function(e){
     const btn = e.target.closest('.js-open-attach');
     if (!btn) return;
 
-    currentPkgId = btn.getAttribute('data-pkg-id') || '';
+    currentPkgId = (btn.getAttribute('data-pkg-id') || '').trim();
 
     if (pkgIdInput) pkgIdInput.value = currentPkgId;
     if (pkgLbl) pkgLbl.textContent = currentPkgId || '—';
@@ -2665,12 +2668,13 @@ document.addEventListener('input', function(e){
 
   async function doUpload() {
     const pkgId = (currentPkgId || pkgIdInput?.value || '').trim();
-    if (!pkgId) { alert('Package id missing.'); return; }
+    if (!pkgId || pkgId === '0') { alert('Package id missing.'); return; }
 
     const files = fileInput?.files;
     if (!files || !files.length) { alert('Please choose a file.'); return; }
 
-    const csrf = document.getElementById('attachCsrfToken')?.value || '';
+    const csrf = (document.getElementById('attachCsrfToken')?.value || '').trim();
+
     const fd = new FormData();
     if (csrf) fd.append('csrf_token', csrf);
     for (const f of files) fd.append('attachments', f);
@@ -2682,7 +2686,10 @@ document.addEventListener('input', function(e){
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-CSRFToken': csrf
+        },
         body: fd
       });
 
@@ -2690,6 +2697,7 @@ document.addEventListener('input', function(e){
 
       if (!res.ok || !data.success) {
         alert(data.error || `Upload failed (HTTP ${res.status}).`);
+        if (statusEl) statusEl.textContent = 'Upload failed.';
         return;
       }
 
@@ -2700,6 +2708,7 @@ document.addEventListener('input', function(e){
     } catch (err) {
       console.error(err);
       alert('Upload failed.');
+      if (statusEl) statusEl.textContent = 'Upload failed.';
     }
   }
 

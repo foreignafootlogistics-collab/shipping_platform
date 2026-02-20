@@ -1277,7 +1277,7 @@
     }
 
     const csrf =
-      document.querySelector('input[name="csrf_token"]')?.value ||
+      document.querySelector('#bulkActionForm input[name="csrf_token"]')?.value ||
       document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
       '';
 
@@ -1291,7 +1291,7 @@
     // ✅ Correct URL for your blueprint:
     // logistics_bp = /admin/logistics
     // route = /admin/packages/<id>/attachments
-    const url = `/admin/logistics/admin/packages/${pkgId}/attachments`;
+    const url = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}".replace('0', pkgId);
 
     let res, data = {};
     try {
@@ -1314,8 +1314,18 @@
       return;
     }
 
-    // ✅ Optional: refresh page so attachment icons show consistently everywhere
-    // (recommended since attachments are rendered server-side in your template)
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.js-open-attach');
+      if (!btn) return;
+
+      if (!window.bootstrap || !bootstrap.Modal) {
+        alert("Bootstrap modal is not available on this page.");
+        return;
+      }
+
+      currentPkgId = btn.getAttribute('data-pkg-id') || btn.getAttribute('data-pkg') || '';
+
+    
     if (statusEl) statusEl.textContent = 'Uploaded!';
     bootstrap.Modal.getInstance(modalEl)?.hide();
 

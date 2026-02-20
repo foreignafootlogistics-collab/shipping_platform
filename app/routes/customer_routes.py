@@ -444,12 +444,41 @@ def package_detail(pkg_id):
         declared_value = form.declared_value.data or 65
         invoice_file = form.invoice_file.data
 
-        if invoice_file and getattr(invoice_file, "filename", "") and allowed_file(invoice_file.filename):
-            from app.utils.cloudinary_storage import upload_invoice_image
-            pkg.invoice_file = upload_invoice_image(invoice_file)  # store URL
+        if invoice_file and getattr(invoice_file, "filename", ""):
+            original = invoice_file.filename.strip()
+
+            from app.utils.files import allowed_file
+            if allowed_file(original):
+                from app.utils.cloudinary_storage import upload_package_attachment
+
+                try:
+                    url, public_id, rtype = upload_package_attachment(invoice_file)
+                except Exception:
+                    current_app.logger.exception("[PACKAGE DETAIL UPLOAD] cloud upload failed")
+                    flash("Upload failed. Please try again.", "danger")
+                    return redirect(url_for("customer.package_detail", pkg_id=pkg_id))
+
+                if url:
+                    db.session.add(PackageAttachment(
+                        package_id=pkg.id,
+                        file_name=url,          # legacy
+                        file_url=url,           # ✅ NOT NULL in DB
+                        original_name=original,
+                        cloud_public_id=public_id,
+                        cloud_resource_type=rtype,
+                    ))
+
+                    # optional: keep main invoice field in sync
+                    pkg.invoice_file = url
+            else:
+                flash("File type not allowed.", "warning")
+                return redirect(url_for("customer.package_detail", pkg_id=pkg_id))
 
 
-        declared_value = float(declared_value or 65)
+        try:
+            declared_value = float(declared_value or 65)
+        except Exception:
+            declared_value = 65.0)
 
         pkg.declared_value = declared_value
 
@@ -473,8 +502,7 @@ def package_detail(pkg_id):
         d['declared_value'] = 65.0
     d["amount_due"] = float(pkg.amount_due or 0)
 
-
-    return render_template('customer/package_detail.html', pkg=d, form=form)
+    return render_template('customer/package_detail.html', pkg=pkg, pkg_dict=d, form=form)
 
 @customer_bp.route("/packages/<int:pkg_id>/docs", methods=["POST"])
 @login_required
@@ -493,38 +521,61 @@ def package_upload_docs(pkg_id):
             return redirect(url_for("customer.view_packages"))
 
     files = [
+        request.files.get("invoice_file"),     # ✅ allow WTForms single file too
         request.files.get("invoice_file_1"),
         request.files.get("invoice_file_2"),
         request.files.get("invoice_file_3"),
     ]
 
+    from app.utils.files import allowed_file
     from app.utils.cloudinary_storage import upload_package_attachment
 
     saved_any = False
+    seen = set()
+
     for f in files:
-        if f and f.filename and allowed_file(f.filename):
-            original = f.filename.strip()
-            
-            url, public_id, rtype = upload_invoice_image(f)
+        if not (f and f.filename):
+            continue
 
-            db.session.add(PackageAttachment(
-                package_id=pkg.id,
-                file_name=url,           # keep existing behavior
-                file_url=url,            # ✅ REQUIRED (NOT NULL in DB)
-                original_name=original,
-                cloud_public_id=public_id,
-                cloud_resource_type=rtype,
-            ))
-            saved_any = True
+        original = f.filename.strip()
 
-            # OPTIONAL: keep “main invoice” field in sync too
-            if not getattr(pkg, "invoice_file", None):
-                pkg.invoice_file = url
+        key = original.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        if not allowed_file(original):
+            continue
+
+        try:
+            url, public_id, rtype = upload_package_attachment(f)
+        except Exception:
+            current_app.logger.exception("[CUSTOMER DOC UPLOAD] cloud upload failed")
+            flash("Upload failed. Please try again.", "danger")
+            return redirect(url_for("customer.view_packages"))
+
+        if not url:
+            flash("Upload failed (no URL returned).", "danger")
+            return redirect(url_for("customer.view_packages"))
+
+        db.session.add(PackageAttachment(
+            package_id=pkg.id,
+            file_name=url,           # keep existing behavior
+            file_url=url,            # ✅ REQUIRED (NOT NULL in DB)
+            original_name=original,
+            cloud_public_id=public_id,
+            cloud_resource_type=rtype,
+        ))
+        saved_any = True
+
+        # OPTIONAL: keep “main invoice” field in sync too
+        if not getattr(pkg, "invoice_file", None):
+            pkg.invoice_file = url
 
     db.session.commit()
     flash(
         "Updated package documents successfully.",
-        "success" if (saved_any or dv) else "info"
+        "success" if (saved_any or bool(dv)) else "info"
     )
     return redirect(url_for("customer.view_packages"))
 

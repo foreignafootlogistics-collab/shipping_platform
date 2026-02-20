@@ -478,7 +478,7 @@ def package_detail(pkg_id):
         try:
             declared_value = float(declared_value or 65)
         except Exception:
-            declared_value = 65.0)
+            declared_value = 65.0
 
         pkg.declared_value = declared_value
 

@@ -328,7 +328,9 @@ def prealerts_create():
         flash(f"Pre-alert PA-{prealert_number} submitted successfully!", "success")
         return redirect(url_for('customer.prealerts_view'))
 
-    return render_template('customer/prealerts_create.html', form=form)customer_bp.route("/prealerts/invoice/<int:prealert_id>")
+    return render_template('customer/prealerts_create.html', form=form)
+
+@customer_bp.route("/prealerts/invoice/<int:prealert_id>")
 @login_required
 def prealert_invoice(prealert_id):
     pa = Prealert.query.filter_by(id=prealert_id, customer_id=current_user.id).first_or_404()

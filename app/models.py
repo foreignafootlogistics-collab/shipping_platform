@@ -5,6 +5,21 @@ import string
 from datetime import datetime, timezone
 from flask_login import UserMixin
 from app.extensions import db
+import re
+
+def normalize_tracking(s: str) -> str:
+    """
+    Make tracking comparisons consistent:
+    - strip
+    - remove ALL whitespace (spaces/tabs/newlines)
+    - uppercase
+    """
+    if not s:
+        return ""
+    s = str(s).strip()
+    s = re.sub(r"\s+", "", s)
+    return s.upper()
+
 
 # -------------------------------
 # User and Wallet Models
@@ -277,6 +292,11 @@ class Package(db.Model):
     def __repr__(self):
         return f"<Package {self.tracking_number} User {self.user_id}>"
 
+    def __init__(self, *args, **kwargs):
+        tn = kwargs.get("tracking_number")
+        if tn is not None:
+            kwargs["tracking_number"] = normalize_tracking(tn)
+        super().__init__(*args, **kwargs)
 
 class PackageAttachment(db.Model):
     __tablename__ = "package_attachments"
@@ -377,6 +397,11 @@ class Prealert(db.Model):
     def __repr__(self):
         return f"<Prealert PA-{self.prealert_number}>"
 
+    def __init__(self, *args, **kwargs):
+        tn = kwargs.get("tracking_number")
+        if tn is not None:
+            kwargs["tracking_number"] = normalize_tracking(tn)
+        super().__init__(*args, **kwargs)
 
 # -------------------------------
 # Scheduled Delivery & Authorized Pickup

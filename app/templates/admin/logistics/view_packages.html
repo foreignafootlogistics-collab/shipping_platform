@@ -709,6 +709,15 @@
             <input type="text" class="form-control" name="house_awb" placeholder="e.g. 06978687">
           </div>
 
+          <div class="col-12 col-md-6">
+            <label class="form-label fw-semibold">Date Received</label>
+            <input type="date"
+                   class="form-control"
+                   name="date_received"
+                   value="">
+           <div class="form-text">Optional. Leave blank if not received yet.</div>
+          </div>
+
           <div class="col-12">
             <label class="form-label fw-semibold">Description</label>
             <input type="text" class="form-control" name="description" placeholder="e.g. Shoes / Phone case">
@@ -1522,7 +1531,7 @@
   const modalEl = document.getElementById('createSinglePackageModal');
   if (!modalEl) return;
 
-  const filterInput = document.getElementById('user_code');
+  const filterInput = document.querySelector('#filterForm input[name="user_code"]');
   const modalInput  = document.getElementById('createPkgUserCode');
   const displayDiv  = document.getElementById('createPkgUserDisplay');
   const unlockBtn   = document.getElementById('unlockCreatePkgUser');

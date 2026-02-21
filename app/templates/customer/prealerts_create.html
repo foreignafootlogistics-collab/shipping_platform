@@ -26,7 +26,7 @@
     <!-- Important Note -->
     <div class="alert alert-note-purple" role="alert">
         <strong>Note:</strong> All uploaded invoices <em>must include</em> the following details:
-        <ul>
+        <ul class="mb-0">
             <li>Order Number</li>
             <li>Customer Name and Address</li>
             <li>Content of the Order</li>
@@ -34,37 +34,44 @@
         </ul>
     </div>
 
-    <form method="POST" enctype="multipart/form-data" class="mb-4">
+    <form id="prealertCreateForm" method="POST" enctype="multipart/form-data" class="mb-4">
         {{ form.hidden_tag() }}
 
         <div class="row g-3">
             <div class="col-md-6">
                 {{ form.vendor_name.label(class="form-label") }}
-                {{ form.vendor_name(class="form-control") }}
+                {{ form.vendor_name(class="form-control", autocomplete="organization") }}
             </div>
+
             <div class="col-md-6">
                 {{ form.courier_name.label(class="form-label") }}
                 {{ form.courier_name(class="form-control") }}
             </div>
+
             <div class="col-md-6">
                 {{ form.tracking_number.label(class="form-label") }}
-                {{ form.tracking_number(class="form-control") }}
+                {{ form.tracking_number(class="form-control", id="tracking_number", autocapitalize="characters", spellcheck="false") }}
+                <div class="form-text">Tip: Don’t include spaces. We’ll auto-trim for you.</div>
             </div>
+
             <div class="col-md-6">
                 {{ form.purchase_date.label(class="form-label") }}
                 {{ form.purchase_date(class="form-control") }}
             </div>
+
             <div class="col-md-6">
                 {{ form.package_contents.label(class="form-label") }}
                 {{ form.package_contents(class="form-control") }}
             </div>
+
             <div class="col-md-6">
                 {{ form.item_value_usd.label(class="form-label") }}
                 {{ form.item_value_usd(class="form-control") }}
             </div>
+
             <div class="col-md-12">
                 {{ form.invoice.label(class="form-label") }}
-                {{ form.invoice(class="form-control") }}
+                {{ form.invoice(class="form-control", accept=".jpg,.jpeg,.png,.pdf") }}
                 <div class="form-text">Allowed formats: jpg, jpeg, png, pdf</div>
             </div>
         </div>
@@ -76,5 +83,30 @@
         </div>
     </form>
 </div>
-{% endblock %}
 
+<script>
+(function () {
+  const form = document.getElementById('prealertCreateForm');
+  if (!form) return;
+
+  function trimEl(idOrName) {
+    const el = document.getElementById(idOrName) || form.querySelector(`[name="${idOrName}"]`);
+    if (!el || typeof el.value !== 'string') return;
+    el.value = el.value.trim();
+  }
+
+  form.addEventListener('submit', function () {
+    // Trim common text fields
+    trimEl('vendor_name');
+    trimEl('courier_name');
+    trimEl('package_contents');
+
+    // Tracking: trim + uppercase to avoid mismatches
+    const t = document.getElementById('tracking_number') || form.querySelector('[name="tracking_number"]');
+    if (t && typeof t.value === 'string') {
+      t.value = t.value.trim().toUpperCase();
+    }
+  });
+})();
+</script>
+{% endblock %}

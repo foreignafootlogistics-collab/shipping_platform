@@ -34,6 +34,7 @@ from app.models import (
     Package, Payment, shipment_packages, PackageAttachment
 )
 from app.models import Message as DBMessage
+from app.models import normalize_tracking
 
 from app.forms import (
     PackageBulkActionForm, UploadPackageForm, PreAlertForm, InvoiceFinalizeForm,
@@ -107,7 +108,14 @@ def _is_internal_user(u) -> bool:
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
+def _date(name):
+    v = (request.form.get(name) or "").strip()
+    if not v:
+        return None
+    try:
+        return datetime.strptime(v, "%Y-%m-%d").date()
+    except Exception:
+        return None
 
 def normalize_tab(raw: str | None) -> str:
     t = (raw or "prealert").strip().lower()
@@ -1371,12 +1379,27 @@ def api_user_lookup():
 @admin_required
 def create_single_package_from_view():
     user_code = (request.form.get("user_code") or "").strip()
-    tracking  = (request.form.get("tracking_number") or "").strip()
+
+    tracking_raw = (request.form.get("tracking_number") or "").strip()
+    tracking = normalize_tracking(tracking_raw)  # ✅ normalize
+
     house_awb = (request.form.get("house_awb") or "").strip()
     desc      = (request.form.get("description") or "").strip()
     status    = (request.form.get("status") or "Overseas").strip()
 
-    # numbers
+    # ✅ NEW: date_received from admin modal (HTML input type=date => YYYY-MM-DD)
+    def _dt_from_date(name):
+        v = (request.form.get(name) or "").strip()
+        if not v:
+            return None
+        try:
+            # Your model shows date_received = db.DateTime
+            return datetime.strptime(v, "%Y-%m-%d")
+        except Exception:
+            return None
+
+    date_received = _dt_from_date("date_received")  # ✅ NEW
+
     def _num(name, default=0.0):
         try:
             return float(request.form.get(name) or default)
@@ -1386,7 +1409,6 @@ def create_single_package_from_view():
     weight = _num("weight", 0.0)
     value  = _num("value", 0.0)
 
-    # ---- required validations ----
     if not user_code:
         flash("Customer Reg # / Email is required.", "danger")
         return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
@@ -1395,7 +1417,7 @@ def create_single_package_from_view():
         flash("Tracking number is required.", "danger")
         return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
-    # ---- find user by reg# or email ----
+    # find user by reg# or email
     user = None
     if "@" in user_code:
         user = User.query.filter(User.email.ilike(user_code)).first()
@@ -1408,28 +1430,57 @@ def create_single_package_from_view():
         flash(f"Customer not found: {user_code}", "danger")
         return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
-    # ✅ Prevent duplicates: if package with same tracking already exists for this user
-    existing = (
-        Package.query
-        .filter(Package.user_id == user.id)
-        .filter(Package.tracking_number == tracking)
-        .order_by(Package.id.desc())
-        .first()
-    )
+    # ✅ optional: if a package already exists for this user+tracking, do NOT create duplicates
+    existing = (Package.query
+                .filter(Package.user_id == user.id)
+                .filter(Package.tracking_number == tracking)
+                .order_by(Package.id.desc())
+                .first())
 
     if existing:
-        # Try to link the prealert to the already-existing package
+        # ✅ update missing fields on existing package (optional but helpful)
         try:
-            from app.utils.prealert_sync import sync_prealert_invoice_to_package
-            sync_prealert_invoice_to_package(existing)
-            db.session.commit()
+            updated = False
+
+            if house_awb and not (existing.house_awb or "").strip():
+                existing.house_awb = house_awb
+                updated = True
+
+            if desc and not (existing.description or "").strip():
+                existing.description = desc
+                updated = True
+
+            if weight and not (existing.weight or 0):
+                existing.weight = weight
+                updated = True
+
+            if value and not (existing.value or 0):
+                existing.value = value
+                updated = True
+
+            # ✅ set date if provided and not already set
+            if date_received and not getattr(existing, "date_received", None):
+                existing.date_received = date_received
+                updated = True
+
+            if updated:
+                db.session.commit()
+
         except Exception:
-            current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed for existing package")
+            current_app.logger.exception("[ADMIN CREATE SINGLE] failed updating existing package")
             db.session.rollback()
 
         flash(f"Package already exists for {user.registration_number}: {tracking}", "warning")
 
-        # return back to same filters
+        # ✅ still try to sync prealert invoice onto the existing package
+        try:
+            from app.utils.prealert_sync import sync_prealert_invoice_to_package
+            if sync_prealert_invoice_to_package(existing):
+                db.session.commit()
+        except Exception:
+            current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed (admin existing package)")
+            db.session.rollback()
+
         return_tab = request.form.get("return_tab") or "view_packages"
         return redirect(url_for(
             "logistics.logistics_dashboard",
@@ -1447,36 +1498,32 @@ def create_single_package_from_view():
             epc_only=request.form.get("return_epc_only") or None,
         ))
 
-    # ---- create new package ----
+    # create package
     p = Package(
         user_id=user.id,
-        tracking_number=tracking,
+        tracking_number=tracking,  # ✅ normalized saved
         house_awb=house_awb or None,
         description=desc or None,
         weight=weight or 0,
         value=value or 0,
         status=status or "Overseas",
+        date_received=date_received,  # ✅ NEW
     )
 
     db.session.add(p)
+    db.session.commit()
 
-    # ✅ Get an ID without committing yet
-    db.session.flush()
-
-    # ✅ Link prealert + attach invoice (if any)
+    # ✅ sync prealert invoice -> package attachments immediately after create
     try:
         from app.utils.prealert_sync import sync_prealert_invoice_to_package
-        sync_prealert_invoice_to_package(p)
+        if sync_prealert_invoice_to_package(p):
+            db.session.commit()
     except Exception:
-        # Don't block package creation
-        current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed after create-single (will still save package)")
-
-    # ✅ One commit for everything
-    db.session.commit()
+        current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed after admin create single package")
+        db.session.rollback()
 
     flash(f"Package created for {user.registration_number}: {tracking}", "success")
 
-    # return back to same filters
     return_tab = request.form.get("return_tab") or "view_packages"
     return redirect(url_for(
         "logistics.logistics_dashboard",

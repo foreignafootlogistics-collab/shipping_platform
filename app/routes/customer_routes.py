@@ -33,7 +33,8 @@ from app.utils.messages import make_thread_key
 from app.utils.message_notify import send_new_message_email
 from app.utils.email_utils import pick_admin_recipient
 from app.calculator_data import categories
-from app import allowed_file, mail
+from app import mail
+from app.utils.files import allowed_file
 from app.extensions import db
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.calculator_data import get_freight
@@ -55,6 +56,7 @@ from app.models import (
     Wallet, WalletTransaction, Payment, Settings,
     Prealert, PackageAttachment,
 )
+from app.models import normalize_tracking
 from sqlalchemy import func, or_
 # Email class from Flask-Mail (alias to avoid clash)
 from flask_mail import Message as MailMessage
@@ -257,6 +259,9 @@ def prealerts_create():
         invoice_resource_type = None
         invoice_original_name = None
 
+        # ----------------------------
+        # Upload invoice (optional)
+        # ----------------------------
         if form.invoice.data and getattr(form.invoice.data, "filename", ""):
             f = form.invoice.data
             original = (f.filename or "").strip()
@@ -264,7 +269,7 @@ def prealerts_create():
             if original and allowed_file(original):
                 from app.utils.cloudinary_storage import upload_prealert_invoice
 
-                invoice_original_name = original  # ✅ store original name
+                invoice_original_name = original
                 invoice_url, invoice_public_id, invoice_resource_type = upload_prealert_invoice(f)
             else:
                 flash("Invalid invoice file type. Allowed: pdf, jpg, jpeg, png.", "warning")
@@ -272,20 +277,21 @@ def prealerts_create():
 
         prealert_number = generate_prealert_number()
 
+        # ✅ normalize tracking so it matches Package consistently
+        tracking = normalize_tracking((form.tracking_number.data or "").strip())
+
         pa = Prealert(
             prealert_number=prealert_number,
             customer_id=current_user.id,
             vendor_name=form.vendor_name.data,
             courier_name=form.courier_name.data,
-            tracking_number=form.tracking_number.data,
+            tracking_number=tracking,
             purchase_date=form.purchase_date.data,
             package_contents=form.package_contents.data,
             item_value_usd=float(form.item_value_usd.data or 0),
 
-            # ✅ existing
+            # invoice fields
             invoice_filename=invoice_url,
-
-            # ✅ NEW metadata fields
             invoice_original_name=invoice_original_name,
             invoice_public_id=invoice_public_id,
             invoice_resource_type=invoice_resource_type,
@@ -296,17 +302,24 @@ def prealerts_create():
         db.session.add(pa)
         db.session.commit()
 
+        # ----------------------------
+        # Try to link to a Package + attach invoice
+        # ----------------------------
         try:
-            from app.utils.prealert_sync import sync_prealert_invoice_to_package
+            if tracking and invoice_url:
+                from app.utils.prealert_sync import sync_prealert_invoice_to_package
 
-            pkg = (Package.query
-                   .filter(Package.user_id == current_user.id)
-                   .filter(Package.tracking_number.ilike(pa.tracking_number))
-                   .order_by(Package.id.desc())
-                   .first())
+                # ✅ IMPORTANT: exact match on normalized tracking
+                pkg = (Package.query
+                       .filter(Package.user_id == current_user.id)
+                       .filter(Package.tracking_number == tracking)
+                       .order_by(Package.id.desc())
+                       .first())
 
-            if pkg:
-                sync_prealert_invoice_to_package(pkg)
+                if pkg:
+                    synced = sync_prealert_invoice_to_package(pkg)
+                    if synced:
+                        db.session.commit()
 
         except Exception:
             current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed")
@@ -315,11 +328,7 @@ def prealerts_create():
         flash(f"Pre-alert PA-{prealert_number} submitted successfully!", "success")
         return redirect(url_for('customer.prealerts_view'))
 
-    return render_template('customer/prealerts_create.html', form=form)
-
-
-
-@customer_bp.route("/prealerts/invoice/<int:prealert_id>")
+    return render_template('customer/prealerts_create.html', form=form)customer_bp.route("/prealerts/invoice/<int:prealert_id>")
 @login_required
 def prealert_invoice(prealert_id):
     pa = Prealert.query.filter_by(id=prealert_id, customer_id=current_user.id).first_or_404()

@@ -195,7 +195,7 @@
     <label for="house" class="form-label fw-semibold mb-1">House #</label>
     <input type="text" id="house" name="house"
            class="form-control form-control-sm"
-           placeholder="e.g., 06978687"
+           placeholder="e.g., FAFL123456"
            value="{{ house or '' }}">
   </div>
 
@@ -333,10 +333,10 @@
         <th id="thHouseAwb" class="th-sort">
           House AWB
           <span class="sort-btns ms-1" role="group" aria-label="Sort House AWB">
-            <button type="button" class="sort-btn" data-dir="asc" title="Sort ascending">
+            <button type="button" class="sort-btn" data-col="house_awb" data-dir="asc" title="Sort ascending">
               <i class="bi bi-caret-up-fill"></i>
             </button>
-            <button type="button" class="sort-btn" data-dir="desc" title="Sort descending">
+            <button type="button" class="sort-btn" data-col="house_awb" data-dir="desc" title="Sort descending">
               <i class="bi bi-caret-down-fill"></i>
             </button>
           </span>
@@ -716,7 +716,7 @@
 
           <div class="col-12 col-md-6">
             <label class="form-label fw-semibold">House AWB</label>
-            <input type="text" class="form-control" name="house_awb" placeholder="e.g. 06978687">
+            <input type="text" class="form-control" name="house_awb" placeholder="e.g. FAFL123456">
           </div>
 
           <div class="col-12 col-md-6">
@@ -1367,72 +1367,61 @@
   }
 
 
-  /* ============================
-     EPC filter & count (clean)
-     ============================ */
+ /* ============================
+   DATATABLE INIT + EPC FILTER + HOUSE AWB ARROWS (FINAL)
+   ============================ */
 (function () {
   if (!window.jQuery || !$.fn.dataTable) return;
 
-  var table = $.fn.dataTable.isDataTable('#packagesTable')
-    ? $('#packagesTable').DataTable()
-    : $('#packagesTable').DataTable({
-        stateSave: true,
-        pageLength: 25,
-        order: [],
-        columnDefs: [
-          { targets: 3, orderable: true } // House AWB
-        ]
-      });
+  // Always use one global instance (prevents double-init weirdness)
+  if (!window.packagesDT) {
+    window.packagesDT = $.fn.dataTable.isDataTable('#packagesTable')
+      ? $('#packagesTable').DataTable()
+      : $('#packagesTable').DataTable({
+          stateSave: true,
+          pageLength: 25,
+          order: [],
+          columnDefs: [
+            // ✅ IMPORTANT: disable default sorting on House AWB header clicks
+            { targets: 3, orderable:true }
+          ]
+        });
+  }
 
-  restorePackagesDTState();
+  var table = window.packagesDT;
 
-  // House AWB arrows (delegated)
-  (function houseAwbArrowSort(){
-    const houseColIndex = 3;
-    const container = $(table.table().container());
+  // restore your saved state
+  if (typeof restorePackagesDTState === 'function') restorePackagesDTState();
 
-    container.off('click.houseawb');
+  // ============================
+  // HOUSE AWB ARROWS (document-level, works with DT header clones)
+  // ============================
+  if (!window.__houseAwbArrowsInstalled) {
+    window.__houseAwbArrowsInstalled = true;
 
-    container.on('click.houseawb', 'th#thHouseAwb .sort-btn', function (e) {
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('.sort-btn[data-col="house_awb"]');
+      if (!btn) return;
+
       e.preventDefault();
       e.stopPropagation();
-      e.stopImmediatePropagation();
 
-      const dir = ($(this).data('dir') || '').toString().toLowerCase();
+      const dir = (btn.getAttribute('data-dir') || '').toLowerCase();
       if (dir !== 'asc' && dir !== 'desc') return;
 
       console.log('House AWB arrow clicked ->', dir);
-      table.order([[houseColIndex, dir]]).draw();
+      table.order([[3, dir]]).draw();
 
-      $('th#thHouseAwb .sort-btn[data-dir="asc"]').toggleClass('active', dir === 'asc');
-      $('th#thHouseAwb .sort-btn[data-dir="desc"]').toggleClass('active', dir === 'desc');
+      // highlight active arrow
+      document.querySelectorAll('.sort-btn[data-col="house_awb"]').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-dir') === dir);
+      });
     });
+  }
 
-    container.on('click.houseawb', 'th#thHouseAwb', function (e) {
-      if (e.target.closest('.sort-btn')) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-    });
-
-    table.off('order.houseawb').on('order.houseawb', function () {
-      const ord = table.order();
-      if (!ord || !ord.length) {
-        $('th#thHouseAwb .sort-btn').removeClass('active');
-        return;
-      }
-      const col = Number(ord[0][0]);
-      const dir = ord[0][1];
-      if (col === houseColIndex) {
-        $('th#thHouseAwb .sort-btn[data-dir="asc"]').toggleClass('active', dir === 'asc');
-        $('th#thHouseAwb .sort-btn[data-dir="desc"]').toggleClass('active', dir === 'desc');
-      } else {
-        $('th#thHouseAwb .sort-btn').removeClass('active');
-      }
-    });
-  })();
-
-  // EPC filter continues here...
+  // ============================
+  // EPC FILTER
+  // ============================
   var $headers    = $('#packagesTable thead th');
   var epcColIndex = $headers.index($headers.filter('[data-col="epc-flag"]'));
   if (epcColIndex < 0) return;
@@ -1442,8 +1431,10 @@
   if (!window.__epcFilterInstalled) {
     $.fn.dataTable.ext.search.push(function (settings, data) {
       if (settings && settings.nTable !== $('#packagesTable')[0]) return true;
+
       var epcOnly = $('#filterEpcOnly').is(':checked');
       if (!epcOnly) return true;
+
       var cell = (data[epcColIndex] || '').toString().trim();
       return cell === '1';
     });
@@ -1463,7 +1454,7 @@
 
   table.column(epcColIndex).search('', false, false);
 
-  $toggle.on('change', function () {
+  $toggle.off('change.epc').on('change.epc', function () {
     table.draw();
     updateCount();
   });

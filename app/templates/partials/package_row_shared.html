@@ -93,7 +93,7 @@
   <small class="text-muted">{{ _tracking or '-' }}</small>
 </td>
 
-<td>
+<td data-order="{{ (_house or '0')|replace(',', '') }}">
   {{ _house or '-' }}
   {% if _epc %}
     <span class="badge badge-epc ms-1">

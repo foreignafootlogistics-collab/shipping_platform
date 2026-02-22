@@ -330,7 +330,17 @@
         </th>
         <th>User</th>
         <th>Package</th>
-        <th>House AWB</th>
+        <th id="thHouseAwb" class="th-sort">
+          House AWB
+          <span class="sort-btns ms-1" role="group" aria-label="Sort House AWB">
+            <button type="button" class="sort-btn" data-dir="asc" title="Sort ascending">
+              <i class="bi bi-caret-up-fill"></i>
+            </button>
+            <button type="button" class="sort-btn" data-dir="desc" title="Sort descending">
+              <i class="bi bi-caret-down-fill"></i>
+            </button>
+          </span>
+        </th>
         <th>Description</th>
         <th>Date Received</th>
         <th>Weight (lbs)</th>
@@ -918,7 +928,8 @@
   });
 
   // Bulk actions must have at least one selected
-  document.getElementById('bulkActionForm').addEventListener('submit', function(e) {
+  const bulkForm = document.getElementById('bulkActionForm');
+  bulkForm?.addEventListener('submit', function(e) {
     const selected = Array.from(document.querySelectorAll('.package-checkbox:checked'));
     if (selected.length === 0) {
       e.preventDefault();
@@ -1359,67 +1370,107 @@
   /* ============================
      EPC filter & count (clean)
      ============================ */
-  (function () {
-    // Init or get DataTable (once)
-    var table = $.fn.dataTable.isDataTable('#packagesTable')
-      ? $('#packagesTable').DataTable()
-      : $('#packagesTable').DataTable({
-          stateSave: true,
-          pageLength: 25,
-          order: []
-        });
-     
-    restorePackagesDTState();
+(function () {
+  if (!window.jQuery || !$.fn.dataTable) return;
 
-    // Find hidden EPC column by header attr
-    var $headers    = $('#packagesTable thead th');
-    var epcColIndex = $headers.index($headers.filter('[data-col="epc-flag"]'));
-    if (epcColIndex < 0) return; // safety
-
-    // Keep column hidden but searchable
-    table.column(epcColIndex).visible(false);
-
-    // Install a robust custom filter once (trims cell, checks === '1')
-    if (!window.__epcFilterInstalled) {
-      $.fn.dataTable.ext.search.push(function (settings, data) {
-        // Only affect this table
-        if (settings && settings.nTable !== $('#packagesTable')[0]) return true;
-
-        var epcOnly = $('#filterEpcOnly').is(':checked');
-        if (!epcOnly) return true;
-
-        var cell = (data[epcColIndex] || '').toString().trim();
-        return cell === '1';
+  var table = $.fn.dataTable.isDataTable('#packagesTable')
+    ? $('#packagesTable').DataTable()
+    : $('#packagesTable').DataTable({
+        stateSave: true,
+        pageLength: 25,
+        order: [],
+        columnDefs: [
+          { targets: 3, orderable: true } // House AWB
+        ]
       });
-      window.__epcFilterInstalled = true;
-    }
 
-    var $toggle = $('#filterEpcOnly');
-    var $count  = $('#epcCount');
+  restorePackagesDTState();
 
-    function updateCount() {
-      if ($toggle.is(':checked')) {
-        $count.text(table.rows({ search: 'applied' }).count() + ' EPC package(s)').show();
-      } else {
-        $count.hide();
-      }
-    }
+  // House AWB arrows (delegated)
+  (function houseAwbArrowSort(){
+    const houseColIndex = 3;
+    const container = $(table.table().container());
 
-    // Clear any old regex search on the EPC column (defensive)
-    table.column(epcColIndex).search('', false, false);
+    container.off('click.houseawb');
 
-    // Live toggle (no submit required)
-    $toggle.on('change', function () {
-      table.draw();
-      updateCount();
+    container.on('click.houseawb', 'th#thHouseAwb .sort-btn', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      const dir = ($(this).data('dir') || '').toString().toLowerCase();
+      if (dir !== 'asc' && dir !== 'desc') return;
+
+      console.log('House AWB arrow clicked ->', dir);
+      table.order([[houseColIndex, dir]]).draw();
+
+      $('th#thHouseAwb .sort-btn[data-dir="asc"]').toggleClass('active', dir === 'asc');
+      $('th#thHouseAwb .sort-btn[data-dir="desc"]').toggleClass('active', dir === 'desc');
     });
 
-    // If the page loaded with epc_only=1 (server-side), ensure client filter matches
-    if ($toggle.is(':checked')) {
-      table.draw();
-    }
-    updateCount();
+    container.on('click.houseawb', 'th#thHouseAwb', function (e) {
+      if (e.target.closest('.sort-btn')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    });
+
+    table.off('order.houseawb').on('order.houseawb', function () {
+      const ord = table.order();
+      if (!ord || !ord.length) {
+        $('th#thHouseAwb .sort-btn').removeClass('active');
+        return;
+      }
+      const col = Number(ord[0][0]);
+      const dir = ord[0][1];
+      if (col === houseColIndex) {
+        $('th#thHouseAwb .sort-btn[data-dir="asc"]').toggleClass('active', dir === 'asc');
+        $('th#thHouseAwb .sort-btn[data-dir="desc"]').toggleClass('active', dir === 'desc');
+      } else {
+        $('th#thHouseAwb .sort-btn').removeClass('active');
+      }
+    });
   })();
+
+  // EPC filter continues here...
+  var $headers    = $('#packagesTable thead th');
+  var epcColIndex = $headers.index($headers.filter('[data-col="epc-flag"]'));
+  if (epcColIndex < 0) return;
+
+  table.column(epcColIndex).visible(false);
+
+  if (!window.__epcFilterInstalled) {
+    $.fn.dataTable.ext.search.push(function (settings, data) {
+      if (settings && settings.nTable !== $('#packagesTable')[0]) return true;
+      var epcOnly = $('#filterEpcOnly').is(':checked');
+      if (!epcOnly) return true;
+      var cell = (data[epcColIndex] || '').toString().trim();
+      return cell === '1';
+    });
+    window.__epcFilterInstalled = true;
+  }
+
+  var $toggle = $('#filterEpcOnly');
+  var $count  = $('#epcCount');
+
+  function updateCount() {
+    if ($toggle.is(':checked')) {
+      $count.text(table.rows({ search: 'applied' }).count() + ' EPC package(s)').show();
+    } else {
+      $count.hide();
+    }
+  }
+
+  table.column(epcColIndex).search('', false, false);
+
+  $toggle.on('change', function () {
+    table.draw();
+    updateCount();
+  });
+
+  if ($toggle.is(':checked')) table.draw();
+  updateCount();
+})();
 
 /* ==========================
    PACKAGE ATTACHMENTS (ADMIN) - NEW MODAL
@@ -1731,6 +1782,35 @@
     color: #d97706;
     box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
 }
+/* House AWB sort arrows */
+.th-sort { white-space: nowrap; }
+
+.sort-btns{
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+.sort-btn{
+  border: 0;
+  background: transparent;
+  padding: 0 2px;
+  line-height: 0.9;
+  color: rgba(255,255,255,.75);
+  cursor: pointer;
+}
+
+.sort-btn i{
+  font-size: .8rem; /* smaller so they fit nicely */
+}
+
+.sort-btn:hover { color: #fff; }
+
+.sort-btn.active { color: #ffc107; } /* highlight active direction */
+#thHouseAwb .sort-btn { pointer-events: auto; }
+#thHouseAwb .sort-btns { pointer-events: auto; }
 
 </style>
 

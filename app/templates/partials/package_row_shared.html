@@ -93,29 +93,16 @@
   <small class="text-muted">{{ _tracking or '-' }}</small>
 </td>
 
-<td>
-  {% set house_txt = (_house or '')|string|trim %}
-  {% set prefix = house_txt[:4]|lower %}
-  {% set numpart = house_txt[4:]|trim %}
-
-  {# Build a stable sort key: "fafl" + zero-padded digits #}
-  {% if numpart and (numpart.isdigit is defined and numpart.isdigit()) %}
-    {% set sort_key = prefix ~ ("%012d"|format(numpart|int)) %}
-  {% else %}
-    {# fallback: just use the raw text lowercased #}
-    {% set sort_key = house_txt|lower %}
-  {% endif %}
-
-  <span class="d-none">{{ sort_key }}</span>
-
+<td data-order="{{ (_house or '0')|replace(',', '') }}">
   {{ _house or '-' }}
-
   {% if _epc %}
     <span class="badge badge-epc ms-1">
       <i class="bi bi-flag-fill" style="font-size:0.60rem;"></i> EPC
     </span>
   {% endif %}
 </td>
+
+<td>
   <div>{{ _desc or '-' }}</div>
 
   {% if _attachments and (_attachments|length > 0) %}

@@ -195,7 +195,7 @@
     <label for="house" class="form-label fw-semibold mb-1">House #</label>
     <input type="text" id="house" name="house"
            class="form-control form-control-sm"
-           placeholder="e.g., FAFL123456"
+           placeholder="e.g., 06978687"
            value="{{ house or '' }}">
   </div>
 
@@ -716,7 +716,7 @@
 
           <div class="col-12 col-md-6">
             <label class="form-label fw-semibold">House AWB</label>
-            <input type="text" class="form-control" name="house_awb" placeholder="e.g. FAFL123456">
+            <input type="text" class="form-control" name="house_awb" placeholder="e.g. 06978687">
           </div>
 
           <div class="col-12 col-md-6">
@@ -1383,7 +1383,7 @@
           order: [],
           columnDefs: [
             // ✅ IMPORTANT: disable default sorting on House AWB header clicks
-            { targets: 3, orderable:true }
+            { targets: 3, orderable: false }
           ]
         });
   }

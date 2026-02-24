@@ -954,7 +954,12 @@
            id="schedule-delivery" role="tabpanel" aria-labelledby="schedule-delivery-tab">
 
         <div class="mb-3">
-          <button class="btn btn-primary mb-3" id="adminAddDeliveryBtn">+ Add Delivery</button>
+          <button type="button"
+                  class="btn btn-primary mb-3"
+                  data-bs-toggle="modal"
+                  data-bs-target="#adminDeliveryModal">
+            + Add Delivery
+          </button>
         </div>
         <div class="table-responsive">
           <table id="scheduledeliveryTable" class="table table-striped table-bordered">
@@ -964,6 +969,7 @@
                 <th>Time</th>
                 <th>Location</th>
                 <th>Person Receiving</th>
+                <th>Mobile</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -982,11 +988,12 @@
 
                 <td>{{ d.location or "" }}</td>
                 <td>{{ d.person_receiving or "" }}</td>
+                <td>{{ d.mobile_number or d.mobile or "" }}</td>
                 <td>{{ d.status or "Scheduled" }}</td>
               </tr>
               {% else %}
               <tr>
-                <td colspan="5" class="text-center text-muted py-4">No scheduled deliveries for this user.</td>
+                <td colspan="6" class="text-center text-muted py-4">No scheduled deliveries for this user.</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -1600,31 +1607,7 @@
 
       </div>
     </div>
-  </div>
-
-  
-  <!-- Quick Add Delivery Modal -->
-  <div class="modal fade" id="adminAddDeliveryModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <form id="adminAddDeliveryForm" method="POST">
-          <div class="modal-header">
-            <h5 class="modal-title">Add Delivery</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <div class="mb-2"><input type="date" name="date" class="form-control" required></div>
-            <div class="mb-2"><input type="time" name="time" class="form-control" required></div>
-            <div class="mb-2"><input type="text" name="location" placeholder="Location" class="form-control" required></div>
-            <div class="mb-2"><input type="text" name="person_receiving" placeholder="Person Receiving" class="form-control" required></div>
-          </div>
-          <div class="modal-footer">
-            <button type="submit" class="btn btn-success">Save Delivery</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
+  </div> 
 
 </div>
 {% endblock %}
@@ -2006,11 +1989,6 @@ $(document).ready(function () {
    Delivery modals (outside jQuery)
    ----------------------------- */
 
-// Quick add delivery launcher
-document.getElementById("adminAddDeliveryBtn")?.addEventListener("click", () => {
-  new bootstrap.Modal(document.getElementById('adminAddDeliveryModal')).show();
-});
-
 // Full admin delivery modal launcher
 document.querySelectorAll('.open-admin-delivery-modal').forEach(btn => {
   btn.addEventListener('click', function() {
@@ -2024,14 +2002,16 @@ document.querySelectorAll('.open-admin-delivery-modal').forEach(btn => {
 // Submit full admin delivery form (big modal)
 document.getElementById('adminDeliveryForm')?.addEventListener('submit', function(e){
   e.preventDefault();
+
   const payload = {
     user_id: document.getElementById('modalUserId').value,
     date: document.getElementById('modalDeliveryDate').value,
-    time: document.getElementById('modalDeliveryTime').value,
+    time_from: document.getElementById('modalDeliveryTimeFrom').value,
+    time_to: document.getElementById('modalDeliveryTimeTo').value,
     location: document.getElementById('modalDeliveryLocation').value,
     person_receiving: document.getElementById('modalPersonReceiving').value,
-    mobile: document.getElementById('modalDeliveryMobile').value,
-    directions: document.getElementById('modalDeliveryDirections').value
+    mobile_number: document.getElementById('modalDeliveryMobile').value,
+    direction: document.getElementById('modalDeliveryDirections').value
   };
 
   fetch("{{ url_for('logistics.add_scheduled_delivery') }}", {
@@ -2042,39 +2022,13 @@ document.getElementById('adminDeliveryForm')?.addEventListener('submit', functio
   .then(res => res.json())
   .then(data => {
     if(data.status === "success"){
-      alert('Delivery scheduled successfully!');
       bootstrap.Modal.getInstance(document.getElementById('adminDeliveryModal')).hide();
+      window.location.reload();   // ✅ simplest + guarantees table updates
     } else {
       alert(data.message || 'Error scheduling delivery.');
     }
-  });
-});
-
-// Submit quick add delivery form (small modal)
-document.getElementById("adminAddDeliveryForm")?.addEventListener("submit", function(e) {
-  e.preventDefault();
-  const formData = new FormData(this);
-
-  fetch("{{ url_for('logistics.add_scheduled_delivery', user_id=user_id) }}", {
-    method: "POST",
-    body: formData
   })
-  .then(res => res.json())
-  .then(data => {
-    if(data.status === "success"){
-      const tbody = document.querySelector("#scheduledeliveryTable tbody");
-      tbody.insertAdjacentHTML("beforeend", `
-        <tr>
-          <td>${data.delivery.date}</td>
-          <td>${data.delivery.time}</td>
-          <td>${data.delivery.location}</td>
-          <td>${data.delivery.person_receiving}</td>
-          <td>${data.delivery.status}</td>
-        </tr>
-      `);
-      bootstrap.Modal.getInstance(document.getElementById('adminAddDeliveryModal')).hide();
-    }
-  });
+  .catch(() => alert("Network/server error scheduling delivery."));
 });
 
 /* ================================

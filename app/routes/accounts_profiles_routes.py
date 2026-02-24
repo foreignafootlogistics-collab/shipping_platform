@@ -1141,9 +1141,7 @@ def view_user(id):
     jl = to_jamaica(getattr(user, "last_login", None))
     last_login_display = None
     if jl:
-        last_login_display = jl.strftime("%Y-%m-%d %I:%M %p")
-
-   active_tab = request.values.get("tab", "packages")
+        last_login_display = jl.strftime("%Y-%m-%d %I:%M %p")   
    
     # -------------------------
     # Scheduled Deliveries (for this user)

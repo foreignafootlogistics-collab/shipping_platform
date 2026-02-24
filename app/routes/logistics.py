@@ -3993,22 +3993,31 @@ def view_scheduled_deliveries():
     )
 
 
-@logistics_bp.route('/scheduled_deliveries/pdf')
-@admin_required(roles=['operations'])
+@logistics_bp.route("/scheduled_deliveries/pdf")
+@admin_required(roles=["operations"])
 def scheduled_deliveries_pdf():
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    status = request.args.get('status')
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    status = request.args.get("status")
 
     q = ScheduledDelivery.query
     if start_date:
-        q = q.filter(ScheduledDelivery.scheduled_date >= datetime.strptime(start_date, '%Y-%m-%d').date())
+        q = q.filter(
+            ScheduledDelivery.scheduled_date
+            >= datetime.strptime(start_date, "%Y-%m-%d").date()
+        )
     if end_date:
-        q = q.filter(ScheduledDelivery.scheduled_date <= datetime.strptime(end_date, '%Y-%m-%d').date())
+        q = q.filter(
+            ScheduledDelivery.scheduled_date
+            <= datetime.strptime(end_date, "%Y-%m-%d").date()
+        )
     if status:
         q = q.filter(ScheduledDelivery.status == status)
 
-    deliveries = q.order_by(ScheduledDelivery.scheduled_date.desc(), ScheduledDelivery.id.desc()).all()
+    deliveries = (
+        q.order_by(ScheduledDelivery.scheduled_date.desc(), ScheduledDelivery.id.desc())
+        .all()
+    )
 
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
@@ -4022,14 +4031,15 @@ def scheduled_deliveries_pdf():
 
     for d in deliveries:
         cust = (
-            d.user.full_name if d.user and getattr(d.user, "full_name", None)
+            d.user.full_name
+            if d.user and getattr(d.user, "full_name", None)
             else (d.user.email if d.user else "N/A")
         )
 
         inv = d.invoice_number or f"#{d.id}"
         fee = f"{d.fee_currency or 'JMD'} {float(d.delivery_fee or 0):.2f}"
 
-        # ✅ time range display (fallback to existing scheduled_time)
+        # ✅ time range display (fallback to legacy scheduled_time)
         if getattr(d, "scheduled_time_from", None) and getattr(d, "scheduled_time_to", None):
             tdisp = f"{d.scheduled_time_from} - {d.scheduled_time_to}"
         else:
@@ -4042,14 +4052,27 @@ def scheduled_deliveries_pdf():
             .count()
         )
 
+        # ✅ phone for driver (prefer delivery mobile, fallback to user fields)
+        phone = ""
+        if getattr(d, "mobile_number", None):
+            phone = d.mobile_number
+        elif d.user:
+            phone = (
+                getattr(d.user, "phone", None)
+                or getattr(d.user, "mobile", None)
+                or getattr(d.user, "mobile_number", None)
+                or ""
+            )
+
         line = (
             f"{inv} | {d.scheduled_date} {tdisp} | {d.location} | "
-            f"{d.person_receiving or ''} | {cust} | Pkgs: {pkg_count} | "
-            f"{fee} | {d.fee_status or 'Unpaid'}"
+            f"{d.person_receiving or ''} | {cust} | Phone: {phone or '—'} | "
+            f"Pkgs: {pkg_count} | {fee} | {d.fee_status or 'Unpaid'}"
         )
 
         p.drawString(50, y, line[:110])
         y -= 14
+
         if y < 50:
             p.showPage()
             y = height - 50
@@ -4061,9 +4084,8 @@ def scheduled_deliveries_pdf():
         buffer,
         as_attachment=True,
         download_name="scheduled_deliveries.pdf",
-        mimetype='application/pdf'
+        mimetype="application/pdf",
     )
-
 
 @logistics_bp.route('/scheduled_deliveries/add', methods=['GET', 'POST'])
 @admin_required(roles=['operations'])

@@ -36,7 +36,7 @@ from app.utils.messages import make_thread_key
 from app.models import (
     User, Invoice, Payment, Package, Prealert,
     Message as DBMessage,  # ✅ alias it like customer_routes.py
-    Settings, PackageAttachment
+    Settings, PackageAttachment, ScheduledDelivery
 )
 
 accounts_bp = Blueprint('accounts_profiles', __name__)
@@ -1143,6 +1143,28 @@ def view_user(id):
     if jl:
         last_login_display = jl.strftime("%Y-%m-%d %I:%M %p")
 
+   active_tab = request.values.get("tab", "packages")
+   
+    # -------------------------
+    # Scheduled Deliveries (for this user)
+    # -------------------------
+    scheduled_deliveries = []
+    try:
+        q = ScheduledDelivery.query.filter(ScheduledDelivery.user_id == id)
+
+        # pick a good date column to sort by
+        date_col = getattr(ScheduledDelivery, "scheduled_date", None) or getattr(ScheduledDelivery, "created_at", None)
+
+        if date_col is not None:
+            scheduled_deliveries = q.order_by(date_col.desc(), ScheduledDelivery.id.desc()).all()
+        else:
+            scheduled_deliveries = q.order_by(ScheduledDelivery.id.desc()).all()
+
+    except Exception as e:
+        current_app.logger.exception("Error loading scheduled deliveries for user %s: %s", id, e)
+        db.session.rollback()
+        scheduled_deliveries = []
+
     return render_template(
         'admin/accounts_profiles/view_user.html',
         user={
@@ -1215,7 +1237,8 @@ def view_user(id):
         pkg_awb=pkg_awb,
         pkg_tn=pkg_tn,
         attachments_by_pkg=attachments_by_pkg,
-        categories=categories,
+        categories=categories,                   
+        scheduled_deliveries=scheduled_deliveries,
     )
 
 

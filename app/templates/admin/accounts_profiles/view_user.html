@@ -968,13 +968,25 @@
               </tr>
             </thead>
             <tbody>
-              {% for delivery in deliveries %}
+              {% for d in scheduled_deliveries %}
               <tr>
-                <td>{{ delivery.date }}</td>
-                <td>{{ delivery.time }}</td>
-                <td>{{ delivery.location }}</td>
-                <td>{{ delivery.person_receiving }}</td>
-                <td>{{ delivery.status }}</td>
+                <td>{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}</td>
+
+                <td class="text-nowrap">
+                  {% if d.scheduled_time_from and d.scheduled_time_to %}
+                    {{ d.scheduled_time_from }} - {{ d.scheduled_time_to }}
+                  {% else %}
+                    {{ d.scheduled_time or "" }}
+                  {% endif %}
+                </td>
+
+                <td>{{ d.location or "" }}</td>
+                <td>{{ d.person_receiving or "" }}</td>
+                <td>{{ d.status or "Scheduled" }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="5" class="text-center text-muted py-4">No scheduled deliveries for this user.</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -1403,31 +1415,69 @@
   <div class="modal fade" id="adminDeliveryModal" tabindex="-1" aria-labelledby="adminDeliveryLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
-        <form id="adminDeliveryForm">
+
+        <form id="adminDeliveryForm"
+              method="POST"
+              action="{{ url_for('logistics.add_scheduled_delivery') }}">
+
+          <!-- CSRF -->
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <!-- If you're scheduling from the View User page, keep user_id fixed -->
+          <input type="hidden" id="modalUserId" name="user_id" value="{{ user_id }}">
+
           <div class="modal-header">
             <h5 class="modal-title" id="adminDeliveryLabel">Schedule Delivery</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
+
           <div class="modal-body">
-            <input type="hidden" id="modalUserId" name="user_id">
             <div class="row g-2">
-              <div class="col-md-4"><label>Date</label><input type="date" class="form-control" id="modalDeliveryDate" required></div>
-              <div class="col-md-4"><label>Time</label><input type="time" class="form-control" id="modalDeliveryTime" required></div>
-              <div class="col-md-4"><label>Location</label><input type="text" class="form-control" id="modalDeliveryLocation" required></div>
+              <div class="col-md-3">
+                <label class="form-label">Date</label>
+                <input type="date" class="form-control" id="modalDeliveryDate" name="date" required>
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label">Time From</label>
+                <input type="time" class="form-control" id="modalDeliveryTimeFrom" name="time_from" required>
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label">Time To</label>
+                <input type="time" class="form-control" id="modalDeliveryTimeTo" name="time_to" required>
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label">Location</label>
+                <input type="text" class="form-control" id="modalDeliveryLocation" name="location" required>
+              </div>
             </div>
+
             <div class="row mt-2 g-2">
-              <div class="col-md-6"><label>Person Receiving</label><input type="text" class="form-control" id="modalPersonReceiving"></div>
-              <div class="col-md-6"><label>Mobile #</label><input type="text" class="form-control" id="modalDeliveryMobile"></div>
+              <div class="col-md-6">
+                <label class="form-label">Person Receiving</label>
+                <input type="text" class="form-control" id="modalPersonReceiving" name="person_receiving">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Mobile #</label>
+                <input type="text" class="form-control" id="modalDeliveryMobile" name="mobile_number">
+              </div>
             </div>
+
             <div class="mt-2">
-              <label>Directions</label>
-              <textarea class="form-control" id="modalDeliveryDirections"></textarea>
+              <label class="form-label">Directions</label>
+              <textarea class="form-control" id="modalDeliveryDirections" name="direction"></textarea>
             </div>
-          </div>
+         </div>
+
           <div class="modal-footer">
             <button type="submit" class="btn btn-success">Schedule Delivery</button>
           </div>
+
         </form>
+
       </div>
     </div>
   </div>
@@ -2005,7 +2055,7 @@ document.getElementById("adminAddDeliveryForm")?.addEventListener("submit", func
   e.preventDefault();
   const formData = new FormData(this);
 
-  fetch("{{ url_for('logistics.add_scheduled_delivery', user_id=user.id) }}", {
+  fetch("{{ url_for('logistics.add_scheduled_delivery', user_id=user_id) }}", {
     method: "POST",
     body: formData
   })

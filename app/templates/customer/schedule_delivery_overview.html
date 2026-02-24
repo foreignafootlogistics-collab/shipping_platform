@@ -32,7 +32,8 @@
       <thead>
         <tr>
           <th>Schedule Date</th>
-          <th>Time</th>
+          <th>Time From</th>
+          <th>Time To</th>
           <th>Location</th>
           <th>Directions</th>
           <th>Mobile #</th>
@@ -42,7 +43,8 @@
       <tbody>
         <tr>
           <td><input type="date" id="deliveryDate" class="form-control" required></td>
-          <td><input type="time" id="deliveryTime" class="form-control" required></td>
+          <td><input type="time" id="deliveryTimeFrom" class="form-control" required></td>
+          <td><input type="time" id="deliveryTimeTo" class="form-control" required></td>
           <td><input type="text" id="deliveryLocation" class="form-control" placeholder="Delivery Location" required></td>
           <td><input type="text" id="deliveryDirections" class="form-control" placeholder="Directions"></td>
           <td><input type="text" id="deliveryMobile" class="form-control" placeholder="Mobile #"></td>
@@ -80,7 +82,13 @@
           {{ delivery.invoice_number or "—" }}
         </td>
         <td>{{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "" }}</td>
-        <td>{{ delivery.scheduled_time or "" }}</td>
+        <td class="text-nowrap">
+          {% if delivery.scheduled_time_from and delivery.scheduled_time_to %}
+            {{ delivery.scheduled_time_from }} - {{ delivery.scheduled_time_to }}
+          {% else %}
+            {{ delivery.scheduled_time or "" }}
+          {% endif %}
+        </td>
         <td>{{ delivery.location or "" }}</td>
         <td>{{ delivery.person_receiving or "" }}</td>
 
@@ -157,7 +165,8 @@ document.addEventListener("DOMContentLoaded", () => {
     showMsg("");
 
     const schedule_date = (document.getElementById("deliveryDate").value || "").trim();
-    const schedule_time = (document.getElementById("deliveryTime").value || "").trim();
+    const schedule_time_from = (document.getElementById("deliveryTimeFrom").value || "").trim();
+    const schedule_time_to   = (document.getElementById("deliveryTimeTo").value || "").trim();
     const location      = (document.getElementById("deliveryLocation").value || "").trim();
     const direction     = (document.getElementById("deliveryDirections").value || "").trim();
     const mobile_number = (document.getElementById("deliveryMobile").value || "").trim();
@@ -165,8 +174,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const csrfToken = (document.getElementById("csrf_token")?.value || "").trim();
 
-    if (!schedule_date || !schedule_time || !location) {
-      showMsg("Please enter Schedule Date, Time, and Location.");
+    if (!schedule_date || !schedule_time_from || !schedule_time_to || !location) {
+      showMsg("Please enter Schedule Date, Time From, Time To, and Location.");
       return;
     }
 
@@ -182,7 +191,8 @@ document.addEventListener("DOMContentLoaded", () => {
         },
         body: JSON.stringify({
           schedule_date,
-          schedule_time,
+          time_from: schedule_time_from,
+          time_to: schedule_time_to,
           location,
           direction,
           mobile_number,

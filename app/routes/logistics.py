@@ -3964,7 +3964,8 @@ def set_invoice_status(invoice_id):
 
 # --------------------------------------------------------------------------------------
 # Scheduled Deliveries (Admin / Operations)
-# --------------------------------------------------------------------------------------
+# ---------------------------------------------------------------
+
 @logistics_bp.route('/scheduled_deliveries', methods=['GET'])
 @admin_required(roles=['operations'])
 def view_scheduled_deliveries():
@@ -4020,10 +4021,33 @@ def scheduled_deliveries_pdf():
     p.setFont("Helvetica", 10)
 
     for d in deliveries:
-        cust = (d.user.full_name if d.user and getattr(d.user, "full_name", None) else (d.user.email if d.user else "N/A"))
+        cust = (
+            d.user.full_name if d.user and getattr(d.user, "full_name", None)
+            else (d.user.email if d.user else "N/A")
+        )
+
         inv = d.invoice_number or f"#{d.id}"
         fee = f"{d.fee_currency or 'JMD'} {float(d.delivery_fee or 0):.2f}"
-        line = f"{inv} | {d.scheduled_date} {d.scheduled_time} | {d.location} | {d.person_receiving} | {cust} | {fee} | {d.fee_status or 'Unpaid'}"
+
+        # ✅ time range display (fallback to existing scheduled_time)
+        if getattr(d, "scheduled_time_from", None) and getattr(d, "scheduled_time_to", None):
+            tdisp = f"{d.scheduled_time_from} - {d.scheduled_time_to}"
+        else:
+            tdisp = d.scheduled_time or ""
+
+        # ✅ package count for handoff
+        pkg_count = (
+            Package.query
+            .filter(Package.scheduled_delivery_id == d.id)
+            .count()
+        )
+
+        line = (
+            f"{inv} | {d.scheduled_date} {tdisp} | {d.location} | "
+            f"{d.person_receiving or ''} | {cust} | Pkgs: {pkg_count} | "
+            f"{fee} | {d.fee_status or 'Unpaid'}"
+        )
+
         p.drawString(50, y, line[:110])
         y -= 14
         if y < 50:
@@ -4033,7 +4057,12 @@ def scheduled_deliveries_pdf():
 
     p.save()
     buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name="scheduled_deliveries.pdf", mimetype='application/pdf')
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="scheduled_deliveries.pdf",
+        mimetype='application/pdf'
+    )
 
 
 @logistics_bp.route('/scheduled_deliveries/add', methods=['GET', 'POST'])
@@ -4043,10 +4072,33 @@ def add_scheduled_delivery():
     users = User.query.order_by(User.full_name.asc()).all()
 
     if form.validate_on_submit():
+        # ✅ time range (expect form fields time_from + time_to)
+        # If these are TimeField, convert to "%H:%M"
+        t_from_raw = getattr(form, "time_from", None)
+        t_to_raw = getattr(form, "time_to", None)
+
+        t_from = None
+        t_to = None
+
+        if t_from_raw is not None:
+            v = form.time_from.data
+            t_from = v.strftime("%H:%M") if hasattr(v, "strftime") else (str(v) if v else None)
+
+        if t_to_raw is not None:
+            v = form.time_to.data
+            t_to = v.strftime("%H:%M") if hasattr(v, "strftime") else (str(v) if v else None)
+
         new_delivery = ScheduledDelivery(
             user_id=form.user_id.data,
             scheduled_date=form.date.data,
-            scheduled_time=form.time.data,
+
+            # ✅ store range fields
+            scheduled_time_from=t_from,
+            scheduled_time_to=t_to,
+
+            # ✅ keep legacy field as convenience (so existing pages don't break)
+            scheduled_time=(f"{t_from} - {t_to}" if t_from and t_to else None),
+
             location=form.location.data,
             direction=form.direction.data,
             mobile_number=form.mobile_number.data,
@@ -4078,23 +4130,24 @@ def add_scheduled_delivery():
     )
 
 
-# ✅ Canonical detail view (KEEP THIS ONE)
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>", methods=["GET"])
 @admin_required(roles=["operations"])
 def scheduled_delivery_view(delivery_id):
     d = ScheduledDelivery.query.get_or_404(delivery_id)
 
-    assigned_packages = (Package.query
+    assigned_packages = (
+        Package.query
         .filter(Package.scheduled_delivery_id == d.id)
         .order_by(Package.created_at.desc())
         .all()
     )
 
-    eligible_packages = (Package.query
+    eligible_packages = (
+        Package.query
         .filter(
             Package.user_id == d.user_id,
             Package.scheduled_delivery_id.is_(None),
-            Package.status.in_(["Ready", "Ready for Delivery", "At Warehouse", "Delivered Pending"])
+            func.lower(func.trim(Package.status)) == "ready for pick up",
         )
         .order_by(Package.created_at.desc())
         .all()
@@ -4119,10 +4172,11 @@ def scheduled_delivery_set_status(delivery_id, status):
     d = ScheduledDelivery.query.get_or_404(delivery_id)
     d.status = status
 
-    # ✅ Keep Package.status in sync with Delivery status
-    linked_pkgs = (Package.query
-                   .filter(Package.scheduled_delivery_id == d.id)
-                   .all())
+    linked_pkgs = (
+        Package.query
+        .filter(Package.scheduled_delivery_id == d.id)
+        .all()
+    )
 
     if status == "Out for Delivery":
         for p in linked_pkgs:
@@ -4136,8 +4190,6 @@ def scheduled_delivery_set_status(delivery_id, status):
             if ps != "detained":
                 p.status = "Delivered"
 
-    # Cancelled/Scheduled: do nothing to package status (your choice)
-
     db.session.commit()
     flash(f"Delivery {d.invoice_number or f'#{d.id}'} updated to '{status}'", "success")
     return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=d.id))
@@ -4148,15 +4200,28 @@ def scheduled_delivery_set_status(delivery_id, status):
 def scheduled_delivery_assign_packages(delivery_id):
     delivery = ScheduledDelivery.query.get_or_404(delivery_id)
 
-    package_ids = request.form.getlist("package_ids")
-    if not package_ids:
+    raw_ids = request.form.getlist("package_ids")
+    if not raw_ids:
         flash("Please select at least one package to assign.", "warning")
         return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
 
-    packages = (Package.query
-                .filter(Package.id.in_(package_ids))
-                .filter(Package.user_id == delivery.user_id)
-                .all())
+    package_ids = []
+    for x in raw_ids:
+        try:
+            package_ids.append(int(str(x).strip()))
+        except Exception:
+            continue
+
+    if not package_ids:
+        flash("No valid packages selected.", "danger")
+        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+
+    packages = (
+        Package.query
+        .filter(Package.id.in_(package_ids))
+        .filter(Package.user_id == delivery.user_id)
+        .all()
+    )
 
     if not packages:
         flash("No valid packages selected for this customer.", "danger")
@@ -4169,7 +4234,6 @@ def scheduled_delivery_assign_packages(delivery_id):
         if p.scheduled_delivery_id and p.scheduled_delivery_id != delivery.id:
             skipped_count += 1
             continue
-
         p.scheduled_delivery_id = delivery.id
         assigned_count += 1
 

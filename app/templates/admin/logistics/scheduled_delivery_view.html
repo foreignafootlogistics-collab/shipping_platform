@@ -3,22 +3,29 @@
 
 {% block content %}
 <style>
-  .btn-purple{
-    background:#4a148c;
-    border-color:#4a148c;
-    color:#fff;
+  .btn-purple {
+    background: #4a148c;
+    border-color: #4a148c;
+    color: #fff;
   }
-  .btn-purple:hover{ filter:brightness(.95); color:#fff; }
-  .pill{
-    display:inline-flex; align-items:center; gap:8px;
-    padding:6px 10px; border-radius:999px; font-weight:700; font-size:.82rem;
-    border:1px solid transparent; white-space:nowrap;
+  .btn-purple:hover { filter: brightness(.95); color: #fff; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: .82rem;
+    border: 1px solid transparent;
+    white-space: nowrap;
   }
-  .dot{ width:8px; height:8px; border-radius:999px; display:inline-block; }
-  .pill-paid{ background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
-  .pill-paid .dot{ background:#10b981; }
-  .pill-unpaid{ background:#fffbeb; color:#92400e; border-color:#fde68a; }
-  .pill-unpaid .dot{ background:#f59e0b; }
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+  .pill-paid { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+  .pill-paid .dot { background: #10b981; }
+  .pill-unpaid { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+  .pill-unpaid .dot { background: #f59e0b; }
 </style>
 
 <div class="container-fluid">
@@ -30,6 +37,7 @@
         <i class="fas fa-truck me-2 text-primary"></i>
         Scheduled Delivery
       </h3>
+
       <div class="text-muted">
         Delivery ID: <strong>#{{ delivery.id }}</strong>
 
@@ -88,19 +96,24 @@
       <!-- Invoice / Fee card -->
       <div class="card shadow-sm border-0 mb-3">
         <div class="card-header bg-white d-flex justify-content-between align-items-center">
-          <h6 class="mb-0"><i class="fas fa-receipt me-2 text-muted"></i>Delivery Invoice</h6>
+          <h6 class="mb-0">
+            <i class="fas fa-receipt me-2 text-muted"></i>Delivery Invoice
+          </h6>
+
           {% if fs == "paid" %}
             <span class="pill pill-paid"><span class="dot"></span>Paid</span>
           {% else %}
             <span class="pill pill-unpaid"><span class="dot"></span>Unpaid</span>
           {% endif %}
         </div>
+
         <div class="card-body">
           <div class="row g-3">
             <div class="col-6">
               <div class="text-muted small">Invoice #</div>
               <div class="fw-semibold">{{ delivery.invoice_number or "—" }}</div>
             </div>
+
             <div class="col-6 text-end">
               <div class="text-muted small">Amount</div>
               <div class="fw-bold">
@@ -121,7 +134,9 @@
       <!-- Delivery Details -->
       <div class="card shadow-sm border-0">
         <div class="card-header bg-white">
-          <h6 class="mb-0"><i class="fas fa-info-circle me-2 text-muted"></i>Delivery Details</h6>
+          <h6 class="mb-0">
+            <i class="fas fa-info-circle me-2 text-muted"></i>Delivery Details
+          </h6>
         </div>
 
         <div class="card-body">
@@ -132,9 +147,18 @@
                 {{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "—" }}
               </div>
             </div>
+
             <div class="col-6">
               <div class="text-muted small">Time</div>
-              <div class="fw-semibold">{{ delivery.scheduled_time or "—" }}</div>
+
+              {# ✅ TIME RANGE DISPLAY (NEW) #}
+              <div class="fw-semibold">
+                {% if delivery.scheduled_time_from and delivery.scheduled_time_to %}
+                  {{ delivery.scheduled_time_from }} - {{ delivery.scheduled_time_to }}
+                {% else %}
+                  {{ delivery.scheduled_time or "—" }}
+                {% endif %}
+              </div>
             </div>
 
             <div class="col-12">
@@ -150,6 +174,7 @@
             <div class="col-12">
               <div class="text-muted small">Location</div>
               <div class="fw-semibold">{{ delivery.location or "—" }}</div>
+
               {% if delivery.direction %}
                 <div class="text-muted small mt-1">
                   <i class="fas fa-location-arrow me-1"></i>{{ delivery.direction }}
@@ -161,6 +186,7 @@
               <div class="text-muted small">Person Receiving</div>
               <div class="fw-semibold">{{ delivery.person_receiving or "—" }}</div>
             </div>
+
             <div class="col-6">
               <div class="text-muted small">Mobile</div>
               <div class="fw-semibold">{{ delivery.mobile_number or "—" }}</div>
@@ -190,11 +216,14 @@
         <div class="card-body">
 
           <!-- Assign packages -->
-          <form method="post" action="{{ url_for('logistics.scheduled_delivery_assign_packages', delivery_id=delivery.id) }}">
+          <form method="post"
+                action="{{ url_for('logistics.scheduled_delivery_assign_packages', delivery_id=delivery.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
             <div class="row g-2 align-items-end">
               <div class="col-12 col-lg-9">
                 <label class="form-label small text-muted">Assign packages to this delivery</label>
+
                 <select class="form-select" name="package_ids" multiple size="8">
                   {% for p in eligible_packages %}
                     <option value="{{ p.id }}">
@@ -205,6 +234,7 @@
                     </option>
                   {% endfor %}
                 </select>
+
                 <small class="text-muted d-block mt-1">
                   Tip: hold Ctrl (Windows) / Cmd (Mac) to select multiple.
                 </small>
@@ -229,33 +259,33 @@
                   <th>Description</th>
                   <th>Weight</th>
                   <th>Status</th>
-                  <th style="width:140px;">Action</th>
+                  <th style="width: 140px;">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {% for p in assigned_packages %}
-                <tr>
-                  <td>{{ p.tracking_number or '' }}</td>
-                  <td>{{ p.description or '' }}</td>
-                  <td>{{ p.weight or 0 }}</td>
-                  <td>{{ p.status or '' }}</td>
-                  <td>
-                    <form method="post"
-                          action="{{ url_for('logistics.scheduled_delivery_unassign_package', delivery_id=delivery.id, package_id=p.id) }}"
-                          onsubmit="return confirm('Unassign this package from delivery?');">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button class="btn btn-outline-danger btn-sm w-100">Unassign</button>
-                    </form>
-                  </td>
-                </tr>
+                  <tr>
+                    <td>{{ p.tracking_number or '' }}</td>
+                    <td>{{ p.description or '' }}</td>
+                    <td>{{ p.weight or 0 }}</td>
+                    <td>{{ p.status or '' }}</td>
+                    <td>
+                      <form method="post"
+                            action="{{ url_for('logistics.scheduled_delivery_unassign_package', delivery_id=delivery.id, package_id=p.id) }}"
+                            onsubmit="return confirm('Unassign this package from delivery?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn btn-outline-danger btn-sm w-100">Unassign</button>
+                      </form>
+                    </td>
+                  </tr>
                 {% endfor %}
 
                 {% if assigned_packages|length == 0 %}
-                <tr>
-                  <td colspan="5" class="text-center text-muted py-4">
-                    No packages linked yet.
-                  </td>
-                </tr>
+                  <tr>
+                    <td colspan="5" class="text-center text-muted py-4">
+                      No packages linked yet.
+                    </td>
+                  </tr>
                 {% endif %}
               </tbody>
             </table>
@@ -267,7 +297,9 @@
       <!-- Nice “next actions” card -->
       <div class="card shadow-sm border-0 mt-3">
         <div class="card-body">
-          <h6 class="mb-2"><i class="fas fa-bolt me-2 text-warning"></i>Next Actions</h6>
+          <h6 class="mb-2">
+            <i class="fas fa-bolt me-2 text-warning"></i>Next Actions
+          </h6>
           <ul class="mb-0 small text-muted">
             <li>Assign packages for this customer</li>
             <li>Mark fee paid once collected</li>
@@ -279,6 +311,7 @@
     </div>
 
     {# If you later want a right-side column, keep your layout ready #}
+
   </div>
 
 </div>

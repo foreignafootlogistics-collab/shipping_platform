@@ -1878,25 +1878,26 @@ def schedule_delivery_add():
     data = request.get_json(silent=True) or {}
 
     schedule_date = (data.get("schedule_date") or data.get("date") or "").strip()
-    schedule_time = (data.get("schedule_time") or data.get("time") or "").strip()
     location      = (data.get("location") or "").strip()
 
-    # DEBUG: log what actually came in
+    # ✅ NEW: time range inputs (support multiple key names)
+    time_from_in = (data.get("time_from") or data.get("schedule_time_from") or "").strip()
+    time_to_in   = (data.get("time_to")   or data.get("schedule_time_to")   or "").strip()
+
+    # ✅ BACKWARD COMPAT: old single time field
+    schedule_time_single = (data.get("schedule_time") or data.get("time") or "").strip()
+
     current_app.logger.info(
-        f"[schedule_delivery_add] payload keys={list(data.keys())} "
-        f"date={schedule_date} time={schedule_time} location={location}"
+        "[schedule_delivery_add] keys=%s date=%s time_from=%s time_to=%s time_single=%s location=%s",
+        list(data.keys()), schedule_date, time_from_in, time_to_in, schedule_time_single, location
     )
 
-    if not schedule_date or not schedule_time or not location:
+    # ✅ Require date + location + (range OR single)
+    if not schedule_date or not location or (not (time_from_in and time_to_in) and not schedule_time_single):
         return jsonify({
             "success": False,
-            "message": "Missing required fields: schedule_date, schedule_time, location",
+            "message": "Missing required fields: schedule_date, location, and time range (time_from + time_to)",
             "received_keys": list(data.keys()),
-            "received": {
-                "schedule_date": schedule_date,
-                "schedule_time": schedule_time,
-                "location": location,
-            }
         }), 400
 
     # ---- Parse date (YYYY-MM-DD or MM/DD/YYYY) ----
@@ -1910,43 +1911,79 @@ def schedule_delivery_add():
     if not d:
         return jsonify({"success": False, "message": f"Invalid date format: {schedule_date}"}), 400
 
-    # ---- Normalize time to a STRING your model expects ----
-    # Accept "HH:MM" or "HH:MM AM/PM"
-    t_str = None
-    for fmt in ("%H:%M", "%I:%M %p"):
+    # ---- Parse time helpers ----
+    def _parse_time_to_24h_str(s: str) -> str | None:
+        s = (s or "").strip()
+        if not s:
+            return None
+        for fmt in ("%H:%M", "%I:%M %p"):
+            try:
+                t_obj = datetime.strptime(s, fmt).time()
+                return t_obj.strftime("%H:%M")  # always store "14:30"
+            except Exception:
+                continue
+        return None
+
+    # ✅ Decide if we’re using range or legacy single time
+    t_from = _parse_time_to_24h_str(time_from_in)
+    t_to   = _parse_time_to_24h_str(time_to_in)
+
+    # If user only sent the old single time, keep that behavior
+    if not (t_from and t_to) and schedule_time_single:
+        t_single = _parse_time_to_24h_str(schedule_time_single)
+        if not t_single:
+            return jsonify({"success": False, "message": f"Invalid time format: {schedule_time_single}"}), 400
+
+        # store legacy only
+        t_from = None
+        t_to = None
+        scheduled_time_str = t_single
+    else:
+        # range path
+        if not t_from or not t_to:
+            return jsonify({
+                "success": False,
+                "message": "Invalid time range. Please use HH:MM or HH:MM AM/PM for Time From and Time To."
+            }), 400
+
+        # ✅ validate from < to
         try:
-            t_obj = datetime.strptime(schedule_time, fmt).time()
-            t_str = t_obj.strftime("%H:%M")   # store as "14:30"
-            break
+            tf_dt = datetime.strptime(t_from, "%H:%M")
+            tt_dt = datetime.strptime(t_to, "%H:%M")
+            if tt_dt <= tf_dt:
+                return jsonify({"success": False, "message": "Time To must be after Time From."}), 400
         except Exception:
             pass
-    if not t_str:
-        return jsonify({"success": False, "message": f"Invalid time format: {schedule_time}"}), 400
+
+        scheduled_time_str = f"{t_from} - {t_to}"  # fallback display
 
     try:
-        # 1) Create delivery (fee fields forced here)
         new_delivery = ScheduledDelivery(
             user_id=current_user.id,
             scheduled_date=d,
-            scheduled_time=t_str,
+
+            # ✅ range fields (you already migrated these)
+            scheduled_time_from=t_from,
+            scheduled_time_to=t_to,
+
+            # ✅ legacy field (keep for older templates / admin)
+            scheduled_time=scheduled_time_str,
+
             location=location,
             direction=(data.get("direction") or data.get("directions") or "").strip(),
             mobile_number=(data.get("mobile_number") or data.get("mobile") or "").strip(),
             person_receiving=(data.get("person_receiving") or "").strip(),
 
-            # ✅ force fixed fee
             delivery_fee=DELIVERY_FEE_AMOUNT,
             fee_currency=DELIVERY_FEE_CURRENCY,
             fee_status="Unpaid",
         )
 
         db.session.add(new_delivery)
-        db.session.commit()  # ✅ must commit first to get new_delivery.id
+        db.session.commit()
 
-        # 2) Generate invoice_number after ID exists
         year = datetime.utcnow().year
         new_delivery.invoice_number = f"DEL-{year}-{new_delivery.id:06d}"
-
         db.session.commit()
 
         return jsonify({
@@ -1956,7 +1993,12 @@ def schedule_delivery_add():
                 "id": new_delivery.id,
                 "invoice_number": new_delivery.invoice_number,
                 "scheduled_date": new_delivery.scheduled_date.isoformat(),
-                "scheduled_time": new_delivery.scheduled_time,
+
+                # ✅ return both range + legacy
+                "scheduled_time": new_delivery.scheduled_time or "",
+                "scheduled_time_from": new_delivery.scheduled_time_from or "",
+                "scheduled_time_to": new_delivery.scheduled_time_to or "",
+
                 "location": new_delivery.location,
                 "person_receiving": new_delivery.person_receiving or "",
                 "delivery_fee": str(new_delivery.delivery_fee or DELIVERY_FEE_AMOUNT),
@@ -1969,7 +2011,6 @@ def schedule_delivery_add():
         db.session.rollback()
         current_app.logger.exception("schedule_delivery_add failed")
         return jsonify({"success": False, "message": f"{type(e).__name__}: {str(e)}"}), 500
-
 
 @customer_bp.route('/schedule-delivery/<int:delivery_id>/cancel', methods=['POST'])
 @login_required

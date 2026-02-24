@@ -3,6 +3,33 @@
 {% block title %}Scheduled Deliveries{% endblock %}
 
 {% block content %}
+
+{# ------------------------------------------------------------
+   Helpers
+   ------------------------------------------------------------ #}
+{% macro fmt_time(t) -%}
+  {# t may be:
+     - "14:30"
+     - datetime.time
+     - None
+  #}
+  {% if not t %}
+    —
+  {% else %}
+    {% set s = (t|string).strip() %}
+    {% if ':' in s %}
+      {% set hh = s.split(':')[0]|int %}
+      {% set mm = s.split(':')[1]|int %}
+      {% set ap = 'AM' if hh < 12 else 'PM' %}
+      {% set h12 = hh % 12 %}
+      {% if h12 == 0 %}{% set h12 = 12 %}{% endif %}
+      {{ h12 }}:{% if mm < 10 %}0{% endif %}{{ mm }} {{ ap }}
+    {% else %}
+      {{ s }}
+    {% endif %}
+  {% endif %}
+{%- endmacro %}
+
 <style>
   /* ====== FAFL Scheduled Deliveries polish ====== */
   .sd-card{
@@ -44,9 +71,11 @@
     color:#6b7280;
     margin-bottom:4px;
   }
-  .sd-filters .form-control, .sd-filters .form-select{
+  .sd-filters .form-control,
+  .sd-filters .form-select{
     border-radius:10px;
   }
+
   .btn-purple{
     background:#4a148c;
     border-color:#4a148c;
@@ -54,20 +83,21 @@
     border-radius:10px;
   }
   .btn-purple:hover{ filter:brightness(.95); color:#fff; }
-  .btn-soft{
-    border-radius:10px;
+  .btn-soft{ border-radius:10px; }
+
+  .sd-table-wrap{
+    padding: 16px 18px 18px 18px;
+    background:#fff;
   }
 
-  .sd-table-wrap{ padding: 16px 18px 18px 18px; background:#fff; }
   table.dataTable thead th{
     background:#111827 !important;
     color:#fff !important;
     border-bottom:0 !important;
     font-weight:600;
   }
-  table.dataTable tbody td{
-    vertical-align:middle;
-  }
+  table.dataTable tbody td{ vertical-align:middle; }
+
   .sd-pill{
     display:inline-flex;
     align-items:center;
@@ -80,12 +110,16 @@
     white-space:nowrap;
   }
   .dot{ width:8px; height:8px; border-radius:999px; display:inline-block; }
+
   .pill-scheduled{ background:#eef2ff; color:#3730a3; border-color:#c7d2fe; }
   .pill-scheduled .dot{ background:#3730a3; }
+
   .pill-out{ background:#fff7ed; color:#9a3412; border-color:#fed7aa; }
   .pill-out .dot{ background:#f97316; }
+
   .pill-delivered{ background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
   .pill-delivered .dot{ background:#10b981; }
+
   .pill-cancelled{ background:#fef2f2; color:#991b1b; border-color:#fecaca; }
   .pill-cancelled .dot{ background:#ef4444; }
 
@@ -106,20 +140,14 @@
   .fee-paid .dot{ background:#10b981; }
 
   /* keep action button neat */
-  .sd-actions{
-    white-space:nowrap;
-  }
+  .sd-actions{ white-space:nowrap; }
   .sd-actions .dropdown-toggle{
     border-radius:10px;
     padding:6px 10px;
     font-weight:700;
   }
-  .dropdown-menu{
-    border-radius:12px;
-  }
-  .dropdown-item{
-    font-weight:600;
-  }
+  .dropdown-menu{ border-radius:12px; }
+  .dropdown-item{ font-weight:600; }
 
   /* make the datatable search look nicer */
   .dataTables_filter input{
@@ -201,7 +229,7 @@
             <tr>
               <th style="min-width:140px;">Invoice #</th>
               <th style="min-width:110px;">Date</th>
-              <th style="min-width:80px;">Time</th>
+              <th style="min-width:160px;">Time</th>
               <th style="min-width:130px;">Location</th>
               <th style="min-width:140px;">Directions</th>
               <th style="min-width:110px;">Mobile #</th>
@@ -222,7 +250,18 @@
               <tr>
                 <td class="fw-semibold">{{ d.invoice_number or "—" }}</td>
                 <td>{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}</td>
-                <td>{{ d.scheduled_time or "" }}</td>
+
+                {# ✅ FIXED TIME RANGE DISPLAY (AM/PM) #}
+                <td class="text-nowrap">
+                  {% if d.scheduled_time_from and d.scheduled_time_to %}
+                    {{ fmt_time(d.scheduled_time_from) }} - {{ fmt_time(d.scheduled_time_to) }}
+                  {% elif d.scheduled_time %}
+                    {{ d.scheduled_time }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
                 <td>{{ d.location or "" }}</td>
                 <td>{{ d.direction or "" }}</td>
                 <td>{{ d.mobile_number or "" }}</td>
@@ -269,7 +308,6 @@
 
                     <ul class="dropdown-menu shadow-sm">
 
-                      <!-- View -->
                       <li>
                         <a class="dropdown-item"
                            href="{{ url_for('logistics.scheduled_delivery_view', delivery_id=d.id) }}">
@@ -279,7 +317,6 @@
 
                       <li><hr class="dropdown-divider"></li>
 
-                      <!-- Mark Paid / Unpaid -->
                       {% if (d.fee_status or "Unpaid")|lower != "paid" %}
                         <li>
                           <form method="post"
@@ -304,7 +341,6 @@
 
                       <li><hr class="dropdown-divider"></li>
 
-                      <!-- Status Changes -->
                       {% if d_status == "Scheduled" %}
                         <li>
                           <form method="post"
@@ -362,7 +398,7 @@
 <script>
   $(document).ready(function () {
     $('#allScheduledDeliveriesTable').DataTable({
-      order: [[1, 'desc']], // Date column index after adding Invoice #
+      order: [[1, 'desc']],
       pageLength: 25,
       responsive: true
     });

@@ -417,6 +417,8 @@ class ScheduledDelivery(db.Model):
 
     scheduled_date = db.Column(db.Date, nullable=False)
     scheduled_time = db.Column(db.String(20), nullable=False)   # e.g. "14:30" or "2:30 PM"
+    scheduled_time_from = db.Column(db.String(20), nullable=True)
+    scheduled_time_to   = db.Column(db.String(20), nullable=True)
     location = db.Column(db.String(255), nullable=False)
     direction = db.Column(db.String(255))
     mobile_number = db.Column(db.String(50))

@@ -62,10 +62,12 @@ from sqlalchemy import func, or_
 from flask_mail import Message as MailMessage
 from sqlalchemy.orm import selectinload
 from app.utils.cloudinary_storage import serve_prealert_invoice_file
-
-
+from decimal import Decimal
 
 customer_bp = Blueprint('customer', __name__, template_folder='templates/customer')
+
+DELIVERY_FEE_AMOUNT = Decimal("1000.00")
+DELIVERY_FEE_CURRENCY = "JMD"
 
 
 def _calc_handling(weight_lbs: float) -> float:
@@ -1854,8 +1856,17 @@ def authorized_pickup_add():
 @customer_bp.route('/schedule-delivery', methods=['GET'])
 @login_required
 def schedule_delivery_overview():
-    deliveries = ScheduledDelivery.query.filter_by(user_id=current_user.id).all()
-    return render_template('customer/schedule_delivery_overview.html', deliveries=deliveries)
+    deliveries = (ScheduledDelivery.query
+                  .filter_by(user_id=current_user.id)
+                  .order_by(ScheduledDelivery.id.desc())
+                  .all())
+
+    return render_template(
+        'customer/schedule_delivery_overview.html',
+        deliveries=deliveries,
+        delivery_fee=DELIVERY_FEE_AMOUNT,
+        fee_currency=DELIVERY_FEE_CURRENCY
+    )
 
 
 @customer_bp.route('/schedule-delivery/add', methods=['POST'])
@@ -1868,7 +1879,10 @@ def schedule_delivery_add():
     location      = (data.get("location") or "").strip()
 
     # DEBUG: log what actually came in
-    current_app.logger.info(f"[schedule_delivery_add] payload keys={list(data.keys())} date={schedule_date} time={schedule_time} location={location}")
+    current_app.logger.info(
+        f"[schedule_delivery_add] payload keys={list(data.keys())} "
+        f"date={schedule_date} time={schedule_time} location={location}"
+    )
 
     if not schedule_date or not schedule_time or not location:
         return jsonify({
@@ -1907,16 +1921,29 @@ def schedule_delivery_add():
         return jsonify({"success": False, "message": f"Invalid time format: {schedule_time}"}), 400
 
     try:
+        # 1) Create delivery (fee fields forced here)
         new_delivery = ScheduledDelivery(
             user_id=current_user.id,
             scheduled_date=d,
-            scheduled_time=t_str,  # ✅ string
+            scheduled_time=t_str,
             location=location,
             direction=(data.get("direction") or data.get("directions") or "").strip(),
             mobile_number=(data.get("mobile_number") or data.get("mobile") or "").strip(),
             person_receiving=(data.get("person_receiving") or "").strip(),
+
+            # ✅ force fixed fee
+            delivery_fee=DELIVERY_FEE_AMOUNT,
+            fee_currency=DELIVERY_FEE_CURRENCY,
+            fee_status="Unpaid",
         )
+
         db.session.add(new_delivery)
+        db.session.commit()  # ✅ must commit first to get new_delivery.id
+
+        # 2) Generate invoice_number after ID exists
+        year = datetime.utcnow().year
+        new_delivery.invoice_number = f"DEL-{year}-{new_delivery.id:06d}"
+
         db.session.commit()
 
         return jsonify({
@@ -1924,10 +1951,14 @@ def schedule_delivery_add():
             "message": "Scheduled successfully",
             "delivery": {
                 "id": new_delivery.id,
+                "invoice_number": new_delivery.invoice_number,
                 "scheduled_date": new_delivery.scheduled_date.isoformat(),
                 "scheduled_time": new_delivery.scheduled_time,
                 "location": new_delivery.location,
                 "person_receiving": new_delivery.person_receiving or "",
+                "delivery_fee": str(new_delivery.delivery_fee or DELIVERY_FEE_AMOUNT),
+                "fee_currency": new_delivery.fee_currency or DELIVERY_FEE_CURRENCY,
+                "fee_status": new_delivery.fee_status or "Unpaid",
             }
         }), 200
 
@@ -1935,6 +1966,7 @@ def schedule_delivery_add():
         db.session.rollback()
         current_app.logger.exception("schedule_delivery_add failed")
         return jsonify({"success": False, "message": f"{type(e).__name__}: {str(e)}"}), 500
+
 
 @customer_bp.route('/schedule-delivery/<int:delivery_id>/cancel', methods=['POST'])
 @login_required
@@ -1950,6 +1982,21 @@ def schedule_delivery_cancel(delivery_id):
     return jsonify({"success": True, "message": "Delivery cancelled."}), 200
 
 
+@customer_bp.route("/schedule-delivery/<int:delivery_id>/invoice", methods=["GET"])
+@login_required
+def delivery_invoice_view(delivery_id):
+    d = ScheduledDelivery.query.filter_by(
+        id=delivery_id,
+        user_id=current_user.id
+    ).first_or_404()
+
+    settings = Settings.query.first()
+
+    return render_template(
+        "customer/delivery_invoice.html",
+        d=d,
+        settings=settings
+    )
 
 # -----------------------------
 # Referrals

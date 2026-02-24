@@ -2,6 +2,25 @@
 {% block title %}Scheduled Delivery{% endblock %}
 
 {% block content %}
+<style>
+  .btn-purple{
+    background:#4a148c;
+    border-color:#4a148c;
+    color:#fff;
+  }
+  .btn-purple:hover{ filter:brightness(.95); color:#fff; }
+  .pill{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:6px 10px; border-radius:999px; font-weight:700; font-size:.82rem;
+    border:1px solid transparent; white-space:nowrap;
+  }
+  .dot{ width:8px; height:8px; border-radius:999px; display:inline-block; }
+  .pill-paid{ background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
+  .pill-paid .dot{ background:#10b981; }
+  .pill-unpaid{ background:#fffbeb; color:#92400e; border-color:#fde68a; }
+  .pill-unpaid .dot{ background:#f59e0b; }
+</style>
+
 <div class="container-fluid">
 
   <!-- Header -->
@@ -13,11 +32,16 @@
       </h3>
       <div class="text-muted">
         Delivery ID: <strong>#{{ delivery.id }}</strong>
+
+        {% if delivery.invoice_number %}
+          <span class="ms-2">| Invoice: <strong>{{ delivery.invoice_number }}</strong></span>
+        {% endif %}
+
         {% if delivery.status %}
           <span class="badge ms-2
             {% if delivery.status|lower == 'delivered' %} bg-success
             {% elif delivery.status|lower in ['cancelled','canceled'] %} bg-danger
-            {% elif delivery.status|lower == 'in progress' %} bg-warning text-dark
+            {% elif delivery.status|lower in ['out for delivery','in progress'] %} bg-warning text-dark
             {% else %} bg-secondary {% endif %}">
             {{ delivery.status }}
           </span>
@@ -30,13 +54,29 @@
         <i class="fas fa-arrow-left me-1"></i> Back
       </a>
 
-      <!-- Step 4+ will wire these buttons -->
-      <button class="btn btn-sm btn-success" disabled>
-        <i class="fas fa-link me-1"></i> Assign Packages
-      </button>
-      <button class="btn btn-sm btn-outline-primary" disabled>
-        <i class="fas fa-edit me-1"></i> Update Status
-      </button>
+      {# Fee buttons #}
+      {% set fs = (delivery.fee_status or "Unpaid")|lower %}
+      {% if fs != "paid" %}
+        <form method="post"
+              action="{{ url_for('logistics.scheduled_delivery_mark_paid', delivery_id=delivery.id) }}"
+              class="m-0"
+              onsubmit="return confirm('Mark delivery fee as PAID?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-success">
+            <i class="fas fa-check me-1"></i> Mark Fee Paid
+          </button>
+        </form>
+      {% else %}
+        <form method="post"
+              action="{{ url_for('logistics.scheduled_delivery_mark_unpaid', delivery_id=delivery.id) }}"
+              class="m-0"
+              onsubmit="return confirm('Mark delivery fee as UNPAID?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-undo me-1"></i> Mark Fee Unpaid
+          </button>
+        </form>
+      {% endif %}
     </div>
   </div>
 
@@ -44,6 +84,41 @@
 
     <!-- Left: Delivery Info -->
     <div class="col-lg-5">
+
+      <!-- Invoice / Fee card -->
+      <div class="card shadow-sm border-0 mb-3">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+          <h6 class="mb-0"><i class="fas fa-receipt me-2 text-muted"></i>Delivery Invoice</h6>
+          {% if fs == "paid" %}
+            <span class="pill pill-paid"><span class="dot"></span>Paid</span>
+          {% else %}
+            <span class="pill pill-unpaid"><span class="dot"></span>Unpaid</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-6">
+              <div class="text-muted small">Invoice #</div>
+              <div class="fw-semibold">{{ delivery.invoice_number or "—" }}</div>
+            </div>
+            <div class="col-6 text-end">
+              <div class="text-muted small">Amount</div>
+              <div class="fw-bold">
+                {{ delivery.fee_currency or "JMD" }} {{ "%.2f"|format(delivery.delivery_fee or 0) }}
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div class="text-muted small">Paid At</div>
+              <div class="fw-semibold">
+                {{ delivery.paid_at.strftime("%Y-%m-%d %H:%M") if delivery.paid_at else "—" }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delivery Details -->
       <div class="card shadow-sm border-0">
         <div class="card-header bg-white">
           <h6 class="mb-0"><i class="fas fa-info-circle me-2 text-muted"></i>Delivery Details</h6>
@@ -103,6 +178,7 @@
         </div>
       </div>
 
+      <!-- Packages -->
       <div class="card shadow-sm mt-4">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h5 class="mb-0">Linked Packages</h5>
@@ -115,7 +191,7 @@
 
           <!-- Assign packages -->
           <form method="post" action="{{ url_for('logistics.scheduled_delivery_assign_packages', delivery_id=delivery.id) }}">
-           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="row g-2 align-items-end">
               <div class="col-12 col-lg-9">
                 <label class="form-label small text-muted">Assign packages to this delivery</label>
@@ -166,8 +242,8 @@
                   <td>
                     <form method="post"
                           action="{{ url_for('logistics.scheduled_delivery_unassign_package', delivery_id=delivery.id, package_id=p.id) }}"
-                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                           onsubmit="return confirm('Unassign this package from delivery?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <button class="btn btn-outline-danger btn-sm w-100">Unassign</button>
                     </form>
                   </td>
@@ -188,21 +264,22 @@
         </div>
       </div>
 
-
       <!-- Nice “next actions” card -->
       <div class="card shadow-sm border-0 mt-3">
         <div class="card-body">
           <h6 class="mb-2"><i class="fas fa-bolt me-2 text-warning"></i>Next Actions</h6>
           <ul class="mb-0 small text-muted">
-            <li>Step 3: Show unassigned packages for this customer</li>
-            <li>Step 4: Assign selected packages to this delivery</li>
-            <li>Step 5: Display linked packages + remove option</li>
+            <li>Assign packages for this customer</li>
+            <li>Mark fee paid once collected</li>
+            <li>Update status: Scheduled → Out for Delivery → Delivered</li>
           </ul>
         </div>
       </div>
-    </div>    
+
+    </div>
+
+    {# If you later want a right-side column, keep your layout ready #}
   </div>
 
 </div>
 {% endblock %}
-

@@ -168,7 +168,7 @@
             <td>{{ delivery.status or "Scheduled" }}</td>
             <td>
               <a class="btn btn-sm btn-outline-primary"
-                 href="{{ url_for('logistics.view_scheduled_delivery', delivery_id=delivery.id) }}">
+                 href="{{ url_for('logistics.scheduled_delivery_view', delivery_id=delivery.id) }}">
                 View / Link Packages
               </a>
             </td>

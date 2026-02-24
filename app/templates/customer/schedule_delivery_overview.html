@@ -6,10 +6,27 @@
   <h2>Schedule Delivery</h2>
   <p>Arrange to have your packages delivered at a date and time convenient for you.</p>
 
+  <!-- ✅ Delivery Fee Banner (dynamic) -->
+  <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3"
+       style="border-radius: 14px;">
+    <div class="d-flex align-items-center gap-2">
+      <span style="font-size:1.1rem;">🚚</span>
+      <div>
+        <div class="fw-bold">
+          Delivery Fee: {{ fee_currency }} {{ "%.2f"|format(delivery_fee|float) }}
+        </div>
+        <div class="small text-muted">
+          This fee will be added to your delivery request and must be paid before delivery.
+        </div>
+      </div>
+    </div>
+    <span class="badge bg-dark">Payable on request</span>
+  </div>
+
   <button id="scheduleDeliveryBtn" class="btn btn-dashboard mb-3">📅 Schedule Delivery</button>
 
   <div id="scheduleDeliveryForm" style="display:none;">
-  <input type="hidden" id="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" id="csrf_token" value="{{ csrf_token() }}">
 
     <table class="table table-bordered">
       <thead>
@@ -46,29 +63,62 @@
   <table class="table table-striped" id="scheduledDeliveriesList">
     <thead>
       <tr>
+        <th>Invoice #</th>
         <th>Date</th>
         <th>Time</th>
         <th>Location</th>
         <th>Person Receiving</th>
-        <th>Status</th>
+        <th>Delivery Fee</th>
+        <th>Fee Status</th>
+        <th>Action</th>
       </tr>
     </thead>
     <tbody>
       {% for delivery in deliveries %}
       <tr>
+        <td class="fw-semibold">
+          {{ delivery.invoice_number or "—" }}
+        </td>
         <td>{{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "" }}</td>
         <td>{{ delivery.scheduled_time or "" }}</td>
         <td>{{ delivery.location or "" }}</td>
         <td>{{ delivery.person_receiving or "" }}</td>
+
         <td>
-          {% if (delivery.status or "Scheduled") in ["Scheduled", "Out for Delivery"] %}
-            <button class="btn btn-sm btn-danger"
-                    onclick="cancelDelivery({{ delivery.id }})">
-              Cancel
-            </button>
+          {{ delivery.fee_currency or "JMD" }}
+          {{ "%.2f"|format(delivery.delivery_fee or 0) }}
+        </td>
+        <td>
+          {% set fs = delivery.fee_status or "Unpaid" %}
+          {% if fs|lower == "paid" %}
+            <span class="badge bg-success">Paid</span>
+          {% elif fs|lower == "waived" %}
+            <span class="badge bg-secondary">Waived</span>
+          {% elif fs|lower == "refunded" %}
+            <span class="badge bg-info text-dark">Refunded</span>
           {% else %}
-            <span class="text-muted">—</span>
+            <span class="badge bg-warning text-dark">Unpaid</span>
           {% endif %}
+        </td>
+
+        <td>
+          <div class="d-flex flex-wrap gap-2">          
+            
+            <a class="btn btn-sm btn-outline-primary"
+               href="{{ url_for('customer.delivery_invoice_view', delivery_id=delivery.id) }}">
+              View Invoice
+            </a>
+            
+
+            {% if (delivery.status or "Scheduled") in ["Scheduled", "Out for Delivery"] %}
+              <button class="btn btn-sm btn-danger"
+                      onclick="cancelDelivery({{ delivery.id }})">
+                Cancel
+              </button>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </div>
         </td>
       </tr>
       {% endfor %}
@@ -107,13 +157,13 @@ document.addEventListener("DOMContentLoaded", () => {
     showMsg("");
 
     const schedule_date = (document.getElementById("deliveryDate").value || "").trim();
-    const schedule_time = (document.getElementById("deliveryTime").value || "").trim(); // usually "HH:MM"
+    const schedule_time = (document.getElementById("deliveryTime").value || "").trim();
     const location      = (document.getElementById("deliveryLocation").value || "").trim();
     const direction     = (document.getElementById("deliveryDirections").value || "").trim();
     const mobile_number = (document.getElementById("deliveryMobile").value || "").trim();
     const person_receiving = (document.getElementById("deliveryPerson").value || "").trim();
 
-    const csrfToken = document.getElementById("csrf_token").value;
+    const csrfToken = (document.getElementById("csrf_token")?.value || "").trim();
 
     if (!schedule_date || !schedule_time || !location) {
       showMsg("Please enter Schedule Date, Time, and Location.");
@@ -126,9 +176,9 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const res = await fetch("{{ url_for('customer.schedule_delivery_add') }}", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          "X-CSRFToken": csrfToken 
+          "X-CSRFToken": csrfToken
         },
         body: JSON.stringify({
           schedule_date,
@@ -163,11 +213,17 @@ document.addEventListener("DOMContentLoaded", () => {
 async function cancelDelivery(deliveryId){
   if (!confirm("Cancel this scheduled delivery?")) return;
 
+  const csrfToken = (document.getElementById("csrf_token")?.value || "").trim();
+
   try {
     const res = await fetch(`/customer/schedule-delivery/${deliveryId}/cancel`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" }
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrfToken
+      }
     });
+
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok || !data.success) {
@@ -179,7 +235,5 @@ async function cancelDelivery(deliveryId){
     alert("Network error.");
   }
 }
-
 </script>
 {% endblock %}
-

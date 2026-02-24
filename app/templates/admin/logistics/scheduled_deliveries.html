@@ -44,7 +44,7 @@
     color:#6b7280;
     margin-bottom:4px;
   }
-  .sd-filters .form-control{
+  .sd-filters .form-control, .sd-filters .form-select{
     border-radius:10px;
   }
   .btn-purple{
@@ -80,29 +80,46 @@
     white-space:nowrap;
   }
   .dot{ width:8px; height:8px; border-radius:999px; display:inline-block; }
-  .pill-scheduled{
-    background:#eef2ff; color:#3730a3; border-color:#c7d2fe;
-  }
+  .pill-scheduled{ background:#eef2ff; color:#3730a3; border-color:#c7d2fe; }
   .pill-scheduled .dot{ background:#3730a3; }
-  .pill-out{
-    background:#fff7ed; color:#9a3412; border-color:#fed7aa;
-  }
+  .pill-out{ background:#fff7ed; color:#9a3412; border-color:#fed7aa; }
   .pill-out .dot{ background:#f97316; }
-  .pill-delivered{
-    background:#ecfdf5; color:#065f46; border-color:#a7f3d0;
-  }
+  .pill-delivered{ background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
   .pill-delivered .dot{ background:#10b981; }
-  .pill-cancelled{
-    background:#fef2f2; color:#991b1b; border-color:#fecaca;
-  }
+  .pill-cancelled{ background:#fef2f2; color:#991b1b; border-color:#fecaca; }
   .pill-cancelled .dot{ background:#ef4444; }
 
-  .sd-actions .btn{
+  .fee-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 10px;
+    border-radius:999px;
+    font-size:.82rem;
+    font-weight:700;
+    border:1px solid transparent;
+    white-space:nowrap;
+  }
+  .fee-unpaid{ background:#fffbeb; color:#92400e; border-color:#fde68a; }
+  .fee-paid{ background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
+  .fee-unpaid .dot{ background:#f59e0b; }
+  .fee-paid .dot{ background:#10b981; }
+
+  /* keep action button neat */
+  .sd-actions{
+    white-space:nowrap;
+  }
+  .sd-actions .dropdown-toggle{
     border-radius:10px;
     padding:6px 10px;
+    font-weight:700;
+  }
+  .dropdown-menu{
+    border-radius:12px;
+  }
+  .dropdown-item{
     font-weight:600;
   }
-  .sd-actions .btn + .btn{ margin-left:6px; }
 
   /* make the datatable search look nicer */
   .dataTables_filter input{
@@ -118,17 +135,16 @@
 </style>
 
 <div class="container mt-4">
-
   <div class="sd-card">
 
     <!-- Top header -->
     <div class="sd-header">
       <div>
         <h4>
-          <span style="font-size:1.1rem;">📦</span>
+          <span style="font-size:1.1rem;">🚚</span>
           All Scheduled Deliveries
         </h4>
-        <div class="sub">Manage delivery requests, update status, and export reports.</div>
+        <div class="sub">Manage delivery requests, update status, mark delivery fee paid, and export reports.</div>
       </div>
 
       <div class="d-flex gap-2">
@@ -146,18 +162,29 @@
     <!-- Filters -->
     <div class="sd-filters">
       <form class="row g-3 align-items-end" method="get">
-        <div class="col-12 col-md-4 col-lg-3">
+        <div class="col-12 col-md-3 col-lg-3">
           <label class="form-label">Start date</label>
           <input type="date" name="start_date" class="form-control" value="{{ start_date or '' }}">
         </div>
-        <div class="col-12 col-md-4 col-lg-3">
+
+        <div class="col-12 col-md-3 col-lg-3">
           <label class="form-label">End date</label>
           <input type="date" name="end_date" class="form-control" value="{{ end_date or '' }}">
         </div>
-        <div class="col-12 col-md-4 col-lg-3 d-flex gap-2">
-          <button type="submit" class="btn btn-purple w-100">
-            Filter
-          </button>
+
+        <div class="col-12 col-md-3 col-lg-3">
+          <label class="form-label">Status</label>
+          <select name="status" class="form-select">
+            <option value="" {% if not status %}selected{% endif %}>All</option>
+            <option value="Scheduled" {% if status == "Scheduled" %}selected{% endif %}>Scheduled</option>
+            <option value="Out for Delivery" {% if status == "Out for Delivery" %}selected{% endif %}>Out for Delivery</option>
+            <option value="Delivered" {% if status == "Delivered" %}selected{% endif %}>Delivered</option>
+            <option value="Cancelled" {% if status == "Cancelled" %}selected{% endif %}>Cancelled</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-3 col-lg-3 d-flex gap-2">
+          <button type="submit" class="btn btn-purple w-100">Filter</button>
           <a class="btn btn-outline-secondary w-100 btn-soft"
              href="{{ url_for('logistics.view_scheduled_deliveries') }}">
             Clear
@@ -172,6 +199,7 @@
         <table class="table table-striped table-bordered align-middle" id="allScheduledDeliveriesTable">
           <thead>
             <tr>
+              <th style="min-width:140px;">Invoice #</th>
               <th style="min-width:110px;">Date</th>
               <th style="min-width:80px;">Time</th>
               <th style="min-width:130px;">Location</th>
@@ -180,83 +208,148 @@
               <th style="min-width:170px;">Person Receiving</th>
               <th style="min-width:130px;">Status</th>
               <th style="min-width:160px;">Customer</th>
-              <th style="min-width:210px;">Actions</th>
+              <th style="min-width:150px;">Delivery Fee</th>
+              <th style="min-width:130px;">Fee Status</th>
+              <th style="min-width:170px;">Actions</th>
             </tr>
           </thead>
+
           <tbody>
             {% for d in deliveries %}
-            {% set status = (d.status or "Scheduled") %}
-            <tr>
-              <td>{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}</td>
-              <td>{{ d.scheduled_time or "" }}</td>
-              <td>{{ d.location or "" }}</td>
-              <td>{{ d.direction or "" }}</td>
-              <td>{{ d.mobile_number or "" }}</td>
-              <td>{{ d.person_receiving or "" }}</td>
+              {% set d_status = (d.status or "Scheduled") %}
+              {% set fee_status = (d.fee_status or "Unpaid") %}
 
-              <td>
-                {% if status == "Scheduled" %}
-                  <span class="sd-pill pill-scheduled"><span class="dot"></span>Scheduled</span>
-                {% elif status == "Out for Delivery" %}
-                  <span class="sd-pill pill-out"><span class="dot"></span>Out for Delivery</span>
-                {% elif status == "Delivered" %}
-                  <span class="sd-pill pill-delivered"><span class="dot"></span>Delivered</span>
-                {% elif status == "Cancelled" %}
-                  <span class="sd-pill pill-cancelled"><span class="dot"></span>Cancelled</span>
-                {% else %}
-                  <span class="sd-pill pill-scheduled"><span class="dot"></span>{{ status }}</span>
-                {% endif %}
-              </td>
+              <tr>
+                <td class="fw-semibold">{{ d.invoice_number or "—" }}</td>
+                <td>{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}</td>
+                <td>{{ d.scheduled_time or "" }}</td>
+                <td>{{ d.location or "" }}</td>
+                <td>{{ d.direction or "" }}</td>
+                <td>{{ d.mobile_number or "" }}</td>
+                <td>{{ d.person_receiving or "" }}</td>
 
-              <td>
-                {{ d.user.full_name or d.user.email if d.user else "N/A" }}
-              </td>
+                <td>
+                  {% if d_status == "Scheduled" %}
+                    <span class="sd-pill pill-scheduled"><span class="dot"></span>Scheduled</span>
+                  {% elif d_status == "Out for Delivery" %}
+                    <span class="sd-pill pill-out"><span class="dot"></span>Out for Delivery</span>
+                  {% elif d_status == "Delivered" %}
+                    <span class="sd-pill pill-delivered"><span class="dot"></span>Delivered</span>
+                  {% elif d_status == "Cancelled" %}
+                    <span class="sd-pill pill-cancelled"><span class="dot"></span>Cancelled</span>
+                  {% else %}
+                    <span class="sd-pill pill-scheduled"><span class="dot"></span>{{ d_status }}</span>
+                  {% endif %}
+                </td>
 
-              <td class="sd-actions">
+                <td>
+                  {{ d.user.full_name or d.user.email if d.user else "N/A" }}
+                </td>
 
-                <!-- ✅ ALWAYS show the View button -->
-                <a class="btn btn-sm btn-outline-primary"
-                   href="{{ url_for('logistics.scheduled_delivery_detail', delivery_id=d.id) }}">
-                  View
-                </a>
+                <td class="text-nowrap">
+                  {{ d.fee_currency or "JMD" }} {{ "%.2f"|format(d.delivery_fee or 0) }}
+                </td>
 
-                {% if status == "Scheduled" %}
-                  <form method="post"
-                        action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Out for Delivery') }}"
-                        style="display:inline;">
-                    <button class="btn btn-warning btn-sm">Out for Delivery</button>
-                  </form>
+                <td>
+                  {% if fee_status|lower == "paid" %}
+                    <span class="fee-badge fee-paid"><span class="dot"></span>Paid</span>
+                  {% else %}
+                    <span class="fee-badge fee-unpaid"><span class="dot"></span>Unpaid</span>
+                  {% endif %}
+                </td>
 
-                  <form method="post"
-                        action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Cancelled') }}"
-                        style="display:inline;"
-                        onsubmit="return confirm('Cancel this delivery?');">
-                    <button class="btn btn-outline-danger btn-sm">Cancel</button>
-                  </form>
+                <td class="sd-actions">
+                  <div class="dropdown">
+                    <button class="btn btn-sm btn-outline-dark dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                      Manage
+                    </button>
 
-                {% elif status == "Out for Delivery" %}
-                  <form method="post"
-                        action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Delivered') }}"
-                        style="display:inline;"
-                        onsubmit="return confirm('Mark as Delivered?');">
-                    <button class="btn btn-success btn-sm">Delivered</button>
-                  </form>
+                    <ul class="dropdown-menu shadow-sm">
 
-                  <form method="post"
-                        action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Cancelled') }}"
-                        style="display:inline;"
-                        onsubmit="return confirm('Cancel this delivery?');">
-                    <button class="btn btn-outline-danger btn-sm">Cancel</button>
-                  </form>
+                      <!-- View -->
+                      <li>
+                        <a class="dropdown-item"
+                           href="{{ url_for('logistics.scheduled_delivery_view', delivery_id=d.id) }}">
+                          <i class="fas fa-eye me-2 text-primary"></i>View Details
+                        </a>
+                      </li>
 
-                {% else %}
-                  <span class="text-muted">—</span>
-                {% endif %}
-              </td>
+                      <li><hr class="dropdown-divider"></li>
 
-            </tr>
+                      <!-- Mark Paid / Unpaid -->
+                      {% if (d.fee_status or "Unpaid")|lower != "paid" %}
+                        <li>
+                          <form method="post"
+                                action="{{ url_for('logistics.scheduled_delivery_mark_paid', delivery_id=d.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="dropdown-item text-success">
+                              <i class="fas fa-check-circle me-2"></i>Mark Fee Paid
+                            </button>
+                          </form>
+                        </li>
+                      {% else %}
+                        <li>
+                          <form method="post"
+                                action="{{ url_for('logistics.scheduled_delivery_mark_unpaid', delivery_id=d.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="dropdown-item text-warning">
+                              <i class="fas fa-undo me-2"></i>Mark Fee Unpaid
+                            </button>
+                          </form>
+                        </li>
+                      {% endif %}
+
+                      <li><hr class="dropdown-divider"></li>
+
+                      <!-- Status Changes -->
+                      {% if d_status == "Scheduled" %}
+                        <li>
+                          <form method="post"
+                                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Out for Delivery') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="dropdown-item text-warning">
+                              <i class="fas fa-truck me-2"></i>Out for Delivery
+                            </button>
+                          </form>
+                        </li>
+                      {% endif %}
+
+                      {% if d_status == "Out for Delivery" %}
+                        <li>
+                          <form method="post"
+                                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Delivered') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="dropdown-item text-success">
+                              <i class="fas fa-check me-2"></i>Mark Delivered
+                            </button>
+                          </form>
+                        </li>
+                      {% endif %}
+
+                      {% if d_status in ["Scheduled", "Out for Delivery"] %}
+                        <li>
+                          <form method="post"
+                                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Cancelled') }}"
+                                onsubmit="return confirm('Cancel this delivery?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="dropdown-item text-danger">
+                              <i class="fas fa-times me-2"></i>Cancel Delivery
+                            </button>
+                          </form>
+                        </li>
+                      {% endif %}
+
+                    </ul>
+                  </div>
+                </td>
+
+              </tr>
             {% endfor %}
           </tbody>
+
         </table>
       </div>
     </div>
@@ -267,15 +360,12 @@
 
 {% block scripts %}
 <script>
-$(document).ready(function () {
-  $('#allScheduledDeliveriesTable').DataTable({
-    order: [[0, 'desc']],
-    pageLength: 25,
-    responsive: true
+  $(document).ready(function () {
+    $('#allScheduledDeliveriesTable').DataTable({
+      order: [[1, 'desc']], // Date column index after adding Invoice #
+      pageLength: 25,
+      responsive: true
+    });
   });
-});
 </script>
 {% endblock %}
-
-
-

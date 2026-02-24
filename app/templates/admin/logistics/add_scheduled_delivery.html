@@ -2,65 +2,86 @@
 {% block title %}Add Scheduled Delivery{% endblock %}
 
 {% block content %}
+<style>
+  .btn-purple{
+    background:#4a148c;
+    border-color:#4a148c;
+    color:#fff;
+  }
+  .btn-purple:hover{ filter:brightness(.95); color:#fff; }
+</style>
+
 <div class="container mt-4">
-    <h2>📦 Add Scheduled Delivery</h2>
+  <h2>🚚 Add Scheduled Delivery</h2>
+  <p class="text-muted mb-3">
+    Create a delivery request for a customer. The delivery request fee is fixed and will be billed automatically.
+  </p>
 
-    <form method="POST" action="{{ url_for('logistics.add_scheduled_delivery') }}">
-        {{ form.hidden_tag() }}
+  <form method="POST" action="{{ url_for('logistics.add_scheduled_delivery') }}">
+    {{ form.hidden_tag() }}
 
-        <div class="row g-3">
-            <div class="col-md-4">
-                <label class="form-label">Customer</label>
-                <select name="user_id" class="form-select" required>
-                    <option value="">-- Select Customer --</option>
-                    {% for user in users %}
-                        <option value="{{ user.id }}">
-                            {{ user.full_name }} ({{ user.registration_number or user.email }})
-                        </option>
-                    {% endfor %}
-                </select>
-            </div>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="form-label">Customer</label>
+        <select name="user_id" class="form-select" required>
+          <option value="">-- Select Customer --</option>
+          {% for user in users %}
+            <option value="{{ user.id }}">
+              {{ user.full_name }} ({{ user.registration_number or user.email }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
 
-            <div class="col-md-2">
-                <label class="form-label">Date</label>
-                <input type="date" name="date" class="form-control" required>
-            </div>
+      <div class="col-md-2">
+        <label class="form-label">Date</label>
+        <input type="date" name="date" class="form-control" required>
+      </div>
 
-            <div class="col-md-2">
-                <label class="form-label">Time</label>
-                <input type="time" name="time" class="form-control" required>
-            </div>
+      <div class="col-md-2">
+        <label class="form-label">Time</label>
+        <input type="time" name="time" class="form-control" required>
+      </div>
 
-            <div class="col-md-4">
-                <label class="form-label">Location</label>
-                <input type="text" name="location" class="form-control" required>
-            </div>
+      <div class="col-md-4">
+        <label class="form-label">Location</label>
+        <input type="text" name="location" class="form-control" required>
+      </div>
 
-            <div class="col-md-6">
-                <label class="form-label">Directions</label>
-                <input type="text" name="direction" class="form-control">
-            </div>
+      <div class="col-md-6">
+        <label class="form-label">Directions</label>
+        <input type="text" name="direction" class="form-control">
+      </div>
 
-            <div class="col-md-3">
-                <label class="form-label">Mobile #</label>
-                <input type="text" name="mobile_number" class="form-control">
-            </div>
+      <div class="col-md-3">
+        <label class="form-label">Mobile #</label>
+        <input type="text" name="mobile_number" class="form-control">
+      </div>
 
-            <div class="col-md-3">
-                <label class="form-label">Person Receiving</label>
-                <input type="text" name="person_receiving" class="form-control">
-            </div>
-        </div>
+      <div class="col-md-3">
+        <label class="form-label">Person Receiving</label>
+        <input type="text" name="person_receiving" class="form-control">
+      </div>
 
-        <div class="mt-4">
-            <button type="submit" class="btn btn-success">
-                ✅ Add Scheduled Delivery
-            </button>
-            <a href="{{ url_for('logistics.view_scheduled_deliveries') }}"
-               class="btn btn-secondary ms-2">
-                Cancel
-            </a>
-        </div>
-    </form>
+      <div class="col-md-4">
+        <label class="form-label">Delivery Fee</label>
+        <input type="text"
+               class="form-control"
+               value="{{ fee_currency }} {{ '%.2f'|format(delivery_fee|float) }}"
+               readonly>
+        <small class="text-muted">This fee is automatically applied and will show on the delivery invoice.</small>
+      </div>
+    </div>
+
+    <div class="mt-4">
+      <button type="submit" class="btn btn-purple">
+        ✅ Add Scheduled Delivery
+      </button>
+      <a href="{{ url_for('logistics.view_scheduled_deliveries') }}"
+         class="btn btn-secondary ms-2">
+        Cancel
+      </a>
+    </div>
+  </form>
 </div>
 {% endblock %}

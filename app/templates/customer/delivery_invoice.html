@@ -1,0 +1,244 @@
+{# templates/customer/delivery_invoice.html #}
+{% extends "layout_customer.html" %}
+{% block title %}Delivery Invoice{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  {# ✅ Use the SAME logo logic you use in the sidebar #}
+  {% set settings_logo = settings.logo_path if (settings is defined and settings and settings.logo_path) else 'logo.png' %}
+
+  <div class="card shadow-sm border-0">
+    <div class="card-body">
+
+      <!-- =========================
+           HEADER
+      ========================== -->
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-3">
+          <img src="{{ url_for('static', filename=settings_logo) }}"
+               alt="Foreign A Foot Logo"
+               style="height:70px; width:auto;">
+
+          <div>
+            <h4 class="mb-0 fw-bold" style="color:#4A148C;">Foreign A Foot Logistics Limited</h4>
+            <div class="text-muted">Delivery Service Invoice</div>
+          </div>
+        </div>
+
+        <div class="text-end">
+          <div class="fw-bold">Invoice #</div>
+          <div class="fs-5">{{ d.invoice_number or "—" }}</div>
+          <div class="text-muted small">
+            Created: {{ d.created_at.strftime("%Y-%m-%d %H:%M") if d.created_at else "—" }}
+          </div>
+        </div>
+      </div>
+
+      <hr class="my-3">
+
+      <!-- =========================
+           CUSTOMER + STATUS
+      ========================== -->
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="fw-bold mb-1">Customer</div>
+
+          <div>
+            {# Try common name fields safely #}
+            {{ current_user.full_name
+               if current_user.full_name
+               else (current_user.name if current_user.name else (current_user.first_name ~ " " ~ current_user.last_name if (current_user.first_name or current_user.last_name) else "—")) }}
+          </div>
+
+          <div class="text-muted small">
+            Reg #:
+            {{ current_user.registration_number if current_user.registration_number else "—" }}
+          </div>
+
+          <div class="text-muted small">
+            Email:
+            {{ current_user.email if current_user.email else "—" }}
+          </div>
+        </div>
+
+        <div class="col-md-6 text-md-end">
+          <div class="fw-bold mb-1">Fee Status</div>
+
+          {% set fs = (d.fee_status or "Unpaid")|lower %}
+          {% if fs == "paid" %}
+            <span class="badge bg-success fs-6">PAID</span>
+            <div class="text-muted small mt-1">
+              Paid at: {{ d.paid_at.strftime("%Y-%m-%d %H:%M") if d.paid_at else "—" }}
+            </div>
+          {% elif fs == "waived" %}
+            <span class="badge bg-secondary fs-6">WAIVED</span>
+          {% elif fs == "refunded" %}
+            <span class="badge bg-info text-dark fs-6">REFUNDED</span>
+          {% else %}
+            <span class="badge bg-warning text-dark fs-6">UNPAID</span>
+          {% endif %}
+
+          <div class="mt-2">
+            <div class="fw-bold mb-1">Delivery Status</div>
+            {% set ds = d.status or "Scheduled" %}
+            {% if ds|lower == "delivered" %}
+              <span class="badge bg-success">Delivered</span>
+            {% elif ds|lower == "cancelled" %}
+              <span class="badge bg-danger">Cancelled</span>
+            {% elif ds|lower == "out for delivery" %}
+              <span class="badge bg-primary">Out for Delivery</span>
+            {% else %}
+              <span class="badge bg-secondary">Scheduled</span>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+
+      <hr class="my-3">
+
+      <!-- =========================
+           DELIVERY DETAILS
+      ========================== -->
+      <h5 class="fw-bold mb-2" style="color:#4A148C;">Delivery Details</h5>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="text-muted small">Scheduled Date</div>
+          <div class="fw-semibold">{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "—" }}</div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="text-muted small">Scheduled Time</div>
+          <div class="fw-semibold">{{ d.scheduled_time or "—" }}</div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="text-muted small">Location</div>
+          <div class="fw-semibold">{{ d.location or "—" }}</div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="text-muted small">Directions</div>
+          <div class="fw-semibold">{{ d.direction or "—" }}</div>
+        </div>
+
+        <div class="col-md-3">
+          <div class="text-muted small">Mobile #</div>
+          <div class="fw-semibold">{{ d.mobile_number or "—" }}</div>
+        </div>
+
+        <div class="col-md-3">
+          <div class="text-muted small">Person Receiving</div>
+          <div class="fw-semibold">{{ d.person_receiving or "—" }}</div>
+        </div>
+      </div>
+
+      <hr class="my-3">
+
+      <!-- =========================
+           PACKAGES (Optional)
+           If you linked packages to scheduled_delivery, show them
+      ========================== -->
+      {% if d.packages is defined %}
+        {% set pkg_count = d.packages.count() if d.packages and d.packages.count is defined else 0 %}
+      {% else %}
+        {% set pkg_count = 0 %}
+      {% endif %}
+
+      {% if pkg_count and pkg_count > 0 %}
+        <h5 class="fw-bold mb-2" style="color:#4A148C;">Packages Included</h5>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr class="table-light">
+                <th>#</th>
+                <th>Tracking</th>
+                <th>Description</th>
+                <th class="text-end">Weight (lb)</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in d.packages.all() %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ p.tracking_number or p.tracking or "—" }}</td>
+                <td>{{ p.description or "—" }}</td>
+                <td class="text-end">
+                  {% if p.weight is not none %}
+                    {{ "%.2f"|format(p.weight) }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td>{{ p.status or "—" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <hr class="my-3">
+      {% endif %}
+
+      <!-- =========================
+           CHARGES
+      ========================== -->
+      <h5 class="fw-bold mb-2" style="color:#4A148C;">Charges</h5>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr class="table-light">
+              <th>Description</th>
+              <th class="text-end">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Delivery Request Fee</td>
+              <td class="text-end">
+                {{ d.fee_currency or "JMD" }} {{ "%.2f"|format(d.delivery_fee or 0) }}
+              </td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr>
+              <th class="text-end">Total Due</th>
+              <th class="text-end">
+                {{ d.fee_currency or "JMD" }} {{ "%.2f"|format(d.delivery_fee or 0) }}
+              </th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- =========================
+           FOOTER ACTIONS
+      ========================== -->
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3">
+        <a href="{{ url_for('customer.schedule_delivery_overview') }}"
+           class="btn btn-outline-secondary">
+          ← Back
+        </a>
+
+        <div class="d-flex gap-2 flex-wrap">
+          <button type="button" class="btn btn-purple" onclick="window.print()">
+            🖨️ Print
+          </button>
+
+          {# Optional: if you later build PDF route #}
+          {#
+          <a class="btn btn-outline-primary"
+             href="{{ url_for('customer.delivery_invoice_pdf', delivery_id=d.id) }}">
+            Download PDF
+          </a>
+          #}
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+{% endblock %}

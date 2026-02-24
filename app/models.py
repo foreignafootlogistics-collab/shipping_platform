@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from flask_login import UserMixin
 from app.extensions import db
 import re
+from decimal import Decimal
+
 
 def normalize_tracking(s: str) -> str:
     """
@@ -410,18 +412,42 @@ class ScheduledDelivery(db.Model):
     __tablename__ = 'scheduled_deliveries'
 
     id = db.Column(db.Integer, primary_key=True)
+
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+
     scheduled_date = db.Column(db.Date, nullable=False)
-    scheduled_time = db.Column(db.String(20), nullable=False)
+    scheduled_time = db.Column(db.String(20), nullable=False)   # e.g. "14:30" or "2:30 PM"
     location = db.Column(db.String(255), nullable=False)
     direction = db.Column(db.String(255))
     mobile_number = db.Column(db.String(50))
     person_receiving = db.Column(db.String(255))
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     status = db.Column(db.String(30), nullable=False, default="Scheduled", index=True)
 
+    # ==========================================================
+    # ✅ Delivery Invoice / Fee fields
+    # ==========================================================
+    # Invoice number shown on the delivery invoice PDF/HTML (DEL-YYYY-000001)
+    invoice_number = db.Column(db.String(40), unique=True, index=True)
+
+    # Fixed fee for requesting delivery
+    delivery_fee = db.Column(db.Numeric(10, 2), nullable=False, default=Decimal("1000.00"))
+
+    # Currency display for the invoice (JMD recommended for local delivery)
+    fee_currency = db.Column(db.String(10), nullable=False, default="JMD")
+
+    # Payment status for just the delivery fee
+    fee_status = db.Column(db.String(20), nullable=False, default="Unpaid")  # Unpaid/Paid/Waived/Refunded
+
+    # When marked paid
+    paid_at = db.Column(db.DateTime)
+
+    # ==========================================================
+    # Relationships
+    # ==========================================================
     user = db.relationship('User', back_populates='scheduled_deliveries')
 
     packages = db.relationship(

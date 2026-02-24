@@ -206,9 +206,12 @@ def customer_dashboard():
         )
     ) or 0
 
+    status_norm = func.lower(func.trim(Package.status))
+
     total_shipped = db.session.scalar(
         sa.select(func.count()).select_from(Package).where(
-            Package.user_id == user.id, Package.status.in_(('Shipped', 'Delivered'))
+            Package.user_id == user.id,
+            status_norm.notin_(('cancelled', 'canceled', 'deleted', 'draft'))
         )
     ) or 0
 

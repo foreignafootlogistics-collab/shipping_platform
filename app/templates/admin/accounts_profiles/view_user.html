@@ -990,11 +990,7 @@
                 <td>{{ d.person_receiving or "" }}</td>
                 <td>{{ d.mobile_number or d.mobile or "" }}</td>
                 <td>{{ d.status or "Scheduled" }}</td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="6" class="text-center text-muted py-4">No scheduled deliveries for this user.</td>
-              </tr>
+              </tr>              
               {% endfor %}
             </tbody>
           </table>
@@ -1864,7 +1860,8 @@ function showAddress(type) {
       const target = event.target.getAttribute('data-bs-target'); // e.g. "#invoices"
       if (!target) return;
 
-      const tabName = target.replace('#', ''); // "invoices"
+      let tabName = target.replace('#', '');
+      if (tabName === 'schedule-delivery') tabName = 'schedule';
       const url = new URL(window.location.href);
 
       url.searchParams.set('tab', tabName);
@@ -1939,11 +1936,22 @@ $(document).ready(function () {
     const tableSel = '#scheduledeliveryTable';
     if (!$(tableSel).length) return;
 
+    function initDT() {
+      if (!$.fn.DataTable.isDataTable(tableSel)) {
+        $(tableSel).DataTable({
+          autoWidth: false,
+          language: {
+            emptyTable: "No scheduled deliveries for this user."
+          }
+        });
+     } else {
+        $(tableSel).DataTable().columns.adjust();
+      }
+    }
+
     // If already active on load, init immediately
     if ($('#schedule-delivery').hasClass('show') || $('#schedule-delivery').hasClass('active')) {
-      if (!$.fn.DataTable.isDataTable(tableSel)) {
-        $(tableSel).DataTable({ autoWidth: false });
-      }
+      initDT();
       return;
     }
 
@@ -1952,12 +1960,7 @@ $(document).ready(function () {
     if (!btn) return;
 
     btn.addEventListener('shown.bs.tab', function () {
-      if (!$.fn.DataTable.isDataTable(tableSel)) {
-        $(tableSel).DataTable({ autoWidth: false });
-      } else {
-        // if it was initialized elsewhere, just re-calc columns
-        $(tableSel).DataTable().columns.adjust();
-      }
+      initDT();
     });
   })();
 

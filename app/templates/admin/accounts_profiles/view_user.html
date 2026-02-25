@@ -1934,10 +1934,32 @@ $(document).ready(function () {
     });
   })();
 
-  // Scheduled deliveries (client-side ok)
-  if ($('#scheduledeliveryTable').length) {
-    $('#scheduledeliveryTable').DataTable();
-  }
+  // ✅ Schedule Delivery: init DataTable ONLY when tab is shown
+  (function initScheduleDeliveryDT(){
+    const tableSel = '#scheduledeliveryTable';
+    if (!$(tableSel).length) return;
+
+    // If already active on load, init immediately
+    if ($('#schedule-delivery').hasClass('show') || $('#schedule-delivery').hasClass('active')) {
+      if (!$.fn.DataTable.isDataTable(tableSel)) {
+        $(tableSel).DataTable({ autoWidth: false });
+      }
+      return;
+    }
+
+    // Otherwise init the first time the tab is opened
+    const btn = document.getElementById('schedule-delivery-tab');
+    if (!btn) return;
+
+    btn.addEventListener('shown.bs.tab', function () {
+      if (!$.fn.DataTable.isDataTable(tableSel)) {
+        $(tableSel).DataTable({ autoWidth: false });
+      } else {
+        // if it was initialized elsewhere, just re-calc columns
+        $(tableSel).DataTable().columns.adjust();
+      }
+    });
+  })();
 
   // Mark as Paid Modal
   $('.mark-paid-btn').click(function () {

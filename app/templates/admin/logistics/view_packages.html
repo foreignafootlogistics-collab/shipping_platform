@@ -330,17 +330,7 @@
         </th>
         <th>User</th>
         <th>Package</th>
-        <th id="thHouseAwb" class="th-sort">
-          House AWB
-          <span class="sort-btns ms-1" role="group" aria-label="Sort House AWB">
-            <button type="button" class="sort-btn" data-col="house_awb" data-dir="asc" title="Sort ascending">
-              <i class="bi bi-caret-up-fill"></i>
-            </button>
-            <button type="button" class="sort-btn" data-col="house_awb" data-dir="desc" title="Sort descending">
-              <i class="bi bi-caret-down-fill"></i>
-            </button>
-          </span>
-        </th>
+        <th>House AWB</th>
         <th>Description</th>
         <th>Date Received</th>
         <th>Weight (lbs)</th>
@@ -1366,103 +1356,84 @@
     });
   }
 
-
  /* ============================
-   DATATABLE INIT + EPC FILTER + HOUSE AWB ARROWS (FINAL)
+   DATATABLE INIT + EPC FILTER
+   (enable arrows like Shipment Log)
    ============================ */
-(function () {
-  if (!window.jQuery || !$.fn.dataTable) return;
-
-  // Always use one global instance (prevents double-init weirdness)
-  if (!window.packagesDT) {
-    window.packagesDT = $.fn.dataTable.isDataTable('#packagesTable')
-      ? $('#packagesTable').DataTable()
-      : $('#packagesTable').DataTable({
-          stateSave: true,
-          pageLength: 25,
-          order: [],
-          columnDefs: [
-            // ✅ IMPORTANT: disable default sorting on House AWB header clicks
-            { targets: 3, orderable: false }
-          ]
-        });
+document.addEventListener('DOMContentLoaded', function () {
+  if (!window.jQuery || !$.fn.dataTable) {
+    console.warn("DataTables not loaded on this page.");
+    return;
   }
+
+  // ✅ Hard reset so our options apply (and sorting classes get added)
+  if ($.fn.dataTable.isDataTable('#packagesTable')) {
+    $('#packagesTable').DataTable().destroy();
+  }
+
+  window.packagesDT = $('#packagesTable').DataTable({
+    stateSave: true,
+    pageLength: 25,
+    ordering: true,
+    order: [],
+
+    // Disable everything, enable ONLY House AWB (index 3)
+    columnDefs: [
+      { targets: "_all", orderable: false },
+      { targets: [3], orderable: true }
+    ]
+  });
 
   var table = window.packagesDT;
 
-  // restore your saved state
+  // restore state (optional)
   if (typeof restorePackagesDTState === 'function') restorePackagesDTState();
-
-  // ============================
-  // HOUSE AWB ARROWS (document-level, works with DT header clones)
-  // ============================
-  if (!window.__houseAwbArrowsInstalled) {
-    window.__houseAwbArrowsInstalled = true;
-
-    document.addEventListener('click', function (e) {
-      const btn = e.target.closest('.sort-btn[data-col="house_awb"]');
-      if (!btn) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      const dir = (btn.getAttribute('data-dir') || '').toLowerCase();
-      if (dir !== 'asc' && dir !== 'desc') return;
-
-      console.log('House AWB arrow clicked ->', dir);
-      table.order([[3, dir]]).draw();
-
-      // highlight active arrow
-      document.querySelectorAll('.sort-btn[data-col="house_awb"]').forEach(b => {
-        b.classList.toggle('active', b.getAttribute('data-dir') === dir);
-      });
-    });
-  }
 
   // ============================
   // EPC FILTER
   // ============================
   var $headers    = $('#packagesTable thead th');
   var epcColIndex = $headers.index($headers.filter('[data-col="epc-flag"]'));
-  if (epcColIndex < 0) return;
 
-  table.column(epcColIndex).visible(false);
+  if (epcColIndex >= 0) {
+    table.column(epcColIndex).visible(false);
 
-  if (!window.__epcFilterInstalled) {
-    $.fn.dataTable.ext.search.push(function (settings, data) {
-      if (settings && settings.nTable !== $('#packagesTable')[0]) return true;
+    if (!window.__epcFilterInstalled) {
+      $.fn.dataTable.ext.search.push(function (settings, data) {
+        if (settings && settings.nTable !== $('#packagesTable')[0]) return true;
 
-      var epcOnly = $('#filterEpcOnly').is(':checked');
-      if (!epcOnly) return true;
+        var epcOnly = $('#filterEpcOnly').is(':checked');
+        if (!epcOnly) return true;
 
-      var cell = (data[epcColIndex] || '').toString().trim();
-      return cell === '1';
-    });
-    window.__epcFilterInstalled = true;
-  }
-
-  var $toggle = $('#filterEpcOnly');
-  var $count  = $('#epcCount');
-
-  function updateCount() {
-    if ($toggle.is(':checked')) {
-      $count.text(table.rows({ search: 'applied' }).count() + ' EPC package(s)').show();
-    } else {
-      $count.hide();
+        var cell = (data[epcColIndex] || '').toString().trim();
+        return cell === '1';
+      });
+      window.__epcFilterInstalled = true;
     }
+
+    var $toggle = $('#filterEpcOnly');
+    var $count  = $('#epcCount');
+
+    function updateCount() {
+      if ($toggle.is(':checked')) {
+        $count.text(table.rows({ search: 'applied' }).count() + ' EPC package(s)').show();
+      } else {
+        $count.hide();
+      }
+    }
+
+    $toggle.off('change.epc').on('change.epc', function () {
+      table.draw();
+      updateCount();
+    });
+
+    if ($toggle.is(':checked')) table.draw();
+    updateCount();
   }
 
-  table.column(epcColIndex).search('', false, false);
-
-  $toggle.off('change.epc').on('change.epc', function () {
-    table.draw();
-    updateCount();
-  });
-
-  if ($toggle.is(':checked')) table.draw();
-  updateCount();
-})();
-
+  // ✅ Force header classes immediately
+  table.columns.adjust().draw(false);
+});
 /* ==========================
    PACKAGE ATTACHMENTS (ADMIN) - NEW MODAL
    ========================== */
@@ -1773,36 +1744,86 @@
     color: #d97706;
     box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
 }
-/* House AWB sort arrows */
-.th-sort { white-space: nowrap; }
 
-.sort-btns{
-  display: inline-flex;
-  flex-direction: column;
-  gap: 0;
-  vertical-align: middle;
-  margin-left: 6px;
-}
 
-.sort-btn{
-  border: 0;
-  background: transparent;
-  padding: 0 2px;
-  line-height: 0.9;
-  color: rgba(255,255,255,.75);
+/* ============================================================
+   ✅ Stacked sort arrows for BOTH tables (Shipment + Packages)
+   ============================================================ */
+
+/* Make room + enable positioning */
+#shipmentTable thead th.sorting,
+#shipmentTable thead th.sorting_asc,
+#shipmentTable thead th.sorting_desc,
+#packagesTable thead th.sorting,
+#packagesTable thead th.sorting_asc,
+#packagesTable thead th.sorting_desc {
+  position: relative;
+  padding-right: 22px;
   cursor: pointer;
+
+  /* kill DataTables default sort icons (background images / built-ins) */
+  background-image: none !important;
 }
 
-.sort-btn i{
-  font-size: .8rem; /* smaller so they fit nicely */
+/* Base triangles */
+#shipmentTable thead th.sorting::before,
+#shipmentTable thead th.sorting::after,
+#shipmentTable thead th.sorting_asc::before,
+#shipmentTable thead th.sorting_asc::after,
+#shipmentTable thead th.sorting_desc::before,
+#shipmentTable thead th.sorting_desc::after,
+#packagesTable thead th.sorting::before,
+#packagesTable thead th.sorting::after,
+#packagesTable thead th.sorting_asc::before,
+#packagesTable thead th.sorting_asc::after,
+#packagesTable thead th.sorting_desc::before,
+#packagesTable thead th.sorting_desc::after {
+  content: "";
+  position: absolute;
+  right: 8px;
+  width: 0;
+  height: 0;
+  opacity: 0.55;
 }
 
-.sort-btn:hover { color: #fff; }
+/* ▲ up triangle */
+#shipmentTable thead th.sorting::before,
+#shipmentTable thead th.sorting_asc::before,
+#shipmentTable thead th.sorting_desc::before,
+#packagesTable thead th.sorting::before,
+#packagesTable thead th.sorting_asc::before,
+#packagesTable thead th.sorting_desc::before {
+  top: 38%;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid rgba(255,255,255,0.95); /* white arrows for dark headers */
+}
 
-.sort-btn.active { color: #ffc107; } /* highlight active direction */
-#thHouseAwb .sort-btn { pointer-events: auto; }
-#thHouseAwb .sort-btns { pointer-events: auto; }
+/* ▼ down triangle */
+#shipmentTable thead th.sorting::after,
+#shipmentTable thead th.sorting_asc::after,
+#shipmentTable thead th.sorting_desc::after,
+#packagesTable thead th.sorting::after,
+#packagesTable thead th.sorting_asc::after,
+#packagesTable thead th.sorting_desc::after {
+  top: 58%;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid rgba(255,255,255,0.95); /* white arrows for dark headers */
+}
 
+/* Highlight current direction */
+#shipmentTable thead th.sorting_asc::before,
+#packagesTable thead th.sorting_asc::before { opacity: 1; }
+
+#shipmentTable thead th.sorting_asc::after,
+#packagesTable thead th.sorting_asc::after  { opacity: 0.15; }
+
+#shipmentTable thead th.sorting_desc::before,
+#packagesTable thead th.sorting_desc::before { opacity: 0.15; }
+
+#shipmentTable thead th.sorting_desc::after,
+#packagesTable thead th.sorting_desc::after { opacity: 1; }
 </style>
 
 {% include 'admin/invoices/_proforma_modal_block.html' %}

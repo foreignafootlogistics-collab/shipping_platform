@@ -265,6 +265,11 @@
                   </div>
 
                   <div class="col-md-3">
+                    <label class="form-label small mb-0">House AWB</label>
+                    <input type="text" id="fltHouseAwb" class="form-control form-control-sm" placeholder="e.g. HAWB / Control #">
+                  </div>
+
+                  <div class="col-md-3">
                     <label class="form-label small mb-0">Registration #</label>
                     <input type="text" id="fltReg" class="form-control form-control-sm" placeholder="e.g. FA12345">
                   </div>
@@ -1184,6 +1189,7 @@ function validateMoveShipmentForm() {
 function getFilterValues() {
   const name = (document.getElementById('fltName')?.value || '').trim().toLowerCase();
   const tracking = (document.getElementById('fltTracking')?.value || '').trim().toLowerCase();
+  const house_awb = (document.getElementById('fltHouseAwb')?.value || '').trim().toLowerCase();
   const reg = (document.getElementById('fltReg')?.value || '').trim().toLowerCase();
 
   const wMinRaw = (document.getElementById('fltWMin')?.value || '').trim();
@@ -1191,7 +1197,7 @@ function getFilterValues() {
   const wMin = wMinRaw === '' ? null : Number(wMinRaw);
   const wMax = wMaxRaw === '' ? null : Number(wMaxRaw);
 
-  return { name, tracking, reg, wMin, wMax };
+  return { name, tracking, house_awb, reg, wMin, wMax };
 }
 
 function parseCellText(td) {
@@ -1226,11 +1232,13 @@ function installShipmentFilterHook() {
 
     const userText = parseCellText(rowNode.querySelector('td:nth-child(3)'));
     const pkgText  = parseCellText(rowNode.querySelector('td:nth-child(4)'));
+    const houseText = parseCellText(rowNode.querySelector('td:nth-child(5)'));
     const w = parseWeightFromRow(rowNode);
 
     if (f.name && !userText.includes(f.name)) return false;
     if (f.reg && !userText.includes(f.reg)) return false;
     if (f.tracking && !pkgText.includes(f.tracking)) return false;
+    if (f.house_awb && !houseText.includes(f.house_awb)) return false;
     if (f.wMin != null && w < f.wMin) return false;
     if (f.wMax != null && w > f.wMax) return false;
 
@@ -1289,8 +1297,10 @@ function initShipmentTable() {
       "<'shipment-topbar d-flex justify-content-between align-items-center mb-2'<'shipment-pager-top'p>>" +
       "rt" +
       "<'d-none'i>",
-    order: [[2, 'asc']],
-    columnDefs: [{ orderable: false, targets: [0, 1] }],
+    order: [[4, 'asc']],
+    columnDefs: [
+      { orderable: false, targets: [0, 1, 3, 5, 7, 8, 9] }
+    ],
     language: {
       emptyTable: "No packages in this shipment.",
       paginate: { previous: "«", next: "»" }
@@ -1343,12 +1353,14 @@ document.addEventListener('DOMContentLoaded', function () {
     Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
       const userText = parseCellText(tr.querySelector('td:nth-child(3)'));
       const pkgText  = parseCellText(tr.querySelector('td:nth-child(4)'));
+      const houseText = parseCellText(tr.querySelector('td:nth-child(5)'));
       const w = parseWeightFromRow(tr);
 
       let ok = true;
       if (f.name && !userText.includes(f.name)) ok = false;
       if (f.reg && !userText.includes(f.reg)) ok = false;
       if (f.tracking && !pkgText.includes(f.tracking)) ok = false;
+      if (f.house_awb && !houseText.includes(f.house_awb)) ok = false;
       if (f.wMin != null && w < f.wMin) ok = false;
       if (f.wMax != null && w > f.wMax) ok = false;
 
@@ -1357,7 +1369,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function doClear() {
-    ['fltName','fltTracking','fltReg','fltWMin','fltWMax'].forEach(id => {
+    ['fltName','fltTracking','fltHouseAwb','fltReg','fltWMin','fltWMax'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
@@ -1371,7 +1383,7 @@ document.addEventListener('DOMContentLoaded', function () {
   btnApply?.addEventListener('click', doApply);
   btnClear?.addEventListener('click', doClear);
 
-  ['fltName','fltTracking','fltReg','fltWMin','fltWMax'].forEach(id => {
+  ['fltName','fltTracking','fltHouseAwb','fltReg','fltWMin','fltWMax'].forEach(id => {
     document.getElementById(id)?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); doApply(); }
     });
@@ -2915,6 +2927,58 @@ document.addEventListener('input', function(e){
     background: rgba(74,20,140,.10);
     color: #4a148c;
   }
+
+  /* ============================================================
+   ✅ Stacked sort arrows for DataTables (works on dark headers)
+   ============================================================ */
+  #shipmentTable thead th.sorting,
+  #shipmentTable thead th.sorting_asc,
+  #shipmentTable thead th.sorting_desc {
+    position: relative;
+    padding-right: 22px;      /* room for arrows */
+    cursor: pointer;
+  }
+
+  /* base arrows (both visible, low opacity) */
+  #shipmentTable thead th.sorting::before,
+  #shipmentTable thead th.sorting::after,
+  #shipmentTable thead th.sorting_asc::before,
+  #shipmentTable thead th.sorting_asc::after,
+  #shipmentTable thead th.sorting_desc::before,
+  #shipmentTable thead th.sorting_desc::after {
+    content: "";
+    position: absolute;
+    right: 8px;
+    width: 0;
+    height: 0;
+    opacity: 0.55;
+  }
+
+  /* ▲ up triangle */
+  #shipmentTable thead th.sorting::before,
+  #shipmentTable thead th.sorting_asc::before,
+  #shipmentTable thead th.sorting_desc::before {
+    top: 38%;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 7px solid rgba(255,255,255,0.95);
+  }
+
+  /* ▼ down triangle */
+  #shipmentTable thead th.sorting::after,
+  #shipmentTable thead th.sorting_asc::after,
+  #shipmentTable thead th.sorting_desc::after {
+    top: 58%;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid rgba(255,255,255,0.95);
+  }
+
+  /* highlight current direction */
+  #shipmentTable thead th.sorting_asc::before { opacity: 1; }
+  #shipmentTable thead th.sorting_asc::after  { opacity: 0.15; }
+  #shipmentTable thead th.sorting_desc::before{ opacity: 0.15; }
+  #shipmentTable thead th.sorting_desc::after { opacity: 1; }
 
 </style>
 {% endblock %}

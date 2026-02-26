@@ -1037,6 +1037,7 @@ def logistics_dashboard():
         selected_shipment = shipments[0] if shipments else None
         selected_shipment_id = selected_shipment.id if selected_shipment else None
 
+    
     shipment_pkg_rows = []
     if selected_shipment:
 
@@ -2353,25 +2354,28 @@ def view_packages():
 def _next_sl_id():
     """
     Global sequence that never resets.
-    Format: SL-YYYYMMDD-00001 (date reflects creation day, number always increases)
+    Format: SL-YYYYMMDD-00001 (date reflects creation day, number always increases globally)
     """
     today = datetime.now(timezone.utc).strftime("%Y%m%d")
 
+    # Look for the last shipment overall (not just today)
     last = (
         db.session.query(ShipmentLog.sl_id)
-        .filter(ShipmentLog.sl_id.like(f"SL-{today}-%"))
-        .order_by(ShipmentLog.sl_id.desc())
+        .filter(ShipmentLog.sl_id.like("SL-%-%"))   # safety: matches your format
+        .order_by(ShipmentLog.id.desc())
         .first()
     )
 
     last_num = 0
     if last and last[0]:
         try:
-            last_num = int(last[0].rsplit("-", 1)[-1])
-        except ValueError:
+            # SL-YYYYMMDD-00001 -> take the last part
+            last_num = int(str(last[0]).rsplit("-", 1)[-1])
+        except Exception:
             last_num = 0
 
-    return f"SL-{today}-{last_num + 1:05d}"
+    next_num = last_num + 1
+    return f"SL-{today}-{next_num:05d}"
 
 @logistics_bp.route("/shipment/<int:shipment_id>/rename", methods=["POST"])
 @admin_required

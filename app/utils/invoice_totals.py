@@ -67,6 +67,5 @@ def lock_delivered_packages_for_invoice(invoice_id: int, reason: str = "Invoice 
         p.is_locked = True
         p.locked_reason = reason
         p.locked_at = now
-
-    db.session.commit()
+    
     return len(pkgs)

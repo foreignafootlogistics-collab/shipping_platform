@@ -41,7 +41,8 @@ from app.utils.message_notify import send_new_message_email
 from app.utils.email_utils import send_bulk_message_email
 from app.calculator import calculate_charges
 from app.calculator_data import CATEGORIES, USD_TO_JMD
-from app.utils.invoice_totals import fetch_invoice_totals_pg, mark_invoice_packages_delivered
+from app.utils.invoice_totals import fetch_invoice_totals_pg, mark_invoice_packages_delivered, lock_delivered_packages_for_invoice
+from app.utils.time import to_jamaica
 
 
 import sqlalchemy as sa
@@ -279,7 +280,6 @@ def update_admin_role(user_id):
     return redirect(url_for('admin.manage_admins'))
 
 
-# ---------- Admin Dashboard ---------- 
 # ---------- Admin Dashboard ----------
 @admin_bp.route('/dashboard')
 @admin_required() 
@@ -886,12 +886,13 @@ def message_forward(message_id):
 </div>
 """.strip()
 
-    ok = send_email(
+    ok = email_utils.send_email(
         to_email=to_email,
         subject=email_subject,
         plain_body=forwarded_plain,
         html_body=forwarded_html_body_only,
-        reply_to=EMAIL_FROM or EMAIL_ADDRESS,  # optional but good
+        reply_to=EMAIL_FROM or EMAIL_ADDRESS,
+        attachments=None,
         recipient_user_id=None,               # forwarding should NOT log into messages
     )
 
@@ -1149,7 +1150,7 @@ def generate_invoice_route(user_id):
     from app.utils.unassigned import is_pkg_unassigned
 
     # ✅ BLOCK: if any package is UNASSIGNED, stop
-    bad = [p for p in packages if is_unassigned_package(p)]
+    bad = [p for p in packages if is_pkg_unassigned(p)]
     if bad:
         flash(
             f"Cannot generate invoice: {len(bad)} package(s) are UNASSIGNED. "
@@ -1443,6 +1444,8 @@ def view_customer_invoice(user_id):
         flash("User not found.", "danger")
         return redirect(url_for('admin.dashboard'))
 
+    now_utc = datetime.now(timezone.utc)
+
     pkgs = (
         Package.query
         .filter(
@@ -1671,6 +1674,201 @@ def mark_invoice_paid():
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)})
 
+
+@admin_bp.route("/invoice/cart_summary", methods=["POST"])
+@admin_required
+def invoice_cart_summary():
+    try:
+        data = request.get_json(silent=True) or {}
+        user_id = int(data.get("user_id") or 0)
+        invoice_ids = data.get("invoice_ids") or []
+
+        ids = []
+        for x in invoice_ids:
+            try:
+                ids.append(int(x))
+            except Exception:
+                pass
+        ids = list(dict.fromkeys(ids))
+
+        if not user_id or not ids:
+            return jsonify({"success": False, "error": "No invoices selected."}), 400
+
+        # Load invoices and compute due/paid/owed
+        items = []
+        for inv_id in ids:
+            inv = Invoice.query.get(inv_id)
+            if not inv:
+                continue
+
+            # ✅ safety: only invoices that belong to this user
+            ok = False
+            if hasattr(inv, "user_id") and inv.user_id == user_id:
+                ok = True
+            if hasattr(inv, "customer_id") and inv.customer_id == user_id:
+                ok = True
+
+            if not ok:
+                continue
+
+            subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
+
+            label = getattr(inv, "invoice_number", None) or f"INV{inv.id:05d}"
+
+            # due = subtotal - discounts
+            due = max(float(subtotal) - float(discount_total), 0.0)
+            paid = float(payments_total or 0.0)
+            owed = float(total_due or 0.0)
+
+            items.append({
+                "id": inv.id,
+                "label": label,
+                "due": round(due, 2),
+                "paid": round(paid, 2),
+                "owed": round(owed, 2),
+            })
+
+        return jsonify({"success": True, "items": items})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@admin_bp.route("/invoice/bulk_payment", methods=["POST"])
+@admin_required
+def bulk_invoice_payment():
+    try:
+        data = request.get_json(silent=True) or {}
+
+        user_id = int(data.get("user_id") or 0)
+        invoice_ids = data.get("invoice_ids") or []
+        amount = float(data.get("amount") or 0)
+        method = (data.get("payment_type") or "Cash").strip()
+        authorized_by = (data.get("authorized_by") or "").strip()
+        allocation = (data.get("allocation") or "oldest_first").strip()
+
+        if not user_id or not invoice_ids:
+            return jsonify({"success": False, "error": "No invoices selected."}), 400
+        if amount <= 0:
+            return jsonify({"success": False, "error": "Amount must be greater than 0."}), 400
+        if not authorized_by:
+            return jsonify({"success": False, "error": "Authorized By is required."}), 400
+
+        ids = []
+        for x in invoice_ids:
+            try:
+                ids.append(int(x))
+            except Exception:
+                pass
+        ids = list(dict.fromkeys(ids))
+
+        # Load invoice objects (and validate they belong to this user)
+        invoices = []
+        for inv_id in ids:
+            inv = Invoice.query.get(inv_id)
+            if not inv:
+                continue
+
+            ok = False
+            if hasattr(inv, "user_id") and inv.user_id == user_id:
+                ok = True
+            if hasattr(inv, "customer_id") and inv.customer_id == user_id:
+                ok = True
+
+            if ok:
+                invoices.append(inv)
+
+        if not invoices:
+            return jsonify({"success": False, "error": "No valid invoices found for this user."}), 400
+
+        # Compute owed per invoice (DB-truth)
+        inv_rows = []
+        for inv in invoices:
+            subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
+            owed = float(total_due or 0.0)
+            inv_rows.append((inv, owed))
+
+        # Sort allocation
+        def inv_date(inv):
+            return (
+                getattr(inv, "date", None)
+                or getattr(inv, "date_submitted", None)
+                or getattr(inv, "created_at", None)
+                or getattr(inv, "id", 0)
+            )
+
+        if allocation == "newest_first":
+            inv_rows.sort(key=lambda t: inv_date(t[0]), reverse=True)
+        elif allocation == "highest_owed_first":
+            inv_rows.sort(key=lambda t: t[1], reverse=True)
+        else:  # oldest_first default
+            inv_rows.sort(key=lambda t: inv_date(t[0]))
+
+        remaining = float(amount)
+        created = []
+        now = datetime.now(timezone.utc)
+
+        for inv, owed in inv_rows:
+            if remaining <= 0:
+                break
+            if owed <= 0:
+                continue
+
+            pay_amt = min(remaining, owed)
+            notes = f"Authorized by: {authorized_by}" if authorized_by else None
+
+            p = Payment(
+                invoice_id=inv.id,
+                user_id=getattr(inv, "user_id", user_id) or user_id,
+                method=method,
+                amount_jmd=float(pay_amt),
+                notes=notes,
+                created_at=now,
+            )
+            db.session.add(p)
+            created.append((inv.id, float(pay_amt)))
+            remaining -= float(pay_amt)
+
+        # Recompute + update invoice statuses after applying payments
+        updated = []
+        for inv, _ in inv_rows:
+            subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
+
+            prev_status = (inv.status or "").lower()
+            inv.amount_due = float(total_due)
+
+            if inv.amount_due <= 0:
+                inv.status = "paid"
+                inv.date_paid = now
+                if prev_status != "paid":
+                    lock_delivered_packages_for_invoice(inv.id, reason="Invoice fully paid")
+            elif float(payments_total or 0) > 0:
+                inv.status = "partial"
+                inv.date_paid = None
+            else:
+                inv.status = "unpaid"
+                inv.date_paid = None
+
+            updated.append({
+                "invoice_id": inv.id,
+                "amount_due": float(inv.amount_due),
+                "status": inv.status,
+                "paid_sum": float(payments_total or 0),
+            })
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "applied_total": float(amount - remaining),
+            "unused_amount": float(max(remaining, 0.0)),
+            "created_payments": created,
+            "updated": updated,
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @admin_bp.route('/generate-pdf-invoice/<int:user_id>')
 @admin_required
@@ -2167,9 +2365,10 @@ def add_discount(invoice_id):
     inv.grand_total = base_total_after
     inv.amount      = base_total_after  # keep legacy in sync
 
-    # Now recompute amount_due based on new base total & existing payments
+    # ✅ Sum payments using the correct column (supports old/new schemas)
+    pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
     paid_sum = (
-        db.session.query(func.coalesce(func.sum(Payment.amount_jmd), 0.0))
+        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
         .filter(Payment.invoice_id == inv.id)
         .scalar()
         or 0.0

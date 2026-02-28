@@ -1051,16 +1051,34 @@ def view_user(id):
             .group_by(Invoice.id)
         )
 
-        date_col = getattr(Invoice, "date", None) or getattr(Invoice, "date_submitted", None) or getattr(Invoice, "created_at", None)
+        date_col = (
+            getattr(Invoice, "date_issued", None)
+            or getattr(Invoice, "date_submitted", None)
+            or getattr(Invoice, "created_at", None)
+        )
         if date_col is not None:
             if inv_from:
-                q = q.filter(date_col >= inv_from)
+                try:
+                    dt_from = datetime.fromisoformat(inv_from)  # 00:00
+                    q = q.filter(date_col >= dt_from)
+                except Exception:
+                    pass
+
             if inv_to:
-                q = q.filter(date_col <= inv_to)
+                try:
+                    dt_to = datetime.fromisoformat(inv_to) + timedelta(days=1)  # next day 00:00
+                    q = q.filter(date_col < dt_to)
+                except Exception:
+                    pass
 
         total_invoices = q.count()
 
-        order_col = getattr(Invoice, "date", None) or getattr(Invoice, "date_submitted", None) or getattr(Invoice, "created_at", None) or Invoice.id
+        order_col = (
+            getattr(Invoice, "date_issued", None)
+            or getattr(Invoice, "date_submitted", None)
+            or getattr(Invoice, "created_at", None)
+            or Invoice.id
+        )
         page_obj = q.order_by(order_col.desc()).paginate(
             page=inv_page, per_page=inv_per_page, error_out=False
         )

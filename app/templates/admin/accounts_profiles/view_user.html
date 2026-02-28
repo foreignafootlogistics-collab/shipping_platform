@@ -243,7 +243,7 @@
             <label class="small text-muted mb-0">Rows</label>
 
             <select id="pkgPerPageSelect" class="form-select form-select-sm" style="width:auto;"
-                    onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1, pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}&pkg_per_page=' + this.value;">
+                    onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1, pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn, pkg_status=pkg_status) }}&pkg_per_page=' + this.value;">
 
               {% set current_pp = pkg_per_page|default(10) %}
               {% for n in [10,25,50,100,500,1000] %}
@@ -362,6 +362,7 @@
                           <input type="hidden" name="pkg_to" value="{{ pkg_to or '' }}">
                           <input type="hidden" name="pkg_awb" value="{{ pkg_awb or '' }}">
                           <input type="hidden" name="pkg_tn" value="{{ pkg_tn or '' }}">
+                          <input type="hidden" name="pkg_status" value="{{ pkg_status or '' }}">
 
 
                           <button type="submit" 
@@ -404,7 +405,7 @@
                 href="{{ url_for('accounts_profiles.view_user',
                                  id=user_id, tab='packages', pkg_page=1,
                                  pkg_per_page=pkg_per_page,
-                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}">
+                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn, pkg_status=pkg_status) }}">
                 &laquo;&laquo;
               </a>
             </li>
@@ -416,7 +417,7 @@
                                  id=user_id, tab='packages',
                                  pkg_page=(pkg_page-1 if pkg_page>1 else 1),
                                  pkg_per_page=pkg_per_page,
-                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}">
+                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn, pkg_status=pkg_status) }}">
                 &laquo;
               </a>
             </li>
@@ -428,7 +429,7 @@
                                  id=user_id, tab='packages',
                                  pkg_page=(pkg_page+1 if pkg_page < pkg_total_pages else pkg_total_pages),
                                  pkg_per_page=pkg_per_page,
-                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}">
+                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn, pkg_status=pkg_status) }}">
                 &raquo;
               </a>
             </li>
@@ -439,7 +440,7 @@
                 href="{{ url_for('accounts_profiles.view_user',
                                  id=user_id, tab='packages', pkg_page=pkg_total_pages,
                                  pkg_per_page=pkg_per_page,
-                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn) }}"
+                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn, pkg_status=pkg_status) }}"
 >
                 &raquo;&raquo;
               </a>
@@ -1375,6 +1376,19 @@
             </div>
           </div>
 
+          <div class="mt-2">
+            <label class="form-label">Status</label>
+            <select name="pkg_status" class="form-select">
+              <option value="" {% if not pkg_status %}selected{% endif %}>All</option>
+              <option value="Overseas" {% if pkg_status == 'Overseas' %}selected{% endif %}>Overseas</option>
+              <option value="Ready" {% if pkg_status == 'Ready' %}selected{% endif %}>Ready / Pickup</option>
+              <option value="Delivered" {% if pkg_status == 'Delivered' %}selected{% endif %}>Delivered</option>
+              <option value="Out for Delivery" {% if pkg_status == 'Out for Delivery' %}selected{% endif %}>Out for Delivery</option>
+              <option value="Local Port" {% if pkg_status == 'Local Port' %}selected{% endif %}>Local Port</option>
+              <option value="Unassigned" {% if pkg_status == 'Unassigned' %}selected{% endif %}>Unassigned</option>
+            </select>
+          </div>
+
           <div class="modal-footer">
             <a class="btn btn-outline-secondary"
                href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1) }}">
@@ -1415,6 +1429,7 @@
           <input type="hidden" name="pkg_to" value="{{ pkg_to or '' }}">
           <input type="hidden" name="pkg_awb" value="{{ pkg_awb or '' }}">
           <input type="hidden" name="pkg_tn" value="{{ pkg_tn or '' }}">
+         <input type="hidden" name="pkg_status" value="{{ pkg_status or '' }}">
 
 
           <div class="modal-body">

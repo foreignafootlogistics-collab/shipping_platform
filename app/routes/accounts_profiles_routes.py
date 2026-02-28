@@ -842,31 +842,62 @@ def view_user(id):
     pkg_to   = (request.args.get("pkg_to") or "").strip()
     pkg_awb  = (request.args.get("pkg_awb") or "").strip()
     pkg_tn   = (request.args.get("pkg_tn") or "").strip()
+    pkg_status = (request.args.get("pkg_status") or "").strip()  # ✅ NEW
 
     packages = []
     total_pkgs = 0
+
+    def _parse_ymd(s):
+        try:
+            return datetime.strptime(s, "%Y-%m-%d")
+        except Exception:
+            return None
 
     try:
         base = Package.query.filter(Package.user_id == id)
 
         # Choose the best date column available on Package
         date_col = None
+        date_attr = None
         for attr in ("date_received", "received_date", "created_at"):
             if hasattr(Package, attr):
                 date_col = getattr(Package, attr)
-                break
+                date_attr = attr
+                break       
 
-        if pkg_from and date_col is not None:
-            base = base.filter(date_col >= pkg_from)
+        dt_from = _parse_ymd(pkg_from) if pkg_from else None
+        dt_to   = _parse_ymd(pkg_to) if pkg_to else None
 
-        if pkg_to and date_col is not None:
-            base = base.filter(date_col <= pkg_to)
+        # ✅ Apply date filters safely (works for Date OR DateTime columns)
+        if date_col is not None:
+            if dt_from:
+                # If column is Date, compare using date()
+                if hasattr(date_col.type, "python_type") and date_col.type.python_type.__name__ == "date":
+                    base = base.filter(date_col >= dt_from.date())
+                else:
+                    base = base.filter(date_col >= dt_from)  # datetime start of day
+
+            if dt_to:
+                # inclusive end-date:
+                # - Date: <= dt_to.date()
+                # - DateTime: < next day (so it includes whole dt_to day)
+                if hasattr(date_col.type, "python_type") and date_col.type.python_type.__name__ == "date":
+                    base = base.filter(date_col <= dt_to.date())
+                else:
+                    base = base.filter(date_col < (dt_to + timedelta(days=1)))
 
         if pkg_awb and hasattr(Package, "house_awb"):
             base = base.filter(Package.house_awb.ilike(f"%{pkg_awb}%"))
 
         if pkg_tn and hasattr(Package, "tracking_number"):
             base = base.filter(Package.tracking_number.ilike(f"%{pkg_tn}%"))
+
+        if pkg_status and hasattr(Package, "status"):
+            # Option A: exact match (strict)
+            # base = base.filter(Package.status == pkg_status)
+
+            # Option B: partial match (recommended because your statuses vary like "Ready for Pickup", "Out for Delivery")
+            base = base.filter(Package.status.ilike(f"%{pkg_status}%"))
 
         total_pkgs = base.count()
 
@@ -920,10 +951,7 @@ def view_user(id):
                 .all()
             )
 
-            attachments = [
-                {"id": a.id, "original_name": a.original_name or a.file_name}
-                for a in attachments
-            ]
+            attachments = [{"id": a.id, "original_name": a.original_name or a.file_name} for a in attachments]
 
             packages.append({
                 "id": p.id,
@@ -944,7 +972,7 @@ def view_user(id):
         db.session.rollback()
         packages = []
         total_pkgs = 0
-        pkg_from = pkg_to = pkg_awb = pkg_tn = ""
+        pkg_from = pkg_to = pkg_awb = pkg_tn = pkg_status = ""
 
     # Attachments lookup for packages
     pkg_ids = [p["id"] for p in packages if p.get("id")]
@@ -1234,6 +1262,7 @@ def view_user(id):
         pkg_to=pkg_to,
         pkg_awb=pkg_awb,
         pkg_tn=pkg_tn,
+        pkg_status=pkg_status,
         attachments_by_pkg=attachments_by_pkg,
         categories=categories,                   
         scheduled_deliveries=scheduled_deliveries,

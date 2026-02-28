@@ -1335,11 +1335,13 @@
       </div>
     </div>
   </div>
+
   <!-- Packages Filter Modal -->
   <div class="modal fade" id="packageFilterModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
 
+        <!-- Header -->
         <div class="modal-header" style="background-color:#4a148c; color:white;">
           <h5 class="modal-title">
             <i class="bi bi-funnel me-1"></i> Filter Packages
@@ -1351,58 +1353,74 @@
           <input type="hidden" name="tab" value="packages">
           <input type="hidden" name="pkg_page" value="1">
 
+          <!-- Body -->
           <div class="modal-body">
-            <div class="row g-2">
-              <div class="col-md-6">
-                <label class="form-label">From Date</label>
-                <input type="date" name="pkg_from" class="form-control" value="{{ pkg_from or '' }}">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">To Date</label>
-                <input type="date" name="pkg_to" class="form-control" value="{{ pkg_to or '' }}">
-              </div>
-            </div>
 
-            <div class="mt-2">
-              <label class="form-label">House AWB</label>
-              <input type="text" name="pkg_awb" class="form-control" value="{{ pkg_awb or '' }}"
-                     placeholder="e.g. HAWB123...">
-            </div>
+            <div class="row g-3">
 
-            <div class="mt-2">
-              <label class="form-label">Tracking Number</label>
-              <input type="text" name="pkg_tn" class="form-control" value="{{ pkg_tn or '' }}"
-                     placeholder="e.g. 1Z... / TBA...">
+              <!-- From / To -->
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">From</label>
+                <input type="date" name="pkg_from" class="form-control"
+                       value="{{ pkg_from or '' }}">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">To</label>
+                <input type="date" name="pkg_to" class="form-control"
+                       value="{{ pkg_to or '' }}">
+              </div>
+
+              <!-- AWB + Tracking side by side -->
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">House AWB</label>
+                <input type="text" name="pkg_awb" class="form-control"
+                       value="{{ pkg_awb or '' }}"
+                       placeholder="e.g. HAWB123...">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label fw-semibold">Tracking #</label>
+                <input type="text" name="pkg_tn" class="form-control"
+                       value="{{ pkg_tn or '' }}"
+                       placeholder="e.g. 1Z... / TBA...">
+              </div>
+
+              <!-- Status -->
+              <div class="col-12">
+                <label class="form-label fw-semibold">Status</label>
+                <select name="pkg_status" class="form-select">
+                  <option value="" {% if not pkg_status %}selected{% endif %}>All</option>
+                  <option value="Overseas" {% if pkg_status == 'Overseas' %}selected{% endif %}>Overseas</option>
+                  <option value="Ready" {% if pkg_status == 'Ready' %}selected{% endif %}>Ready / Pickup</option>
+                  <option value="Delivered" {% if pkg_status == 'Delivered' %}selected{% endif %}>Delivered</option>
+                  <option value="Out for Delivery" {% if pkg_status == 'Out for Delivery' %}selected{% endif %}>Out for Delivery</option>
+                  <option value="Local Port" {% if pkg_status == 'Local Port' %}selected{% endif %}>Local Port</option>
+                  <option value="Unassigned" {% if pkg_status == 'Unassigned' %}selected{% endif %}>Unassigned</option>
+                </select>
+              </div>
+
             </div>
           </div>
 
-          <div class="mt-2">
-            <label class="form-label">Status</label>
-            <select name="pkg_status" class="form-select">
-              <option value="" {% if not pkg_status %}selected{% endif %}>All</option>
-              <option value="Overseas" {% if pkg_status == 'Overseas' %}selected{% endif %}>Overseas</option>
-              <option value="Ready" {% if pkg_status == 'Ready' %}selected{% endif %}>Ready / Pickup</option>
-              <option value="Delivered" {% if pkg_status == 'Delivered' %}selected{% endif %}>Delivered</option>
-              <option value="Out for Delivery" {% if pkg_status == 'Out for Delivery' %}selected{% endif %}>Out for Delivery</option>
-              <option value="Local Port" {% if pkg_status == 'Local Port' %}selected{% endif %}>Local Port</option>
-              <option value="Unassigned" {% if pkg_status == 'Unassigned' %}selected{% endif %}>Unassigned</option>
-            </select>
-          </div>
-
-          <div class="modal-footer">
+          <!-- Footer -->
+          <div class="modal-footer d-flex justify-content-between">
             <a class="btn btn-outline-secondary"
                href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1) }}">
               Clear
             </a>
-            <button type="submit" class="btn" style="background-color:#4a148c; color:white;">
+
+            <button type="submit" class="btn btn-purple">
               Apply Filters
             </button>
           </div>
+
         </form>
 
       </div>
     </div>
   </div>
+
   <!-- ✅ Add Single Package Modal (Admin -> View User) -->
   <div class="modal fade" id="addSinglePackageModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -1882,6 +1900,17 @@
 
 {% block styles %}
 <style>
+.btn-purple {
+  background-color: #4a148c;
+  color: #fff;
+  border: 1px solid #4a148c;
+}
+.btn-purple:hover {
+  background-color: #3b0f73;
+  border-color: #3b0f73;
+  color: #fff;
+}
+
 /* ================================
    Tabs: White background, black text
    Purple hover & active

@@ -1,5 +1,7 @@
 import os
 import uuid
+import base64
+from pathlib import Path
 from werkzeug.utils import secure_filename
 from flask import current_app, abort
 
@@ -25,8 +27,6 @@ import cloudinary
 import cloudinary.uploader
 
 from app.utils.invoice_totals import fetch_invoice_totals_pg, mark_invoice_packages_delivered
-
-
 
 
 finance_bp = Blueprint('finance', __name__, url_prefix='/finance')
@@ -84,37 +84,6 @@ def _delete_cloudinary_raw(public_id: str):
     except Exception:
         pass
 
-
-# -----------------------------
-# Audit log helper (yours)
-# -----------------------------
-def _log_expense_action(action: str, expense, request_obj):
-    # keep your existing implementation
-    from app.models import ExpenseAuditLog
-
-    actor_id = getattr(current_user, "id", None)
-    actor_email = getattr(current_user, "email", None)
-    actor_role = getattr(current_user, "role", None)
-
-    log = ExpenseAuditLog(
-        expense_id=getattr(expense, "id", None),
-        action=action,
-        actor_id=actor_id,
-        actor_email=actor_email,
-        actor_role=actor_role,
-        expense_date=getattr(expense, "date", None),
-        expense_category=getattr(expense, "category", None),
-        expense_amount=float(getattr(expense, "amount", 0.0) or 0.0),
-        expense_description=getattr(expense, "description", None),
-
-        # update these to match your new Expense fields:
-        expense_attachment_name=getattr(expense, "attachment_name", None),
-        expense_attachment_stored=getattr(expense, "attachment_public_id", None),
-
-        ip_address=(request_obj.headers.get("X-Forwarded-For", request_obj.remote_addr) or "")[:64],
-        user_agent=(request_obj.headers.get("User-Agent", "") or "")[:255],
-    )
-    db.session.add(log)
 
 def _month_bounds(ym: str):
     y, m = map(int, ym.split('-'))
@@ -210,6 +179,141 @@ def _log_expense_action(action: str, expense, request_obj):
         user_agent=(request_obj.headers.get("User-Agent", "") or "")[:255],
     )
     db.session.add(log)
+
+def _money(x):
+    try:
+        return float(x or 0)
+    except Exception:
+        return 0.0
+
+def _get_unpaid_user_rows(search=None, date_from=None, date_to=None):
+    # sum payments per invoice
+    pay_sum = (
+        db.session.query(
+            Payment.invoice_id.label("inv_id"),
+            func.coalesce(func.sum(Payment.amount_jmd), 0).label("paid_jmd"),
+        )
+        .group_by(Payment.invoice_id)
+        .subquery()
+    )
+
+    # owed = (grand_total OR amount_due OR amount) - payments
+    billed_expr = func.coalesce(Invoice.grand_total, Invoice.amount_due, Invoice.amount, 0.0)
+    owed_expr = func.greatest(billed_expr - func.coalesce(pay_sum.c.paid_jmd, 0), 0)
+
+    inv_q = (
+        db.session.query(
+            Invoice.user_id.label("user_id"),
+            func.count(Invoice.id).label("unpaid_count"),
+            func.coalesce(func.sum(owed_expr), 0).label("unpaid_total"),
+        )
+        .outerjoin(pay_sum, pay_sum.c.inv_id == Invoice.id)
+        .filter(func.lower(Invoice.status).in_(("pending", "unpaid", "issued")))
+        .group_by(Invoice.user_id)
+    )
+
+    # optional date filter (uses invoice created_at; change if you prefer date_issued)
+    if date_from:
+        inv_q = inv_q.filter(func.date(Invoice.created_at) >= date_from)
+    if date_to:
+        inv_q = inv_q.filter(func.date(Invoice.created_at) <= date_to)
+
+    inv_sub = inv_q.subquery()
+
+    q = (
+        db.session.query(
+            User.full_name,
+            User.registration_number,
+            User.email,
+            User.mobile,
+            inv_sub.c.unpaid_count,
+            inv_sub.c.unpaid_total,
+        )
+        .join(inv_sub, inv_sub.c.user_id == User.id)
+    )
+
+    if search:
+        like = f"%{search.strip()}%"
+        q = q.filter(
+            or_(
+                User.full_name.ilike(like),
+                User.email.ilike(like),
+                User.registration_number.ilike(like),
+            )
+        )
+
+    rows = []
+    for r in q.order_by(User.full_name.asc()).all():
+        rows.append({
+            "name": r.full_name,
+            "reg": r.registration_number,
+            "email": r.email,
+            "mobile": r.mobile,
+            "unpaid_count": int(r.unpaid_count or 0),
+            "unpaid_total": _money(r.unpaid_total),
+        })
+
+    grand_total = sum(x["unpaid_total"] for x in rows)
+    total_customers_with_balance = len([x for x in rows if x["unpaid_total"] > 0])
+
+    return rows, grand_total, total_customers_with_balance
+
+
+
+def _send_unpaid_report_email(pdf_bytes: bytes, generated_at: str):
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.application import MIMEApplication
+    import smtplib
+
+    host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    port = int(os.getenv("SMTP_PORT", "587"))
+    user = os.getenv("SMTP_USER", "")
+    pwd  = os.getenv("SMTP_PASS", "")
+    from_email = os.getenv("FROM_EMAIL", user)
+
+    to_list = [x.strip() for x in (os.getenv("FINANCE_REPORT_EMAILS", "") or "").split(",") if x.strip()]
+    if not to_list:
+        current_app.logger.warning("FINANCE_REPORT_EMAILS not set; skipping report email.")
+        return
+
+    msg = MIMEMultipart()
+    msg["Subject"] = f"FAFL Weekly Unpaid Invoices Report ({generated_at})"
+    msg["From"] = from_email
+    msg["To"] = ", ".join(to_list)
+
+    msg.attach(MIMEText("Attached is the latest Unpaid Invoices Report.\n\n- FAFL System", "plain"))
+
+    attach = MIMEApplication(pdf_bytes, _subtype="pdf")
+    attach.add_header("Content-Disposition", "attachment", filename="unpaid_users_report.pdf")
+    msg.attach(attach)
+
+    with smtplib.SMTP(host, port) as s:
+        s.starttls()
+        if user and pwd:
+            s.login(user, pwd)
+        s.sendmail(from_email, to_list, msg.as_string())
+
+
+def _static_image_data_uri(filename: str) -> str | None:
+    """
+    Returns a data: URI for a static image so WeasyPrint can render it reliably.
+    """
+    try:
+        static_dir = Path(current_app.root_path) / "static"
+        path = static_dir / filename
+        if not path.exists():
+            return None
+
+        ext = path.suffix.lower()
+        mime = "image/png" if ext == ".png" else "image/jpeg" if ext in (".jpg", ".jpeg") else None
+        if not mime:
+            return None
+
+        b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
+        return f"data:{mime};base64,{b64}"
+    except Exception:
+        return None
 
 
 # ---------------------- FINANCE DASHBOARD ---------------------- #
@@ -568,86 +672,9 @@ def unpaid_invoices():
         status_counts=status_counts,
     )
 
-def _money(x):
-    try:
-        return float(x or 0)
-    except Exception:
-        return 0.0
-
-def _get_unpaid_user_rows(search=None, date_from=None, date_to=None):
-    # sum payments per invoice
-    pay_sum = (
-        db.session.query(
-            Payment.invoice_id.label("inv_id"),
-            func.coalesce(func.sum(Payment.amount_jmd), 0).label("paid_jmd"),
-        )
-        .group_by(Payment.invoice_id)
-        .subquery()
-    )
-
-    # owed = (grand_total OR amount_due OR amount) - payments
-    billed_expr = func.coalesce(Invoice.grand_total, Invoice.amount_due, Invoice.amount, 0.0)
-    owed_expr = func.greatest(billed_expr - func.coalesce(pay_sum.c.paid_jmd, 0), 0)
-
-    inv_q = (
-        db.session.query(
-            Invoice.user_id.label("user_id"),
-            func.count(Invoice.id).label("unpaid_count"),
-            func.coalesce(func.sum(owed_expr), 0).label("unpaid_total"),
-        )
-        .outerjoin(pay_sum, pay_sum.c.inv_id == Invoice.id)
-        .filter(func.lower(Invoice.status).in_(("pending", "unpaid", "issued")))
-        .group_by(Invoice.user_id)
-    )
-
-    # optional date filter (uses invoice created_at; change if you prefer date_issued)
-    if date_from:
-        inv_q = inv_q.filter(func.date(Invoice.created_at) >= date_from)
-    if date_to:
-        inv_q = inv_q.filter(func.date(Invoice.created_at) <= date_to)
-
-    inv_sub = inv_q.subquery()
-
-    q = (
-        db.session.query(
-            User.full_name,
-            User.registration_number,
-            User.email,
-            User.mobile,
-            inv_sub.c.unpaid_count,
-            inv_sub.c.unpaid_total,
-        )
-        .join(inv_sub, inv_sub.c.user_id == User.id)
-    )
-
-    if search:
-        like = f"%{search.strip()}%"
-        q = q.filter(
-            or_(
-                User.full_name.ilike(like),
-                User.email.ilike(like),
-                User.registration_number.ilike(like),
-            )
-        )
-
-    rows = []
-    for r in q.order_by(User.full_name.asc()).all():
-        rows.append({
-            "name": r.full_name,
-            "reg": r.registration_number,
-            "email": r.email,
-            "mobile": r.mobile,
-            "unpaid_count": int(r.unpaid_count or 0),
-            "unpaid_total": _money(r.unpaid_total),
-        })
-
-    grand_total = sum(x["unpaid_total"] for x in rows)
-    total_customers_with_balance = len([x for x in rows if x["unpaid_total"] > 0])
-
-    return rows, grand_total, total_customers_with_balance
-
 
 @finance_bp.route("/reports/unpaid-users.pdf", methods=["GET"])
+@admin_required(roles=["finance"])
 def unpaid_users_pdf():
     """
     - If accessed by a logged-in finance user: works normally.
@@ -681,11 +708,17 @@ def _render_unpaid_users_pdf(send_email: bool = False):
     effective_usd_to_jmd = (getattr(settings, "usd_to_jmd", None) or USD_TO_JMD)
 
     # ---- logo url (robust) ----
-    logo_url = url_for(
-        "static",
-        filename=(settings.logo_path if settings and settings.logo_path else "logo.png"),
-        _external=True
-    )
+    raw_logo = (settings.logo_path if settings and settings.logo_path else "logo.png") or "logo.png"
+    # normalize: remove leading /, and remove leading "static/"
+    raw_logo = raw_logo.lstrip("/")
+    if raw_logo.lower().startswith("static/"):
+        raw_logo = raw_logo[7:]
+
+    # Try embed first (best for WeasyPrint)
+    logo_data_uri = _static_image_data_uri(raw_logo)
+
+    # Fallback to URL (browser works, but WeasyPrint sometimes can't fetch it)
+    logo_url = url_for("static", filename=raw_logo, _external=True, _scheme="https")
 
     html = render_template(
         "admin/finance/unpaid_users_report.html",
@@ -697,6 +730,7 @@ def _render_unpaid_users_pdf(send_email: bool = False):
         date_to=date_to,
         generated_at=generated_at,
         logo_url=logo_url,
+        logo_data_uri=logo_data_uri,
     )
 
     pdf = HTML(string=html, base_url=request.url_root).write_pdf()
@@ -709,40 +743,6 @@ def _render_unpaid_users_pdf(send_email: bool = False):
     resp.headers["Content-Disposition"] = 'inline; filename="unpaid_users_report.pdf"'
     return resp
 
-
-def _send_unpaid_report_email(pdf_bytes: bytes, generated_at: str):
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.mime.application import MIMEApplication
-    import smtplib
-
-    host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-    port = int(os.getenv("SMTP_PORT", "587"))
-    user = os.getenv("SMTP_USER", "")
-    pwd  = os.getenv("SMTP_PASS", "")
-    from_email = os.getenv("FROM_EMAIL", user)
-
-    to_list = [x.strip() for x in (os.getenv("FINANCE_REPORT_EMAILS", "") or "").split(",") if x.strip()]
-    if not to_list:
-        current_app.logger.warning("FINANCE_REPORT_EMAILS not set; skipping report email.")
-        return
-
-    msg = MIMEMultipart()
-    msg["Subject"] = f"FAFL Weekly Unpaid Invoices Report ({generated_at})"
-    msg["From"] = from_email
-    msg["To"] = ", ".join(to_list)
-
-    msg.attach(MIMEText("Attached is the latest Unpaid Invoices Report.\n\n- FAFL System", "plain"))
-
-    attach = MIMEApplication(pdf_bytes, _subtype="pdf")
-    attach.add_header("Content-Disposition", "attachment", filename="unpaid_users_report.pdf")
-    msg.attach(attach)
-
-    with smtplib.SMTP(host, port) as s:
-        s.starttls()
-        if user and pwd:
-            s.login(user, pwd)
-        s.sendmail(from_email, to_list, msg.as_string())
 
 
 @finance_bp.route("/unpaid_invoices/mark_paid_bulk", methods=["POST"])

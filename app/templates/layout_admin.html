@@ -594,15 +594,22 @@ document.addEventListener("submit", async function (e) {
 
         if (bodyEl) {
           bodyEl.innerHTML = `
-            🚚 <b>New scheduled delivery</b> added.
+            🚚 <b>New Scheduled Delivery Created!</b>
             <div class="mt-1 small opacity-75">
-              Today: ${data.today} | Tomorrow: ${data.tomorrow} | Overdue: ${data.overdue}
+              Delivery <b>${data.latest_invoice || ("#" + data.latest_id)}</b> has been added.
+            </div>
+            <div class="mt-1 small opacity-75">
+              Today: ${data.today} 
+              | Tomorrow: ${data.tomorrow} 
+              | Pending: ${data.pending_total} 
+              | Overdue: ${data.overdue}
             </div>
             <div class="mt-2">
-              <a class="btn btn-sm btn-warning" href="{{ url_for('logistics.view_scheduled_deliveries') }}">
-                View Now
+              <a class="btn btn-sm btn-primary"
+                 href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+                View Details
               </a>
-            </div>
+            </div>`
           `;
         }
 

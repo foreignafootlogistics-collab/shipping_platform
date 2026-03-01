@@ -3,9 +3,10 @@ import uuid
 from werkzeug.utils import secure_filename
 from flask import current_app, abort
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, abort, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, abort, current_app, make_response
 from datetime import datetime, date, timedelta, timezone
 from calendar import monthrange
+from weasyprint import HTML
 
 from flask_login import current_user
 from wtforms import StringField, PasswordField, SubmitField
@@ -566,6 +567,182 @@ def unpaid_invoices():
         max_due=max_due_raw,
         status_counts=status_counts,
     )
+
+def _money(x):
+    try:
+        return float(x or 0)
+    except Exception:
+        return 0.0
+
+def _get_unpaid_user_rows(search=None, date_from=None, date_to=None):
+    # sum payments per invoice
+    pay_sum = (
+        db.session.query(
+            Payment.invoice_id.label("inv_id"),
+            func.coalesce(func.sum(Payment.amount_jmd), 0).label("paid_jmd"),
+        )
+        .group_by(Payment.invoice_id)
+        .subquery()
+    )
+
+    # owed = (grand_total OR amount_due OR amount) - payments
+    billed_expr = func.coalesce(Invoice.grand_total, Invoice.amount_due, Invoice.amount, 0.0)
+    owed_expr = func.greatest(billed_expr - func.coalesce(pay_sum.c.paid_jmd, 0), 0)
+
+    inv_q = (
+        db.session.query(
+            Invoice.user_id.label("user_id"),
+            func.count(Invoice.id).label("unpaid_count"),
+            func.coalesce(func.sum(owed_expr), 0).label("unpaid_total"),
+        )
+        .outerjoin(pay_sum, pay_sum.c.inv_id == Invoice.id)
+        .filter(func.lower(Invoice.status).in_(("pending", "unpaid", "issued")))
+        .group_by(Invoice.user_id)
+    )
+
+    # optional date filter (uses invoice created_at; change if you prefer date_issued)
+    if date_from:
+        inv_q = inv_q.filter(func.date(Invoice.created_at) >= date_from)
+    if date_to:
+        inv_q = inv_q.filter(func.date(Invoice.created_at) <= date_to)
+
+    inv_sub = inv_q.subquery()
+
+    q = (
+        db.session.query(
+            User.full_name,
+            User.registration_number,
+            User.email,
+            User.mobile,
+            inv_sub.c.unpaid_count,
+            inv_sub.c.unpaid_total,
+        )
+        .join(inv_sub, inv_sub.c.user_id == User.id)
+    )
+
+    if search:
+        like = f"%{search.strip()}%"
+        q = q.filter(
+            or_(
+                User.full_name.ilike(like),
+                User.email.ilike(like),
+                User.registration_number.ilike(like),
+            )
+        )
+
+    rows = []
+    for r in q.order_by(User.full_name.asc()).all():
+        rows.append({
+            "name": r.full_name,
+            "reg": r.registration_number,
+            "email": r.email,
+            "mobile": r.mobile,
+            "unpaid_count": int(r.unpaid_count or 0),
+            "unpaid_total": _money(r.unpaid_total),
+        })
+
+    grand_total = sum(x["unpaid_total"] for x in rows)
+    total_customers_with_balance = len([x for x in rows if x["unpaid_total"] > 0])
+
+    return rows, grand_total, total_customers_with_balance
+
+
+@finance_bp.route("/reports/unpaid-users.pdf", methods=["GET"])
+def unpaid_users_pdf():
+    """
+    - If accessed by a logged-in finance user: works normally.
+    - If accessed by cron: allow only when token matches REPORT_CRON_TOKEN.
+    """
+    token = (request.args.get("token") or "").strip()
+    cron_token = (os.getenv("REPORT_CRON_TOKEN") or "").strip()
+
+    # ✅ If token matches, allow without login
+    if not (cron_token and token == cron_token):
+        # otherwise require finance login
+        # (this reuse avoids duplicating the whole route)
+        return admin_required(roles=["finance"])(lambda: _render_unpaid_users_pdf())()
+
+    return _render_unpaid_users_pdf(send_email=(request.args.get("send") == "1"))
+
+
+def _render_unpaid_users_pdf(send_email: bool = False):
+    search = (request.args.get("search") or "").strip() or None
+    date_from = request.args.get("date_from") or None
+    date_to = request.args.get("date_to") or None
+
+    rows, grand_total, total_customers_with_balance = _get_unpaid_user_rows(search, date_from, date_to)
+
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    # Settings (logo + rates)
+    from app.models import Settings
+    settings = Settings.query.get(1)
+
+    effective_usd_to_jmd = (getattr(settings, "usd_to_jmd", None) or USD_TO_JMD)
+
+    # ---- logo url (robust) ----
+    logo_url = url_for(
+        "static",
+        filename=(settings.logo_path if settings and settings.logo_path else "logo.png"),
+        _external=True
+    )
+
+    html = render_template(
+        "admin/finance/unpaid_users_report.html",
+        rows=rows,
+        grand_total=grand_total,
+        total_customers_with_balance=total_customers_with_balance,
+        search=search,
+        date_from=date_from,
+        date_to=date_to,
+        generated_at=generated_at,
+        logo_url=logo_url,
+    )
+
+    pdf = HTML(string=html, base_url=request.url_root).write_pdf()
+
+    if send_email:
+        _send_unpaid_report_email(pdf_bytes=pdf, generated_at=generated_at)
+
+    resp = make_response(pdf)
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="unpaid_users_report.pdf"'
+    return resp
+
+
+def _send_unpaid_report_email(pdf_bytes: bytes, generated_at: str):
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.application import MIMEApplication
+    import smtplib
+
+    host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    port = int(os.getenv("SMTP_PORT", "587"))
+    user = os.getenv("SMTP_USER", "")
+    pwd  = os.getenv("SMTP_PASS", "")
+    from_email = os.getenv("FROM_EMAIL", user)
+
+    to_list = [x.strip() for x in (os.getenv("FINANCE_REPORT_EMAILS", "") or "").split(",") if x.strip()]
+    if not to_list:
+        current_app.logger.warning("FINANCE_REPORT_EMAILS not set; skipping report email.")
+        return
+
+    msg = MIMEMultipart()
+    msg["Subject"] = f"FAFL Weekly Unpaid Invoices Report ({generated_at})"
+    msg["From"] = from_email
+    msg["To"] = ", ".join(to_list)
+
+    msg.attach(MIMEText("Attached is the latest Unpaid Invoices Report.\n\n- FAFL System", "plain"))
+
+    attach = MIMEApplication(pdf_bytes, _subtype="pdf")
+    attach.add_header("Content-Disposition", "attachment", filename="unpaid_users_report.pdf")
+    msg.attach(attach)
+
+    with smtplib.SMTP(host, port) as s:
+        s.starttls()
+        if user and pwd:
+            s.login(user, pwd)
+        s.sendmail(from_email, to_list, msg.as_string())
 
 
 @finance_bp.route("/unpaid_invoices/mark_paid_bulk", methods=["POST"])

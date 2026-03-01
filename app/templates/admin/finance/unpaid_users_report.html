@@ -1,0 +1,123 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Unpaid Users Report</title>
+  <style>
+    @page { margin: 18mm 12mm; }
+    body { font-family: Arial, sans-serif; font-size: 12px; color:#111; }
+
+    /* Header */
+    .header {
+      background: #4a148c;
+      color: #fff;
+      padding: 12px 14px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .logo {
+      width: 46px;
+      height: 46px;
+      object-fit: contain;
+      background: #fff;
+      border-radius: 8px;
+      padding: 4px;
+    }
+    .title-wrap { display:flex; flex-direction:column; }
+    h1 { font-size: 18px; margin: 0; line-height: 1.1; }
+    .subtitle { font-size: 12px; opacity: .95; margin-top: 2px; }
+
+    .meta { margin: 10px 0 12px 0; color: #444; font-size: 11px; }
+    .meta strong { color:#111; }
+
+    .summary {
+      display:flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 10px 0 12px 0;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: #faf7ff;
+    }
+    .summary .k { color:#555; font-size: 11px; }
+    .summary .v { font-weight: 700; font-size: 14px; color:#111; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #222; padding: 6px; }
+    th { background: #eee; text-align: left; }
+    td.num, th.num { text-align: right; }
+
+    .total { margin-top: 10px; font-weight: bold; text-align: right; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    {% if logo_url %}
+      <img class="logo" src="{{ logo_url }}" alt="FAFL Logo">
+    {% endif %}
+    <div class="title-wrap">
+      <h1>Unpaid Invoices Report</h1>
+      <div class="subtitle">Foreign A Foot Logistics Limited</div>
+    </div>
+  </div>
+
+  <div class="meta">
+    {% if search %}<div><strong>Search:</strong> {{ search }}</div>{% endif %}
+    {% if date_from or date_to %}
+      <div><strong>Date Range:</strong> {{ date_from or '—' }} to {{ date_to or '—' }}</div>
+    {% endif %}
+    <div><strong>Generated:</strong> {{ generated_at }}</div>
+  </div>
+
+  <!-- ✅ Summary line (Total customers with balance) -->
+  <div class="summary">
+    <div>
+      <div class="k">Customers with balance</div>
+      <div class="v">{{ total_customers_with_balance }}</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="k">Grand total due</div>
+      <div class="v">{{ '%.2f'|format(grand_total) }}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Reg #</th>
+        <th>Email</th>
+        <th>Mobile</th>
+        <th class="num">Unpaid Invoices</th>
+        <th class="num">Total Due</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+        <tr>
+          <td>{{ r.name }}</td>
+          <td>{{ r.reg or '' }}</td>
+          <td>{{ r.email or '' }}</td>
+          <td>{{ r.mobile or '' }}</td>
+          <td class="num">{{ r.unpaid_count }}</td>
+          <td class="num">{{ '%.2f'|format(r.unpaid_total) }}</td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="6" style="text-align:center;">No unpaid users found.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="total">
+    Grand Total Due: {{ '%.2f'|format(grand_total) }}
+  </div>
+
+</body>
+</html>

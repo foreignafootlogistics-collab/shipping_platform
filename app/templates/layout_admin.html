@@ -47,7 +47,7 @@
 
         <h5 class="mt-1">Foreign A Foot Logistics</h5>
         <hr style="border-color: rgba(255,255,255,0.3);">
-      </div>      
+      </div>
 
       <div class="accordion" id="sidebarAccordion">
 
@@ -178,11 +178,19 @@
                     <span><i class="bi bi-upload me-2"></i> Upload Packages</span>
                   </a>
                 </li>
+
                 <li class="nav-item">
-                  <a class="nav-link" href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.view_scheduled_deliveries' else '' }}"
+                     href="{{ url_for('logistics.view_scheduled_deliveries') }}">
                     <i class="bi bi-truck me-2"></i>Scheduled Deliveries
+
+                    {% set _sd_badge = (sd_today_count|default(0) + sd_overdue_count|default(0)) %}
+                    {% if _sd_badge > 0 %}
+                      <span class="badge bg-danger ms-2">{{ _sd_badge }}</span>
+                    {% endif %}
                   </a>
                 </li>
+
               </ul>
             </div>
           </div>
@@ -432,6 +440,33 @@
         </div>
       </div>
 
+      {% if (sd_today_count|default(0) > 0) or (sd_tomorrow_count|default(0) > 0) or (sd_overdue_count|default(0) > 0) %}
+        <div class="alert py-2 px-3 mb-3 shadow-sm d-flex flex-wrap align-items-center justify-content-between"
+             style="background:#fff3cd; border:1px solid #ffe69c;">
+          <div class="fw-bold">
+            <i class="bi bi-truck me-1"></i>
+            Scheduled Deliveries Alert
+            {% if sd_overdue_count|default(0) > 0 %}
+              <span class="badge bg-danger ms-2">Overdue: {{ sd_overdue_count }}</span>
+            {% endif %}
+          </div>
+
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="badge text-dark" style="background:#FACC15;">
+              Today: {{ sd_today_count|default(0) }}
+            </span>
+            <span class="badge bg-secondary">
+              Tomorrow: {{ sd_tomorrow_count|default(0) }}
+            </span>
+
+            <a class="btn btn-sm btn-dark"
+               href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+              View Scheduled Deliveries
+            </a>
+          </div>
+        </div>
+      {% endif %}
+
       {% include 'admin/admin_calculator_modal.html' %}
 
       {% block content %}{% endblock %}
@@ -529,6 +564,74 @@ document.addEventListener("submit", async function (e) {
 </script>
 
 <script>
+(function scheduledDeliveryPolling(){
+  const endpoint = "{{ url_for('logistics.api_scheduled_delivery_alerts') }}";
+  const storageKey = "fafl_last_sd_latest_id";
+
+  async function check() {
+    try {
+      const resp = await fetch(endpoint, {
+        method: "GET",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+        cache: "no-store"
+      });
+
+      // If endpoint is protected by roles and returns 403/401, just stop quietly
+      if (!resp.ok) return;
+
+      const data = await resp.json();
+      if (!data || data.ok !== true) return;
+
+      // ---- Detect "new scheduled delivery" ----
+      const lastSeen = localStorage.getItem(storageKey);
+      const latestId = (data.latest_id || "").toString();
+
+      if (latestId && lastSeen && latestId !== lastSeen) {
+        // show toast
+        const toastEl = document.getElementById("scheduledDeliveryToast");
+        const bodyEl  = document.getElementById("scheduledDeliveryToastBody");
+
+        if (bodyEl) {
+          bodyEl.innerHTML = `
+            🚚 <b>New scheduled delivery</b> added.
+            <div class="mt-1 small opacity-75">
+              Today: ${data.today} | Tomorrow: ${data.tomorrow} | Overdue: ${data.overdue}
+            </div>
+            <div class="mt-2">
+              <a class="btn btn-sm btn-warning" href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+                View Now
+              </a>
+            </div>
+          `;
+        }
+
+        if (toastEl && window.bootstrap) {
+          const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+          toast.show();
+        }
+
+        // optional sound (uncomment if you want)
+        // try { new Audio("/static/sounds/notify.mp3").play(); } catch(e) {}
+      }
+
+      // Save latestId (first run sets baseline)
+      if (latestId) localStorage.setItem(storageKey, latestId);
+
+    } catch (e) {
+      // silent fail (don’t spam console in production)
+    }
+  }
+
+  // Run immediately + every 60 seconds
+  document.addEventListener("DOMContentLoaded", function(){
+    check();
+    setInterval(check, 60000);
+  });
+})();
+</script>
+
+<script>
 document.addEventListener('DOMContentLoaded', function () {
   document.querySelectorAll('.open-wallet-modal').forEach(btn => {
     btn.addEventListener('click', function (e) {
@@ -577,6 +680,18 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 </script>
+
+<!-- Scheduled Delivery Toast -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 2000;">
+  <div id="scheduledDeliveryToast" class="toast align-items-center text-bg-dark border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="scheduledDeliveryToastBody">
+        🚚 New scheduled delivery created.
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+</div>
 
 {% include 'admin/invoices/_proforma_modal_block.html' %}
 

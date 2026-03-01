@@ -187,6 +187,54 @@
       </div>
     </div>
 
+    {# ============================================================
+       ✅ SUMMARY COUNTERS (Today / Tomorrow / Overdue)
+       Requires your global context_processor to inject:
+         - sd_today_count, sd_tomorrow_count, sd_overdue_count
+       and route should pass today/tomorrow if you want row compare.
+       ============================================================ #}
+    <div class="px-3 pt-3">
+      <div class="row g-2">
+
+        <div class="col-12 col-md-4">
+          <div class="card shadow-sm border-0" style="border-radius:14px;">
+            <div class="card-body py-2 d-flex align-items-center justify-content-between">
+              <div>
+                <div class="small text-muted fw-semibold">Today</div>
+                <div class="fs-4 fw-bold">{{ sd_today_count|default(0) }}</div>
+              </div>
+              <div class="fs-3">📅</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-4">
+          <div class="card shadow-sm border-0" style="border-radius:14px;">
+            <div class="card-body py-2 d-flex align-items-center justify-content-between">
+              <div>
+                <div class="small text-muted fw-semibold">Tomorrow</div>
+                <div class="fs-4 fw-bold">{{ sd_tomorrow_count|default(0) }}</div>
+              </div>
+              <div class="fs-3">⏭️</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-4">
+          <div class="card shadow-sm border border-danger" style="border-radius:14px;">
+            <div class="card-body py-2 d-flex align-items-center justify-content-between">
+              <div>
+                <div class="small text-danger fw-semibold">Overdue</div>
+                <div class="fs-4 fw-bold text-danger">{{ sd_overdue_count|default(0) }}</div>
+              </div>
+              <div class="fs-3">⚠️</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <!-- Filters -->
     <div class="sd-filters">
       <form class="row g-3 align-items-end" method="get">
@@ -247,7 +295,15 @@
               {% set d_status = (d.status or "Scheduled") %}
               {% set fee_status = (d.fee_status or "Unpaid") %}
 
-              <tr>
+              {# ✅ "Done" statuses for FAFL Scheduled Deliveries #}
+              {% set done = d_status in ["Delivered", "Cancelled"] %}
+
+              {# ✅ requires route to pass `today` (date object). If not passed, defaults to none safe. #}
+              {% set _today = today if today is defined else none %}
+              {% set is_overdue = (not done) and d.scheduled_date and _today and (d.scheduled_date < _today) %}
+              {% set is_today = (not done) and d.scheduled_date and _today and (d.scheduled_date == _today) %}
+
+              <tr class="{% if is_overdue %}table-danger{% elif is_today %}table-warning{% endif %}">
                 <td class="fw-semibold">{{ d.invoice_number or "—" }}</td>
                 <td>{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}</td>
 
@@ -278,6 +334,13 @@
                     <span class="sd-pill pill-cancelled"><span class="dot"></span>Cancelled</span>
                   {% else %}
                     <span class="sd-pill pill-scheduled"><span class="dot"></span>{{ d_status }}</span>
+                  {% endif %}
+
+                  {# ✅ Extra tags so you NEVER miss these #}
+                  {% if is_overdue %}
+                    <span class="badge bg-danger ms-2">Overdue</span>
+                  {% elif is_today %}
+                    <span class="badge bg-warning text-dark ms-2">Today</span>
                   {% endif %}
                 </td>
 
@@ -399,8 +462,8 @@
   $(document).ready(function () {
     $('#allScheduledDeliveriesTable').DataTable({
       order: [[1, 'desc']],
-      pageLength: 25,
-      responsive: true
+      pageLength: 25
+      // NOTE: remove responsive:true unless you included the responsive extension JS/CSS
     });
   });
 </script>

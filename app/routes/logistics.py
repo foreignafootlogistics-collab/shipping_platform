@@ -3971,7 +3971,7 @@ def set_invoice_status(invoice_id):
 # ---------------------------------------------------------------
 
 @logistics_bp.route('/scheduled_deliveries', methods=['GET'])
-@admin_required(roles=['operations'])
+@admin_required()
 def view_scheduled_deliveries():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
@@ -3988,17 +3988,62 @@ def view_scheduled_deliveries():
 
     deliveries = q.order_by(ScheduledDelivery.scheduled_date.desc(), ScheduledDelivery.id.desc()).all()
 
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
     return render_template(
         'admin/logistics/scheduled_deliveries.html',
         deliveries=deliveries,
         start_date=start_date,
         end_date=end_date,
-        status=status
+        status=status,
+        today=today,
+        tomorrow=tomorrow
     )
 
 
+@logistics_bp.route("/api/scheduled_delivery_alerts", methods=["GET"])
+@admin_required()
+def api_scheduled_delivery_alerts():
+    try:
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+
+        pending_filter = ~ScheduledDelivery.status.in_(["Delivered", "Cancelled"])
+
+        today_count = ScheduledDelivery.query.filter(
+            ScheduledDelivery.scheduled_date == today,
+            pending_filter
+        ).count()
+
+        tomorrow_count = ScheduledDelivery.query.filter(
+            ScheduledDelivery.scheduled_date == tomorrow,
+            pending_filter
+        ).count()
+
+        overdue_count = ScheduledDelivery.query.filter(
+            ScheduledDelivery.scheduled_date < today,
+            pending_filter
+        ).count()
+
+        pending_total = ScheduledDelivery.query.filter(pending_filter).count()
+
+        latest = ScheduledDelivery.query.order_by(ScheduledDelivery.id.desc()).first()
+
+        return jsonify({
+            "ok": True,
+            "today": today_count,
+            "tomorrow": tomorrow_count,
+            "overdue": overdue_count,
+            "pending_total": pending_total,
+            "latest_id": latest.id if latest else None
+        })
+    except Exception as e:
+        current_app.logger.exception(f"scheduled_delivery_alerts failed: {e}")
+        return jsonify({"ok": False, "error": "Failed to load scheduled delivery alerts"}), 500
+
 @logistics_bp.route("/scheduled_deliveries/pdf")
-@admin_required(roles=["operations"])
+@admin_required()
 def scheduled_deliveries_pdf():
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
@@ -4092,7 +4137,7 @@ def scheduled_deliveries_pdf():
     )
 
 @logistics_bp.route('/scheduled_deliveries/add', methods=['GET', 'POST'])
-@admin_required(roles=['operations'])
+@admin_required()
 def add_scheduled_delivery():
     form = ScheduledDeliveryForm()
     users = User.query.order_by(User.full_name.asc()).all()
@@ -4157,7 +4202,7 @@ def add_scheduled_delivery():
 
 
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>", methods=["GET"])
-@admin_required(roles=["operations"])
+@admin_required()
 def scheduled_delivery_view(delivery_id):
     d = ScheduledDelivery.query.get_or_404(delivery_id)
 
@@ -4188,7 +4233,7 @@ def scheduled_delivery_view(delivery_id):
 
 
 @logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/set-status/<status>", methods=["POST"])
-@admin_required(roles=['operations'])
+@admin_required()
 def scheduled_delivery_set_status(delivery_id, status):
     allowed = {"Scheduled", "Out for Delivery", "Delivered", "Cancelled"}
     if status not in allowed:
@@ -4222,7 +4267,7 @@ def scheduled_delivery_set_status(delivery_id, status):
 
 
 @logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/assign-packages", methods=["POST"])
-@admin_required(roles=["operations"])
+@admin_required()
 def scheduled_delivery_assign_packages(delivery_id):
     delivery = ScheduledDelivery.query.get_or_404(delivery_id)
 
@@ -4274,7 +4319,7 @@ def scheduled_delivery_assign_packages(delivery_id):
 
 
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/unassign/<int:package_id>", methods=["POST"])
-@admin_required(roles=["operations"])
+@admin_required()
 def scheduled_delivery_unassign_package(delivery_id, package_id):
     d = ScheduledDelivery.query.get_or_404(delivery_id)
 
@@ -4291,7 +4336,7 @@ def scheduled_delivery_unassign_package(delivery_id, package_id):
 
 # ✅ NEW: Mark delivery fee PAID
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/mark-paid", methods=["POST"])
-@admin_required(roles=["operations"])
+@admin_required()
 def scheduled_delivery_mark_paid(delivery_id):
     d = ScheduledDelivery.query.get_or_404(delivery_id)
     d.fee_status = "Paid"
@@ -4303,7 +4348,7 @@ def scheduled_delivery_mark_paid(delivery_id):
 
 # ✅ NEW: Mark delivery fee UNPAID
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/mark-unpaid", methods=["POST"])
-@admin_required(roles=["operations"])
+@admin_required()
 def scheduled_delivery_mark_unpaid(delivery_id):
     d = ScheduledDelivery.query.get_or_404(delivery_id)
     d.fee_status = "Unpaid"
@@ -4311,6 +4356,8 @@ def scheduled_delivery_mark_unpaid(delivery_id):
     db.session.commit()
     flash(f"Delivery fee marked UNPAID for {d.invoice_number or f'#{d.id}'}", "warning")
     return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=d.id))
+
+
 
 @logistics_bp.route('/shipmentlog/create-shipment', methods=['GET'])
 @admin_required

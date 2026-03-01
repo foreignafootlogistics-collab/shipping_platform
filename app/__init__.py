@@ -1,6 +1,6 @@
 # app/__init__.py
 import os
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 from flask import Flask, render_template, redirect, url_for, jsonify, current_app
 from flask_mail import Mail
@@ -208,6 +208,54 @@ def create_app():
     @_safe_ctx
     def inject_current_year():
         return {'current_year': datetime.now().year}
+
+    @app.context_processor
+    @_safe_ctx
+    def inject_scheduled_delivery_counts():
+        """
+        Global scheduled delivery alert counts for layout_admin.html badges/alerts.
+        DONE statuses for your system: Delivered, Cancelled
+        PENDING statuses: Scheduled, Out for Delivery (anything not done)
+        """
+        try:
+            from .models import ScheduledDelivery
+        except Exception:
+            return dict(
+                sd_today_count=0,
+                sd_tomorrow_count=0,
+                sd_overdue_count=0,
+                sd_pending_total=0
+            )
+
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+
+        # pending = NOT delivered/cancelled
+        pending_filter = ~ScheduledDelivery.status.in_(["Delivered", "Cancelled"])
+
+        sd_today_count = ScheduledDelivery.query.filter(
+            ScheduledDelivery.scheduled_date == today,
+            pending_filter
+        ).count()
+
+        sd_tomorrow_count = ScheduledDelivery.query.filter(
+            ScheduledDelivery.scheduled_date == tomorrow,
+            pending_filter
+        ).count()
+
+        sd_overdue_count = ScheduledDelivery.query.filter(
+            ScheduledDelivery.scheduled_date < today,
+            pending_filter
+        ).count()
+
+        sd_pending_total = ScheduledDelivery.query.filter(pending_filter).count()
+
+        return dict(
+            sd_today_count=sd_today_count,
+            sd_tomorrow_count=sd_tomorrow_count,
+            sd_overdue_count=sd_overdue_count,
+            sd_pending_total=sd_pending_total
+        )
 
     @app.context_processor
     @_safe_ctx

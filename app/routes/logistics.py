@@ -4036,8 +4036,8 @@ def api_scheduled_delivery_alerts():
             "tomorrow": tomorrow_count,
             "overdue": overdue_count,
             "pending_total": pending_total,
-            "latest_id": latest.id if latest else None
-            "latest_invoice": latest.invoice_number if latest else None
+            "latest_id": latest.id if latest else None,
+            "latest_invoice": latest.invoice_number if latest else None,
         })
     except Exception as e:
         current_app.logger.exception(f"scheduled_delivery_alerts failed: {e}")

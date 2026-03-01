@@ -1875,33 +1875,45 @@ def bulk_invoice_payment():
 def generate_pdf_invoice(user_id):
     user = User.query.get_or_404(user_id)
 
-    # last 10 invoices for this user
+    # last 20 invoices for this user
     invoices = (Invoice.query
                 .filter_by(user_id=user.id)
                 .order_by(Invoice.id.desc())
-                .limit(10).all())
+                .limit(20).all())
 
     items, total = [], 0.0
+
     for inv in invoices:
-        amount = float(getattr(inv, "grand_total", getattr(inv, "amount_due", 0)) or 0)
+        amount = float(
+            (getattr(inv, "grand_total", None) if getattr(inv, "grand_total", None) is not None
+             else getattr(inv, "amount_due", 0)) or 0
+        )
+
+        label = getattr(inv, "invoice_number", None) or f"INV{int(inv.id):05d}"
+        desc  = getattr(inv, "description", None) or "Invoice"
+
         items.append({
-            "description": f"{getattr(inv, 'description', 'Invoice')} ({inv.status})",
-            "weight": "—",
-            "rate": "—",
+            "invoice_id": label,
+            "description": f"{desc} ({getattr(inv, 'status', 'unpaid')})",
             "total": round(amount, 2)
         })
         total += amount
 
     today = datetime.utcnow().strftime('%B %d, %Y')
-    html = render_template("invoice.html",
-                           full_name=getattr(user, "full_name", ""),
-                           registration_number=getattr(user, "registration_number", ""),
-                           date=today,
-                           items=items,
-                           grand_total=round(total, 2))
+
+    html = render_template(
+        "invoice.html",
+        full_name=getattr(user, "full_name", ""),
+        registration_number=getattr(user, "registration_number", ""),
+        date=today,
+        items=items,
+        grand_total=round(total, 2)
+    )
+
     pdf = HTML(string=html).write_pdf()
     resp = make_response(pdf)
     resp.headers['Content-Type'] = 'application/pdf'
+
     rn = getattr(user, "registration_number", user.id)
     resp.headers['Content-Disposition'] = f'inline; filename=invoice_{rn}.pdf'
     return resp

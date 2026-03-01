@@ -160,6 +160,29 @@
     border:1px solid #e5e7eb !important;
     padding:.25rem .5rem !important;
   }
+  /* ✅ SUMMARY CARDS: force 1-row + swipe on mobile */
+  .sd-summary-row{
+    display:flex;
+    gap:12px;
+    flex-wrap:nowrap;          /* never wrap */
+    overflow-x:auto;           /* enable swipe */
+    padding-bottom: 6px;       /* space for scrollbar */
+    -webkit-overflow-scrolling: touch;
+  }
+  .sd-summary-row::-webkit-scrollbar{ height: 8px; }
+  .sd-summary-row::-webkit-scrollbar-thumb{ background: rgba(17,24,39,.18); border-radius: 999px; }
+  .sd-summary-row::-webkit-scrollbar-track{ background: transparent; }
+
+  /* ✅ Each card width so 4 can sit in one line */
+  .sd-summary-card{
+    flex: 0 0 260px;           /* fixed card width; adjust if you want */
+    border-radius:14px;
+  }
+
+  /* On very wide screens, make them fit without scroll */
+  @media (min-width: 1200px){
+    .sd-summary-card{ flex-basis: calc((100% - 36px) / 4); } /* 3 gaps * 12px = 36 */
+  }
 </style>
 
 <div class="container mt-4">
@@ -194,10 +217,10 @@
        and route should pass today/tomorrow if you want row compare.
        ============================================================ #}
     <div class="px-3 pt-3">
-      <div class="row g-2">
+      <div class="sd-summary-row">
 
         <!-- Today -->
-        <div class="sd-card card shadow-sm border-0">
+        <div class="card shadow-sm border-0 sd-summary-card">
           <div class="card-body py-2 d-flex align-items-center justify-content-between">
             <div>
               <div class="small text-muted fw-semibold">Today</div>
@@ -208,7 +231,7 @@
         </div>
 
         <!-- Tomorrow -->
-        <div class="sd-card card shadow-sm border-0">
+        <div class="card shadow-sm border-0 sd-summary-card">
           <div class="card-body py-2 d-flex align-items-center justify-content-between">
             <div>
               <div class="small text-muted fw-semibold">Tomorrow</div>
@@ -219,7 +242,7 @@
         </div>
 
         <!-- Pending -->
-        <div class="sd-card card shadow-sm border-0">
+        <div class="card shadow-sm border-0 sd-summary-card">
           <div class="card-body py-2 d-flex align-items-center justify-content-between">
             <div>
               <div class="small text-muted fw-semibold">Pending</div>
@@ -230,7 +253,7 @@
         </div>
 
         <!-- Overdue -->
-        <div class="sd-card card shadow-sm border border-danger">
+        <div class="card shadow-sm border border-danger sd-summary-card">
           <div class="card-body py-2 d-flex align-items-center justify-content-between">
             <div>
               <div class="small text-danger fw-semibold">Overdue</div>
@@ -475,14 +498,4 @@
     });
   });
 </script>
-<style>
-.sd-summary-row {
-  flex-wrap: nowrap;
-}
-
-.sd-card {
-  min-width: 180px;
-  border-radius: 14px;
-}
-</style>
 {% endblock %}

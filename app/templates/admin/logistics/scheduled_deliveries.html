@@ -196,51 +196,47 @@
     <div class="px-3 pt-3">
       <div class="row g-2">
 
-        <div class="col-12 col-md-4">
-          <div class="card shadow-sm border-0" style="border-radius:14px;">
-            <div class="card-body py-2 d-flex align-items-center justify-content-between">
-              <div>
-                <div class="small text-muted fw-semibold">Today</div>
-                <div class="fs-4 fw-bold">{{ sd_today_count|default(0) }}</div>
-              </div>
-              <div class="fs-3">📅</div>
+        <!-- Today -->
+        <div class="sd-card card shadow-sm border-0">
+          <div class="card-body py-2 d-flex align-items-center justify-content-between">
+            <div>
+              <div class="small text-muted fw-semibold">Today</div>
+              <div class="fs-5 fw-bold">{{ sd_today_count|default(0) }}</div>
             </div>
+            <div class="fs-4">📅</div>
           </div>
         </div>
 
-        <div class="col-12 col-md-4">
-          <div class="card shadow-sm border-0" style="border-radius:14px;">
-            <div class="card-body py-2 d-flex align-items-center justify-content-between">
-              <div>
-                <div class="small text-muted fw-semibold">Tomorrow</div>
-                <div class="fs-4 fw-bold">{{ sd_tomorrow_count|default(0) }}</div>
-              </div>
-              <div class="fs-3">⏭️</div>
+        <!-- Tomorrow -->
+        <div class="sd-card card shadow-sm border-0">
+          <div class="card-body py-2 d-flex align-items-center justify-content-between">
+            <div>
+              <div class="small text-muted fw-semibold">Tomorrow</div>
+              <div class="fs-5 fw-bold">{{ sd_tomorrow_count|default(0) }}</div>
             </div>
+            <div class="fs-4">⏭️</div>
           </div>
         </div>
 
-        <div class="col-12 col-md-3">
-          <div class="card shadow-sm border-0" style="border-radius:14px;">
-            <div class="card-body py-2 d-flex align-items-center justify-content-between">
-              <div>
-                <div class="small text-muted fw-semibold">Pending</div>
-                <div class="fs-4 fw-bold">{{ sd_pending_total|default(0) }}</div>
-              </div>
-              <div class="fs-3">🕒</div>
+        <!-- Pending -->
+        <div class="sd-card card shadow-sm border-0">
+          <div class="card-body py-2 d-flex align-items-center justify-content-between">
+            <div>
+              <div class="small text-muted fw-semibold">Pending</div>
+              <div class="fs-5 fw-bold">{{ sd_pending_total|default(0) }}</div>
             </div>
+            <div class="fs-4">🕒</div>
           </div>
         </div>
 
-        <div class="col-12 col-md-4">
-          <div class="card shadow-sm border border-danger" style="border-radius:14px;">
-            <div class="card-body py-2 d-flex align-items-center justify-content-between">
-              <div>
-                <div class="small text-danger fw-semibold">Overdue</div>
-                <div class="fs-4 fw-bold text-danger">{{ sd_overdue_count|default(0) }}</div>
-              </div>
-              <div class="fs-3">⚠️</div>
+        <!-- Overdue -->
+        <div class="sd-card card shadow-sm border border-danger">
+          <div class="card-body py-2 d-flex align-items-center justify-content-between">
+            <div>
+              <div class="small text-danger fw-semibold">Overdue</div>
+              <div class="fs-5 fw-bold text-danger">{{ sd_overdue_count|default(0) }}</div>
             </div>
+            <div class="fs-4">⚠️</div>
           </div>
         </div>
 
@@ -479,4 +475,14 @@
     });
   });
 </script>
+<style>
+.sd-summary-row {
+  flex-wrap: nowrap;
+}
+
+.sd-card {
+  min-width: 180px;
+  border-radius: 14px;
+}
+</style>
 {% endblock %}

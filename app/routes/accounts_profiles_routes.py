@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from flask import (
-    Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app, jsonify
+    Blueprint, render_template, request, redirect, url_for, flash, session, send_file, current_app, jsonify, make_response
 )
 import os
 import uuid
@@ -21,9 +21,10 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from werkzeug.utils import secure_filename
-from sqlalchemy import func, or_, and_, select
+from sqlalchemy import func, or_, and_, select, case
 from sqlalchemy.exc import IntegrityError
 from urllib.parse import urlparse, urljoin
+from weasyprint import HTML
 
 from app.forms import UploadUsersForm, ConfirmUploadForm
 from app.extensions import db
@@ -302,6 +303,140 @@ def manage_users():
         excel_preview=excel_preview
     )
 
+
+@accounts_bp.route('/manage-users/unpaid-pdf', methods=['GET'])
+@admin_required
+def export_unpaid_users_pdf():
+    search      = (request.args.get('search') or '').strip()
+    sort_by     = (request.args.get('sort') or 'recent').strip()
+    date_from   = request.args.get('date_from')
+    date_to     = request.args.get('date_to')
+
+    # -----------------------------
+    # Base user query (same filters)
+    # -----------------------------
+    uq = User.query
+
+    if search:
+        like = f"%{search}%"
+        uq = uq.filter(or_(
+            User.full_name.ilike(like),
+            User.email.ilike(like),
+            User.registration_number.ilike(like),
+            User.address.ilike(like)
+        ))
+
+    if date_from:
+        uq = uq.filter(User.date_registered >= date_from)
+    if date_to:
+        uq = uq.filter(User.date_registered <= date_to)
+
+    # Sorting
+    if sort_by == 'alphabetical_asc':
+        uq = uq.order_by(User.registration_number.asc())
+    elif sort_by == 'alphabetical_desc':
+        uq = uq.order_by(User.registration_number.desc())
+    else:
+        if hasattr(User, 'date_registered'):
+            uq = uq.order_by(User.date_registered.desc(), User.id.desc())
+        elif hasattr(User, 'created_at'):
+            uq = uq.order_by(User.created_at.desc(), User.id.desc())
+        else:
+            uq = uq.order_by(User.id.desc())
+
+    users_list = uq.all()
+    user_ids = [u.id for u in users_list]
+    if not user_ids:
+        html = render_template(
+            "admin/accounts_profiles/unpaid_users_pdf.html",
+            rows=[],
+            grand_total=0.0,
+            search=search,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        pdf = HTML(string=html).write_pdf()
+        resp = make_response(pdf)
+        resp.headers["Content-Type"] = "application/pdf"
+        resp.headers["Content-Disposition"] = "inline; filename=unpaid_users_report.pdf"
+        return resp
+
+    # -----------------------------
+    # Compute remaining balance per invoice:
+    # remaining = grand_total - sum(payments.amount_jmd)
+    # Only consider invoices with status pending/unpaid
+    # -----------------------------
+    paid_sum = func.coalesce(func.sum(Payment.amount_jmd), 0.0)
+    inv_total = func.coalesce(Invoice.grand_total, 0.0)
+    remaining = (inv_total - paid_sum)
+
+    inv_rows = (
+        db.session.query(
+            Invoice.user_id.label("user_id"),
+            Invoice.id.label("invoice_id"),
+            remaining.label("remaining"),
+        )
+        .outerjoin(Payment, Payment.invoice_id == Invoice.id)
+        .filter(
+            Invoice.user_id.in_(user_ids),
+            func.lower(Invoice.status).in_(('pending', 'unpaid')),
+        )
+        .group_by(Invoice.user_id, Invoice.id, Invoice.grand_total)
+        .all()
+    )
+
+    # Roll up per user (count invoices where remaining > 0, sum remaining)
+    unpaid_count_map = {uid: 0 for uid in user_ids}
+    owed_map = {uid: 0.0 for uid in user_ids}
+
+    for r in inv_rows:
+        uid = int(r.user_id)
+        rem = float(r.remaining or 0.0)
+
+        # ignore fully paid / overpaid invoices
+        if rem <= 0:
+            continue
+
+        unpaid_count_map[uid] = unpaid_count_map.get(uid, 0) + 1
+        owed_map[uid] = float(owed_map.get(uid, 0.0)) + rem
+
+    report_rows = []
+    grand_total = 0.0
+
+    for u in users_list:
+        cnt = int(unpaid_count_map.get(u.id, 0) or 0)
+        owed = float(owed_map.get(u.id, 0.0) or 0.0)
+
+        if cnt <= 0 or owed <= 0:
+            continue
+
+        grand_total += owed
+        report_rows.append({
+            "name": u.full_name,
+            "reg": u.registration_number,
+            "email": u.email,
+            "mobile": u.mobile,
+            "unpaid_count": cnt,
+            "unpaid_total": owed,   # now this is TRUE remaining balance after payments
+        })
+
+    generated_at = datetime.now(timezone.utc)
+
+    html = render_template(
+        "admin/accounts_profiles/unpaid_users_pdf.html",
+        rows=report_rows,
+        grand_total=grand_total,
+        search=search,
+        date_from=date_from,
+        date_to=date_to,
+        generated_at=generated_at,
+    )
+
+    pdf = HTML(string=html).write_pdf()
+    resp = make_response(pdf)
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = "inline; filename=unpaid_users_report.pdf"
+    return resp
 
 # -------------------------
 # Add User

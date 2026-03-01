@@ -43,6 +43,17 @@
        class="btn btn-outline-dark ms-auto">
       <i class="fas fa-file-excel"></i> Excel
     </a>
+    <a href="{{ url_for('accounts_profiles.export_unpaid_users_pdf',
+                        search=search,
+                        unpaid_only=('1' if unpaid_only else None),
+                        sort=sort_by,
+                        date_from=date_from,
+                        date_to=date_to) }}"
+       target="_blank" rel="noopener"
+       class="btn btn-outline-dark">
+      <i class="fas fa-file-pdf"></i> PDF
+    </a>
+    
   </div>
 
   <!-- Add Single User Section -->

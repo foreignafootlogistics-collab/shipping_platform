@@ -8,7 +8,7 @@ import os
 import uuid
 import json
 import pandas as pd
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 import bcrypt
 import re
 import io

@@ -1877,6 +1877,11 @@ def schedule_delivery_overview():
 def schedule_delivery_add():
     data = request.get_json(silent=True) or {}
 
+    return jsonify({
+        "success": False,
+        "message": "Customer delivery scheduling is temporarily disabled. Please contact support."
+    }), 403
+
     schedule_date = (data.get("schedule_date") or data.get("date") or "").strip()
     location      = (data.get("location") or "").strip()
 

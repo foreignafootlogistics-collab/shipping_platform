@@ -23,7 +23,17 @@
     <span class="badge bg-dark">Payable on request</span>
   </div>
 
-  <button id="scheduleDeliveryBtn" class="btn btn-dashboard mb-3">📅 Schedule Delivery</button>
+  <div class="alert alert-secondary d-flex align-items-center gap-2 mb-3" style="border-radius:14px;">
+    <span style="font-size:1.1rem;">ℹ️</span>
+    <div>
+      <div class="fw-bold">Delivery scheduling is temporarily disabled.</div>
+      <div class="small text-muted">Please contact FAFL support to request a delivery.</div>
+    </div>
+  </div>
+
+  <button id="scheduleDeliveryBtn" class="btn btn-dashboard mb-3" style="display:none;" disabled>
+    📅 Schedule Delivery
+  </button>
 
   <div id="scheduleDeliveryForm" style="display:none;">
     <input type="hidden" id="csrf_token" value="{{ csrf_token() }}">
@@ -164,6 +174,8 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  const SCHEDULING_ENABLED = false;
+
   const btnShow   = document.getElementById("scheduleDeliveryBtn");
   const formWrap  = document.getElementById("scheduleDeliveryForm");
   const btnSave   = document.getElementById("saveScheduleDelivery");
@@ -315,6 +327,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // UI show/hide form
   btnShow?.addEventListener("click", () => {
+    if (!SCHEDULING_ENABLED) {
+      showMsg("Delivery scheduling is temporarily disabled. Please contact support.");
+      return;
+    }
     showMsg("");
     formWrap.style.display = "block";
     btnShow.style.display = "none";
@@ -345,8 +361,11 @@ document.addEventListener("DOMContentLoaded", () => {
   zoneEl?.addEventListener("change", updateZoneAvailabilityAndFee);
 
   btnSave?.addEventListener("click", async (e) => {
-    e.preventDefault();
-    showMsg("");
+    if (!SCHEDULING_ENABLED) {
+      e.preventDefault();
+      showMsg("Delivery scheduling is temporarily disabled. Please contact support.");
+      return;
+    }
 
     const schedule_date = (document.getElementById("deliveryDate").value || "").trim();    
     const location      = (document.getElementById("deliveryLocation").value || "").trim();

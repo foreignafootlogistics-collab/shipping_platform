@@ -996,39 +996,144 @@
                   class="btn btn-primary mb-3"
                   data-bs-toggle="modal"
                   data-bs-target="#adminDeliveryModal">
-            + Add Delivery
+            <i class="bi bi-truck me-1"></i> Add Delivery
           </button>
         </div>
         <div class="table-responsive">
-          <table id="scheduledeliveryTable" class="table table-striped table-bordered">
+          <table id="scheduledeliveryTable" class="table table-striped table-bordered align-middle">
             <thead class="table-dark">
               <tr>
                 <th>Date</th>
                 <th>Time</th>
                 <th>Location</th>
-                <th>Person Receiving</th>
-                <th>Mobile</th>
+                <th>Zone</th>
+                <th>Fee</th>
+                <th>Fee Status</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {% for d in scheduled_deliveries %}
-              <tr>
-                <td>{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}</td>
 
-                <td class="text-nowrap">
-                  {% if d.scheduled_time_from and d.scheduled_time_to %}
-                    {{ d.scheduled_time_from }} - {{ d.scheduled_time_to }}
+                {# --- status + done logic --- #}
+                {% set done = st in ["Delivered", "Cancelled"] %}
+
+                {# --- date helpers (safe if today not passed) --- #}
+                {% set _today = today if today is defined else none %}
+                {% set _tomorrow = tomorrow if tomorrow is defined else none %}
+
+                {# --- overdue = pending AND date < today --- #}
+                {% set is_overdue = (not done) and d.scheduled_date and _today and (d.scheduled_date < _today) %}
+                {% set is_today   = (not done) and d.scheduled_date and _today and (d.scheduled_date == _today) %}
+                {% set is_tomorrow = (not done) and d.scheduled_date and _tomorrow and (d.scheduled_date == _tomorrow) %}
+
+                <tr class="
+                      {% if st == 'Cancelled' %}table-secondary{% endif %}
+                      {% if st != 'Cancelled' %}
+                        {% if is_overdue %}table-danger{% elif is_today %}table-warning{% endif %}
+                      {% endif %}
+                    "
+                    style="{% if st == 'Cancelled' %}opacity:.75;{% endif %}">
+
+                  <td>
+                    {{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}
+
+                    {# Tags: Today / Tomorrow / Overdue #}
+                    {% if is_overdue %}
+                      <span class="badge bg-danger ms-2">Overdue</span>
+                    {% elif is_today %}
+                      <span class="badge bg-warning text-dark ms-2">Today</span>
+                    {% elif is_tomorrow %}
+                      <span class="badge bg-info text-dark ms-2">Tomorrow</span>
+                    {% endif %}
+                  </td>
+
+                  <!-- Proper AM/PM formatting -->
+                  <td class="text-nowrap">
+                    {% if d.scheduled_time_from and d.scheduled_time_to %}
+                    {% set hh1 = d.scheduled_time_from.split(':')[0]|int %}
+                    {% set mm1 = d.scheduled_time_from.split(':')[1]|int %}
+                    {% set ap1 = 'AM' if hh1 < 12 else 'PM' %}
+                    {% set h12_1 = hh1 % 12 %}
+                    {% if h12_1 == 0 %}{% set h12_1 = 12 %}{% endif %}
+
+                    {% set hh2 = d.scheduled_time_to.split(':')[0]|int %}
+                    {% set mm2 = d.scheduled_time_to.split(':')[1]|int %}
+                    {% set ap2 = 'AM' if hh2 < 12 else 'PM' %}
+                    {% set h12_2 = hh2 % 12 %}
+                    {% if h12_2 == 0 %}{% set h12_2 = 12 %}{% endif %}
+
+                    {{ h12_1 }}:{% if mm1 < 10 %}0{% endif %}{{ mm1 }} {{ ap1 }}
+                    -
+                    {{ h12_2 }}:{% if mm2 < 10 %}0{% endif %}{{ mm2 }} {{ ap2 }}
+
                   {% else %}
-                    {{ d.scheduled_time or "" }}
+                    {{ d.scheduled_time or "—" }}
                   {% endif %}
                 </td>
 
-                <td>{{ d.location or "" }}</td>
-                <td>{{ d.person_receiving or "" }}</td>
-                <td>{{ d.mobile_number or d.mobile or "" }}</td>
-                <td>{{ d.status or "Scheduled" }}</td>
-              </tr>              
+                <td>
+                  <div class="fw-semibold">{{ d.location }}</div>
+                  <div class="small text-muted">
+                    {{ d.person_receiving or "" }}
+                    {% if d.mobile_number %}
+                      • {{ d.mobile_number }}
+                    {% endif %}
+                  </div>
+                </td>
+
+                <!-- Area Zone -->
+                <td>
+                  {% if d.area_zone %}
+                    <span class="badge bg-secondary text-uppercase">
+                      {{ d.area_zone.replace('_',' ') }}
+                    </span>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
+                <!-- Delivery Fee -->
+                <td class="fw-bold">
+                  {{ d.fee_currency or "JMD" }}
+                  {{ "%.2f"|format(d.delivery_fee or 0) }}
+                </td>
+
+                <!-- Fee Status -->
+                <td>
+                  {% set fs = (d.fee_status or "Unpaid")|lower %}
+                  {% if fs == "paid" %}
+                    <span class="badge bg-success">Paid</span>
+                  {% elif fs == "waived" %}
+                    <span class="badge bg-info text-dark">Waived</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark">Unpaid</span>
+                  {% endif %}
+                </td>
+
+                <!-- Delivery Status -->
+                <td>
+                  {% set st = (d.status or "Scheduled") %}
+                  {% if st == "Scheduled" %}
+                    <span class="badge bg-primary">Scheduled</span>
+                  {% elif st == "Out for Delivery" %}
+                    <span class="badge bg-warning text-dark">Out for Delivery</span>
+                  {% elif st == "Delivered" %}
+                    <span class="badge bg-success">Delivered</span>
+                  {% elif st == "Cancelled" %}
+                    <span class="badge bg-danger">Cancelled</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ st }}</span>
+                  {% endif %}
+                </td>
+
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                  No scheduled deliveries for this user.
+                </td>
+              </tr>
               {% endfor %}
             </tbody>
           </table>

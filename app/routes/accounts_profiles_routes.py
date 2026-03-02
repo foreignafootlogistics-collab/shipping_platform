@@ -1210,6 +1210,9 @@ def view_user(id):
         db.session.rollback()
         scheduled_deliveries = []
 
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
     return render_template(
         'admin/accounts_profiles/view_user.html',
         user={
@@ -1285,6 +1288,8 @@ def view_user(id):
         attachments_by_pkg=attachments_by_pkg,
         categories=categories,                   
         scheduled_deliveries=scheduled_deliveries,
+        today=today,
+        tomorrow=tomorrow,
     )
 
 

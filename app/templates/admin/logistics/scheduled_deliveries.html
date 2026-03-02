@@ -348,12 +348,15 @@
                 <td>{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}</td>
 
                 <td class="text-nowrap">
+                  {# ✅ Fixed delivery window for ALL scheduled deliveries #}
+                  9:00 AM - 5:00 PM
+
                   {% if d.scheduled_time_from and d.scheduled_time_to %}
                     {{ fmt_time(d.scheduled_time_from) }} - {{ fmt_time(d.scheduled_time_to) }}
                   {% elif d.scheduled_time %}
                     {{ d.scheduled_time }}
                   {% else %}
-                    —
+                    9:00 AM - 5:00 PM
                   {% endif %}
                 </td>
 

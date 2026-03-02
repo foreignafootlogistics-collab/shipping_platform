@@ -1872,9 +1872,6 @@ def schedule_delivery_overview():
     )
 
 
-from datetime import datetime, date
-from decimal import Decimal
-
 @customer_bp.route('/schedule-delivery/add', methods=['POST'])
 @login_required
 def schedule_delivery_add():
@@ -1886,28 +1883,19 @@ def schedule_delivery_add():
     # ✅ NEW: area zone (required)
     area_zone = (data.get("area_zone") or "").strip()
 
-    # ✅ NEW: time range inputs (support multiple key names)
-    time_from_in = (data.get("time_from") or data.get("schedule_time_from") or "").strip()
-    time_to_in   = (data.get("time_to")   or data.get("schedule_time_to")   or "").strip()
-
-    # ✅ BACKWARD COMPAT: old single time field
-    schedule_time_single = (data.get("schedule_time") or data.get("time") or "").strip()
+    t_from = "09:00"
+    t_to   = "17:00"
+    scheduled_time_str = "09:00 - 17:00"
 
     current_app.logger.info(
-        "[schedule_delivery_add] keys=%s date=%s time_from=%s time_to=%s time_single=%s location=%s area_zone=%s",
-        list(data.keys()), schedule_date, time_from_in, time_to_in, schedule_time_single, location, area_zone
+        "[schedule_delivery_add] keys=%s date=%s location=%s area_zone=%s fixed_time=09:00-17:00",
+        list(data.keys()), schedule_date, location, area_zone
     )
 
-    # ✅ Require date + location + zone + (range OR single)
-    if (
-        not schedule_date
-        or not location
-        or not area_zone
-        or (not (time_from_in and time_to_in) and not schedule_time_single)
-    ):
+    if (not schedule_date) or (not location) or (not area_zone):
         return jsonify({
             "success": False,
-            "message": "Missing required fields: schedule_date, location, area_zone, and time range (time_from + time_to).",
+            "message": "Missing required fields: schedule_date, location, area_zone.",
             "received_keys": list(data.keys()),
         }), 400
 

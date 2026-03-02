@@ -75,10 +75,7 @@ class ScheduledDeliveryForm(FlaskForm):
         validators=[DataRequired(message="Select a delivery date")]
     )
 
-    time = StringField(
-        "Delivery Time",
-        validators=[DataRequired(message="Enter a delivery time")]
-    )
+    time = StringField("Delivery Time", validators=[Optional()])
 
     location = StringField(
         "Delivery Location",

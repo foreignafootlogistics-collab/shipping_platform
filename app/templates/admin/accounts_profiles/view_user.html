@@ -1893,14 +1893,17 @@
                 <input type="date" class="form-control" id="modalDeliveryDate" name="date" required>
               </div>
 
-              <div class="col-md-3">
-                <label class="form-label">Time From</label>
-                <input type="time" class="form-control" id="modalDeliveryTimeFrom" name="time_from" required>
-              </div>
+              <!-- Fixed time window (no user selection) -->
+              <div class="col-md-6">
+                <label class="form-label">Delivery Window</label>
+                <div class="form-control bg-light d-flex align-items-center justify-content-between">
+                  <span class="fw-semibold">9:00 AM – 5:00 PM</span>
+                  <span class="badge bg-secondary">Fixed</span>
+                </div>
 
-              <div class="col-md-3">
-                <label class="form-label">Time To</label>
-                <input type="time" class="form-control" id="modalDeliveryTimeTo" name="time_to" required>
+                <!-- Hidden fixed values -->
+                <input type="hidden" id="modalDeliveryTimeFrom" name="time_from" value="09:00">
+                <input type="hidden" id="modalDeliveryTimeTo" name="time_to" value="17:00">
               </div>
 
               <div class="col-md-3">

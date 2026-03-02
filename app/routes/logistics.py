@@ -4228,20 +4228,8 @@ def add_scheduled_delivery():
         return True, "", "1000.00"
 
     if form.validate_on_submit():
-        # time range
-        t_from_raw = getattr(form, "time_from", None)
-        t_to_raw = getattr(form, "time_to", None)
-
-        t_from = None
-        t_to = None
-
-        if t_from_raw is not None:
-            v = form.time_from.data
-            t_from = v.strftime("%H:%M") if hasattr(v, "strftime") else (str(v) if v else None)
-
-        if t_to_raw is not None:
-            v = form.time_to.data
-            t_to = v.strftime("%H:%M") if hasattr(v, "strftime") else (str(v) if v else None)
+        t_from = "09:00"
+        t_to   = "17:00"
 
         # ✅ Determine zone + fee
         zone = detect_area_zone(form.location.data)
@@ -4261,7 +4249,7 @@ def add_scheduled_delivery():
 
             scheduled_time_from=t_from,
             scheduled_time_to=t_to,
-            scheduled_time=(f"{t_from} - {t_to}" if t_from and t_to else None),
+            scheduled_time="09:00 - 17:00",
 
             location=form.location.data,
             direction=form.direction.data,

@@ -1872,6 +1872,9 @@ def schedule_delivery_overview():
     )
 
 
+from datetime import datetime, date
+from decimal import Decimal
+
 @customer_bp.route('/schedule-delivery/add', methods=['POST'])
 @login_required
 def schedule_delivery_add():
@@ -1879,6 +1882,9 @@ def schedule_delivery_add():
 
     schedule_date = (data.get("schedule_date") or data.get("date") or "").strip()
     location      = (data.get("location") or "").strip()
+
+    # ✅ NEW: area zone (required)
+    area_zone = (data.get("area_zone") or "").strip()
 
     # ✅ NEW: time range inputs (support multiple key names)
     time_from_in = (data.get("time_from") or data.get("schedule_time_from") or "").strip()
@@ -1888,15 +1894,20 @@ def schedule_delivery_add():
     schedule_time_single = (data.get("schedule_time") or data.get("time") or "").strip()
 
     current_app.logger.info(
-        "[schedule_delivery_add] keys=%s date=%s time_from=%s time_to=%s time_single=%s location=%s",
-        list(data.keys()), schedule_date, time_from_in, time_to_in, schedule_time_single, location
+        "[schedule_delivery_add] keys=%s date=%s time_from=%s time_to=%s time_single=%s location=%s area_zone=%s",
+        list(data.keys()), schedule_date, time_from_in, time_to_in, schedule_time_single, location, area_zone
     )
 
-    # ✅ Require date + location + (range OR single)
-    if not schedule_date or not location or (not (time_from_in and time_to_in) and not schedule_time_single):
+    # ✅ Require date + location + zone + (range OR single)
+    if (
+        not schedule_date
+        or not location
+        or not area_zone
+        or (not (time_from_in and time_to_in) and not schedule_time_single)
+    ):
         return jsonify({
             "success": False,
-            "message": "Missing required fields: schedule_date, location, and time range (time_from + time_to)",
+            "message": "Missing required fields: schedule_date, location, area_zone, and time range (time_from + time_to).",
             "received_keys": list(data.keys()),
         }), 400
 
@@ -1912,7 +1923,7 @@ def schedule_delivery_add():
         return jsonify({"success": False, "message": f"Invalid date format: {schedule_date}"}), 400
 
     # ---- Parse time helpers ----
-    def _parse_time_to_24h_str(s: str) -> str | None:
+    def _parse_time_to_24h_str(s: str):
         s = (s or "").strip()
         if not s:
             return None
@@ -1957,16 +1968,79 @@ def schedule_delivery_add():
 
         scheduled_time_str = f"{t_from} - {t_to}"  # fallback display
 
+    # ==========================================================
+    # ✅ DELIVERY RULES (day + zone)
+    # Zones:
+    #   kgn_core, kgn_outside, pm_core, pm_outside
+    #
+    # Days:
+    #   Tue/Thu: Kingston core FREE only
+    #   Wed/Fri: Portmore/SpanishTown core FREE only
+    #   Sat: Core=1000, Outside=1500 (both routes)
+    #   Other days: not allowed
+    # ==========================================================
+    allowed_zones = {"kgn_core", "kgn_outside", "pm_core", "pm_outside"}
+    if area_zone not in allowed_zones:
+        return jsonify({"success": False, "message": "Invalid delivery area selected."}), 400
+
+    dow = d.weekday()  # Mon=0 ... Sun=6
+    is_tue = (dow == 1)
+    is_wed = (dow == 2)
+    is_thu = (dow == 3)
+    is_fri = (dow == 4)
+    is_sat = (dow == 5)
+
+    # default outcome
+    fee_amt = Decimal("1000.00")
+    fee_status = "Unpaid"
+
+    if is_sat:
+        # Saturday: paid
+        if area_zone.endswith("_outside"):
+            fee_amt = Decimal("1500.00")
+        else:
+            fee_amt = Decimal("1000.00")
+        fee_status = "Unpaid"
+
+    elif is_tue or is_thu:
+        # Tue/Thu: Kingston core FREE only
+        if area_zone != "kgn_core":
+            return jsonify({
+                "success": False,
+                "message": "On Tue/Thu we only deliver FREE within Kingston Core. Outside areas are Saturday only."
+            }), 400
+        fee_amt = Decimal("0.00")
+        fee_status = "Waived"
+
+    elif is_wed or is_fri:
+        # Wed/Fri: Portmore/SpanishTown core FREE only
+        if area_zone != "pm_core":
+            return jsonify({
+                "success": False,
+                "message": "On Wed/Fri we only deliver FREE within Portmore/Spanish Town Core. Outside areas are Saturday only."
+            }), 400
+        fee_amt = Decimal("0.00")
+        fee_status = "Waived"
+
+    else:
+        return jsonify({
+            "success": False,
+            "message": "Delivery is available Tue/Thu (Kingston), Wed/Fri (Portmore/Spanish Town), or Saturday."
+        }), 400
+
     try:
         new_delivery = ScheduledDelivery(
             user_id=current_user.id,
             scheduled_date=d,
 
-            # ✅ range fields (you already migrated these)
+            # ✅ store zone
+            area_zone=area_zone,
+
+            # ✅ range fields
             scheduled_time_from=t_from,
             scheduled_time_to=t_to,
 
-            # ✅ legacy field (keep for older templates / admin)
+            # ✅ legacy field
             scheduled_time=scheduled_time_str,
 
             location=location,
@@ -1974,9 +2048,10 @@ def schedule_delivery_add():
             mobile_number=(data.get("mobile_number") or data.get("mobile") or "").strip(),
             person_receiving=(data.get("person_receiving") or "").strip(),
 
-            delivery_fee=DELIVERY_FEE_AMOUNT,
+            # ✅ fee rules applied here
+            delivery_fee=fee_amt,
             fee_currency=DELIVERY_FEE_CURRENCY,
-            fee_status="Unpaid",
+            fee_status=fee_status,
         )
 
         db.session.add(new_delivery)
@@ -1994,16 +2069,17 @@ def schedule_delivery_add():
                 "invoice_number": new_delivery.invoice_number,
                 "scheduled_date": new_delivery.scheduled_date.isoformat(),
 
-                # ✅ return both range + legacy
                 "scheduled_time": new_delivery.scheduled_time or "",
                 "scheduled_time_from": new_delivery.scheduled_time_from or "",
                 "scheduled_time_to": new_delivery.scheduled_time_to or "",
 
                 "location": new_delivery.location,
+                "area_zone": new_delivery.area_zone,
+
                 "person_receiving": new_delivery.person_receiving or "",
-                "delivery_fee": str(new_delivery.delivery_fee or DELIVERY_FEE_AMOUNT),
+                "delivery_fee": str(new_delivery.delivery_fee or fee_amt),
                 "fee_currency": new_delivery.fee_currency or DELIVERY_FEE_CURRENCY,
-                "fee_status": new_delivery.fee_status or "Unpaid",
+                "fee_status": new_delivery.fee_status or fee_status,
             }
         }), 200
 

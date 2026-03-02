@@ -16,7 +16,7 @@
           Delivery Fee: {{ fee_currency }} {{ "%.2f"|format(delivery_fee|float) }}
         </div>
         <div class="small text-muted">
-          This fee will be added to your delivery request and must be paid before delivery.
+          This fee will be added to your delivery request and must be paid before delivery (unless it is a free delivery day).
         </div>
       </div>
     </div>
@@ -34,7 +34,8 @@
           <th>Schedule Date</th>
           <th>Time From</th>
           <th>Time To</th>
-          <th>Location</th>
+          <th>Location (Address)</th>
+          <th>Delivery Area</th>
           <th>Directions</th>
           <th>Mobile #</th>
           <th>Person Receiving</th>
@@ -45,7 +46,34 @@
           <td><input type="date" id="deliveryDate" class="form-control" required></td>
           <td><input type="time" id="deliveryTimeFrom" class="form-control" required></td>
           <td><input type="time" id="deliveryTimeTo" class="form-control" required></td>
-          <td><input type="text" id="deliveryLocation" class="form-control" placeholder="Delivery Location" required></td>
+
+          <td>
+            <input type="text" id="deliveryLocation" class="form-control"
+                   placeholder="Enter full address (e.g. Cross Roads, Kingston)"
+                   required>
+            <div class="form-text text-muted">Tip: enter your full address so we can suggest the correct area.</div>
+          </td>
+
+          <td>
+            <select id="deliveryZone" class="form-select" required>
+              <option value="">-- Select Area --</option>
+
+              <optgroup label="Kingston Route">
+                <option value="kgn_core">Kingston Core (New Kingston / HWT / Cross Roads / Downtown)</option>
+                <option value="kgn_outside">Outside Kingston Core (Saturday only)</option>
+              </optgroup>
+
+              <optgroup label="Portmore / Spanish Town Route">
+                <option value="pm_core">Portmore / Spanish Town Core (PriceSmart / Spanish Town Hospital area)</option>
+                <option value="pm_outside">Outside Portmore / Spanish Town Core (Saturday only)</option>
+              </optgroup>
+            </select>
+
+            <div id="zoneHint" class="form-text text-muted">
+              Select a date to see available areas.
+            </div>
+          </td>
+
           <td><input type="text" id="deliveryDirections" class="form-control" placeholder="Directions"></td>
           <td><input type="text" id="deliveryMobile" class="form-control" placeholder="Mobile #"></td>
           <td><input type="text" id="deliveryPerson" class="form-control" placeholder="Person Receiving"></td>
@@ -110,13 +138,12 @@
         </td>
 
         <td>
-          <div class="d-flex flex-wrap gap-2">          
-            
+          <div class="d-flex flex-wrap gap-2">
+
             <a class="btn btn-sm btn-outline-primary"
                href="{{ url_for('customer.delivery_invoice_view', delivery_id=delivery.id) }}">
               View Invoice
             </a>
-            
 
             {% if (delivery.status or "Scheduled") in ["Scheduled", "Out for Delivery"] %}
               <button class="btn btn-sm btn-danger"
@@ -142,25 +169,181 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnCancel = document.getElementById("cancelScheduleDelivery");
   const msgEl     = document.getElementById("scheduleDeliveryMsg");
 
+  const dateEl = document.getElementById("deliveryDate");
+  const zoneEl = document.getElementById("deliveryZone");
+  const addrEl = document.getElementById("deliveryLocation");
+  const hintEl = document.getElementById("zoneHint");
+
   function showMsg(text) {
     if (!msgEl) return;
     msgEl.textContent = text || "";
     msgEl.style.display = text ? "block" : "none";
   }
 
-  btnShow.addEventListener("click", () => {
+  function dayOfWeekFromYYYYMMDD(d) {
+    // JS: 0=Sun..6=Sat
+    const [y,m,dd] = d.split("-").map(Number);
+    return new Date(y, m-1, dd).getDay();
+  }
+
+  function formatMoney(n){
+    return Number(n || 0).toFixed(2);
+  }
+
+  function setFeeBanner(amount){
+    const feeText = document.querySelector(".alert.alert-warning .fw-bold");
+    const feeBadge = document.querySelector(".alert.alert-warning .badge");
+    if (!feeText) return;
+
+    const currency = "{{ fee_currency }}";
+    feeText.textContent = `Delivery Fee: ${currency} ${formatMoney(amount)}`;
+
+    if (feeBadge){
+      feeBadge.textContent = (Number(amount) <= 0) ? "Free delivery day" : "Payable on request";
+      feeBadge.className = (Number(amount) <= 0) ? "badge bg-success" : "badge bg-dark";
+    }
+  }
+
+  // -----------------------------
+  // Optional: keyword-based zone suggestion
+  // -----------------------------
+  function suggestZoneFromAddress(addrRaw) {
+    const a = (addrRaw || "").toLowerCase();
+
+    // Kingston core keywords (New Kingston/HWT/Cross Roads/Downtown)
+    const kgn = [
+      "new kingston", "half way tree", "hwt", "cross road", "cross roads",
+      "downtown", "kingston", "trafalgar", "hope road", "hope rd",
+      "knutsford", "barbados ave", "constant spring"
+    ];
+
+    // Portmore/Spanish Town core keywords
+    const pm = [
+      "portmore", "spanish town", "pricesmart", "price smart",
+      "spanish town hospital", "st catherine", "catherine hospital",
+      "bridgeport", "braeton", "greater portmore"
+    ];
+
+    const hit = (arr) => arr.some(k => a.includes(k));
+
+    if (hit(pm)) return "pm_core";
+    if (hit(kgn)) return "kgn_core";
+
+    return "";
+  }
+
+  function updateZoneAvailabilityAndFee() {
+    const dateVal = (dateEl?.value || "").trim();
+    if (!zoneEl) return;
+
+    // reset all disabled states
+    [...zoneEl.options].forEach(opt => opt.disabled = false);
+
+    if (!dateVal) {
+      if (hintEl) hintEl.textContent = "Select a date to see available areas.";
+      setFeeBanner({{ delivery_fee|float }});
+      return;
+    }
+
+    const dow = dayOfWeekFromYYYYMMDD(dateVal);
+    const isSat = (dow === 6);
+    const isTue = (dow === 2);
+    const isWed = (dow === 3);
+    const isThu = (dow === 4);
+    const isFri = (dow === 5);
+
+    // Saturday: everything enabled
+    if (isSat) {
+      if (hintEl) hintEl.textContent = "Saturday: Core = JMD 1000 | Outside Core = JMD 1500";
+    } else {
+      // Not Saturday → outside options disabled always
+      ["kgn_outside", "pm_outside"].forEach(v => {
+        const opt = [...zoneEl.options].find(o => o.value === v);
+        if (opt) opt.disabled = true;
+      });
+
+      // Tue/Thu => Kingston core only (FREE)
+      if (isTue || isThu) {
+        const opt = [...zoneEl.options].find(o => o.value === "pm_core");
+        if (opt) opt.disabled = true;
+
+        if (hintEl) hintEl.textContent =
+          "Tue/Thu: FREE only for Kingston Core (New Kingston / HWT / Cross Roads / Downtown). Outside areas are Saturday only.";
+      }
+
+      // Wed/Fri => Portmore/Spanish Town core only (FREE)
+      if (isWed || isFri) {
+        const opt = [...zoneEl.options].find(o => o.value === "kgn_core");
+        if (opt) opt.disabled = true;
+
+        if (hintEl) hintEl.textContent =
+          "Wed/Fri: FREE only for Portmore/Spanish Town Core. Outside areas are Saturday only.";
+      }
+
+      // Other days: not allowed at all
+      if (!(isTue || isWed || isThu || isFri)) {
+        [...zoneEl.options].forEach(opt => { if (opt.value) opt.disabled = true; });
+        if (hintEl) hintEl.textContent =
+          "Delivery is available Tue/Thu (Kingston), Wed/Fri (Portmore/Spanish Town), or Saturday.";
+      }
+    }
+
+    // If selected value is now disabled, reset
+    if (zoneEl.value && zoneEl.options[zoneEl.selectedIndex]?.disabled) {
+      zoneEl.value = "";
+    }
+
+    // Fee calc
+    const zone = (zoneEl.value || "").trim();
+    if (!zone) return;
+
+    const outside = zone.endsWith("_outside");
+    let fee = 1000;
+
+    if (isSat) {
+      fee = outside ? 1500 : 1000; // ✅ core paid 1000 on Saturday
+    } else {
+      // free days
+      if ((isTue || isThu) && zone === "kgn_core") fee = 0;
+      else if ((isWed || isFri) && zone === "pm_core") fee = 0;
+      else fee = 1000; // safety fallback
+    }
+
+    setFeeBanner(fee);
+  }
+
+  // UI show/hide form
+  btnShow?.addEventListener("click", () => {
     showMsg("");
     formWrap.style.display = "block";
     btnShow.style.display = "none";
+    updateZoneAvailabilityAndFee();
   });
 
-  btnCancel.addEventListener("click", () => {
+  btnCancel?.addEventListener("click", () => {
     showMsg("");
     formWrap.style.display = "none";
     btnShow.style.display = "inline-block";
   });
 
-  btnSave.addEventListener("click", async (e) => {
+  // Suggest zone when user leaves address field (optional help)
+  addrEl?.addEventListener("blur", () => {
+    if (!zoneEl) return;
+    if (zoneEl.value) return; // don't override user's choice
+    const guess = suggestZoneFromAddress(addrEl.value);
+    if (!guess) return;
+
+    zoneEl.value = guess;
+    updateZoneAvailabilityAndFee();
+    if (zoneEl.value === guess) {
+      if (hintEl) hintEl.textContent = "Suggested area selected based on your address. Please confirm.";
+    }
+  });
+
+  dateEl?.addEventListener("change", updateZoneAvailabilityAndFee);
+  zoneEl?.addEventListener("change", updateZoneAvailabilityAndFee);
+
+  btnSave?.addEventListener("click", async (e) => {
     e.preventDefault();
     showMsg("");
 
@@ -168,6 +351,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const schedule_time_from = (document.getElementById("deliveryTimeFrom").value || "").trim();
     const schedule_time_to   = (document.getElementById("deliveryTimeTo").value || "").trim();
     const location      = (document.getElementById("deliveryLocation").value || "").trim();
+    const area_zone     = (document.getElementById("deliveryZone")?.value || "").trim();
     const direction     = (document.getElementById("deliveryDirections").value || "").trim();
     const mobile_number = (document.getElementById("deliveryMobile").value || "").trim();
     const person_receiving = (document.getElementById("deliveryPerson").value || "").trim();
@@ -176,6 +360,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!schedule_date || !schedule_time_from || !schedule_time_to || !location) {
       showMsg("Please enter Schedule Date, Time From, Time To, and Location.");
+      return;
+    }
+    if (!area_zone) {
+      showMsg("Please select a Delivery Area.");
       return;
     }
 
@@ -194,6 +382,7 @@ document.addEventListener("DOMContentLoaded", () => {
           time_from: schedule_time_from,
           time_to: schedule_time_to,
           location,
+          area_zone,
           direction,
           mobile_number,
           person_receiving
@@ -218,6 +407,9 @@ document.addEventListener("DOMContentLoaded", () => {
       btnSave.textContent = "Save";
     }
   });
+
+  // Init
+  updateZoneAvailabilityAndFee();
 });
 
 async function cancelDelivery(deliveryId){

@@ -3974,8 +3974,9 @@ def set_invoice_status(invoice_id):
 @admin_required()
 def view_scheduled_deliveries():
     start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    status = request.args.get('status')  # optional filter
+    end_date   = request.args.get('end_date')
+    status     = request.args.get('status')      # optional filter
+    area_zone  = request.args.get('area_zone')   # ✅ NEW
 
     q = ScheduledDelivery.query
 
@@ -3985,6 +3986,10 @@ def view_scheduled_deliveries():
         q = q.filter(ScheduledDelivery.scheduled_date <= datetime.strptime(end_date, '%Y-%m-%d').date())
     if status:
         q = q.filter(ScheduledDelivery.status == status)
+
+    # ✅ NEW: zone filter
+    if area_zone:
+        q = q.filter(ScheduledDelivery.area_zone == area_zone)
 
     deliveries = q.order_by(ScheduledDelivery.scheduled_date.desc(), ScheduledDelivery.id.desc()).all()
 
@@ -3997,10 +4002,10 @@ def view_scheduled_deliveries():
         start_date=start_date,
         end_date=end_date,
         status=status,
+        area_zone=area_zone,   # ✅ NEW (template uses this to keep selected option)
         today=today,
         tomorrow=tomorrow
     )
-
 
 @logistics_bp.route("/api/scheduled_delivery_alerts", methods=["GET"])
 @admin_required()
@@ -4143,9 +4148,87 @@ def add_scheduled_delivery():
     form = ScheduledDeliveryForm()
     users = User.query.order_by(User.full_name.asc()).all()
 
+    # -----------------------------
+    # ✅ Helper: detect zone from location string
+    # -----------------------------
+    def detect_area_zone(loc: str) -> str:
+        s = (loc or "").lower()
+
+        # Kingston core keywords
+        kgn_core_keys = [
+            "new kingston", "half way tree", "halfway tree", "hwt",
+            "cross road", "crossroads", "downtown", "kingston 5", "kingston 10"
+        ]
+
+        # Portmore / Spanish Town core keywords
+        pm_core_keys = [
+            "portmore", "pricesmart", "price smart", "spanish town hospital", "spanish town"
+        ]
+
+        if any(k in s for k in kgn_core_keys):
+            return "kgn_core"
+
+        if any(k in s for k in pm_core_keys):
+            # ⚠️ this treats “portmore/spanish town” as core by default if it matches keywords
+            return "pm_core"
+
+        # If it mentions Portmore/Spanish Town but not the “core” markers you want,
+        # you can push it to outside.
+        if "portmore" in s or "spanish town" in s:
+            return "pm_outside"
+
+        # Default catch-all
+        return "kgn_outside"
+
+    # -----------------------------
+    # ✅ Helper: fee rules + day restrictions
+    # -----------------------------
+    def compute_fee_and_rules(zone: str, d: date) -> tuple[bool, str, str]:
+        """
+        Returns: (ok, message, fee_str)
+        - ok=False means not allowed to schedule
+        - fee_str is "1000.00" or "1500.00" or "0.00"
+        """
+        # Python weekday: Monday=0 ... Sunday=6
+        wd = d.weekday()
+
+        # Kingston Core: FREE Tue (1) & Thu (3)
+        if zone == "kgn_core":
+            if wd in (1, 3):
+                return True, "", "0.00"
+            if wd == 5:  # Saturday
+                # core sat is 1000
+                return True, "", "1000.00"
+            # other days core default 1000
+            return True, "", "1000.00"
+
+        # Kingston Outside: ONLY Saturday, fee 1500 (your “extended”)
+        if zone == "kgn_outside":
+            if wd != 5:
+                return False, "Outside Kingston delivery is only available on Saturday.", "0.00"
+            return True, "", "1500.00"
+
+        # Portmore Core: FREE Wed (2) & Fri (4)
+        if zone == "pm_core":
+            if wd in (2, 4):
+                return True, "", "0.00"
+            if wd == 5:  # Saturday
+                return True, "", "1000.00"
+            # other days not free → you said Saturday for paid/outside,
+            # but for core you might still allow 1000 on other days. If you DON’T want that, block it:
+            return False, "Portmore/Spanish Town deliveries are free on Wed/Fri for core areas, otherwise scheduled on Saturday.", "0.00"
+
+        # Portmore Outside: ONLY Saturday, fee 1500
+        if zone == "pm_outside":
+            if wd != 5:
+                return False, "Outside Portmore/Spanish Town delivery is only available on Saturday.", "0.00"
+            return True, "", "1500.00"
+
+        # fallback
+        return True, "", "1000.00"
+
     if form.validate_on_submit():
-        # ✅ time range (expect form fields time_from + time_to)
-        # If these are TimeField, convert to "%H:%M"
+        # time range
         t_from_raw = getattr(form, "time_from", None)
         t_to_raw = getattr(form, "time_to", None)
 
@@ -4160,15 +4243,24 @@ def add_scheduled_delivery():
             v = form.time_to.data
             t_to = v.strftime("%H:%M") if hasattr(v, "strftime") else (str(v) if v else None)
 
+        # ✅ Determine zone + fee
+        zone = detect_area_zone(form.location.data)
+        ok, msg, fee_str = compute_fee_and_rules(zone, form.date.data)
+
+        if not ok:
+            flash(msg, "warning")
+            return redirect(url_for('logistics.add_scheduled_delivery'))
+
+        # fee as Decimal
+        from decimal import Decimal
+        fee_amount = Decimal(fee_str)
+
         new_delivery = ScheduledDelivery(
             user_id=form.user_id.data,
             scheduled_date=form.date.data,
 
-            # ✅ store range fields
             scheduled_time_from=t_from,
             scheduled_time_to=t_to,
-
-            # ✅ keep legacy field as convenience (so existing pages don't break)
             scheduled_time=(f"{t_from} - {t_to}" if t_from and t_to else None),
 
             location=form.location.data,
@@ -4176,16 +4268,18 @@ def add_scheduled_delivery():
             mobile_number=form.mobile_number.data,
             person_receiving=form.person_receiving.data,
 
-            # ✅ fee + invoice fields
-            delivery_fee=DELIVERY_FEE_AMOUNT,
+            # ✅ NEW:
+            area_zone=zone,
+
+            # ✅ fee based on rules
+            delivery_fee=fee_amount,
             fee_currency=DELIVERY_FEE_CURRENCY,
-            fee_status="Unpaid",
+            fee_status=("Paid" if fee_amount == Decimal("0.00") else "Unpaid"),
         )
 
         db.session.add(new_delivery)
-        db.session.commit()  # get ID
+        db.session.commit()
 
-        # ✅ generate invoice number after ID exists
         year = datetime.utcnow().year
         new_delivery.invoice_number = f"DEL-{year}-{new_delivery.id:06d}"
         db.session.commit()
@@ -4200,7 +4294,6 @@ def add_scheduled_delivery():
         delivery_fee=DELIVERY_FEE_AMOUNT,
         fee_currency=DELIVERY_FEE_CURRENCY
     )
-
 
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>", methods=["GET"])
 @admin_required()

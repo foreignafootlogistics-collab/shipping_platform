@@ -160,13 +160,14 @@
     border:1px solid #e5e7eb !important;
     padding:.25rem .5rem !important;
   }
+
   /* ✅ SUMMARY CARDS: force 1-row + swipe on mobile */
   .sd-summary-row{
     display:flex;
     gap:12px;
-    flex-wrap:nowrap;          /* never wrap */
-    overflow-x:auto;           /* enable swipe */
-    padding-bottom: 6px;       /* space for scrollbar */
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    padding-bottom: 6px;
     -webkit-overflow-scrolling: touch;
   }
   .sd-summary-row::-webkit-scrollbar{ height: 8px; }
@@ -175,13 +176,13 @@
 
   /* ✅ Each card width so 4 can sit in one line */
   .sd-summary-card{
-    flex: 0 0 260px;           /* fixed card width; adjust if you want */
+    flex: 0 0 260px;
     border-radius:14px;
   }
 
   /* On very wide screens, make them fit without scroll */
   @media (min-width: 1200px){
-    .sd-summary-card{ flex-basis: calc((100% - 36px) / 4); } /* 3 gaps * 12px = 36 */
+    .sd-summary-card{ flex-basis: calc((100% - 36px) / 4); }
   }
 </style>
 
@@ -210,12 +211,7 @@
       </div>
     </div>
 
-    {# ============================================================
-       ✅ SUMMARY COUNTERS (Today / Tomorrow / Overdue)
-       Requires your global context_processor to inject:
-         - sd_today_count, sd_tomorrow_count, sd_overdue_count
-       and route should pass today/tomorrow if you want row compare.
-       ============================================================ #}
+    <!-- Summary cards -->
     <div class="px-3 pt-3">
       <div class="sd-summary-row">
 
@@ -279,7 +275,7 @@
           <input type="date" name="end_date" class="form-control" value="{{ end_date or '' }}">
         </div>
 
-        <div class="col-12 col-md-3 col-lg-3">
+        <div class="col-12 col-md-2 col-lg-2">
           <label class="form-label">Status</label>
           <select name="status" class="form-select">
             <option value="" {% if not status %}selected{% endif %}>All</option>
@@ -290,7 +286,19 @@
           </select>
         </div>
 
-        <div class="col-12 col-md-3 col-lg-3 d-flex gap-2">
+        {# ✅ NEW: Zone filter #}
+        <div class="col-12 col-md-2 col-lg-2">
+          <label class="form-label">Zone</label>
+          <select name="area_zone" class="form-select">
+            <option value="" {% if not area_zone %}selected{% endif %}>All</option>
+            <option value="kgn_core" {% if area_zone == "kgn_core" %}selected{% endif %}>Kingston Core</option>
+            <option value="kgn_outside" {% if area_zone == "kgn_outside" %}selected{% endif %}>Kingston Outside</option>
+            <option value="pm_core" {% if area_zone == "pm_core" %}selected{% endif %}>Portmore Core</option>
+            <option value="pm_outside" {% if area_zone == "pm_outside" %}selected{% endif %}>Portmore Outside</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-2 col-lg-2 d-flex gap-2">
           <button type="submit" class="btn btn-purple w-100">Filter</button>
           <a class="btn btn-outline-secondary w-100 btn-soft"
              href="{{ url_for('logistics.view_scheduled_deliveries') }}">
@@ -309,6 +317,10 @@
               <th style="min-width:140px;">Invoice #</th>
               <th style="min-width:110px;">Date</th>
               <th style="min-width:160px;">Time</th>
+
+              {# ✅ NEW: Zone column #}
+              <th style="min-width:170px;">Zone</th>
+
               <th style="min-width:130px;">Location</th>
               <th style="min-width:140px;">Directions</th>
               <th style="min-width:110px;">Mobile #</th>
@@ -325,11 +337,8 @@
             {% for d in deliveries %}
               {% set d_status = (d.status or "Scheduled") %}
               {% set fee_status = (d.fee_status or "Unpaid") %}
-
-              {# ✅ "Done" statuses for FAFL Scheduled Deliveries #}
               {% set done = d_status in ["Delivered", "Cancelled"] %}
 
-              {# ✅ requires route to pass `today` (date object). If not passed, defaults to none safe. #}
               {% set _today = today if today is defined else none %}
               {% set is_overdue = (not done) and d.scheduled_date and _today and (d.scheduled_date < _today) %}
               {% set is_today = (not done) and d.scheduled_date and _today and (d.scheduled_date == _today) %}
@@ -338,7 +347,6 @@
                 <td class="fw-semibold">{{ d.invoice_number or "—" }}</td>
                 <td>{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}</td>
 
-                {# ✅ FIXED TIME RANGE DISPLAY (AM/PM) #}
                 <td class="text-nowrap">
                   {% if d.scheduled_time_from and d.scheduled_time_to %}
                     {{ fmt_time(d.scheduled_time_from) }} - {{ fmt_time(d.scheduled_time_to) }}
@@ -346,6 +354,22 @@
                     {{ d.scheduled_time }}
                   {% else %}
                     —
+                  {% endif %}
+                </td>
+
+                {# ✅ Zone display #}
+                <td class="text-nowrap">
+                  {% set z = (d.area_zone or '') %}
+                  {% if z == 'kgn_core' %}
+                    <span class="badge bg-dark">Kingston Core</span>
+                  {% elif z == 'kgn_outside' %}
+                    <span class="badge bg-secondary">Kingston Outside</span>
+                  {% elif z == 'pm_core' %}
+                    <span class="badge bg-primary">Portmore Core</span>
+                  {% elif z == 'pm_outside' %}
+                    <span class="badge bg-info text-dark">Portmore Outside</span>
+                  {% else %}
+                    <span class="badge bg-light text-dark">—</span>
                   {% endif %}
                 </td>
 
@@ -367,7 +391,6 @@
                     <span class="sd-pill pill-scheduled"><span class="dot"></span>{{ d_status }}</span>
                   {% endif %}
 
-                  {# ✅ Extra tags so you NEVER miss these #}
                   {% if is_overdue %}
                     <span class="badge bg-danger ms-2">Overdue</span>
                   {% elif is_today %}

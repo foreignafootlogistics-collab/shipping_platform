@@ -1,0 +1,180 @@
+{% extends "layout_customer.html" %}
+{% block title %}Submit Claim{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h2 class="mb-0">🧾 Missing Overseas Claim</h2>
+      <div class="text-muted small">
+        Claims are processed within <b>5–10 business days</b> after investigation is completed.
+        Refunds may be issued as <b>cash</b> or <b>bank transfer</b>.
+      </div>
+    </div>
+
+    <a class="btn btn-outline-dark"
+       href="{{ url_for('customer_claims.list_claims') }}">
+      ← Back
+    </a>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-3">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-body">
+
+          <form method="POST" enctype="multipart/form-data" class="row g-3">
+            {{ form.hidden_tag() }}
+
+            <div class="col-md-6">
+              {{ form.house_awb.label(class="form-label") }}
+              {{ form.house_awb(class="form-control", placeholder="e.g. FAFL12345") }}
+              {% for e in form.house_awb.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              {{ form.tracking_number.label(class="form-label") }}
+              {{ form.tracking_number(class="form-control", placeholder="e.g. 1Z..., AMZ..., SHEIN...") }}
+              {% for e in form.tracking_number.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              {{ form.item_value_jmd.label(class="form-label") }}
+              <div class="input-group">
+                <span class="input-group-text">JMD</span>
+                {{ form.item_value_jmd(class="form-control", placeholder="0.00") }}
+              </div>
+              {% for e in form.item_value_jmd.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              {{ form.refund_method.label(class="form-label") }}
+              {{ form.refund_method(class="form-select", id="refund_method") }}
+              {% for e in form.refund_method.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-12">
+              {{ form.description.label(class="form-label") }}
+              {{ form.description(class="form-control", rows="3", placeholder="Optional: describe what happened, where it was last seen, etc.") }}
+              {% for e in form.description.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+
+            <hr class="my-2">
+
+            <div class="col-12">
+              <div class="fw-bold mb-1">Evidence Uploads</div>
+              <div class="text-muted small">
+                <b>Invoice evidence</b> must clearly show:
+                item(s), purchaser name, delivery address, tracking #, purchase date.
+                <br>
+                <b>Bank statement</b> must show the amount deducted from your account.
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              {{ form.invoice_file.label(class="form-label") }}
+              {{ form.invoice_file(class="form-control") }}
+              {% for e in form.invoice_file.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div class="col-md-6">
+              {{ form.bank_statement_file.label(class="form-label") }}
+              {{ form.bank_statement_file(class="form-control") }}
+              {% for e in form.bank_statement_file.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+
+            <div id="bank_fields" class="col-12">
+              <div class="card mt-2 border-0" style="background:#f8f9fa;">
+                <div class="card-body">
+                  <div class="fw-bold mb-2">Bank Transfer Details</div>
+
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      {{ form.bank_account_name.label(class="form-label") }}
+                      {{ form.bank_account_name(class="form-control", placeholder="Name on account") }}
+                    </div>
+                    <div class="col-md-6">
+                      {{ form.bank_branch.label(class="form-label") }}
+                      {{ form.bank_branch(class="form-control", placeholder="Branch") }}
+                    </div>
+                    <div class="col-md-6">
+                      {{ form.bank_account_number.label(class="form-label") }}
+                      {{ form.bank_account_number(class="form-control", placeholder="Account number") }}
+                    </div>
+                    <div class="col-md-6">
+                      {{ form.bank_account_type.label(class="form-label") }}
+                      {{ form.bank_account_type(class="form-select") }}
+                    </div>
+                  </div>
+
+                  <div class="text-muted small mt-2">
+                    Note: Bank details are required if you choose <b>Bank Transfer</b>.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 d-flex justify-content-end gap-2 mt-2">
+              <a class="btn btn-outline-dark" href="{{ url_for('customer_claims.list_claims') }}">Cancel</a>
+              <button class="btn btn-purple" type="submit">
+                ✅ Submit Claim
+              </button>
+            </div>
+
+          </form>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="fw-bold mb-2">📌 Before you submit</div>
+          <ul class="small text-muted mb-0">
+            <li>Ensure the House AWB matches your package.</li>
+            <li>Upload clear evidence files (PDF/JPG/PNG).</li>
+            <li>Processing time: <b>5–10 business days</b> after investigation.</li>
+            <li>Refund method: Cash or Bank Transfer.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .btn-purple{ background:#4A148C; color:#fff; border:none; }
+  .btn-purple:hover{ opacity:.92; color:#fff; }
+</style>
+
+<script>
+(function(){
+  const methodSel = document.getElementById("refund_method");
+  const bankFields = document.getElementById("bank_fields");
+  if(!methodSel || !bankFields) return;
+
+  function sync(){
+    const isBank = (methodSel.value === "bank_transfer");
+    bankFields.style.display = isBank ? "" : "none";
+  }
+  methodSel.addEventListener("change", sync);
+  sync();
+})();
+</script>
+{% endblock %}

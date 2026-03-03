@@ -1,0 +1,92 @@
+{% extends "layout_admin.html" %}
+{% block title %}Claims Queue{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">🧾 Claims Queue</h2>
+      <div class="text-muted small">Review missing overseas claims, verify evidence, approve/reject, and mark paid.</div>
+    </div>
+  </div>
+
+  {% set current = status or "submitted" %}
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    {% set tabs = [
+      ("submitted","Submitted"),
+      ("under_review","Under Review"),
+      ("need_more_info","Need More Info"),
+      ("approved","Approved"),
+      ("rejected","Rejected"),
+      ("paid","Paid"),
+      ("all","All")
+    ] %}
+    {% for key,label in tabs %}
+      <a class="btn btn-sm {% if current==key %}btn-purple{% else %}btn-outline-dark{% endif %}"
+         href="{{ url_for('admin_claims.queue', status=key) }}">
+        {{ label }}
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+
+      {% if not claims %}
+        <div class="text-center py-4">
+          <div style="font-size:2rem;">✅</div>
+          <div class="fw-bold">No claims in this queue</div>
+          <div class="text-muted small">Try another status filter.</div>
+        </div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="table table-striped align-middle mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th>#</th>
+                <th>Date</th>
+                <th>User</th>
+                <th>House AWB</th>
+                <th>Tracking</th>
+                <th>Value (JMD)</th>
+                <th>Status</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in claims %}
+              <tr>
+                <td class="fw-bold">{{ c.id }}</td>
+                <td class="text-nowrap">{{ c.created_at.strftime("%Y-%m-%d") if c.created_at else "" }}</td>
+                <td class="text-nowrap">
+                  {{ c.user.full_name if c.user and c.user.full_name else (c.user.email if c.user else "—") }}
+                </td>
+                <td class="text-nowrap">{{ c.house_awb }}</td>
+                <td class="text-nowrap">{{ c.tracking_number or "—" }}</td>
+                <td class="text-nowrap">{{ "%.2f"|format((c.item_value_jmd or 0)|float) }}</td>
+                <td class="text-nowrap">
+                  <span class="badge bg-dark">{{ c.status or "submitted" }}</span>
+                </td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-dark"
+                     href="{{ url_for('admin_claims.review', claim_id=c.id) }}">
+                    Review
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .btn-purple{ background:#4A148C; color:#fff; border:none; }
+  .btn-purple:hover{ opacity:.92; color:#fff; }
+</style>
+{% endblock %}

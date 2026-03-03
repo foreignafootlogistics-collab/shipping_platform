@@ -1,0 +1,163 @@
+{% extends "layout_customer.html" %}
+{% block title %}Claim #{{ claim.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">🧾 Claim #{{ claim.id }}</h2>
+      <div class="text-muted small">
+        Claims are processed within 5–10 business days after investigation is completed.
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-dark" href="{{ url_for('customer_claims.list_claims') }}">← Back</a>
+      <a class="btn btn-purple" href="{{ url_for('customer_claims.create_claim') }}">➕ New Claim</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card shadow-sm">
+        <div class="card-body">
+
+          <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+            <div>
+              <div class="text-muted small">Status</div>
+              {% set s = (claim.status or "submitted") %}
+              {% if s == "submitted" %}
+                <span class="badge bg-secondary">Submitted</span>
+              {% elif s == "under_review" %}
+                <span class="badge bg-warning text-dark">Under Review</span>
+              {% elif s == "need_more_info" %}
+                <span class="badge bg-info text-dark">Need More Info</span>
+              {% elif s == "approved" %}
+                <span class="badge bg-success">Approved</span>
+              {% elif s == "rejected" %}
+                <span class="badge bg-danger">Rejected</span>
+              {% elif s == "paid" %}
+                <span class="badge bg-primary">Paid</span>
+              {% else %}
+                <span class="badge bg-dark">{{ s }}</span>
+              {% endif %}
+            </div>
+
+            <div class="text-end">
+              <div class="text-muted small">Submitted</div>
+              <div class="fw-bold">{{ claim.created_at.strftime("%Y-%m-%d %H:%M") if claim.created_at else "" }}</div>
+            </div>
+          </div>
+
+          <hr>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="text-muted small">House AWB</div>
+              <div class="fw-bold">{{ claim.house_awb }}</div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">Tracking Number</div>
+              <div class="fw-bold">{{ claim.tracking_number or "—" }}</div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="text-muted small">Item Value</div>
+              <div class="fw-bold">JMD {{ "%.2f"|format((claim.item_value_jmd or 0)|float) }}</div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="text-muted small">Refund Method</div>
+              <div class="fw-bold">
+                {% if claim.refund_method == "bank_transfer" %}Bank Transfer{% else %}Cash{% endif %}
+              </div>
+            </div>
+
+            {% if claim.refund_method == "bank_transfer" %}
+            <div class="col-12">
+              <div class="card border-0" style="background:#f8f9fa;">
+                <div class="card-body">
+                  <div class="fw-bold mb-2">Bank Transfer Details</div>
+                  <div class="row g-2 small">
+                    <div class="col-md-6"><span class="text-muted">Name:</span> {{ claim.bank_account_name or "—" }}</div>
+                    <div class="col-md-6"><span class="text-muted">Branch:</span> {{ claim.bank_branch or "—" }}</div>
+                    <div class="col-md-6"><span class="text-muted">Account #:</span> {{ claim.bank_account_number or "—" }}</div>
+                    <div class="col-md-6"><span class="text-muted">Type:</span> {{ claim.bank_account_type or "—" }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            {% if claim.description %}
+            <div class="col-12">
+              <div class="text-muted small">Description</div>
+              <div>{{ claim.description }}</div>
+            </div>
+            {% endif %}
+          </div>
+
+          <hr>
+
+          <div class="fw-bold mb-2">Evidence</div>
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ claim.invoice_url }}">
+              📄 View Invoice Evidence
+            </a>
+            <a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ claim.bank_statement_url }}">
+              🏦 View Bank Statement
+            </a>
+          </div>
+
+          {% if claim.decision_reason %}
+          <hr>
+          <div class="fw-bold mb-1">Update / Decision</div>
+          <div class="text-muted small mb-1">Message from FAFL:</div>
+          <div class="alert alert-light border mb-0">{{ claim.decision_reason }}</div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="fw-bold mb-2">🕒 Claim Timeline</div>
+
+          {% if not logs %}
+            <div class="text-muted small">No updates yet.</div>
+          {% else %}
+            <div class="list-group">
+              {% for log in logs %}
+              <div class="list-group-item">
+                <div class="d-flex justify-content-between">
+                  <div class="fw-bold small">{{ log.action }}</div>
+                  <div class="text-muted small">{{ log.created_at.strftime("%Y-%m-%d") if log.created_at else "" }}</div>
+                </div>
+                {% if log.from_status or log.to_status %}
+                  <div class="small">
+                    <span class="text-muted">Status:</span>
+                    {{ log.from_status or "—" }} → {{ log.to_status or "—" }}
+                  </div>
+                {% endif %}
+                {% if log.message %}
+                  <div class="small text-muted mt-1">{{ log.message }}</div>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+  .btn-purple{ background:#4A148C; color:#fff; border:none; }
+  .btn-purple:hover{ opacity:.92; color:#fff; }
+</style>
+{% endblock %}

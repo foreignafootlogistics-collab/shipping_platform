@@ -131,7 +131,7 @@ def create_app():
       
   
     app.config['PROFILE_UPLOAD_FOLDER'] = str(PROFILE_UPLOAD_FOLDER)
-    app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024
+    app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
     app.config.update(
         MAIL_SERVER=os.getenv('MAIL_SERVER', 'smtp.example.com'),
         MAIL_PORT=int(os.getenv('MAIL_PORT', 587)),
@@ -295,7 +295,52 @@ def create_app():
                 "calculator_form": None,
                 "admin_calculator_form": None,
             }
+    
+    @app.context_processor
+    @_safe_ctx
+    def inject_admin_claim_badge():
+        """
+        Used by admin layout sidebar badge:
+        - counts claims in submitted state
+        """
+        try:
+            from app.models import Claim
+            submitted_count = Claim.query.filter(Claim.status == "submitted").count()
+        except Exception:
+            submitted_count = 0
 
+        return dict(claims_submitted_count=submitted_count)
+
+    @app.context_processor
+    @_safe_ctx
+    def inject_claim_counts():
+        """
+        Customer badge:
+        - counts only THIS customer's claims needing more info
+        """
+        from flask_login import current_user
+
+        if not current_user.is_authenticated:
+            return dict(claims_need_more_info_count=0)
+
+        try:
+            from app.models import Claim
+            c = (Claim.query
+                 .filter(Claim.user_id == current_user.id, Claim.status == "need_more_info")
+                 .count())
+        except Exception:
+            c = 0
+
+        return dict(claims_need_more_info_count=c)  
+
+    @app.context_processor
+    @_safe_ctx
+    def inject_claim_badges():
+        try:
+            submitted_count = Claim.query.filter(Claim.status == "submitted").count()
+        except Exception:
+            submitted_count = 0
+        return dict(claims_submitted_count=submitted_count)
 
     @app.context_processor
     @_safe_ctx
@@ -354,6 +399,9 @@ def create_app():
     from app.routes.public_api import public_api_bp
     from app.utils.time import to_jamaica
     from app.routes.uploads_route import uploads_bp
+    from app.routes.admin_claims import admin_claims_bp
+    from app.routes.customer_claims import customer_claims_bp
+
 
     app.register_blueprint(customer_bp, url_prefix='/customer')
     app.register_blueprint(admin_bp, url_prefix='/admin')
@@ -372,6 +420,8 @@ def create_app():
     app.register_blueprint(public_api_bp)
     app.jinja_env.globals["to_jamaica"] = to_jamaica
     app.register_blueprint(uploads_bp)
+    app.register_blueprint(admin_claims_bp)
+    app.register_blueprint(customer_claims_bp)
 
     # Basic routes
     @app.route("/", methods=["GET"])

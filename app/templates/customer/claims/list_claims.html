@@ -1,0 +1,104 @@
+{% extends "layout_customer.html" %}
+{% block title %}My Claims{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">📄 My Claims</h2>
+      <div class="text-muted small">Claims are processed within 5–10 business days after investigation.</div>
+    </div>
+
+    <a class="btn btn-purple"
+       href="{{ url_for('customer_claims.create_claim') }}">
+      ➕ Submit New Claim
+    </a>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-3">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      {% if not claims %}
+        <div class="text-center py-4">
+          <div style="font-size:2rem;">🧾</div>
+          <div class="fw-bold">No claims yet</div>
+          <div class="text-muted small mb-3">If a package went missing overseas, you can submit a claim for investigation.</div>
+          <a class="btn btn-outline-dark" href="{{ url_for('customer_claims.create_claim') }}">Submit a Claim</a>
+        </div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="table table-striped align-middle mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th>#</th>
+                <th>Date</th>
+                <th>House AWB</th>
+                <th>Tracking</th>
+                <th>Value (JMD)</th>
+                <th>Status</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in claims %}
+              <tr>
+                <td class="fw-bold">{{ c.id }}</td>
+                <td class="text-nowrap">{{ c.created_at.strftime("%Y-%m-%d") if c.created_at else "" }}</td>
+                <td class="text-nowrap">{{ c.house_awb }}</td>
+                <td class="text-nowrap">{{ c.tracking_number or "—" }}</td>
+                <td class="text-nowrap">{{ "%.2f"|format((c.item_value_jmd or 0)|float) }}</td>
+                <td>
+                  {% set s = (c.status or "submitted") %}
+                  {% if s == "submitted" %}
+                    <span class="badge bg-secondary">Submitted</span>
+                  {% elif s == "under_review" %}
+                    <span class="badge bg-warning text-dark">Under Review</span>
+                  {% elif s == "need_more_info" %}
+                    <span class="badge bg-info text-dark">Need More Info</span>
+                  {% elif s == "approved" %}
+                    <span class="badge bg-success">Approved</span>
+                  {% elif s == "rejected" %}
+                    <span class="badge bg-danger">Rejected</span>
+                  {% elif s == "paid" %}
+                    <span class="badge bg-primary">Paid</span>
+                  {% else %}
+                    <span class="badge bg-dark">{{ s }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-dark"
+                     href="{{ url_for('customer_claims.view_claim', claim_id=c.id) }}">
+                    View
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .btn-purple{
+    background:#4A148C; color:#fff; border:none;
+  }
+  .btn-purple:hover{ opacity:.92; color:#fff; }
+</style>
+{% endblock %}

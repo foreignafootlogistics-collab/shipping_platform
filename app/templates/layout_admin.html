@@ -8,7 +8,6 @@
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='logo.png') }}">
 
-
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="csrf-token" content="{{ csrf_token() }}">
 
@@ -62,11 +61,15 @@
         </div>
 
         {# ---- Accounts & Profiles (accordion) ---- #}
-        {% set is_accounts = request.blueprint in ['accounts_profiles'] or request.path.startswith('/accounts') %}
+        {# ✅ Include admin_claims paths too since Claims is moved under Accounts #}
+        {% set is_accounts = (request.blueprint in ['accounts_profiles','admin_claims'])
+                             or request.path.startswith('/accounts')
+                             or request.path.startswith('/admin/claims') %}
         <div class="accordion-item border-0">
           <h2 class="accordion-header" id="headingAccounts">
+            <!-- ✅ UPDATED: badge on the accordion button -->
             <button
-              class="accordion-button {{ '' if is_accounts else 'collapsed' }} text-white"
+              class="accordion-button {{ '' if is_accounts else 'collapsed' }} text-white position-relative"
               type="button"
               data-bs-toggle="collapse"
               data-bs-target="#collapseAccounts"
@@ -75,6 +78,12 @@
               style="background-color:#4a148c;"
             >
               <i class="fas fa-users me-2"></i> Accounts & Profiles
+
+              {% if claims_submitted_count|default(0) > 0 %}
+                <span class="position-absolute top-50 end-0 translate-middle-y badge rounded-pill bg-danger me-3">
+                  {{ claims_submitted_count }}
+                </span>
+              {% endif %}
             </button>
           </h2>
 
@@ -101,16 +110,26 @@
 
                 <li class="nav-item">
                   <a class="nav-link {{ 'active' if request.endpoint in ['admin.messages','admin.view_message'] else '' }}"
-                    href="{{ url_for('admin.messages') }}">
-                   <i class="bi bi-chat-dots me-2"></i> Messages
+                     href="{{ url_for('admin.messages') }}">
+                    <i class="bi bi-chat-dots me-2"></i> Messages
                   </a>
-
                 </li>
 
                 <li class="nav-item">
                   <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_notifications' else '' }}"
                      href="{{ url_for('admin.view_notifications') }}">
                     <i class="bi bi-bell me-2"></i> Notifications
+                  </a>
+                </li>
+
+                <!-- ✅ NEW: Claims moved under Accounts -->
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.blueprint in ['admin_claims'] or request.path.startswith('/admin/claims') else '' }}"
+                     href="{{ url_for('admin_claims.queue', status='submitted') }}">
+                    <i class="bi bi-clipboard-check me-2"></i> Claims
+                    {% if claims_submitted_count|default(0) > 0 %}
+                      <span class="badge bg-danger ms-2">{{ claims_submitted_count }}</span>
+                    {% endif %}
                   </a>
                 </li>
 
@@ -403,7 +422,8 @@
             {% if unread_broadcast_count|default(0) > 0 %}
               <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill"
                     style="background:#FACC15; color:#111827; font-weight:700;">
-                {{ unread_notifications_count }}
+                <!-- ✅ FIXED: show unread_broadcast_count (not unread_notifications_count) -->
+                {{ unread_broadcast_count }}
               </span>
             {% endif %}
           </a>
@@ -415,6 +435,17 @@
               <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill"
                     style="background:#4A148C; color:#fff; font-weight:700;">
                 {{ unread_messages_count }}
+              </span>
+            {% endif %}
+          </a>
+
+          {# Optional: keep or remove this claims icon since it's now under Accounts #}
+          <!-- Claims -->
+          <a href="{{ url_for('admin_claims.queue', status='submitted') }}" class="position-relative text-dark" title="Claims">
+            <i class="bi bi-clipboard-check fs-4"></i>
+            {% if claims_submitted_count|default(0) > 0 %}
+              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                {{ claims_submitted_count }}
               </span>
             {% endif %}
           </a>
@@ -504,7 +535,6 @@ function getCSRFToken() {
   return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 }
 </script>
-
 
 <!-- ✅ GLOBAL scripts that must always run (NOT inside a block) -->
 <script>
@@ -599,9 +629,9 @@ document.addEventListener("submit", async function (e) {
               Delivery <b>${data.latest_invoice || ("#" + data.latest_id)}</b> has been added.
             </div>
             <div class="mt-1 small opacity-75">
-              Today: ${data.today} 
-              | Tomorrow: ${data.tomorrow} 
-              | Pending: ${data.pending_total} 
+              Today: ${data.today}
+              | Tomorrow: ${data.tomorrow}
+              | Pending: ${data.pending_total}
               | Overdue: ${data.overdue}
             </div>
             <div class="mt-2">
@@ -609,7 +639,7 @@ document.addEventListener("submit", async function (e) {
                  href="{{ url_for('logistics.view_scheduled_deliveries') }}">
                 View Details
               </a>
-            </div>`
+            </div>
           `;
         }
 
@@ -617,9 +647,6 @@ document.addEventListener("submit", async function (e) {
           const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
           toast.show();
         }
-
-        // optional sound (uncomment if you want)
-        // try { new Audio("/static/sounds/notify.mp3").play(); } catch(e) {}
       }
 
       // Save latestId (first run sets baseline)
@@ -670,8 +697,8 @@ document.addEventListener('DOMContentLoaded', function () {
           .then(res => res.json())
           .then(data => {
             if (data.success) {
-              const btn = document.querySelector(`.open-wallet-modal[data-user-id="${userId}"]`);
-              if (btn) btn.innerHTML = `Wallet: $${Number(data.new_balance || 0).toFixed(2)}`;
+              const btn = document.querySelector(\`.open-wallet-modal[data-user-id="\${userId}"]\`);
+              if (btn) btn.innerHTML = \`Wallet: $\${Number(data.new_balance || 0).toFixed(2)}\`;
 
               const modal = bootstrap.Modal.getInstance(document.getElementById('walletModal'));
               if (modal) modal.hide();

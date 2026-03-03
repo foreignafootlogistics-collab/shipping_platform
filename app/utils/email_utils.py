@@ -30,7 +30,11 @@ EMAIL_PASSWORD = os.getenv("SMTP_PASS")
 EMAIL_FROM = os.getenv("SMTP_FROM", EMAIL_ADDRESS)
 
 if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
-    print("SMTP credentials missing. Check SMTP_USER / SMTP_PASS env vars.")
+    try:
+        if os.getenv("FLASK_DEBUG", "0") in ("1", "true", "True"):
+            print("SMTP credentials missing. Check SMTP_USER / SMTP_PASS env vars.")
+    except Exception:
+        pass
 
 
 # ==========================================================
@@ -1389,9 +1393,163 @@ def send_invoice_request_email(to_email, full_name, packages, recipient_user_id=
         reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )
 
+def send_claim_submitted_email(user_email: str, full_name: str, claim, recipient_user_id=None):
+    """
+    Customer confirmation when they submit a claim.
+    `claim` can be ORM or dict-like; we will read attributes safely.
+    """
+    def getv(obj, key, default=None):
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
 
-import os
-import requests
+    claim_id = getv(claim, "id", "—")
+    house_awb = getv(claim, "house_awb", "—")
+    tracking = getv(claim, "tracking_number", None) or "—"
+    value = getv(claim, "item_value_jmd", 0) or 0
+
+    try:
+        value_num = float(value)
+    except Exception:
+        value_num = 0.0
+
+    subject = f"Claim Submitted (Claim #{claim_id}) - Foreign A Foot Logistics"
+
+    plain_body = f"""
+Hi {full_name},
+
+We received your claim request for a missing overseas package.
+
+Claim #: {claim_id}
+House AWB: {house_awb}
+Tracking #: {tracking}
+Claimed Value: JMD {value_num:,.2f}
+
+Next Steps:
+• Claims are processed within 5–10 business days after investigation is completed.
+• Refunds may be issued as cash or bank transfer (or wallet credit if selected by admin).
+
+Thank you,
+Foreign A Foot Logistics Limited
+""".strip()
+
+    html_body = f"""
+<p style="margin:0 0 10px 0;">Hi {full_name},</p>
+<p style="margin:0 0 12px 0;">
+  We received your claim request for a missing overseas package.
+</p>
+
+<div style="margin:12px 0; padding:12px; border:1px solid #e5e7eb; border-radius:10px; background:#ffffff;">
+  <div><b>Claim #:</b> {claim_id}</div>
+  <div><b>House AWB:</b> {house_awb}</div>
+  <div><b>Tracking #:</b> {tracking}</div>
+  <div><b>Claimed Value:</b> JMD {value_num:,.2f}</div>
+</div>
+
+<p style="margin:12px 0 0 0;">
+  <b>Claims are processed within 5–10 business days</b> after investigation is completed.
+</p>
+
+<p style="margin:10px 0 0 0;">
+  Refunds may be issued as cash or bank transfer.
+</p>
+""".strip()
+
+    return send_email(
+        to_email=user_email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        recipient_user_id=recipient_user_id,
+        reply_to=EMAIL_FROM or EMAIL_ADDRESS,
+    )
+
+
+def send_claim_status_update_email(user_email: str, full_name: str, claim, recipient_user_id=None):
+    """
+    Customer email when admin updates claim status and/or marks refund issued.
+    """
+    def getv(obj, key, default=None):
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    claim_id = getv(claim, "id", "—")
+    status = (getv(claim, "status", "submitted") or "submitted").replace("_", " ").title()
+    house_awb = getv(claim, "house_awb", "—")
+    tracking = getv(claim, "tracking_number", None) or "—"
+
+    reason = (getv(claim, "decision_reason", "") or "").strip()
+
+    refund_issued = bool(getv(claim, "refund_issued", False))
+    refund_method = getv(claim, "refund_issued_method", None) or getv(claim, "refund_method", None) or "—"
+    refunded_amount = getv(claim, "refunded_amount_jmd", None) or getv(claim, "approved_amount_jmd", None) or 0
+    refund_ref = (getv(claim, "refund_reference", "") or "").strip()
+
+    try:
+        refunded_num = float(refunded_amount or 0)
+    except Exception:
+        refunded_num = 0.0
+
+    subject = f"Claim Update (Claim #{claim_id}) - Foreign A Foot Logistics"
+
+    refund_plain = ""
+    refund_html = ""
+    if refund_issued:
+        refund_plain = f"\nRefund Issued: YES\nMethod: {refund_method}\nAmount: JMD {refunded_num:,.2f}\n"
+        if refund_ref:
+            refund_plain += f"Reference: {refund_ref}\n"
+
+        refund_html = f"""
+<div style="margin:12px 0; padding:12px; border:1px solid #e5e7eb; border-radius:10px; background:#ffffff;">
+  <div><b>Refund Issued:</b> YES</div>
+  <div><b>Method:</b> {refund_method}</div>
+  <div><b>Amount:</b> JMD {refunded_num:,.2f}</div>
+  {f'<div><b>Reference:</b> {refund_ref}</div>' if refund_ref else ''}
+</div>
+""".strip()
+
+    reason_plain = f"\nMessage:\n{reason}\n" if reason else ""
+    reason_html = f"<p style='margin:12px 0 0 0;'><b>Message:</b><br>{reason}</p>" if reason else ""
+
+    plain_body = f"""
+Hi {full_name},
+
+Your claim has been updated.
+
+Claim #: {claim_id}
+House AWB: {house_awb}
+Tracking #: {tracking}
+Status: {status}
+{refund_plain}
+{reason_plain}
+Thank you,
+Foreign A Foot Logistics Limited
+""".strip()
+
+    html_body = f"""
+<p style="margin:0 0 10px 0;">Hi {full_name},</p>
+<p style="margin:0 0 12px 0;">Your claim has been updated.</p>
+
+<div style="margin:12px 0; padding:12px; border:1px solid #e5e7eb; border-radius:10px; background:#ffffff;">
+  <div><b>Claim #:</b> {claim_id}</div>
+  <div><b>House AWB:</b> {house_awb}</div>
+  <div><b>Tracking #:</b> {tracking}</div>
+  <div><b>Status:</b> {status}</div>
+</div>
+
+{refund_html}
+{reason_html}
+""".strip()
+
+    return send_email(
+        to_email=user_email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        recipient_user_id=recipient_user_id,
+        reply_to=EMAIL_FROM or EMAIL_ADDRESS,
+    )
 
 def send_email_sendgrid_api(
     to_email: str,
@@ -1484,3 +1642,5 @@ def send_email_sendgrid_api(
     except Exception as e:
         print(f"❌ SendGrid API exception for {to_email}: {e}")
         return False
+
+

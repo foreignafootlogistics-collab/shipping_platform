@@ -358,7 +358,87 @@ shipment_packages = db.Table(
     db.Column('package_id', db.Integer, db.ForeignKey('packages.id'))
 )
 
+class Claim(db.Model):
+    __tablename__ = "claims"
 
+    id = db.Column(db.Integer, primary_key=True)
+
+    # who submitted
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+
+    # identifiers (customer enters)
+    house_awb = db.Column(db.String(64), nullable=False, index=True)
+    tracking_number = db.Column(db.String(128), nullable=True, index=True)
+
+    # money
+    item_value_jmd = db.Column(db.Numeric(12, 2), nullable=False)
+
+    # claim details
+    description = db.Column(db.Text, nullable=True)
+
+    # evidence uploads (Cloudinary URL + public id optional)
+    invoice_url = db.Column(db.Text, nullable=False)
+    invoice_public_id = db.Column(db.String(255), nullable=True)
+
+    bank_statement_url = db.Column(db.Text, nullable=False)
+    bank_statement_public_id = db.Column(db.String(255), nullable=True)
+
+    # refund preference
+    refund_method = db.Column(db.String(20), nullable=False, default="cash")  # cash|bank_transfer
+    # --- Refund issued tracking ---
+    refund_issued = db.Column(db.Boolean, nullable=False, default=False)
+    refund_issued_method = db.Column(db.String(30), nullable=True)  # cash|bank_transfer|wallet_credit
+    refund_reference = db.Column(db.String(120), nullable=True)     # txn ref / receipt # (optional)
+    refund_issued_at = db.Column(db.DateTime, nullable=True)
+    refund_issued_by_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
+    refunded_amount_jmd = db.Column(db.Numeric(12, 2), nullable=True)  # what was actually issued
+
+    refund_issued_by = db.relationship("User", foreign_keys=[refund_issued_by_admin_id], lazy="joined")
+
+    # bank transfer details (only if refund_method == bank_transfer)
+    bank_account_name = db.Column(db.String(120), nullable=True)
+    bank_branch = db.Column(db.String(120), nullable=True)
+    bank_account_number = db.Column(db.String(60), nullable=True)
+    bank_account_type = db.Column(db.String(20), nullable=True)  # savings|chequing
+
+    # workflow
+    status = db.Column(db.String(30), nullable=False, default="submitted", index=True)
+    # submitted | under_review | need_more_info | approved | rejected | paid
+
+    admin_notes = db.Column(db.Text, nullable=True)
+    decision_reason = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    reviewed_by_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+
+    approved_amount_jmd = db.Column(db.Numeric(12, 2), nullable=True)
+    paid_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship("User", foreign_keys=[user_id], backref=db.backref("claims", lazy="dynamic"))
+    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_admin_id], lazy="joined")
+
+
+class ClaimAuditLog(db.Model):
+    __tablename__ = "claim_audit_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    claim_id = db.Column(db.Integer, db.ForeignKey("claims.id"), nullable=False, index=True)
+
+    action = db.Column(db.String(60), nullable=False)  # created, status_changed, note_added, approved, rejected, marked_paid, etc.
+    from_status = db.Column(db.String(30), nullable=True)
+    to_status = db.Column(db.String(30), nullable=True)
+
+    actor_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    actor_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+
+    message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    claim = db.relationship("Claim", backref=db.backref("audit_logs", lazy="dynamic", cascade="all, delete-orphan"))
 
 class Prealert(db.Model):
     __tablename__ = 'prealerts'

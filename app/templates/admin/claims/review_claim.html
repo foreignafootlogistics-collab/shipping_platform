@@ -1,0 +1,298 @@
+{% extends "layout_admin.html" %}
+{% block title %}Review Claim #{{ claim.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">🧾 Review Claim #{{ claim.id }}</h2>
+      <div class="text-muted small">Verify evidence, investigate, then approve/reject and mark refund issued.</div>
+    </div>
+
+    <a class="btn btn-outline-dark" href="{{ url_for('admin_claims.queue', status=request.args.get('status') or 'submitted') }}">
+      ← Back to Queue
+    </a>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-3">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="row g-3">
+
+    <div class="col-lg-7">
+      <div class="card shadow-sm">
+        <div class="card-body">
+
+          <div class="d-flex justify-content-between">
+            <div>
+              <div class="text-muted small">Customer</div>
+              <div class="fw-bold">
+                {{ claim.user.full_name if claim.user and claim.user.full_name else (claim.user.email if claim.user else "—") }}
+              </div>
+            </div>
+            <div class="text-end">
+              <div class="text-muted small">Status</div>
+              <span class="badge bg-dark">{{ claim.status or "submitted" }}</span>
+            </div>
+          </div>
+
+          <hr>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="text-muted small">House AWB</div>
+              <div class="fw-bold">{{ claim.house_awb }}</div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">Tracking Number</div>
+              <div class="fw-bold">{{ claim.tracking_number or "—" }}</div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="text-muted small">Claimed Value</div>
+              <div class="fw-bold">JMD {{ "%.2f"|format((claim.item_value_jmd or 0)|float) }}</div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="text-muted small">Requested Refund Method</div>
+              <div class="fw-bold">
+                {% if claim.refund_method == "bank_transfer" %}Bank Transfer{% else %}Cash{% endif %}
+              </div>
+            </div>
+
+            {% if claim.refund_method == "bank_transfer" %}
+              <div class="col-12">
+                <div class="card border-0" style="background:#f8f9fa;">
+                  <div class="card-body">
+                    <div class="fw-bold mb-2">Bank Details</div>
+                    <div class="row g-2 small">
+                      <div class="col-md-6"><span class="text-muted">Name:</span> {{ claim.bank_account_name or "—" }}</div>
+                      <div class="col-md-6"><span class="text-muted">Branch:</span> {{ claim.bank_branch or "—" }}</div>
+                      <div class="col-md-6"><span class="text-muted">Account #:</span> {{ claim.bank_account_number or "—" }}</div>
+                      <div class="col-md-6"><span class="text-muted">Type:</span> {{ claim.bank_account_type or "—" }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endif %}
+
+            {% if claim.description %}
+            <div class="col-12">
+              <div class="text-muted small">Description</div>
+              <div>{{ claim.description }}</div>
+            </div>
+            {% endif %}
+          </div>
+
+          <hr>
+
+          <div class="fw-bold mb-2">Evidence</div>
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ claim.invoice_url }}">📄 Open Invoice Evidence</a>
+            <a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ claim.bank_statement_url }}">🏦 Open Bank Statement</a>
+          </div>
+
+          {% if claim.refund_issued %}
+            <hr>
+            <div class="alert alert-success mb-0">
+              <div class="fw-bold">✅ Refund Issued</div>
+              <div class="small mt-1">
+                <div><b>Method:</b> {{ claim.refund_issued_method or "—" }}</div>
+                <div><b>Amount:</b> JMD {{ "%.2f"|format((claim.refunded_amount_jmd or 0)|float) }}</div>
+                {% if claim.refund_reference %}
+                  <div><b>Reference:</b> {{ claim.refund_reference }}</div>
+                {% endif %}
+                {% if claim.refund_issued_at %}
+                  <div class="text-muted mt-1">Issued at: {{ claim.refund_issued_at.strftime("%Y-%m-%d %H:%M") }}</div>
+                {% endif %}
+              </div>
+            </div>
+          {% endif %}
+
+        </div>
+      </div>
+
+      <div class="card shadow-sm mt-3">
+        <div class="card-body">
+          <h5 class="mb-3">✅ Admin Decision</h5>
+
+          <form method="POST">
+            {{ form.hidden_tag() }}
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                {{ form.status.label(class="form-label") }}
+                {{ form.status(class="form-select", id="claim_status") }}
+              </div>
+
+              <div class="col-md-6" id="approved_amount_wrap">
+                {{ form.approved_amount_jmd.label(class="form-label") }}
+                <div class="input-group">
+                  <span class="input-group-text">JMD</span>
+                  {{ form.approved_amount_jmd(class="form-control", placeholder="0.00") }}
+                </div>
+              </div>
+
+              <div class="col-12">
+                {{ form.decision_reason.label(class="form-label") }}
+                {{ form.decision_reason(class="form-control", rows="3", placeholder="Visible to customer (especially for Need More Info / Rejected / Approved).") }}
+              </div>
+
+              <div class="col-12">
+                {{ form.admin_notes.label(class="form-label") }}
+                {{ form.admin_notes(class="form-control", rows="3", placeholder="Internal notes (not visible to customer).") }}
+              </div>
+
+              <!-- ============================= -->
+              <!-- ✅ NEW: REFUND ISSUED SECTION  -->
+              <!-- ============================= -->
+              <hr class="my-2">
+
+              <div class="col-12">
+                <div class="form-check">
+                  {{ form.refund_issued(class="form-check-input", id="refundIssuedCheck") }}
+                  {{ form.refund_issued.label(class="form-check-label", for="refundIssuedCheck") }}
+                </div>
+                <div class="text-muted small">
+                  Use this when the refund has actually been issued (cash, bank transfer, or wallet credit).
+                </div>
+              </div>
+
+              <div class="col-md-6" id="refundMethodWrap">
+                {{ form.refund_issued_method.label(class="form-label") }}
+                {{ form.refund_issued_method(class="form-select") }}
+              </div>
+
+              <div class="col-md-6" id="refundAmountWrap">
+                {{ form.refunded_amount_jmd.label(class="form-label") }}
+                <div class="input-group">
+                  <span class="input-group-text">JMD</span>
+                  {{ form.refunded_amount_jmd(class="form-control", placeholder="Defaults to approved amount if empty") }}
+                </div>
+              </div>
+
+              <div class="col-12" id="refundRefWrap">
+                {{ form.refund_reference.label(class="form-label") }}
+                {{ form.refund_reference(class="form-control", placeholder="Optional reference / receipt / transaction id") }}
+              </div>
+
+              <div class="col-12 d-flex justify-content-end gap-2">
+                <button type="submit" class="btn btn-purple">Update</button>
+              </div>
+            </div>
+          </form>
+
+          <div class="text-muted small mt-2">
+            Tip: If you mark <b>Refund Issued</b>, your route can automatically set status to <b>Paid</b>.
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="fw-bold mb-2">🕒 Audit Timeline</div>
+
+          {% if not logs %}
+            <div class="text-muted small">No logs yet.</div>
+          {% else %}
+            <div class="list-group">
+              {% for log in logs %}
+              <div class="list-group-item">
+                <div class="d-flex justify-content-between">
+                  <div class="fw-bold small">{{ log.action }}</div>
+                  <div class="text-muted small">{{ log.created_at.strftime("%Y-%m-%d %H:%M") if log.created_at else "" }}</div>
+                </div>
+
+                {% if log.from_status or log.to_status %}
+                  <div class="small">
+                    <span class="text-muted">Status:</span>
+                    {{ log.from_status or "—" }} → {{ log.to_status or "—" }}
+                  </div>
+                {% endif %}
+
+                {% if log.message %}
+                  <div class="small text-muted mt-1">{{ log.message }}</div>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if claim.approved_amount_jmd %}
+      <div class="card shadow-sm mt-3">
+        <div class="card-body">
+          <div class="fw-bold">Approved Amount</div>
+          <div class="display-6">JMD {{ "%.2f"|format((claim.approved_amount_jmd or 0)|float) }}</div>
+
+          {% if claim.refund_issued %}
+            <div class="text-muted small mt-2">
+              Refund issued: <b>Yes</b> ({{ claim.refund_issued_method or "—" }})
+              {% if claim.refund_issued_at %}
+                <div>Issued at: {{ claim.refund_issued_at.strftime("%Y-%m-%d %H:%M") }}</div>
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+
+  </div>
+</div>
+
+<style>
+  .btn-purple{ background:#4A148C; color:#fff; border:none; }
+  .btn-purple:hover{ opacity:.92; color:#fff; }
+</style>
+
+<script>
+(function(){
+  const statusSel = document.getElementById("claim_status");
+  const approvedWrap = document.getElementById("approved_amount_wrap");
+
+  function syncApproved(){
+    if(!statusSel || !approvedWrap) return;
+    const v = statusSel.value;
+    approvedWrap.style.display = (v === "approved" || v === "paid") ? "" : "none";
+  }
+
+  if(statusSel){
+    statusSel.addEventListener("change", syncApproved);
+  }
+  syncApproved();
+})();
+</script>
+
+<script>
+(function(){
+  const chk = document.getElementById("refundIssuedCheck");
+  const wraps = ["refundMethodWrap","refundAmountWrap","refundRefWrap"].map(id => document.getElementById(id));
+  if(!chk) return;
+
+  function sync(){
+    const show = chk.checked;
+    wraps.forEach(w => { if(w) w.style.display = show ? "" : "none"; });
+  }
+
+  chk.addEventListener("change", sync);
+  sync();
+})();
+</script>
+{% endblock %}

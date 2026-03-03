@@ -421,6 +421,81 @@ class AdminCalculatorForm(FlaskForm):
     weight = DecimalField("Weight (lbs)", validators=[DataRequired(), NumberRange(min=1)])
     submit = SubmitField("Calculate")
 
+class ClaimForm(FlaskForm):
+    house_awb = StringField("House AWB", validators=[DataRequired(), Length(max=64)])
+    tracking_number = StringField("Tracking Number (if available)", validators=[Optional(), Length(max=128)])
+
+    item_value_jmd = DecimalField(
+        "Item Value (JMD)",
+        validators=[DataRequired(), NumberRange(min=0)],
+        places=2
+    )
+
+    description = TextAreaField("Description (optional)", validators=[Optional(), Length(max=2000)])
+
+    invoice_file = FileField(
+        "Invoice Evidence (PDF/JPG/PNG)",
+        validators=[FileRequired(), FileAllowed(["pdf", "jpg", "jpeg", "png"], "PDF/JPG/PNG only")]
+    )
+
+    bank_statement_file = FileField(
+        "Bank Statement Evidence (PDF/JPG/PNG)",
+        validators=[FileRequired(), FileAllowed(["pdf", "jpg", "jpeg", "png"], "PDF/JPG/PNG only")]
+    )
+
+    refund_method = SelectField(
+        "Preferred Refund Method",
+        choices=[("cash", "Cash"), ("bank_transfer", "Bank Transfer")],
+        validators=[DataRequired()]
+    )
+
+    bank_account_name = StringField("Name on Account", validators=[Optional(), Length(max=120)])
+    bank_branch = StringField("Branch", validators=[Optional(), Length(max=120)])
+    bank_account_number = StringField("Account #", validators=[Optional(), Length(max=60)])
+    bank_account_type = SelectField(
+        "Type of Account",
+        choices=[("", "— Select —"), ("savings", "Savings"), ("chequing", "Chequing")],
+        validators=[Optional()],
+    )
+
+    submit = SubmitField("Submit Claim")
+
+
+class AdminClaimDecisionForm(FlaskForm):
+    status = SelectField(
+        "Status",
+        choices=[
+            ("submitted", "Submitted"),
+            ("under_review", "Under Review"),
+            ("need_more_info", "Need More Info"),
+            ("approved", "Approved"),
+            ("rejected", "Rejected"),
+            ("paid", "Paid"),
+        ],
+        validators=[DataRequired()]
+    )
+
+    approved_amount_jmd = DecimalField("Approved Amount (JMD)", validators=[Optional()], places=2)
+    decision_reason = TextAreaField("Decision / Reason (customer sees)", validators=[Optional()])
+    admin_notes = TextAreaField("Internal Notes", validators=[Optional()])
+
+    # ✅ NEW: Refund issued controls
+    refund_issued = BooleanField("Refund Issued")
+    refund_issued_method = SelectField(
+        "Refund Method Issued",
+        choices=[
+            ("", "— Select —"),
+            ("cash", "Cash"),
+            ("bank_transfer", "Bank Transfer"),
+            ("wallet_credit", "Wallet Credit"),
+        ],
+        validators=[Optional()]
+    )
+    refunded_amount_jmd = DecimalField("Refunded Amount (JMD)", validators=[Optional()], places=2)
+    refund_reference = StringField("Refund Reference # (optional)", validators=[Optional()])
+
+    submit = SubmitField("Update Claim")
+
 class ReferralForm(FlaskForm):
     friend_email = StringField("Friend's Email", validators=[DataRequired(), Email()])
     submit = SubmitField("Send Invite")

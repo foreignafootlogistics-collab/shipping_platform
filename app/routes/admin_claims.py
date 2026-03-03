@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import current_user
 
 from app.extensions import db
-from app.models import Claim, ClaimAuditLog, DBMessage, Wallet, WalletTransaction
+from app.models import Claim, ClaimAuditLog, Message, Wallet, WalletTransaction
 from app.forms import AdminClaimDecisionForm
 from app.routes.admin_auth_routes import admin_required
 from app.utils.email_utils import send_claim_status_update_email
@@ -108,7 +108,7 @@ def review(claim_id):
 
         db.session.commit()
 
-        # notify customer (email + DBMessage)
+        # notify customer (email + Message)
         send_claim_status_update_email(
             user_email=claim.user.email,
             full_name=claim.user.full_name,

@@ -46,41 +46,58 @@ def _init_cloudinary_from_config():
         secure=True,
     )
 
-def _upload_expense_pdf_to_cloudinary(file_storage):
+def _upload_expense_attachment_to_cloudinary(file_storage):
+    """
+    Accepts: PDF, JPG, JPEG, PNG
+    Uploads:
+      - PDF => resource_type='raw'
+      - Images => resource_type='image'
+    Returns: (original_name, secure_url, public_id, mime)
+    """
     if not file_storage or not getattr(file_storage, "filename", ""):
         return None, None, None, None
 
     filename = secure_filename(file_storage.filename)
-    if not filename.lower().endswith(".pdf"):
-        raise ValueError("Only PDF files are allowed.")
+    ext = (Path(filename).suffix or "").lower()
+
+    allowed = {".pdf", ".jpg", ".jpeg", ".png"}
+    if ext not in allowed:
+        raise ValueError("Only PDF, JPG, JPEG, PNG files are allowed.")
 
     if not _cloudinary_ready():
         raise ValueError("Cloudinary env vars missing. Set CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET.")
 
     _init_cloudinary_from_config()
 
+    # Decide Cloudinary resource_type
+    resource_type = "raw" if ext == ".pdf" else "image"
+
     res = cloudinary.uploader.upload(
         file_storage,
-        resource_type="raw",      # ✅ required for PDFs
+        resource_type=resource_type,
         folder="fafl/expenses",
         public_id=f"expense_{uuid.uuid4().hex}",
         use_filename=False,
         unique_filename=False,
     )
 
+    mime = file_storage.mimetype or ("application/pdf" if ext == ".pdf" else "image/jpeg")
+
     return (
         filename,
         res.get("secure_url"),
         res.get("public_id"),
-        file_storage.mimetype or "application/pdf",
+        mime,
     )
 
-def _delete_cloudinary_raw(public_id: str):
+def _delete_cloudinary_asset(public_id: str, mime: str | None = None):
     if not public_id or not _cloudinary_ready():
         return
     _init_cloudinary_from_config()
+
+    resource_type = "image" if (mime or "").lower().startswith("image/") else "raw"
     try:
-        cloudinary.uploader.destroy(public_id, resource_type="raw")
+        cloudinary.uploader.destroy(public_id, resource_type=resource_type)
     except Exception:
         pass
 
@@ -870,7 +887,7 @@ def monthly_expenses():
             file_obj = request.files.get("attachment")
             if file_obj and file_obj.filename:
                 attachment_name, attachment_url, attachment_public_id, attachment_mime = (
-                    _upload_expense_pdf_to_cloudinary(file_obj)
+                    _upload_expense_attachment_to_cloudinary(file_obj)
                 )
                 uploaded_at = datetime.utcnow()
 
@@ -953,7 +970,7 @@ def delete_expense(expense_id):
         # ✅ Delete from Cloudinary (if present)
         public_id = getattr(expense, "attachment_public_id", None)
         if public_id:
-            _delete_cloudinary_raw(public_id)
+            _delete_cloudinary_asset(public_id, mime)
 
         db.session.delete(expense)
         db.session.commit()

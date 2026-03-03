@@ -285,10 +285,6 @@ def _parse_date_any(v):
         return None
 
 
-from datetime import datetime
-from flask import request
-from sqlalchemy import func, or_
-
 def _apply_pkg_filters(
     q,
     unassigned_id=None,
@@ -1171,167 +1167,137 @@ def logistics_dashboard():
 
 
     # ----------------------------------------------------------------------------------
-# View Packages table (filters + pagination) ORM version
-# ----------------------------------------------------------------------------------
+    # View Packages table (filters + pagination) ORM version
+    # ----------------------------------------------------------------------------------
 
-# ---- Read filters FIRST (so they exist before we use them anywhere) ----
-raw_date_from = (request.args.get('date_from') or '').strip()
-raw_date_to   = (request.args.get('date_to')   or '').strip()
+    # ---- Read filters FIRST (so they exist before we use them anywhere) ----
+    raw_date_from = (request.args.get('date_from') or '').strip()
+    raw_date_to   = (request.args.get('date_to')   or '').strip()
 
-# TRUE only when the user actually applied a date filter in the URL
-user_date_filter = bool(raw_date_from or raw_date_to)
+    # TRUE only when the user actually applied a date filter in the URL
+    user_date_filter = bool(raw_date_from or raw_date_to)
 
-date_from = raw_date_from
-date_to   = raw_date_to
+    date_from = raw_date_from
+    date_to   = raw_date_to
 
-# filters used by _apply_pkg_filters
-epc_only = (request.args.get('epc_only') or '').lower() in ('1','true','on','yes')
-not_notified_only = (request.args.get('not_notified_only') or '').lower() in ('1','true','on','yes')
+    # filters used by _apply_pkg_filters
+    epc_only = (request.args.get('epc_only') or '').lower() in ('1','true','on','yes')
+    not_notified_only = (request.args.get('not_notified_only') or '').lower() in ('1','true','on','yes')
 
-house = request.args.get('house', '', type=str)
-tracking = request.args.get('tracking', '', type=str)
-user_code = request.args.get('user_code', '', type=str)
-first_name = request.args.get('first_name', '', type=str)
-last_name = request.args.get('last_name', '', type=str)
+    house = request.args.get('house', '', type=str)
+    tracking = request.args.get('tracking', '', type=str)
+    user_code = request.args.get('user_code', '', type=str)
+    first_name = request.args.get('first_name', '', type=str)
+    last_name = request.args.get('last_name', '', type=str)
 
-search = (request.args.get('search') or '').strip()
-status_filter = (request.args.get('status') or '').strip()
+    search = (request.args.get('search') or '').strip()
+    status_filter = (request.args.get('status') or '').strip()
 
-unassigned_only = (
-    (request.args.get('show_unassigned') or request.args.get('unassigned_only') or '')
-    .lower() in ('1','true','on','yes')
-)
-
-# ---- attachments count subquery ----
-att_counts_sq = (
-    db.session.query(
-        PackageAttachment.package_id.label("pkg_id"),
-        func.count(PackageAttachment.id).label("att_count")
+    unassigned_only = (
+        (request.args.get('show_unassigned') or request.args.get('unassigned_only') or '')
+        .lower() in ('1','true','on','yes')
     )
-    .group_by(PackageAttachment.package_id)
-    .subquery()
-)
 
-pkg_q = (
-    db.session.query(
-        Package,
-        User.full_name,
-        User.registration_number,
-        func.coalesce(att_counts_sq.c.att_count, 0).label("att_count")
-    )
-    .join(User, Package.user_id == User.id)
-    .outerjoin(att_counts_sq, att_counts_sq.c.pkg_id == Package.id)
-)
-
-# ✅ now these variables EXIST when we pass them in
-pkg_q = _apply_pkg_filters(
-    pkg_q,
-    unassigned_id=unassigned_id,
-    date_from=date_from,
-    date_to=date_to,
-    epc_only=epc_only,
-    not_notified_only=not_notified_only,
-    house=house,
-    tracking=tracking,
-    user_code=user_code,
-    first_name=first_name,
-    last_name=last_name,
-    status_filter=status_filter,
-    search=search,
-    unassigned_only=unassigned_only,
-)
-
-pkg_q = pkg_q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).desc())
-
-page, per_page, total_count, total_pages, pkg_rows = _paginate(pkg_q)
-
-# Collect package ids on this page
-page_pkg_ids = [p.id for (p, full_name, reg, att_count) in pkg_rows]
-
-# Load attachments in ONE query (avoid N+1)
-attachments_by_pkg = {}
-if page_pkg_ids:
-    att_rows = (
+    # ---- attachments count subquery ----
+    att_counts_sq = (
         db.session.query(
-            PackageAttachment.id,
-            PackageAttachment.package_id,
-            PackageAttachment.original_name,
-            PackageAttachment.file_name,
+            PackageAttachment.package_id.label("pkg_id"),
+            func.count(PackageAttachment.id).label("att_count")
         )
-        .filter(PackageAttachment.package_id.in_(page_pkg_ids))
-        .order_by(PackageAttachment.id.desc())
-        .all()
+        .group_by(PackageAttachment.package_id)
+        .subquery()
     )
 
-    for att_id, pkg_id, original_name, file_name in att_rows:
-        attachments_by_pkg.setdefault(pkg_id, []).append({
-            "id": att_id,
-            "original_name": original_name,
-            "file_name": file_name,
+    pkg_q = (
+        db.session.query(
+            Package,
+            User.full_name,
+            User.registration_number,
+            func.coalesce(att_counts_sq.c.att_count, 0).label("att_count")
+        )
+        .join(User, Package.user_id == User.id)
+        .outerjoin(att_counts_sq, att_counts_sq.c.pkg_id == Package.id)
+    )
+
+    # ✅ now these variables EXIST when we pass them in
+    pkg_q = _apply_pkg_filters(
+        pkg_q,
+        unassigned_id=unassigned_id,
+        date_from=date_from,
+        date_to=date_to,
+        epc_only=epc_only,
+        not_notified_only=not_notified_only,
+        house=house,
+        tracking=tracking,
+        user_code=user_code,
+        first_name=first_name,
+        last_name=last_name,
+        status_filter=status_filter,
+        search=search,
+        unassigned_only=unassigned_only,
+    )
+
+    pkg_q = pkg_q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).desc())
+
+    page, per_page, total_count, total_pages, pkg_rows = _paginate(pkg_q)
+
+    # Collect package ids on this page
+    page_pkg_ids = [p.id for (p, full_name, reg, att_count) in pkg_rows]
+
+    # Load attachments in ONE query (avoid N+1)
+    attachments_by_pkg = {}
+    if page_pkg_ids:
+        att_rows = (
+            db.session.query(
+                PackageAttachment.id,
+                PackageAttachment.package_id,
+                PackageAttachment.original_name,
+                PackageAttachment.file_name,
+            )
+            .filter(PackageAttachment.package_id.in_(page_pkg_ids))
+            .order_by(PackageAttachment.id.desc())
+            .all()
+        )
+
+        for att_id, pkg_id, original_name, file_name in att_rows:
+            attachments_by_pkg.setdefault(pkg_id, []).append({
+                "id": att_id,
+                "original_name": original_name,
+                "file_name": file_name,
+            })
+
+    parsed_packages = []
+    for p, full_name, reg, att_count in pkg_rows:
+        created_dt = _parse_dt_maybe(p.created_at)
+        recv_dt = _parse_dt_maybe(p.date_received)
+
+        parsed_packages.append({
+            "id": p.id,
+            "user_id": p.user_id,
+            "full_name": full_name,
+            "registration_number": reg,
+            "tracking_number": p.tracking_number,
+            "description": p.description,
+            "weight": p.weight,
+            "status": p.status,
+            "created_at": created_dt,
+            "date_received": recv_dt,
+            "date_any": recv_dt or created_dt,
+            "house_awb": p.house_awb,
+            "declared_value": getattr(p, "declared_value", None),
+            "value": p.value,
+            "att_count": int(att_count or 0),
+            "attachments": attachments_by_pkg.get(p.id, []),
+            "amount_due": p.amount_due,
+            "epc": getattr(p, "epc", 0),
+            "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
+            "invoice_id": p.invoice_id,
+            "customer_notified_at": getattr(p, "customer_notified_at", None),
         })
 
-parsed_packages = []
-for p, full_name, reg, att_count in pkg_rows:
-    created_dt = _parse_dt_maybe(p.created_at)
-    recv_dt = _parse_dt_maybe(p.date_received)
-
-    parsed_packages.append({
-        "id": p.id,
-        "user_id": p.user_id,
-        "full_name": full_name,
-        "registration_number": reg,
-        "tracking_number": p.tracking_number,
-        "description": p.description,
-        "weight": p.weight,
-        "status": p.status,
-        "created_at": created_dt,
-        "date_received": recv_dt,
-        "date_any": recv_dt or created_dt,
-        "house_awb": p.house_awb,
-        "declared_value": getattr(p, "declared_value", None),
-        "value": p.value,
-        "att_count": int(att_count or 0),
-        "attachments": attachments_by_pkg.get(p.id, []),
-        "amount_due": p.amount_due,
-        "epc": getattr(p, "epc", 0),
-        "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
-        "invoice_id": p.invoice_id,
-        "customer_notified_at": getattr(p, "customer_notified_at", None),
-    })
-
-# Agg totals for the current filter
-totals_q = _apply_pkg_filters(
-    db.session.query(
-        func.count(Package.id),
-        func.coalesce(func.sum(Package.weight), 0.0)
-    ).join(User, Package.user_id == User.id),
-    unassigned_id=unassigned_id,
-    date_from=date_from,
-    date_to=date_to,
-    epc_only=epc_only,
-    not_notified_only=not_notified_only,
-    house=house,
-    tracking=tracking,
-    user_code=user_code,
-    first_name=first_name,
-    last_name=last_name,
-    status_filter=status_filter,
-    search=search,
-    unassigned_only=unassigned_only,
-)
-
-cnt, tw = totals_q.first()
-filtered_total_packages = int(cnt or 0)
-filtered_total_weight   = float(tw or 0.0)
-
-# Daily breakdown when date filters present
-daily_totals = []
-if user_date_filter:
-    dtcol = func.date(func.coalesce(Package.date_received, Package.created_at)).label("day")
-
-    dq = _apply_pkg_filters(
+    # Agg totals for the current filter
+    totals_q = _apply_pkg_filters(
         db.session.query(
-            dtcol,
             func.count(Package.id),
             func.coalesce(func.sum(Package.weight), 0.0)
         ).join(User, Package.user_id == User.id),
@@ -1348,89 +1314,119 @@ if user_date_filter:
         status_filter=status_filter,
         search=search,
         unassigned_only=unassigned_only,
-    ).group_by(dtcol).order_by(dtcol.asc())
+    )
 
-    for day, cnt, tw in dq.all():
-        daily_totals.append({"day": str(day), "count": int(cnt or 0), "total_weight": float(tw or 0.0)})
+    cnt, tw = totals_q.first()
+    filtered_total_packages = int(cnt or 0)
+    filtered_total_weight   = float(tw or 0.0)
 
-# showing range
-offset = (page - 1) * per_page
-showing_from = 0 if total_count == 0 else (offset + 1)
-showing_to   = min(offset + len(parsed_packages), total_count)
+    # Daily breakdown when date filters present
+    daily_totals = []
+    if user_date_filter:
+        dtcol = func.date(func.coalesce(Package.date_received, Package.created_at)).label("day")
 
-categories = list(CATEGORIES.keys())
+        dq = _apply_pkg_filters(
+            db.session.query(
+                dtcol,
+                func.count(Package.id),
+                func.coalesce(func.sum(Package.weight), 0.0)
+            ).join(User, Package.user_id == User.id),
+            unassigned_id=unassigned_id,
+            date_from=date_from,
+            date_to=date_to,
+            epc_only=epc_only,
+            not_notified_only=not_notified_only,
+            house=house,
+            tracking=tracking,
+            user_code=user_code,
+            first_name=first_name,
+            last_name=last_name,
+            status_filter=status_filter,
+            search=search,
+            unassigned_only=unassigned_only,
+        ).group_by(dtcol).order_by(dtcol.asc())
 
-allowed_page_sizes = [10, 25, 50, 100, 500, 1000]
-prev_page   = page - 1 if page > 1 else None
-next_page   = page + 1 if page < total_pages else None
-first_page  = 1 if page != 1 else None
-last_page   = total_pages if page != total_pages else None
+        for day, cnt, tw in dq.all():
+            daily_totals.append({"day": str(day), "count": int(cnt or 0), "total_weight": float(tw or 0.0)})
 
-return render_template(
-    "admin/logistics/logistics_dashboard.html",
-    upload_form=upload_form,
-    prealert_form=prealert_form,
-    bulk_form=bulk_form,
-    invoice_finalize_form=invoice_finalize_form,
+    # showing range
+    offset = (page - 1) * per_page
+    showing_from = 0 if total_count == 0 else (offset + 1)
+    showing_to   = min(offset + len(parsed_packages), total_count)
 
-    message=message,
-    errors=errors,
+    categories = list(CATEGORIES.keys())
 
-    preview_headers=preview_headers,
-    preview_token=preview_token,
-    preview_rows=preview_rows,
-    preview_errors=preview_errors,
-    summary_counts=summary_counts,
+    allowed_page_sizes = [10, 25, 50, 100, 500, 1000]
+    prev_page   = page - 1 if page > 1 else None
+    next_page   = page + 1 if page < total_pages else None
+    first_page  = 1 if page != 1 else None
+    last_page   = total_pages if page != total_pages else None
 
-    shipments=shipments_parsed,
-    selected_shipment={
-        "id": selected_shipment.id,
-        "sl_id": selected_shipment.sl_id,
-        "sl_name": selected_shipment.sl_name,
-        "created_at": selected_shipment.created_at,
-    } if selected_shipment else None,
-    selected_shipment_id=selected_shipment_id,
-    shipment_packages=shipment_pkg_rows,
-    all_packages=parsed_packages,
+    return render_template(
+        "admin/logistics/logistics_dashboard.html",
+        upload_form=upload_form,
+        prealert_form=prealert_form,
+        bulk_form=bulk_form,
+        invoice_finalize_form=invoice_finalize_form,
 
-    search=search,
-    status_filter=status_filter,
-    date_from=date_from,
-    date_to=date_to,
-    user_date_filter=user_date_filter,
-    house=house,
-    tracking=tracking,
-    user_code=user_code,
-    first_name=first_name,
-    last_name=last_name,
-    unassigned_only=unassigned_only,
-    unassigned_id=unassigned_id,
-    epc_only=epc_only,
-    not_notified_only=not_notified_only,
+        message=message,
+        errors=errors,
 
-    page=page,
-    per_page=per_page,
-    allowed_page_sizes=allowed_page_sizes,
-    total_pages=total_pages,
-    prev_page=prev_page,
-    next_page=next_page,
-    first_page=first_page,
-    last_page=last_page,
-    total_count=total_count,
-    showing_from=showing_from,
-    showing_to=showing_to,
+        preview_headers=preview_headers,
+        preview_token=preview_token,
+        preview_rows=preview_rows,
+        preview_errors=preview_errors,
+        summary_counts=summary_counts,
 
-    total_packages=filtered_total_packages,
-    total_weight=filtered_total_weight,
-    daily_totals=daily_totals,
+        shipments=shipments_parsed,
+        selected_shipment={
+            "id": selected_shipment.id,
+            "sl_id": selected_shipment.sl_id,
+            "sl_name": selected_shipment.sl_name,
+            "created_at": selected_shipment.created_at,
+        } if selected_shipment else None,
+        selected_shipment_id=selected_shipment_id,
+        shipment_packages=shipment_pkg_rows,
+        all_packages=parsed_packages,
 
-    now=datetime.now,
-    active_tab=tab,
-    categories=categories,
-    CATEGORIES=CATEGORIES,
-    USD_TO_JMD=USD_TO_JMD,
-    prealerts=prealerts_data,
-)
+        search=search,
+        status_filter=status_filter,
+        date_from=date_from,
+        date_to=date_to,
+        user_date_filter=user_date_filter,
+        house=house,
+        tracking=tracking,
+        user_code=user_code,
+        first_name=first_name,
+        last_name=last_name,
+        unassigned_only=unassigned_only,
+        unassigned_id=unassigned_id,
+        epc_only=epc_only,
+        not_notified_only=not_notified_only,
+
+        page=page,
+        per_page=per_page,
+        allowed_page_sizes=allowed_page_sizes,
+        total_pages=total_pages,
+        prev_page=prev_page,
+        next_page=next_page,
+        first_page=first_page,
+        last_page=last_page,
+        total_count=total_count,
+        showing_from=showing_from,
+        showing_to=showing_to,
+
+        total_packages=filtered_total_packages,
+        total_weight=filtered_total_weight,
+        daily_totals=daily_totals,
+
+        now=datetime.now,
+        active_tab=tab,
+        categories=categories,
+        CATEGORIES=CATEGORIES,
+        USD_TO_JMD=USD_TO_JMD,
+        prealerts=prealerts_data,
+    )
 
 @logistics_bp.get("/api/user-lookup")
 @admin_required  # keep it protected since it exposes customer info

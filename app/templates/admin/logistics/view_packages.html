@@ -1826,6 +1826,14 @@ document.addEventListener('DOMContentLoaded', function () {
 #packagesTable thead th.sorting_desc::after { opacity: 1; }
 </style>
 
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+    bootstrap.Tooltip.getOrCreateInstance(el);
+  });
+});
+</script>
+
 {% include 'admin/invoices/_proforma_modal_block.html' %}
 
 {% endblock %}

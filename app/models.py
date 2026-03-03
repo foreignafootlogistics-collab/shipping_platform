@@ -213,6 +213,8 @@ class Package(db.Model):
     # optional tracking
     pricing_locked_at = db.Column(db.DateTime, nullable=True)
     pricing_locked_by = db.Column(db.Integer, nullable=True)
+    customer_notified_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    customer_notified_by = db.Column(db.Integer, nullable=True)
 
     is_locked = db.Column(db.Boolean, default=False, nullable=False)
     locked_reason = db.Column(db.String(120), nullable=True)

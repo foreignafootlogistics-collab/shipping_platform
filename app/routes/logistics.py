@@ -1214,6 +1214,7 @@ def logistics_dashboard():
             "epc": getattr(p, "epc", 0),
             "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
             "invoice_id": p.invoice_id,
+            "customer_notified_at": getattr(p, "customer_notified_at", None),
         })
 
     # Agg totals for the current filter
@@ -2040,28 +2041,42 @@ def download_packages():
 # --------------------------------------------------------------------------------------
 # Email selected packages (group by user)
 # --------------------------------------------------------------------------------------
+# ✅ REQUIRED imports (make sure these exist in this file)
+from datetime import datetime, timezone
+from flask import request, redirect, url_for, flash
+from flask_login import current_user
+
+from app.extensions import db
+from app.models import Package, User, Invoice
+from app.utils import email_utils
+
+
 @logistics_bp.route('/email-selected-packages', methods=['POST'], endpoint='email_selected_packages')
 @admin_required
 def email_selected_packages():
-    # Get the raw ids from the form (strings)
+    # Selected IDs come from: <input type="checkbox" name="package_ids" ...>
     package_ids = request.form.getlist('package_ids')
 
     if not package_ids:
         flash("Please select at least one package to email.", "warning")
         return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
-    # ✅ Convert to integers, ignore anything that can't be converted
-    try:
-        package_ids_int = [int(pid) for pid in package_ids if str(pid).strip()]
-    except ValueError:
-        flash("Invalid package IDs received.", "danger")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+    # ✅ Convert to ints safely
+    package_ids_int = []
+    for pid in package_ids:
+        pid = str(pid).strip()
+        if not pid:
+            continue
+        if not pid.isdigit():
+            flash("Invalid package IDs received.", "danger")
+            return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        package_ids_int.append(int(pid))
 
     if not package_ids_int:
         flash("No valid packages selected.", "warning")
         return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
-    # Use the integer list here
+    # Fetch packages + users
     rows = (
         db.session.query(Package, User)
         .join(User, Package.user_id == User.id)
@@ -2073,31 +2088,45 @@ def email_selected_packages():
         flash("No matching packages found.", "warning")
         return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
+    # Group by user
     grouped: dict[int, dict] = {}
     for pkg, user in rows:
-        if user.id not in grouped:
-            grouped[user.id] = {"user": user, "packages": []}
+        grouped.setdefault(user.id, {"user": user, "packages": []})
         grouped[user.id]["packages"].append(pkg)
 
     sent_count = 0
     failed: list[str] = []
 
+    # ✅ timezone-aware timestamp (matches DateTime(timezone=True))
+    now = datetime.now(timezone.utc)
+
     for idx, bundle in enumerate(grouped.values()):
-        # ✅ throttle bulk sends (prevents Yahoo deferrals)
         _email_throttle(idx)
 
         user = bundle["user"]
         pkgs = bundle["packages"]
+
+        # ✅ skip if missing email
+        if not user.email:
+            failed.append("(no email)")
+            continue
 
         ok = email_utils.send_overseas_received_email(
             to_email=user.email,
             full_name=(user.full_name or ""),
             reg_number=(user.registration_number or ""),
             packages=pkgs,
+            recipient_user_id=user.id,  # optional if your email_utils supports it
         )
 
         if ok:
-            # Log message to in-app messages
+            # ✅ stamp as notified (do NOT overwrite if already stamped)
+            for p in pkgs:
+                if not getattr(p, "customer_notified_at", None):
+                    p.customer_notified_at = now
+                    p.customer_notified_by = getattr(current_user, "id", None)
+
+            # ✅ in-app message log (your existing behavior)
             pkg_lines = []
             for p in pkgs:
                 pkg_lines.append(
@@ -2108,8 +2137,8 @@ def email_selected_packages():
             body = (
                 f"Hi {user.full_name or ''},\n\n"
                 "Your package(s) have been received overseas and are now being prepared for shipment to Jamaica:\n\n"
-                + "\n".join(pkg_lines) +
-                "\n\nLog in to your account to track updates.\n"
+                + "\n".join(pkg_lines)
+                + "\n\nLog in to your account to track updates.\n"
                 "— Foreign a Foot Logistics Limited"
             )
             _log_in_app_message(user.id, subject, body)
@@ -2118,15 +2147,46 @@ def email_selected_packages():
         else:
             failed.append(user.email or "(no email)")
 
+    # ✅ commit once
+    try:
+        if sent_count:
+            db.session.commit()
 
+        flash(
+            f"Emailed {sent_count} customer(s) about selected package(s).",
+            "success" if sent_count else "warning"
+        )
 
-    if sent_count:
-        db.session.commit()
-        flash(f"Emailed {sent_count} customer(s) about selected package(s).", "success")
-    if failed:
-        flash("Some emails failed: " + ", ".join(failed), "danger")
+        if failed:
+            flash("Some emails failed: " + ", ".join(failed), "danger")
 
-    return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+    except Exception as e:
+        db.session.rollback()
+        flash(f"DB update failed after sending emails: {e}", "warning")
+
+    # ✅ preserve filters/paging like bulk_action does
+    def _safe_int(v, default):
+        try:
+            return int(v)
+        except Exception:
+            return default
+
+    return redirect(url_for(
+        "logistics.logistics_dashboard",
+        tab="view_packages",
+        page=_safe_int(request.form.get("page"), 1),
+        per_page=_safe_int(request.form.get("per_page"), 25),
+        date_from=request.form.get("date_from") or None,
+        date_to=request.form.get("date_to") or None,
+        house=request.form.get("house") or None,
+        tracking=request.form.get("tracking") or None,
+        user_code=request.form.get("user_code") or None,
+        first_name=request.form.get("first_name") or None,
+        last_name=request.form.get("last_name") or None,
+        unassigned_only=request.form.get("unassigned_only") or None,
+        epc_only=request.form.get("epc_only") or None,
+    ))
+
 
 # --------------------------------------------------------------------------------------
 # Bulk actions on packages (ORM only)
@@ -2160,6 +2220,7 @@ def packages_bulk_action():
     try:
         if action == "delete":
             affected_invoice_ids = {p.invoice_id for p in pkgs if p.invoice_id}
+
             for p in pkgs:
                 db.session.delete(p)
             db.session.flush()
@@ -2173,6 +2234,7 @@ def packages_bulk_action():
                 )
                 still_used_ids = {row[0] for row in still_used}
                 to_delete = [iid for iid in affected_invoice_ids if iid not in still_used_ids]
+
                 if to_delete:
                     Invoice.query.filter(Invoice.id.in_(to_delete)).delete(synchronize_session=False)
 
@@ -2180,18 +2242,23 @@ def packages_bulk_action():
             flash(f"Deleted {len(pkgs)} package(s).", "success")
 
         elif action == "mark_received":
-            now = datetime.utcnow()
+            # (optional) keep as utcnow; no DB column shown here
             for p in pkgs:
                 p.status = "Received"
-                
+
             db.session.commit()
             flash(f"Marked {len(pkgs)} package(s) as Received.", "success")
 
         elif action == "export_pdf":
+            import io
+            from reportlab.lib.pagesizes import letter
             from reportlab.pdfgen import canvas as rlcanvas
+            from flask import send_file
+
             buf = io.BytesIO()
             c = rlcanvas.Canvas(buf, pagesize=letter)
             y = 750
+
             for row in pkgs:
                 c.drawString(
                     50, y,
@@ -2202,11 +2269,15 @@ def packages_bulk_action():
                 if y < 60:
                     c.showPage()
                     y = 750
+
             c.save()
             buf.seek(0)
-            return send_file(buf, as_attachment=True,
-                             download_name="packages.pdf",
-                             mimetype="application/pdf")
+            return send_file(
+                buf,
+                as_attachment=True,
+                download_name="packages.pdf",
+                mimetype="application/pdf"
+            )
 
         elif action == "create_shipment":
             return redirect(url_for("logistics.create_shipment"))
@@ -2215,9 +2286,8 @@ def packages_bulk_action():
             return redirect(url_for("logistics.assign_packages"))
 
         elif action in ("invoice_request", "send_invoice_request"):
-            from app.utils import email_utils
-
             grouped = {}
+
             for p in pkgs:
                 if not p.user:
                     continue
@@ -2246,7 +2316,7 @@ def packages_bulk_action():
                     to_email=user.email,
                     full_name=user.full_name or "Customer",
                     packages=data["packages"],
-                    recipient_user_id=user.id,   # optional (logs to Messages if your send_email supports it)
+                    recipient_user_id=user.id,
                 )
 
                 if ok:
@@ -2257,8 +2327,7 @@ def packages_bulk_action():
             if sent:
                 flash(f"Sent invoice request email to {sent} customer(s).", "success")
             if failed:
-                flash("Some invoice request emails failed: " + ", ".join(failed), "danger")           
-
+                flash("Some invoice request emails failed: " + ", ".join(failed), "danger")
 
         elif action == "mark_epc":
             for p in pkgs:
@@ -2282,18 +2351,14 @@ def packages_bulk_action():
         flash(f"Error performing bulk action: {e}", "danger")
 
     # ✅ pull filters from POST (because this is a POST)
-    page = request.form.get("page", 1)
-    per_page = request.form.get("per_page", 10)
+    def _safe_int(v, default):
+        try:
+            return int(v)
+        except Exception:
+            return default
 
-    try:
-        page = int(page)
-    except (TypeError, ValueError):
-        page = 1
-
-    try:
-        per_page = int(per_page)
-    except (TypeError, ValueError):
-        per_page = 10
+    page = _safe_int(request.form.get("page"), 1)
+    per_page = _safe_int(request.form.get("per_page"), 10)
 
     return redirect(url_for(
         "logistics.logistics_dashboard",
@@ -2310,8 +2375,6 @@ def packages_bulk_action():
         unassigned_only=request.form.get("unassigned_only") or None,
         epc_only=request.form.get("epc_only") or None,
     ))
-
-
 
 # --------------------------------------------------------------------------------------
 # Simple view (kept for backwards-compat with existing template)

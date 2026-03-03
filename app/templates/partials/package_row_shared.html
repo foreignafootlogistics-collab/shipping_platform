@@ -26,6 +26,7 @@
 
 {% set _attachments = pkg.attachments if pkg.attachments is defined else pkg.get('attachments') %}
 {% set _epc = pkg.epc if pkg.epc is defined else pkg.get('epc') %}
+{% set _notified_at = pkg.customer_notified_at if pkg.customer_notified_at is defined else pkg.get('customer_notified_at') %}
 
 {% set dv = _declared if _declared is not none else (_value if _value is not none else 0) %}
 {% set _invoice_total = pkg.invoice_total if pkg.invoice_total is defined else pkg.get('invoice_total') %}
@@ -93,8 +94,18 @@
   <small class="text-muted">{{ _tracking or '-' }}</small>
 </td>
 
-<td data-order="{{ (_house or '0')|replace(',', '') }}">
+<td data-order="{{ (_house or '0')|replace(',', '') }}" class="text-nowrap">
   {{ _house or '-' }}
+
+  {# ✅ Notified icon #}
+  {% if _notified_at %}
+    <span class="ms-1"
+          data-bs-toggle="tooltip"
+          title="Customer notified">
+      <i class="bi bi-envelope-check-fill text-success"></i>
+    </span>
+  {% endif %}
+
   {% if _epc %}
     <span class="badge badge-epc ms-1">
       <i class="bi bi-flag-fill" style="font-size:0.60rem;"></i> EPC

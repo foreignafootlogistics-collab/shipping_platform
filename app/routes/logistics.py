@@ -285,38 +285,83 @@ def _parse_date_any(v):
         return None
 
 
-def _apply_pkg_filters(q, unassigned_id=None, date_from=None, date_to=None):
+from datetime import datetime
+from flask import request
+from sqlalchemy import func, or_
+
+def _apply_pkg_filters(
+    q,
+    unassigned_id=None,
+    date_from=None,
+    date_to=None,
+    house=None,
+    tracking=None,
+    user_code=None,
+    first_name=None,
+    last_name=None,
+    search=None,
+    status_filter=None,
+    epc_only=None,
+    unassigned_only=None,
+    not_notified_only=None,
+):
     """
     Apply package filters to a SQLAlchemy query.
 
-    Key upgrade:
-    - Accepts date_from/date_to as optional args.
+    Upgrades:
+    - Accepts date_from/date_to and other filters as optional args.
     - If not provided, falls back to request.args (old behavior).
+    - Adds not_notified_only filter (Package.customer_notified_at is NULL).
     """
 
-    # ✅ Prefer explicitly passed dates (used by dashboard default-today logic)
+    # -------------------------
+    # Dates (prefer passed in)
+    # -------------------------
     if date_from is None:
-        date_from = (request.args.get('date_from') or '').strip()
+        date_from = (request.args.get("date_from") or "").strip()
     else:
-        date_from = (str(date_from) or '').strip()
+        date_from = (str(date_from) or "").strip()
 
     if date_to is None:
-        date_to = (request.args.get('date_to') or '').strip()
+        date_to = (request.args.get("date_to") or "").strip()
     else:
-        date_to = (str(date_to) or '').strip()
+        date_to = (str(date_to) or "").strip()
 
-    house      = request.args.get('house',      '', type=str)
-    tracking   = request.args.get('tracking',   '', type=str)
-    user_code  = request.args.get('user_code',  '', type=str)
-    first_name = request.args.get('first_name', '', type=str)
-    last_name  = request.args.get('last_name',  '', type=str)
-    search     = (request.args.get('search') or '').strip()
-    status_filter = (request.args.get('status') or '').strip()
-    epc_only   = (request.args.get('epc_only') or '').lower() in ('1', 'true', 'on', 'yes')
+    # -------------------------
+    # Other filters (prefer passed in)
+    # -------------------------
+    if house is None:
+        house = request.args.get("house", "", type=str)
 
-    # ⬇️ IMPORTANT: read the checkbox value
-    unassigned_only = (request.args.get('show_unassigned') or
-                       request.args.get('unassigned_only') or '').lower() in ('1', 'true', 'on', 'yes')
+    if tracking is None:
+        tracking = request.args.get("tracking", "", type=str)
+
+    if user_code is None:
+        user_code = request.args.get("user_code", "", type=str)
+
+    if first_name is None:
+        first_name = request.args.get("first_name", "", type=str)
+
+    if last_name is None:
+        last_name = request.args.get("last_name", "", type=str)
+
+    if search is None:
+        search = (request.args.get("search") or "").strip()
+
+    if status_filter is None:
+        status_filter = (request.args.get("status") or "").strip()
+
+    if epc_only is None:
+        epc_only = (request.args.get("epc_only") or "").lower() in ("1", "true", "on", "yes")
+
+    if unassigned_only is None:
+        unassigned_only = (
+            (request.args.get("show_unassigned") or request.args.get("unassigned_only") or "")
+            .lower() in ("1", "true", "on", "yes")
+        )
+
+    if not_notified_only is None:
+        not_notified_only = (request.args.get("not_notified_only") or "").lower() in ("1", "true", "on", "yes")
 
     # ✅ Always use the same date expression everywhere
     dt_expr = func.date(func.coalesce(Package.date_received, Package.created_at))
@@ -332,11 +377,12 @@ def _apply_pkg_filters(q, unassigned_id=None, date_from=None, date_to=None):
 
     if df:
         q = q.filter(dt_expr >= df)
-
     if dt:
         q = q.filter(dt_expr <= dt)
- 
 
+    # -------------------------
+    # Text filters
+    # -------------------------
     if house:
         q = q.filter(Package.house_awb.ilike(f"%{house.strip()}%"))
 
@@ -365,10 +411,21 @@ def _apply_pkg_filters(q, unassigned_id=None, date_from=None, date_to=None):
     if status_filter:
         q = q.filter(Package.status == status_filter)
 
+    # -------------------------
+    # EPC filter
+    # -------------------------
     if epc_only and hasattr(Package, "epc"):
         q = q.filter(func.coalesce(Package.epc, 0) == 1)
 
-    # 🔴 UNASSIGNED filter
+    # -------------------------
+    # ✅ NEW: Not yet notified filter
+    # -------------------------
+    if not_notified_only and hasattr(Package, "customer_notified_at"):
+        q = q.filter(Package.customer_notified_at.is_(None))
+
+    # -------------------------
+    # Unassigned filter
+    # -------------------------
     if unassigned_only:
         if unassigned_id:
             q = q.filter(Package.user_id == unassigned_id)
@@ -376,7 +433,6 @@ def _apply_pkg_filters(q, unassigned_id=None, date_from=None, date_to=None):
             q = q.filter(Package.status == "Unassigned")
 
     return q
-
 
 def _paginate(q, per_page_default=10):
     allowed = [10, 25, 50, 100, 500, 1000]
@@ -1153,7 +1209,14 @@ def logistics_dashboard():
         pkg_q,
         unassigned_id=unassigned_id,
         date_from=date_from,
-        date_to=date_to
+        date_to=date_to,
+        epc_only=epc_only,
+        not_notified_only=not_notified_only,
+        house=house,
+        tracking=tracking,
+        user_code=user_code,
+        first_name=first_name,
+        last_name=last_name,
     )
 
 
@@ -1225,7 +1288,14 @@ def logistics_dashboard():
         ).join(User, Package.user_id == User.id),
         unassigned_id=unassigned_id,
         date_from=date_from,
-        date_to=date_to
+        date_to=date_to,
+        epc_only=epc_only,
+        not_notified_only=not_notified_only,
+        house=house,
+        tracking=tracking,
+        user_code=user_code,
+        first_name=first_name,
+        last_name=last_name,
     )
     cnt, tw = totals_q.first()
     filtered_total_packages = int(cnt or 0)
@@ -1245,6 +1315,13 @@ def logistics_dashboard():
             unassigned_id=unassigned_id,
             date_from=date_from,
             date_to=date_to,
+            epc_only=epc_only,
+            not_notified_only=not_notified_only,
+            house=house,
+            tracking=tracking,
+            user_code=user_code,
+            first_name=first_name,
+            last_name=last_name,
         ).group_by(dtcol).order_by(dtcol.asc())
 
         for day, cnt, tw in dq.all():
@@ -1261,6 +1338,7 @@ def logistics_dashboard():
 
     # Extract read-back of some filters for template
     epc_only = (request.args.get('epc_only') or '').lower() in ('1','true','on','yes')
+    not_notified_only = (request.args.get('not_notified_only') or '').lower() in ('1','true','on','yes')
     search = (request.args.get('search') or '').strip()
     status_filter = (request.args.get('status') or '').strip()
     house = request.args.get('house', '', type=str)
@@ -1319,6 +1397,7 @@ def logistics_dashboard():
         unassigned_only=unassigned_only,
         unassigned_id=unassigned_id,
         epc_only=epc_only,
+        not_notified_only=not_notified_only,
 
         page=page,
         per_page=per_page,
@@ -2041,42 +2120,25 @@ def download_packages():
 # --------------------------------------------------------------------------------------
 # Email selected packages (group by user)
 # --------------------------------------------------------------------------------------
-# ✅ REQUIRED imports (make sure these exist in this file)
-from datetime import datetime, timezone
-from flask import request, redirect, url_for, flash
-from flask_login import current_user
-
-from app.extensions import db
-from app.models import Package, User, Invoice
-from app.utils import email_utils
-
-
 @logistics_bp.route('/email-selected-packages', methods=['POST'], endpoint='email_selected_packages')
 @admin_required
 def email_selected_packages():
-    # Selected IDs come from: <input type="checkbox" name="package_ids" ...>
     package_ids = request.form.getlist('package_ids')
 
     if not package_ids:
         flash("Please select at least one package to email.", "warning")
         return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
-    # ✅ Convert to ints safely
-    package_ids_int = []
-    for pid in package_ids:
-        pid = str(pid).strip()
-        if not pid:
-            continue
-        if not pid.isdigit():
-            flash("Invalid package IDs received.", "danger")
-            return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
-        package_ids_int.append(int(pid))
+    try:
+        package_ids_int = [int(pid) for pid in package_ids if str(pid).strip()]
+    except ValueError:
+        flash("Invalid package IDs received.", "danger")
+        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
     if not package_ids_int:
         flash("No valid packages selected.", "warning")
         return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
-    # Fetch packages + users
     rows = (
         db.session.query(Package, User)
         .join(User, Package.user_id == User.id)
@@ -2088,7 +2150,7 @@ def email_selected_packages():
         flash("No matching packages found.", "warning")
         return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
 
-    # Group by user
+    # group by customer
     grouped: dict[int, dict] = {}
     for pkg, user in rows:
         grouped.setdefault(user.id, {"user": user, "packages": []})
@@ -2096,39 +2158,42 @@ def email_selected_packages():
 
     sent_count = 0
     failed: list[str] = []
+    skipped_customers = 0
+    skipped_packages = 0
 
-    # ✅ timezone-aware timestamp (matches DateTime(timezone=True))
     now = datetime.now(timezone.utc)
 
     for idx, bundle in enumerate(grouped.values()):
         _email_throttle(idx)
 
         user = bundle["user"]
-        pkgs = bundle["packages"]
+        pkgs_all = bundle["packages"]
 
-        # ✅ skip if missing email
-        if not user.email:
-            failed.append("(no email)")
+        # ✅ Only email packages NOT previously notified
+        pkgs_to_send = [p for p in pkgs_all if not getattr(p, "customer_notified_at", None)]
+
+        if not pkgs_to_send:
+            skipped_customers += 1
+            skipped_packages += len(pkgs_all)
             continue
 
         ok = email_utils.send_overseas_received_email(
             to_email=user.email,
             full_name=(user.full_name or ""),
             reg_number=(user.registration_number or ""),
-            packages=pkgs,
-            recipient_user_id=user.id,  # optional if your email_utils supports it
+            packages=pkgs_to_send,
+            recipient_user_id=user.id,  # optional
         )
 
         if ok:
-            # ✅ stamp as notified (do NOT overwrite if already stamped)
-            for p in pkgs:
-                if not getattr(p, "customer_notified_at", None):
-                    p.customer_notified_at = now
-                    p.customer_notified_by = getattr(current_user, "id", None)
+            # ✅ stamp only what was sent
+            for p in pkgs_to_send:
+                p.customer_notified_at = now
+                p.customer_notified_by = getattr(current_user, "id", None)
 
-            # ✅ in-app message log (your existing behavior)
+            # in-app logging (only for what was sent)
             pkg_lines = []
-            for p in pkgs:
+            for p in pkgs_to_send:
                 pkg_lines.append(
                     f"- {p.tracking_number or ''} | {p.house_awb or ''} | {p.description or ''} | {p.weight or 0} lb"
                 )
@@ -2137,8 +2202,8 @@ def email_selected_packages():
             body = (
                 f"Hi {user.full_name or ''},\n\n"
                 "Your package(s) have been received overseas and are now being prepared for shipment to Jamaica:\n\n"
-                + "\n".join(pkg_lines)
-                + "\n\nLog in to your account to track updates.\n"
+                + "\n".join(pkg_lines) +
+                "\n\nLog in to your account to track updates.\n"
                 "— Foreign a Foot Logistics Limited"
             )
             _log_in_app_message(user.id, subject, body)
@@ -2152,10 +2217,16 @@ def email_selected_packages():
         if sent_count:
             db.session.commit()
 
-        flash(
-            f"Emailed {sent_count} customer(s) about selected package(s).",
-            "success" if sent_count else "warning"
-        )
+        if sent_count:
+            flash(f"Emailed {sent_count} customer(s) about selected package(s).", "success")
+        else:
+            flash("No emails were sent.", "warning")
+
+        if skipped_customers or skipped_packages:
+            flash(
+                f"Skipped {skipped_customers} customer(s) / {skipped_packages} package(s) already notified.",
+                "info"
+            )
 
         if failed:
             flash("Some emails failed: " + ", ".join(failed), "danger")
@@ -2164,8 +2235,8 @@ def email_selected_packages():
         db.session.rollback()
         flash(f"DB update failed after sending emails: {e}", "warning")
 
-    # ✅ preserve filters/paging like bulk_action does
-    def _safe_int(v, default):
+    # preserve filters/paging
+    def _int(v, default):
         try:
             return int(v)
         except Exception:
@@ -2174,8 +2245,8 @@ def email_selected_packages():
     return redirect(url_for(
         "logistics.logistics_dashboard",
         tab="view_packages",
-        page=_safe_int(request.form.get("page"), 1),
-        per_page=_safe_int(request.form.get("per_page"), 25),
+        page=_int(request.form.get("page"), 1),
+        per_page=_int(request.form.get("per_page"), 25),
         date_from=request.form.get("date_from") or None,
         date_to=request.form.get("date_to") or None,
         house=request.form.get("house") or None,
@@ -2185,6 +2256,7 @@ def email_selected_packages():
         last_name=request.form.get("last_name") or None,
         unassigned_only=request.form.get("unassigned_only") or None,
         epc_only=request.form.get("epc_only") or None,
+        not_notified_only=request.form.get("not_notified_only") or None,  # ✅ NEW
     ))
 
 

@@ -39,6 +39,7 @@
       <input type="hidden" name="last_name" value="{{ last_name or '' }}">
       <input type="hidden" name="unassigned_only" value="{{ '1' if unassigned_only else '' }}">
       <input type="hidden" name="epc_only" value="{{ '1' if epc_only else '' }}">
+      <input type="hidden" name="not_notified_only" value="{{ '1' if not_notified_only else '' }}">
 
       <div class="d-flex align-items-center action-toolbar shadow-sm">
 
@@ -259,6 +260,18 @@
     <small id="epcCount" class="text-muted ms-2" style="display:none;"></small>
   </div>
 
+  <div class="col-12 col-md-auto d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
+    <input type="checkbox"
+           class="form-check-input"
+           id="filterNotNotifiedOnly"
+           name="not_notified_only"
+           value="1"
+           {% if not_notified_only %}checked{% endif %}>
+    <label class="form-check-label" for="filterNotNotifiedOnly">
+      Not Yet Notified
+    </label>
+  </div>
+
 
 
   <!-- Toolbar row: left = actions, right = rows-per-page -->
@@ -290,7 +303,9 @@
                             status=status_filter,
                             per_page=per_page,
                             page=page,
-                            unassigned_only='1' if unassigned_only else None) }}">
+                            unassigned_only='1' if unassigned_only else None,
+                            epc_only='1' if epc_only else None,
+                            not_notified_only='1' if not_notified_only else None) }}">
           <i class="fas fa-download me-1"></i> Download Packages
         </a>
 
@@ -392,7 +407,8 @@
                           first_name=first_name,
                           last_name=last_name,
                           unassigned_only=('1' if unassigned_only else None),
-                          epc_only=('1' if epc_only else None)) }}">
+                          epc_only=('1' if epc_only else None),
+                          not_notified_only=('1' if not_notified_only else None)) }}">
         &laquo;&laquo;
       </a>
     </li>
@@ -412,7 +428,8 @@
                           first_name=first_name,
                           last_name=last_name,
                           unassigned_only=('1' if unassigned_only else None),
-                          epc_only=('1' if epc_only else None)) }}">
+                          epc_only=('1' if epc_only else None),
+                          not_notified_only=('1' if not_notified_only else None)) }}">
         &laquo;
       </a>
     </li>
@@ -435,7 +452,8 @@
                             first_name=first_name,
                             last_name=last_name,
                             unassigned_only=('1' if unassigned_only else None),
-                            epc_only=('1' if epc_only else None)) }}">
+                            epc_only=('1' if epc_only else None),
+                            not_notified_only=('1' if not_notified_only else None)) }}">
           {{ p }}
         </a>
       </li>
@@ -456,7 +474,8 @@
                           first_name=first_name,
                           last_name=last_name,
                           unassigned_only=('1' if unassigned_only else None),
-                          epc_only=('1' if epc_only else None)) }}">
+                          epc_only=('1' if epc_only else None),
+                          not_notified_only=('1' if not_notified_only else None)) }}">
         &raquo;
       </a>
     </li>
@@ -476,7 +495,8 @@
                           first_name=first_name,
                           last_name=last_name,
                           unassigned_only=('1' if unassigned_only else None),
-                          epc_only=('1' if epc_only else None)) }}">
+                          epc_only=('1' if epc_only else None),
+                          not_notified_only=('1' if not_notified_only else None)) }}">
         &raquo;&raquo;
       </a>
     </li>

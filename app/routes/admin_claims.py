@@ -1,14 +1,33 @@
 from datetime import datetime
+from decimal import Decimal
+
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import current_user
 
 from app.extensions import db
-from app.models import Claim, ClaimAuditLog, Message, Wallet, WalletTransaction
+from app.models import Claim, ClaimAuditLog, Wallet, WalletTransaction
 from app.forms import AdminClaimDecisionForm
 from app.routes.admin_auth_routes import admin_required
 from app.utils.email_utils import send_claim_status_update_email
 
+# ✅ Optional: in-app message (only if your project actually has Message model)
+try:
+    from app.models import Message
+except Exception:
+    Message = None
+
 admin_claims_bp = Blueprint("admin_claims", __name__, url_prefix="/admin/claims")
+
+
+def _to_decimal(x, default="0"):
+    """Safely convert to Decimal."""
+    if x is None:
+        return Decimal(default)
+    try:
+        return Decimal(str(x))
+    except Exception:
+        return Decimal(default)
+
 
 @admin_claims_bp.route("/", methods=["GET"])
 @admin_required
@@ -22,40 +41,45 @@ def queue():
     claims = q.order_by(Claim.created_at.desc()).all()
     return render_template("admin/claims/queue.html", claims=claims, status=status)
 
+
 @admin_claims_bp.route("/<int:claim_id>", methods=["GET", "POST"])
 @admin_required
 def review(claim_id):
     claim = Claim.query.get_or_404(claim_id)
     form = AdminClaimDecisionForm()
 
+    # ✅ Pre-fill on GET
     if request.method == "GET":
         form.status.data = claim.status or "submitted"
         form.approved_amount_jmd.data = claim.approved_amount_jmd
         form.decision_reason.data = claim.decision_reason
         form.admin_notes.data = claim.admin_notes
 
-        form.refund_issued.data = bool(claim.refund_issued)
-        form.refund_issued_method.data = claim.refund_issued_method or ""
-        form.refunded_amount_jmd.data = claim.refunded_amount_jmd
-        form.refund_reference.data = claim.refund_reference
+        form.refund_issued.data = bool(getattr(claim, "refund_issued", False))
+        form.refund_issued_method.data = getattr(claim, "refund_issued_method", "") or ""
+        form.refunded_amount_jmd.data = getattr(claim, "refunded_amount_jmd", None)
+        form.refund_reference.data = getattr(claim, "refund_reference", None)
 
     if form.validate_on_submit():
         old_status = claim.status or "submitted"
         new_status = form.status.data
 
+        # --- Core decision fields ---
         claim.status = new_status
-        claim.approved_amount_jmd = form.approved_amount_jmd.data if form.approved_amount_jmd.data is not None else claim.approved_amount_jmd
+        if form.approved_amount_jmd.data is not None:
+            claim.approved_amount_jmd = form.approved_amount_jmd.data
+
         claim.decision_reason = (form.decision_reason.data or "").strip() or None
         claim.admin_notes = (form.admin_notes.data or "").strip() or None
         claim.reviewed_by_admin_id = current_user.id
         claim.reviewed_at = claim.reviewed_at or datetime.utcnow()
 
-        # --- refund issued handling ---
+        # --- Refund issued handling ---
         wants_refund_issued = bool(form.refund_issued.data)
 
         if wants_refund_issued:
-            # require method when issuing refund
             method = (form.refund_issued_method.data or "").strip()
+
             if not method:
                 flash("Select 'Refund Method Issued' before marking refund as issued.", "warning")
                 return redirect(url_for("admin_claims.review", claim_id=claim.id))
@@ -63,21 +87,22 @@ def review(claim_id):
             # default refunded amount: approved amount if available, else claimed value
             refunded_amount = form.refunded_amount_jmd.data
             if refunded_amount is None:
-                refunded_amount = claim.approved_amount_jmd or claim.item_value_jmd
+                refunded_amount = claim.approved_amount_jmd or claim.item_value_jmd or 0
 
-            # Set flags
+            refunded_amount_dec = _to_decimal(refunded_amount)
+
             claim.refund_issued = True
             claim.refund_issued_method = method
-            claim.refunded_amount_jmd = refunded_amount
+            claim.refunded_amount_jmd = refunded_amount_dec
             claim.refund_reference = (form.refund_reference.data or "").strip() or None
             claim.refund_issued_at = datetime.utcnow()
             claim.refund_issued_by_admin_id = current_user.id
 
-            # recommended: if refund issued, force status paid (unless rejected)
+            # ✅ If refund issued, force status "paid" unless rejected
             if claim.status != "rejected":
                 claim.status = "paid"
 
-            # Wallet credit option
+            # ✅ Wallet credit option
             if method == "wallet_credit":
                 wallet = Wallet.query.filter_by(user_id=claim.user_id).first()
                 if not wallet:
@@ -85,36 +110,59 @@ def review(claim_id):
                     db.session.add(wallet)
                     db.session.flush()
 
-                # update wallet balance (assumes numeric/decimal)
-                wallet.balance = (wallet.balance or 0) + refunded_amount
+                wallet_balance = _to_decimal(getattr(wallet, "balance", 0))
+                wallet.balance = wallet_balance + refunded_amount_dec
 
                 db.session.add(WalletTransaction(
                     wallet_id=wallet.id,
-                    amount=refunded_amount,
+                    amount=refunded_amount_dec,
                     txn_type="credit",
-                    description=f"Claim refund credited (Claim #{claim.id})",
+                    description=f"Claim refund credited ({claim.case_id or ('Claim #' + str(claim.id))})",
                     created_at=datetime.utcnow()
                 ))
 
-        # audit log
+        # ✅ Audit log (use case_id)
         db.session.add(ClaimAuditLog(
             claim_id=claim.id,
             action="status_changed",
             from_status=old_status,
             to_status=claim.status,
             actor_admin_id=current_user.id,
-            message=f"Admin updated claim: {old_status} → {claim.status}"
+            message=f"Admin updated claim {claim.case_id or ('#' + str(claim.id))}: {old_status} → {claim.status}"
         ))
 
         db.session.commit()
 
-        # notify customer (email + Message)
-        send_claim_status_update_email(
-            user_email=claim.user.email,
-            full_name=claim.user.full_name,
-            claim=claim,
-            recipient_user_id=claim.user_id
-        )
+        # ✅ Notify customer (email)
+        try:
+            send_claim_status_update_email(
+                user_email=claim.user.email,
+                full_name=claim.user.full_name,
+                claim=claim,
+                recipient_user_id=claim.user_id
+            )
+        except Exception:
+            pass
+
+        # ✅ Optional: in-app Message record (only if your Message model exists)
+        if Message is not None:
+            try:
+                title = f"Claim Update: {claim.case_id or ('Claim #' + str(claim.id))}"
+                body = f"Your claim status has been updated to '{claim.status}'."
+                if claim.decision_reason:
+                    body += f"\n\nReason: {claim.decision_reason}"
+
+                msg = Message(
+                    user_id=claim.user_id,
+                    subject=title,
+                    body=body,
+                    is_read=False,
+                    created_at=datetime.utcnow()
+                )
+                db.session.add(msg)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
         flash("Claim updated.", "success")
         return redirect(url_for("admin_claims.review", claim_id=claim.id))

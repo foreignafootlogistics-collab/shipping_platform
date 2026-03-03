@@ -1,16 +1,22 @@
 {% extends "layout_admin.html" %}
-{% block title %}Review Claim #{{ claim.id }}{% endblock %}
+{% block title %}Review Claim {{ claim.case_id if claim.case_id else ("#" ~ claim.id) }}{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
 
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <div>
-      <h2 class="mb-0">🧾 Review Claim #{{ claim.id }}</h2>
+      <h2 class="mb-0">
+        🧾 Review Claim
+        <span class="text-muted">
+          {{ claim.case_id if claim.case_id else ("#" ~ claim.id) }}
+        </span>
+      </h2>
       <div class="text-muted small">Verify evidence, investigate, then approve/reject and mark refund issued.</div>
     </div>
 
-    <a class="btn btn-outline-dark" href="{{ url_for('admin_claims.queue', status=request.args.get('status') or 'submitted') }}">
+    <a class="btn btn-outline-dark"
+       href="{{ url_for('admin_claims.queue', status=request.args.get('status') or 'submitted') }}">
       ← Back to Queue
     </a>
   </div>
@@ -40,10 +46,30 @@
               <div class="fw-bold">
                 {{ claim.user.full_name if claim.user and claim.user.full_name else (claim.user.email if claim.user else "—") }}
               </div>
+              <div class="text-muted small">
+                Submitted:
+                {{ (claim.created_at|to_jamaica).strftime("%Y-%m-%d %I:%M %p") if claim.created_at else "—" }}
+              </div>
             </div>
+
             <div class="text-end">
               <div class="text-muted small">Status</div>
-              <span class="badge bg-dark">{{ claim.status or "submitted" }}</span>
+              {% set s = (claim.status or "submitted") %}
+              {% if s == "submitted" %}
+                <span class="badge bg-secondary">Submitted</span>
+              {% elif s == "under_review" %}
+                <span class="badge bg-warning text-dark">Under Review</span>
+              {% elif s == "need_more_info" %}
+                <span class="badge bg-info text-dark">Need More Info</span>
+              {% elif s == "approved" %}
+                <span class="badge bg-success">Approved</span>
+              {% elif s == "rejected" %}
+                <span class="badge bg-danger">Rejected</span>
+              {% elif s == "paid" %}
+                <span class="badge bg-primary">Paid</span>
+              {% else %}
+                <span class="badge bg-dark">{{ s }}</span>
+              {% endif %}
             </div>
           </div>
 
@@ -51,9 +77,15 @@
 
           <div class="row g-3">
             <div class="col-md-6">
+              <div class="text-muted small">Case ID</div>
+              <div class="fw-bold">{{ claim.case_id if claim.case_id else claim.id }}</div>
+            </div>
+
+            <div class="col-md-6">
               <div class="text-muted small">House AWB</div>
               <div class="fw-bold">{{ claim.house_awb }}</div>
             </div>
+
             <div class="col-md-6">
               <div class="text-muted small">Tracking Number</div>
               <div class="fw-bold">{{ claim.tracking_number or "—" }}</div>
@@ -67,7 +99,14 @@
             <div class="col-md-6">
               <div class="text-muted small">Requested Refund Method</div>
               <div class="fw-bold">
-                {% if claim.refund_method == "bank_transfer" %}Bank Transfer{% else %}Cash{% endif %}
+                {% set rm = claim.refund_method %}
+                {% if rm == "bank_transfer" %}
+                  Bank Transfer
+                {% elif rm == "wallet_credit" %}
+                  Wallet Credit
+                {% else %}
+                  Cash
+                {% endif %}
               </div>
             </div>
 
@@ -108,13 +147,28 @@
             <div class="alert alert-success mb-0">
               <div class="fw-bold">✅ Refund Issued</div>
               <div class="small mt-1">
-                <div><b>Method:</b> {{ claim.refund_issued_method or "—" }}</div>
+                <div>
+                  <b>Method:</b>
+                  {% set im = claim.refund_issued_method %}
+                  {% if im == "bank_transfer" %}
+                    Bank Transfer
+                  {% elif im == "wallet_credit" %}
+                    Wallet Credit
+                  {% elif im == "cash" %}
+                    Cash
+                  {% else %}
+                    {{ claim.refund_issued_method or "—" }}
+                  {% endif %}
+                </div>
                 <div><b>Amount:</b> JMD {{ "%.2f"|format((claim.refunded_amount_jmd or 0)|float) }}</div>
                 {% if claim.refund_reference %}
                   <div><b>Reference:</b> {{ claim.refund_reference }}</div>
                 {% endif %}
                 {% if claim.refund_issued_at %}
-                  <div class="text-muted mt-1">Issued at: {{ claim.refund_issued_at.strftime("%Y-%m-%d %H:%M") }}</div>
+                  <div class="text-muted mt-1">
+                    Issued at:
+                    {{ (claim.refund_issued_at|to_jamaica).strftime("%Y-%m-%d %I:%M %p") }}
+                  </div>
                 {% endif %}
               </div>
             </div>
@@ -154,9 +208,6 @@
                 {{ form.admin_notes(class="form-control", rows="3", placeholder="Internal notes (not visible to customer).") }}
               </div>
 
-              <!-- ============================= -->
-              <!-- ✅ NEW: REFUND ISSUED SECTION  -->
-              <!-- ============================= -->
               <hr class="my-2">
 
               <div class="col-12">
@@ -214,7 +265,9 @@
               <div class="list-group-item">
                 <div class="d-flex justify-content-between">
                   <div class="fw-bold small">{{ log.action }}</div>
-                  <div class="text-muted small">{{ log.created_at.strftime("%Y-%m-%d %H:%M") if log.created_at else "" }}</div>
+                  <div class="text-muted small">
+                    {{ (log.created_at|to_jamaica).strftime("%Y-%m-%d %I:%M %p") if log.created_at else "" }}
+                  </div>
                 </div>
 
                 {% if log.from_status or log.to_status %}
@@ -242,9 +295,20 @@
 
           {% if claim.refund_issued %}
             <div class="text-muted small mt-2">
-              Refund issued: <b>Yes</b> ({{ claim.refund_issued_method or "—" }})
+              Refund issued: <b>Yes</b>
+              (
+              {% if claim.refund_issued_method == "bank_transfer" %}
+                Bank Transfer
+              {% elif claim.refund_issued_method == "wallet_credit" %}
+                Wallet Credit
+              {% elif claim.refund_issued_method == "cash" %}
+                Cash
+              {% else %}
+                {{ claim.refund_issued_method or "—" }}
+              {% endif %}
+              )
               {% if claim.refund_issued_at %}
-                <div>Issued at: {{ claim.refund_issued_at.strftime("%Y-%m-%d %H:%M") }}</div>
+                <div>Issued at: {{ (claim.refund_issued_at|to_jamaica).strftime("%Y-%m-%d %I:%M %p") }}</div>
               {% endif %}
             </div>
           {% endif %}

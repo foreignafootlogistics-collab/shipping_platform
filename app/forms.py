@@ -1,11 +1,13 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField, SubmitField, DecimalField, DateField, FieldList, HiddenField, FormField, RadioField, TextAreaField, FileField, SelectMultipleField, widgets, SelectField, HiddenField, IntegerField, TimeField, BooleanField 
 from flask_wtf.file import FileField, FileAllowed, FileRequired
-from wtforms.validators import DataRequired, Email, EqualTo, NumberRange, Length, Optional, Regexp
+from wtforms.validators import DataRequired, Email, EqualTo, NumberRange, Length, Optional, Regexp, ValidationError
 from wtforms import Form  # For nested, non-CSRF forms
 from wtforms.fields import EmailField
 from app.calculator_data import CATEGORIES
 from app.calculator_data import categories
+
+ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "webp"}
 
 
 class LoginForm(FlaskForm):
@@ -423,32 +425,46 @@ class AdminCalculatorForm(FlaskForm):
 
 class ClaimForm(FlaskForm):
     house_awb = StringField("House AWB", validators=[DataRequired(), Length(max=64)])
-    tracking_number = StringField("Tracking Number (if available)", validators=[Optional(), Length(max=128)])
+
+    # ✅ Required now (you asked “all fields must be filled”)
+    tracking_number = StringField(
+        "Tracking Number",
+        validators=[DataRequired(message="Tracking number is required."), Length(max=128)]
+    )
 
     item_value_jmd = DecimalField(
         "Item Value (JMD)",
-        validators=[DataRequired(), NumberRange(min=0)],
+        validators=[DataRequired(), NumberRange(min=0.01, message="Enter a valid amount.")],
         places=2
     )
 
-    description = TextAreaField("Description (optional)", validators=[Optional(), Length(max=2000)])
+    # ✅ Required now
+    description = TextAreaField(
+        "Description",
+        validators=[DataRequired(message="Description is required."), Length(max=2000)]
+    )
 
     invoice_file = FileField(
-        "Invoice Evidence (PDF/JPG/PNG)",
-        validators=[FileRequired(), FileAllowed(["pdf", "jpg", "jpeg", "png"], "PDF/JPG/PNG only")]
+        "Invoice Evidence (PDF/JPG/PNG/WEBP)",
+        validators=[FileRequired(), FileAllowed(list(ALLOWED_EXTENSIONS), "PDF/JPG/PNG/WEBP only")]
     )
 
     bank_statement_file = FileField(
-        "Bank Statement Evidence (PDF/JPG/PNG)",
-        validators=[FileRequired(), FileAllowed(["pdf", "jpg", "jpeg", "png"], "PDF/JPG/PNG only")]
+        "Bank Statement Evidence (PDF/JPG/PNG/WEBP)",
+        validators=[FileRequired(), FileAllowed(list(ALLOWED_EXTENSIONS), "PDF/JPG/PNG/WEBP only")]
     )
 
     refund_method = SelectField(
         "Preferred Refund Method",
-        choices=[("cash", "Cash"), ("bank_transfer", "Bank Transfer")],
-        validators=[DataRequired()]
+        choices=[
+            ("cash", "Cash"),
+            ("bank_transfer", "Bank Transfer"),
+            ("wallet_credit", "Wallet Credit (use for future packages)"),
+        ],
+        validators=[DataRequired(message="Select a refund method.")]
     )
 
+    # Bank fields: OPTIONAL by default, but we enforce when method == bank_transfer
     bank_account_name = StringField("Name on Account", validators=[Optional(), Length(max=120)])
     bank_branch = StringField("Branch", validators=[Optional(), Length(max=120)])
     bank_account_number = StringField("Account #", validators=[Optional(), Length(max=60)])
@@ -459,6 +475,28 @@ class ClaimForm(FlaskForm):
     )
 
     submit = SubmitField("Submit Claim")
+
+    # ----------------------------
+    # ✅ Conditional server-side rules for bank transfer
+    # ----------------------------
+    def _is_bank(self):
+        return (self.refund_method.data or "").strip() == "bank_transfer"
+
+    def validate_bank_account_name(self, field):
+        if self._is_bank() and not (field.data or "").strip():
+            raise ValidationError("Bank account name is required for bank transfer.")
+
+    def validate_bank_branch(self, field):
+        if self._is_bank() and not (field.data or "").strip():
+            raise ValidationError("Bank branch is required for bank transfer.")
+
+    def validate_bank_account_number(self, field):
+        if self._is_bank() and not (field.data or "").strip():
+            raise ValidationError("Bank account number is required for bank transfer.")
+
+    def validate_bank_account_type(self, field):
+        if self._is_bank() and not (field.data or "").strip():
+            raise ValidationError("Select the bank account type for bank transfer.")
 
 
 class AdminClaimDecisionForm(FlaskForm):
@@ -495,6 +533,34 @@ class AdminClaimDecisionForm(FlaskForm):
     refund_reference = StringField("Refund Reference # (optional)", validators=[Optional()])
 
     submit = SubmitField("Update Claim")
+
+class CustomerMissingClaimForm(FlaskForm):
+    house_awb = StringField("House AWB", validators=[DataRequired()])
+    tracking_number = StringField("Tracking Number", validators=[DataRequired()])  # make required now
+    item_value_jmd = DecimalField("Item Value (JMD)", places=2, validators=[DataRequired(), NumberRange(min=0.01)])
+    refund_method = SelectField(
+        "Preferred Refund Method",
+        choices=[
+            ("cash", "Cash"),
+            ("bank_transfer", "Bank Transfer"),
+            ("wallet_credit", "Wallet Credit"),
+        ],
+        validators=[DataRequired()],
+    )
+
+    description = TextAreaField("Description", validators=[DataRequired()])  # was optional; now required
+
+    invoice_file = FileField(
+        "Invoice Evidence (PDF/JPG/PNG)",
+        validators=[FileRequired(), FileAllowed(list(ALLOWED_EXTENSIONS), "PDF/JPG/PNG only")],
+    )
+
+    bank_statement_file = FileField(
+        "Bank Statement Evidence (PDF/JPG/PNG)",
+        validators=[FileRequired(), FileAllowed(list(ALLOWED_EXTENSIONS), "PDF/JPG/PNG only")],
+    )
+
+    submit = SubmitField("Submit Claim")
 
 class ReferralForm(FlaskForm):
     friend_email = StringField("Friend's Email", validators=[DataRequired(), Email()])

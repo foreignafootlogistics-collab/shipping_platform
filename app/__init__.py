@@ -423,6 +423,8 @@ def create_app():
     app.register_blueprint(admin_claims_bp)
     app.register_blueprint(customer_claims_bp)
 
+    app.jinja_env.filters["to_jamaica"] = to_jamaica
+
     # Basic routes
     @app.route("/", methods=["GET"])
     def index():

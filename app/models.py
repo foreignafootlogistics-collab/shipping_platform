@@ -7,7 +7,7 @@ from flask_login import UserMixin
 from app.extensions import db
 import re
 from decimal import Decimal
-
+from sqlalchemy import select
 
 def normalize_tracking(s: str) -> str:
     """
@@ -362,6 +362,7 @@ class Claim(db.Model):
     __tablename__ = "claims"
 
     id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.String(30), unique=True, index=True)
 
     # who submitted
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
@@ -389,7 +390,7 @@ class Claim(db.Model):
     refund_issued = db.Column(db.Boolean, nullable=False, default=False)
     refund_issued_method = db.Column(db.String(30), nullable=True)  # cash|bank_transfer|wallet_credit
     refund_reference = db.Column(db.String(120), nullable=True)     # txn ref / receipt # (optional)
-    refund_issued_at = db.Column(db.DateTime, nullable=True)
+    refund_issued_at = db.Column(db.DateTime(timezone=True), nullable=True)
     refund_issued_by_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
 
     refunded_amount_jmd = db.Column(db.Numeric(12, 2), nullable=True)  # what was actually issued
@@ -409,14 +410,15 @@ class Claim(db.Model):
     admin_notes = db.Column(db.Text, nullable=True)
     decision_reason = db.Column(db.Text, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
+                       onupdate=lambda: datetime.now(timezone.utc))
 
     reviewed_by_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
-    reviewed_at = db.Column(db.DateTime, nullable=True)
+    reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     approved_amount_jmd = db.Column(db.Numeric(12, 2), nullable=True)
-    paid_at = db.Column(db.DateTime, nullable=True)
+    paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     user = db.relationship("User", foreign_keys=[user_id], backref=db.backref("claims", lazy="dynamic"))
     reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_admin_id], lazy="joined")
@@ -826,4 +828,34 @@ class Counter(db.Model):
 
     def __repr__(self):
         return f"<Counter {self.name}={self.value}>"
+
+def next_counter_value(name: str) -> int:
+    """
+    Atomically increment and return counter value.
+    Works across date changes because it's global.
+    """
+    row = db.session.execute(
+        select(Counter).where(Counter.name == name).with_for_update()
+    ).scalar_one_or_none()
+
+    if not row:
+        row = Counter(name=name, value=0)
+        db.session.add(row)
+        db.session.flush()
+
+    row.value = (row.value or 0) + 1
+    db.session.flush()
+    return row.value
+
+
+def generate_claim_case_id(prefix: str = "CLM") -> str:
+    """
+    Case ID format example:
+      CLM-20260303-000001
+    - date changes daily
+    - last 6 digits keep counting forever
+    """
+    seq = next_counter_value("claim_case_seq")   # <-- global, never resets
+    date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return f"{prefix}-{date_part}-{seq:06d}"
 

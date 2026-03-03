@@ -6,10 +6,10 @@
 
   <div class="d-flex align-items-center justify-content-between mb-3">
     <div>
-      <h2 class="mb-0">🧾 Missing Overseas Claim</h2>
+      <h2 class="mb-0">🧾 Missing In-Transit Claim</h2>
       <div class="text-muted small">
         Claims are processed within <b>5–10 business days</b> after investigation is completed.
-        Refunds may be issued as <b>cash</b> or <b>bank transfer</b>.
+        Refunds may be issued as <b>cash</b>, <b>bank transfer</b>, or <b>wallet credit</b>.
       </div>
     </div>
 
@@ -37,39 +37,54 @@
       <div class="card shadow-sm">
         <div class="card-body">
 
-          <form method="POST" enctype="multipart/form-data" class="row g-3">
+          <form method="POST" enctype="multipart/form-data" class="row g-3" id="claimForm">
             {{ form.hidden_tag() }}
+
+            <div class="col-12">
+              <div class="small text-muted">
+                Fields marked <span class="text-danger">*</span> are required.
+              </div>
+            </div>
 
             <div class="col-md-6">
               {{ form.house_awb.label(class="form-label") }}
-              {{ form.house_awb(class="form-control", placeholder="e.g. FAFL12345") }}
+              <span class="text-danger">*</span>
+              {{ form.house_awb(class="form-control", placeholder="e.g. FAFL12345", required=True) }}
               {% for e in form.house_awb.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
             <div class="col-md-6">
               {{ form.tracking_number.label(class="form-label") }}
-              {{ form.tracking_number(class="form-control", placeholder="e.g. 1Z..., AMZ..., SHEIN...") }}
+              <span class="text-danger">*</span>
+              {{ form.tracking_number(class="form-control", placeholder="e.g. 1Z..., AMZ..., SHEIN...", required=True) }}
               {% for e in form.tracking_number.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
             <div class="col-md-6">
               {{ form.item_value_jmd.label(class="form-label") }}
+              <span class="text-danger">*</span>
               <div class="input-group">
                 <span class="input-group-text">JMD</span>
-                {{ form.item_value_jmd(class="form-control", placeholder="0.00") }}
+                {{ form.item_value_jmd(class="form-control", placeholder="0.00", required=True, step="0.01", min="0") }}
               </div>
               {% for e in form.item_value_jmd.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
             <div class="col-md-6">
               {{ form.refund_method.label(class="form-label") }}
-              {{ form.refund_method(class="form-select", id="refund_method") }}
+              <span class="text-danger">*</span>
+              {# NOTE: Your WTForms SelectField must include wallet_credit option server-side #}
+              {{ form.refund_method(class="form-select", id="refund_method", required=True) }}
               {% for e in form.refund_method.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+              <div class="text-muted small mt-1">
+                Wallet credit can be used to pay for future packages.
+              </div>
             </div>
 
             <div class="col-12">
               {{ form.description.label(class="form-label") }}
-              {{ form.description(class="form-control", rows="3", placeholder="Optional: describe what happened, where it was last seen, etc.") }}
+              <span class="text-danger">*</span>
+              {{ form.description(class="form-control", rows="3", placeholder="Explain what happened, where it was last seen, dates, etc.", required=True) }}
               {% for e in form.description.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
@@ -87,16 +102,19 @@
 
             <div class="col-md-6">
               {{ form.invoice_file.label(class="form-label") }}
-              {{ form.invoice_file(class="form-control") }}
+              <span class="text-danger">*</span>
+              {{ form.invoice_file(class="form-control", required=True, accept=".pdf,.jpg,.jpeg,.png,.webp") }}
               {% for e in form.invoice_file.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
             <div class="col-md-6">
               {{ form.bank_statement_file.label(class="form-label") }}
-              {{ form.bank_statement_file(class="form-control") }}
+              <span class="text-danger">*</span>
+              {{ form.bank_statement_file(class="form-control", required=True, accept=".pdf,.jpg,.jpeg,.png,.webp") }}
               {% for e in form.bank_statement_file.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
+            {# Bank fields required ONLY if bank_transfer #}
             <div id="bank_fields" class="col-12">
               <div class="card mt-2 border-0" style="background:#f8f9fa;">
                 <div class="card-body">
@@ -105,19 +123,30 @@
                   <div class="row g-3">
                     <div class="col-md-6">
                       {{ form.bank_account_name.label(class="form-label") }}
-                      {{ form.bank_account_name(class="form-control", placeholder="Name on account") }}
+                      <span class="text-danger bank-required">*</span>
+                      {{ form.bank_account_name(class="form-control", placeholder="Name on account", id="bank_account_name") }}
+                      {% for e in form.bank_account_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
                     </div>
+
                     <div class="col-md-6">
                       {{ form.bank_branch.label(class="form-label") }}
-                      {{ form.bank_branch(class="form-control", placeholder="Branch") }}
+                      <span class="text-danger bank-required">*</span>
+                      {{ form.bank_branch(class="form-control", placeholder="Branch", id="bank_branch") }}
+                      {% for e in form.bank_branch.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
                     </div>
+
                     <div class="col-md-6">
                       {{ form.bank_account_number.label(class="form-label") }}
-                      {{ form.bank_account_number(class="form-control", placeholder="Account number") }}
+                      <span class="text-danger bank-required">*</span>
+                      {{ form.bank_account_number(class="form-control", placeholder="Account number", id="bank_account_number") }}
+                      {% for e in form.bank_account_number.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
                     </div>
+
                     <div class="col-md-6">
                       {{ form.bank_account_type.label(class="form-label") }}
-                      {{ form.bank_account_type(class="form-select") }}
+                      <span class="text-danger bank-required">*</span>
+                      {{ form.bank_account_type(class="form-select", id="bank_account_type") }}
+                      {% for e in form.bank_account_type.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
                     </div>
                   </div>
 
@@ -147,9 +176,10 @@
           <div class="fw-bold mb-2">📌 Before you submit</div>
           <ul class="small text-muted mb-0">
             <li>Ensure the House AWB matches your package.</li>
-            <li>Upload clear evidence files (PDF/JPG/PNG).</li>
+            <li>Upload clear evidence files (PDF/JPG/PNG/WEBP).</li>
+            <li>All fields must be completed before submission.</li>
             <li>Processing time: <b>5–10 business days</b> after investigation.</li>
-            <li>Refund method: Cash or Bank Transfer.</li>
+            <li>Refund method: Cash, Bank Transfer, or Wallet Credit.</li>
           </ul>
         </div>
       </div>
@@ -167,12 +197,41 @@
 (function(){
   const methodSel = document.getElementById("refund_method");
   const bankFields = document.getElementById("bank_fields");
+
+  const bankInputs = [
+    document.getElementById("bank_account_name"),
+    document.getElementById("bank_branch"),
+    document.getElementById("bank_account_number"),
+    document.getElementById("bank_account_type"),
+  ].filter(Boolean);
+
+  // little * markers beside bank labels
+  const bankStars = document.querySelectorAll(".bank-required");
+
   if(!methodSel || !bankFields) return;
 
-  function sync(){
-    const isBank = (methodSel.value === "bank_transfer");
-    bankFields.style.display = isBank ? "" : "none";
+  function setBankRequired(on){
+    bankInputs.forEach(el => {
+      if (on) el.setAttribute("required", "required");
+      else el.removeAttribute("required");
+    });
+    bankStars.forEach(star => {
+      star.style.display = on ? "" : "none";
+    });
   }
+
+  function sync(){
+    const v = (methodSel.value || "").toLowerCase();
+    const isBank = (v === "bank_transfer");
+    bankFields.style.display = isBank ? "" : "none";
+    setBankRequired(isBank);
+
+    // Optional: if not bank transfer, clear fields to avoid accidental submission confusion
+    if (!isBank) {
+      bankInputs.forEach(el => { try { el.value = ""; } catch(e){} });
+    }
+  }
+
   methodSel.addEventListener("change", sync);
   sync();
 })();

@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField, DecimalField, DateField, FieldList, HiddenField, FormField, RadioField, TextAreaField, FileField, SelectMultipleField, widgets, SelectField, HiddenField, IntegerField, TimeField
+from wtforms import StringField, PasswordField, SubmitField, DecimalField, DateField, FieldList, HiddenField, FormField, RadioField, TextAreaField, FileField, SelectMultipleField, widgets, SelectField, HiddenField, IntegerField, TimeField, BooleanField 
 from flask_wtf.file import FileField, FileAllowed, FileRequired
 from wtforms.validators import DataRequired, Email, EqualTo, NumberRange, Length, Optional, Regexp
 from wtforms import Form  # For nested, non-CSRF forms

@@ -1,0 +1,139 @@
+{% extends "layout_admin.html" %}
+{% block title %}Review Search Case #{{ case.id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">🔎 Review Search Case #{{ case.id }}</h2>
+      <div class="text-muted small">Investigate overseas DB and update the customer.</div>
+    </div>
+
+    <a class="btn btn-outline-dark" href="{{ url_for('admin_search.queue', status=request.args.get('status') or 'submitted') }}">
+      ← Back
+    </a>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-3">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card shadow-sm">
+        <div class="card-body">
+
+          <div class="d-flex justify-content-between">
+            <div>
+              <div class="text-muted small">Customer</div>
+              <div class="fw-bold">
+                {{ case.user.full_name if case.user and case.user.full_name else (case.user.email if case.user else "—") }}
+              </div>
+            </div>
+            <div class="text-end">
+              <div class="text-muted small">Status</div>
+              <span class="badge bg-dark">{{ case.status or "submitted" }}</span>
+            </div>
+          </div>
+
+          <hr>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="text-muted small">Tracking</div>
+              <div class="fw-bold">{{ case.tracking_number }}</div>
+            </div>
+            <div class="col-md-6">
+              <div class="text-muted small">Delivered Date</div>
+              <div class="fw-bold">{{ case.delivered_date.strftime("%Y-%m-%d") if case.delivered_date else "—" }}</div>
+            </div>
+
+            {% if case.notes %}
+            <div class="col-12">
+              <div class="text-muted small">Customer Notes</div>
+              <div>{{ case.notes }}</div>
+            </div>
+            {% endif %}
+          </div>
+
+          <hr>
+
+          <div class="fw-bold mb-2">Proof</div>
+          {% if case.proof_url %}
+            <a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ case.proof_url }}">📎 Open Proof</a>
+          {% else %}
+            <div class="text-muted small">No proof attached.</div>
+          {% endif %}
+
+        </div>
+      </div>
+
+      <div class="card shadow-sm mt-3">
+        <div class="card-body">
+          <h5 class="mb-3">✅ Admin Update</h5>
+
+          <form method="POST">
+            {{ form.hidden_tag() }}
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                {{ form.status.label(class="form-label") }}
+                {{ form.status(class="form-select") }}
+              </div>
+
+              <div class="col-12">
+                {{ form.admin_message.label(class="form-label") }}
+                {{ form.admin_message(class="form-control", rows="3", placeholder="This message is shown to the customer.") }}
+              </div>
+
+              <div class="col-12 d-flex justify-content-end">
+                <button class="btn btn-purple" type="submit">Update</button>
+              </div>
+            </div>
+
+          </form>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="fw-bold mb-2">🕒 Audit Timeline</div>
+
+          {% if not logs %}
+            <div class="text-muted small">No logs yet.</div>
+          {% else %}
+            <div class="list-group">
+              {% for log in logs %}
+              <div class="list-group-item">
+                <div class="d-flex justify-content-between">
+                  <div class="fw-bold small">{{ log.action }}</div>
+                  <div class="text-muted small">{{ log.created_at.strftime("%Y-%m-%d %H:%M") if log.created_at else "" }}</div>
+                </div>
+                {% if log.message %}
+                  <div class="small text-muted mt-1">{{ log.message }}</div>
+                {% endif %}
+              </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

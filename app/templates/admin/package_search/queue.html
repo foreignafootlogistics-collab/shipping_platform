@@ -1,0 +1,76 @@
+{% extends "layout_admin.html" %}
+{% block title %}Package Search Queue{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">🔎 Package Search Queue</h2>
+      <div class="text-muted small">Cases where merchant shows delivered but package not received overseas.</div>
+    </div>
+  </div>
+
+  {% set current = status or "submitted" %}
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    {% set tabs = [("submitted","Submitted"),("searching","Searching"),("found","Found"),("not_found","Not Found"),("resolved","Resolved"),("all","All")] %}
+    {% for key,label in tabs %}
+      <a class="btn btn-sm {% if current==key %}btn-purple{% else %}btn-outline-dark{% endif %}"
+         href="{{ url_for('admin_search.queue', status=key) }}">
+        {{ label }}
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+
+      {% if not cases %}
+        <div class="text-center py-4">
+          <div style="font-size:2rem;">✅</div>
+          <div class="fw-bold">No cases in this queue</div>
+          <div class="text-muted small">Try another status filter.</div>
+        </div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="table table-striped align-middle mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th>#</th>
+                <th>Date</th>
+                <th>User</th>
+                <th>Tracking</th>
+                <th>Delivered Date</th>
+                <th>Status</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in cases %}
+              <tr>
+                <td class="fw-bold">{{ c.id }}</td>
+                <td class="text-nowrap">{{ c.created_at.strftime("%Y-%m-%d") if c.created_at else "" }}</td>
+                <td class="text-nowrap">
+                  {{ c.user.full_name if c.user and c.user.full_name else (c.user.email if c.user else "—") }}
+                </td>
+                <td class="text-nowrap">{{ c.tracking_number }}</td>
+                <td class="text-nowrap">{{ c.delivered_date.strftime("%Y-%m-%d") if c.delivered_date else "—" }}</td>
+                <td><span class="badge bg-dark">{{ c.status or "submitted" }}</span></td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-dark"
+                     href="{{ url_for('admin_search.review', case_id=c.id, status=current) }}"
+                    Review
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+</div>
+{% endblock %}

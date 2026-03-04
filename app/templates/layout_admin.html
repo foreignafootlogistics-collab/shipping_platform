@@ -64,7 +64,8 @@
         {# ✅ Include admin_claims paths too since Claims is moved under Accounts #}
         {% set is_accounts = (request.blueprint in ['accounts_profiles','admin_claims'])
                              or request.path.startswith('/accounts')
-                             or request.path.startswith('/admin/claims') %}
+                             or request.path.startswith('/admin/claims') 
+                             or request.path.startswith('/admin/package-search') %}
         <div class="accordion-item border-0">
           <h2 class="accordion-header" id="headingAccounts">
             <!-- ✅ UPDATED: badge on the accordion button -->
@@ -130,6 +131,19 @@
                     {% if claims_submitted_count|default(0) > 0 %}
                       <span class="badge bg-danger ms-2">{{ claims_submitted_count }}</span>
                     {% endif %}
+                  </a>
+                </li>
+                <li class="nav-item">
+                  <a class="nav-link
+                     {{ 'active' if request.blueprint == 'admin_search'
+                        or request.path.startswith('/admin/search') else '' }}"
+                     href="{{ url_for('admin_search.queue', status='submitted') }}">
+                    <i class="bi bi-search me-2"></i> Package Search
+                    {% if search_submitted_unread_count|default(0) > 0 %}
+                      <span class="badge bg-danger ms-2">
+                        {{ search_submitted_unread_count }}
+                      </span>
+                    {% endif %} 
                   </a>
                 </li>
 
@@ -443,9 +457,13 @@
           <!-- Claims -->
           <a href="{{ url_for('admin_claims.queue', status='submitted') }}" class="position-relative text-dark" title="Claims">
             <i class="bi bi-clipboard-check fs-4"></i>
-            {% if claims_submitted_count|default(0) > 0 %}
+            {% set accounts_badge =
+               (claims_submitted_count|default(0) +
+                search_submitted_unread_count|default(0)) %}
+
+            {% if accounts_badge > 0 %}
               <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                {{ claims_submitted_count }}
+                {{ accounts_badge }}
               </span>
             {% endif %}
           </a>

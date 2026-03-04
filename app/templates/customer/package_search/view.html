@@ -1,0 +1,98 @@
+{% extends "layout_customer.html" %}
+{% block title %}Search Case {{ case.case_id or ("#" ~ case.id) }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">📦 Search Case {{ case.case_id or ("#" ~ case.id) }}</h2>
+      <div class="text-muted small">
+        We investigate and update you as soon as we get information from overseas.
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-dark" href="{{ url_for('customer_search.list_cases') }}">← Back</a>
+      <a class="btn btn-purple" href="{{ url_for('customer_search.create_search_case') }}">➕ New Request</a>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+
+      <div class="row g-3">
+
+        <div class="col-md-6">
+          <div class="text-muted small">Status</div>
+          {% set s = (case.status or "submitted") %}
+          {% if s == "submitted" %}
+            <span class="badge bg-secondary">Submitted</span>
+          {% elif s == "searching" %}
+            <span class="badge bg-warning text-dark">Searching</span>
+          {% elif s == "found" %}
+            <span class="badge bg-success">Found</span>
+          {% elif s == "not_found" %}
+            <span class="badge bg-danger">Not Found</span>
+          {% elif s == "resolved" %}
+            <span class="badge bg-primary">Resolved</span>
+          {% else %}
+            <span class="badge bg-dark">{{ s }}</span>
+          {% endif %}
+        </div>
+
+        <div class="col-md-6 text-md-end">
+          <div class="text-muted small">Submitted</div>
+          <div class="fw-bold">
+            {{ case.created_at.strftime("%Y-%m-%d %H:%M") if case.created_at else "" }}
+          </div>
+        </div>
+
+        <hr class="my-2">
+
+        <div class="col-md-6">
+          <div class="text-muted small">Tracking Number</div>
+          <div class="fw-bold">{{ case.tracking_number }}</div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="text-muted small">Delivered Date</div>
+          <div class="fw-bold">{{ case.delivered_date.strftime("%Y-%m-%d") if case.delivered_date else "—" }}</div>
+        </div>
+
+        {% if case.notes %}
+        <div class="col-12">
+          <div class="text-muted small">Customer Notes</div>
+          <div>{{ case.notes }}</div>
+        </div>
+        {% endif %}
+
+        <hr class="my-2">
+
+        <div class="col-12">
+          <div class="fw-bold mb-2">Proof of Purchase</div>
+          <a class="btn btn-sm btn-outline-dark" target="_blank" href="{{ case.proof_url }}">
+            📄 Open Proof
+          </a>
+        </div>
+
+        {% if case.admin_notes %}
+        <hr class="my-2">
+        <div class="col-12">
+          <div class="fw-bold mb-1">Update from FAFL</div>
+          <div class="alert alert-light border mb-0">{{ case.admin_notes }}</div>
+        </div>
+        {% endif %}
+
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .btn-purple{ background:#4A148C; color:#fff; border:none; }
+  .btn-purple:hover{ opacity:.92; color:#fff; }
+</style>
+{% endblock %}

@@ -112,7 +112,7 @@
     </a>
 
     <a href="{{ url_for('customer.transactions_all') }}"
-       class="{% if request.endpoint == 'customer.tramsactions_all' %}active{% endif %}">
+       class="{% if request.endpoint == 'customer.transactions_all' %}active{% endif %}">
       <i class="fas fa-wallet"></i> Transactions
     </a>
 
@@ -152,6 +152,17 @@
       <i class="fas fa-file-invoice-dollar"></i> My Claims
       {% if claims_need_more_info_count|default(0) > 0 %}
         <span class="badge bg-danger ms-2">{{ claims_need_more_info_count }}</span>
+      {% endif %}
+    </a>
+
+    <a href="{{ url_for('customer_search.list_cases') }}"
+       class="{% if request.endpoint in ['customer_search.list_cases','customer_search.create_search_case','customer_search.view_case'] %}active{% endif %}">
+      <i class="fas fa-search"></i> Search My Package
+
+      {% if search_need_more_info_count|default(0) > 0 %}
+        <span class="badge bg-danger ms-2">
+          {{ search_need_more_info_count }}
+        </span>
       {% endif %}
     </a>
 
@@ -265,7 +276,10 @@
                   'customer.referrals',
                   'customer_claims.list_claims',
                   'customer_claims.create_claim',
-                  'customer_claims.view_claim'
+                  'customer_claims.view_claim',
+                  'customer_search.list_cases',
+                  'customer_search.create_search_case',
+                  'customer_search.view_case'
                ] %}active{% endif %}"
                href="#"
                id="accountDropdown"
@@ -324,6 +338,18 @@
                   <i class="fas fa-file-invoice-dollar me-2"></i> My Claims
                   {% if claims_need_more_info_count|default(0) > 0 %}
                     <span class="badge bg-danger ms-2">{{ claims_need_more_info_count }}</span>
+                  {% endif %}
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item
+                   {% if request.endpoint in ['customer_search.list_cases','customer_search.create_search_case','customer_search.view_case'] %}active{% endif %}"
+                   href="{{ url_for('customer_search.list_cases') }}">
+                  <i class="fas fa-search me-2"></i> Search My Package
+                  {% if search_need_more_info_count|default(0) > 0 %}
+                    <span class="badge bg-danger ms-2">
+                      {{ search_need_more_info_count }}
+                    </span>
                   {% endif %}
                 </a>
               </li>

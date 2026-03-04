@@ -1,0 +1,75 @@
+{% extends "layout_customer.html" %}
+{% block title %}New Package Search{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">➕ New Package Search</h2>
+
+      <div class="alert alert-warning mt-2">
+        ⏱️ Missing package searches must be submitted <strong>72 hours after delivery</strong>.
+      </div>
+      
+      <div class="text-muted small">
+        Enter the tracking number from the merchant + upload proof of purchase.
+      </div>
+    </div>
+
+    <a class="btn btn-outline-dark" href="{{ url_for('customer_search.list_cases') }}">
+      ← Back
+    </a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+
+      <form method="POST" enctype="multipart/form-data">
+        {{ form.hidden_tag() }}
+
+        <div class="row g-3">
+
+          <div class="col-md-6">
+            {{ form.tracking_number.label(class="form-label") }}
+            {{ form.tracking_number(class="form-control", placeholder="e.g. 1Z999AA10123456784") }}
+            <div class="form-text">Use the tracking number you got from the merchant / seller.</div>
+          </div>
+
+          <div class="col-md-6">
+            {{ form.delivered_date.label(class="form-label") }}
+            {{ form.delivered_date(class="form-control") }}
+            <div class="form-text">The date the tracking shows as “Delivered”.</div>
+          </div>
+
+          <div class="col-12">
+            {{ form.proof_file.label(class="form-label") }}
+            {{ form.proof_file(class="form-control") }}
+            <div class="form-text">
+              Upload invoice/receipt screenshot or PDF. (Proof of purchase)
+            </div>
+          </div>
+
+          <div class="col-12">
+            {{ form.notes.label(class="form-label") }}
+            {{ form.notes(class="form-control", rows="3", placeholder="Optional notes... e.g. delivered to wrong address, signature not mine, etc.") }}
+          </div>
+
+          <div class="col-12 d-flex justify-content-end gap-2">
+            <a class="btn btn-outline-dark" href="{{ url_for('customer_search.list_cases') }}">Cancel</a>
+            <button type="submit" class="btn btn-purple">Submit Request</button>
+          </div>
+
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .btn-purple{ background:#4A148C; color:#fff; border:none; }
+  .btn-purple:hover{ opacity:.92; color:#fff; }
+</style>
+{% endblock %}

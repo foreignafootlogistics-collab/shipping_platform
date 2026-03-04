@@ -1,4 +1,5 @@
 from flask_wtf import FlaskForm
+from datetime import datetime, timezone, timedelta
 from wtforms import StringField, PasswordField, SubmitField, DecimalField, DateField, FieldList, HiddenField, FormField, RadioField, TextAreaField, FileField, SelectMultipleField, widgets, SelectField, HiddenField, IntegerField, TimeField, BooleanField 
 from flask_wtf.file import FileField, FileAllowed, FileRequired
 from wtforms.validators import DataRequired, Email, EqualTo, NumberRange, Length, Optional, Regexp, ValidationError
@@ -561,6 +562,47 @@ class CustomerMissingClaimForm(FlaskForm):
     )
 
     submit = SubmitField("Submit Claim")
+
+class PackageSearchForm(FlaskForm):
+    tracking_number = StringField(
+        "Tracking Number",
+        validators=[DataRequired(), Length(max=128)]
+    )
+
+    delivered_date = DateField(
+        "Delivered Date",
+        validators=[DataRequired()]
+    )
+
+    proof_file = FileField(
+        "Upload Proof (PDF/JPG/PNG)",
+        validators=[
+            FileRequired(),
+            FileAllowed(["pdf", "jpg", "jpeg", "png", "webp"], "PDF/JPG/PNG only")
+        ]
+    )
+
+    notes = TextAreaField(
+        "Notes (optional)",
+        validators=[Optional(), Length(max=2000)]
+    )
+
+    submit = SubmitField("Submit Search Request")
+
+    # ✅ 72 hour rule validation
+    def validate_delivered_date(self, field):
+        delivered = field.data
+        now = datetime.now(timezone.utc).date()
+
+        if not delivered:
+            return
+
+        diff = now - delivered
+
+        if diff.days < 3:
+            raise ValidationError(
+                "Search requests can only be submitted 72 hours after delivery."
+            )
 
 class ReferralForm(FlaskForm):
     friend_email = StringField("Friend's Email", validators=[DataRequired(), Email()])

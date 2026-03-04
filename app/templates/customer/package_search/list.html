@@ -1,0 +1,96 @@
+{% extends "layout_customer.html" %}
+{% block title %}My Package Search Requests{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h2 class="mb-0">🔎 Package Search</h2>
+      <div class="text-muted small">
+        Submit a request if your package shows delivered but you haven’t received it.
+      </div>
+    </div>
+
+    <a class="btn btn-purple" href="{{ url_for('customer_search.create_search_case') }}">
+      ➕ New Search Request
+    </a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+
+      {% if not cases %}
+        <div class="text-center py-4">
+          <div style="font-size:2rem;">📦</div>
+          <div class="fw-bold">No search requests yet</div>
+          <div class="text-muted small mb-3">
+            If your tracking shows delivered, submit proof and we’ll investigate.
+          </div>
+          <a class="btn btn-outline-dark" href="{{ url_for('customer_search.create_search_case') }}">
+            Submit First Request
+          </a>
+        </div>
+      {% else %}
+        <div class="table-responsive">
+          <table class="table table-striped align-middle mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th>Case</th>
+                <th>Date</th>
+                <th>Tracking</th>
+                <th>Delivered</th>
+                <th>Status</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in cases %}
+              <tr>
+                <td class="fw-bold">{{ c.case_id or ("#" ~ c.id) }}</td>
+                <td class="text-nowrap">
+                  {{ c.created_at.strftime("%Y-%m-%d") if c.created_at else "" }}
+                </td>
+                <td class="text-nowrap">{{ c.tracking_number }}</td>
+                <td class="text-nowrap">
+                  {{ c.delivered_date.strftime("%Y-%m-%d") if c.delivered_date else "—" }}
+                </td>
+                <td>
+                  {% set s = (c.status or "submitted") %}
+                  {% if s == "submitted" %}
+                    <span class="badge bg-secondary">Submitted</span>
+                  {% elif s == "searching" %}
+                    <span class="badge bg-warning text-dark">Searching</span>
+                  {% elif s == "found" %}
+                    <span class="badge bg-success">Found</span>
+                  {% elif s == "not_found" %}
+                    <span class="badge bg-danger">Not Found</span>
+                  {% elif s == "resolved" %}
+                    <span class="badge bg-primary">Resolved</span>
+                  {% else %}
+                    <span class="badge bg-dark">{{ s }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-dark"
+                     href="{{ url_for('customer_search.view_case', case_id=c.id) }}">
+                    View
+                  </a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .btn-purple{ background:#4A148C; color:#fff; border:none; }
+  .btn-purple:hover{ opacity:.92; color:#fff; }
+</style>
+{% endblock %}

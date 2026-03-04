@@ -2,6 +2,7 @@ import time
 import os
 from datetime import datetime
 import smtplib
+import requests
 from math import ceil
 from typing import Iterable
 
@@ -1551,6 +1552,68 @@ Foreign A Foot Logistics Limited
         reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )
 
+
+def send_package_search_submitted_email(case):
+    """
+    1) Notify OPS/Admin inbox
+    2) Notify customer
+    3) Log customer copy into Messages table (recipient_user_id)
+    """
+
+    # ---- admin/ops email ----
+    subject_ops = f"📦 Package Search Submitted: {case.case_id}"
+
+    plain_ops = f"""
+A customer submitted a Package Search request.
+
+Case ID: {case.case_id}
+Customer: {case.user.full_name} ({case.user.email})
+Tracking: {case.tracking_number}
+Delivered Date: {case.delivered_date}
+Notes: {case.notes or "—"}
+
+Proof: {case.proof_url or "—"}
+""".strip()
+
+    ops_email = (
+        (current_app.config.get("OPS_EMAIL") or "").strip()
+        or (os.getenv("OPS_EMAIL") or "").strip()
+        or (os.getenv("SUPPORT_EMAIL") or "").strip()
+        or (os.getenv("SMTP_FROM") or "").strip()
+        or (os.getenv("SMTP_USER") or "").strip()
+    )
+
+    if ops_email:
+        send_email(
+            to_email=ops_email,
+            subject=subject_ops,
+            plain_body=plain_ops,
+        )
+
+    # ---- customer email ----
+    subject_cust = f"✅ We received your search request ({case.case_id})"
+
+    plain_cust = f"""
+Hi {case.user.full_name or "Customer"},
+
+We received your package search request and our overseas team will investigate.
+
+Tracking Number: {case.tracking_number}
+Delivered Date: {case.delivered_date}
+
+We will contact you with an update as soon as possible.
+
+— Foreign A Foot Logistics Limited
+""".strip()
+
+    send_email(
+        to_email=case.user.email,
+        subject=subject_cust,
+        plain_body=plain_cust,
+        recipient_user_id=case.user_id,   # ✅ logs into Messages inbox too
+        reply_to=EMAIL_FROM or EMAIL_ADDRESS,
+    )
+
 def send_email_sendgrid_api(
     to_email: str,
     subject: str,
@@ -1572,9 +1635,9 @@ def send_email_sendgrid_api(
       - False on failure (prints reason)
     """
 
-    api_key = (os.getenv("SENDGRID_API_KEY") or os.getenv("SMTP_PASS") or "").strip()
+    api_key = (os.getenv("SENDGRID_API_KEY") or "").strip()
     if not api_key:
-        print("❌ SendGrid API key missing. Set SENDGRID_API_KEY (or SMTP_PASS fallback).")
+        print("❌ SendGrid API key missing. Set SENDGRID_API_KEY.")
         return False
 
     to_email = (to_email or "").strip().lower()
@@ -1640,7 +1703,9 @@ def send_email_sendgrid_api(
         return False
 
     except Exception as e:
+        import traceback
         print(f"❌ SendGrid API exception for {to_email}: {e}")
+        print(traceback.format_exc())
         return False
 
 

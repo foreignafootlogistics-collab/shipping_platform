@@ -331,16 +331,58 @@ def create_app():
         except Exception:
             c = 0
 
-        return dict(claims_need_more_info_count=c)  
+        return dict(claims_need_more_info_count=c)      
 
     @app.context_processor
     @_safe_ctx
-    def inject_claim_badges():
+    def inject_package_search_badge():
+        """
+        Admin sidebar badge:
+        - counts unread package search cases
+        """
         try:
-            submitted_count = Claim.query.filter(Claim.status == "submitted").count()
+            from app.models import PackageSearchCase
+
+            search_submitted_unread_count = (
+                PackageSearchCase.query
+                .filter(
+                    PackageSearchCase.status == "submitted",
+                    PackageSearchCase.is_read == False
+                )
+                .count()
+            )
         except Exception:
-            submitted_count = 0
-        return dict(claims_submitted_count=submitted_count)
+            search_submitted_unread_count = 0
+
+        return dict(search_submitted_unread_count=search_submitted_unread_count)
+
+    @app.context_processor
+    @_safe_ctx
+    def inject_search_case_badge():
+        """
+        Customer badge:
+        - counts only THIS customer's search cases needing more info
+        """
+        from flask_login import current_user
+
+        if not current_user.is_authenticated:
+            return dict(search_need_more_info_count=0)
+
+        try:
+            from app.models import PackageSearchCase
+
+            c = (
+                PackageSearchCase.query
+                .filter(
+                    PackageSearchCase.user_id == current_user.id,
+                    PackageSearchCase.status == "need_more_info"
+                )
+                .count()
+            )
+        except Exception:
+            c = 0
+
+        return dict(search_need_more_info_count=c) 
 
     @app.context_processor
     @_safe_ctx
@@ -401,7 +443,8 @@ def create_app():
     from app.routes.uploads_route import uploads_bp
     from app.routes.admin_claims import admin_claims_bp
     from app.routes.customer_claims import customer_claims_bp
-
+    from app.routes.customer_package_search import customer_search_bp
+    from app.routes.admin_package_search import admin_search_bp
 
     app.register_blueprint(customer_bp, url_prefix='/customer')
     app.register_blueprint(admin_bp, url_prefix='/admin')
@@ -422,6 +465,8 @@ def create_app():
     app.register_blueprint(uploads_bp)
     app.register_blueprint(admin_claims_bp)
     app.register_blueprint(customer_claims_bp)
+    app.register_blueprint(customer_search_bp)
+    app.register_blueprint(admin_search_bp)
 
     app.jinja_env.filters["to_jamaica"] = to_jamaica
 

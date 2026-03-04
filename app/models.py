@@ -442,6 +442,44 @@ class ClaimAuditLog(db.Model):
 
     claim = db.relationship("Claim", backref=db.backref("audit_logs", lazy="dynamic", cascade="all, delete-orphan"))
 
+class PackageSearchCase(db.Model):
+    __tablename__ = "package_search_cases"
+
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.String(30), unique=True, index=True)
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+
+    # customer will have this from merchant/seller
+    tracking_number = db.Column(db.String(128), nullable=False, index=True)
+
+    # if you require the customer to enter it, keep required
+    delivered_date = db.Column(db.Date, nullable=False)
+
+    # proof required
+    proof_url = db.Column(db.Text, nullable=False)
+    proof_public_id = db.Column(db.String(255), nullable=True)
+
+    notes = db.Column(db.Text, nullable=True)
+
+    status = db.Column(db.String(30), nullable=False, default="submitted", index=True)
+    # submitted | searching | found | not_found | resolved
+
+    admin_notes = db.Column(db.Text, nullable=True)
+
+    # ✅ badge / "new" tracking for admin
+    is_read = db.Column(db.Boolean, nullable=False, default=False, index=True)
+
+    # optional audit (recommended)
+    updated_by_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship("User", foreign_keys=[user_id], lazy="joined")
+    updated_by_admin = db.relationship("User", foreign_keys=[updated_by_admin_id], lazy="joined")
+
 class Prealert(db.Model):
     __tablename__ = 'prealerts'
 
@@ -859,3 +897,7 @@ def generate_claim_case_id(prefix: str = "CLM") -> str:
     date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
     return f"{prefix}-{date_part}-{seq:06d}"
 
+def generate_search_case_id(prefix: str = "SRC") -> str:
+    seq = next_counter_value("search_case_seq")
+    date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return f"{prefix}-{date_part}-{seq:06d}"

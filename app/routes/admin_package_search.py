@@ -22,10 +22,10 @@ def queue():
     cases = q.order_by(PackageSearchCase.created_at.desc()).all()
 
     return render_template(
-        "admin/search/queue.html",
+        "admin/package_search/queue.html",
         cases=cases,
-        status=status,
-        unread_search_count=unread_search_count
+        unread_search_count=unread_search_count,
+        status=request.args.get("status", "submitted"),
     )
 
 @admin_search_bp.route("/<int:case_id>", methods=["GET"])
@@ -37,4 +37,4 @@ def review(case_id):
         case.is_read = True
         db.session.commit()
 
-    return render_template("admin/search/review.html", case=case)
+    return render_template("admin/package_search/review.html", case=case, form=form, logs=logs)

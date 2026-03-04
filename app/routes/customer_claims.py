@@ -45,8 +45,7 @@ def create_claim():
                 form.bank_statement_file.data, folder="fafl/claims/bank_statements"
             )
 
-            seq = next_counter_value("claims_case_seq")
-            case_id = generate_claim_case_id(seq, now=datetime.now(timezone.utc))
+            case_id = generate_claim_case_id()
 
             # ✅ Build claim object
             claim = Claim(

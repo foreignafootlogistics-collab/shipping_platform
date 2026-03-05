@@ -59,10 +59,22 @@ def mark_invoice_packages_delivered(invoice_id: int):
     )
 
 def lock_delivered_packages_for_invoice(
-        inv.id,
-        reason="Invoice fully paid",
-        actor_admin_id=current_user.id
-    )
+    invoice_id: int,
+    reason: str = "Invoice fully paid",
+    actor_admin_id: int | None = None,
+):
+    """
+    Locks + marks delivered all packages on an invoice.
+    Also auto-archives any ShipmentLog whose packages are now ALL delivered.
+
+    Returns: number of packages affected
+    """
+    now = datetime.now(timezone.utc)
+
+    # Get all packages on this invoice
+    pkgs = Package.query.filter_by(invoice_id=invoice_id).all()
+    if not pkgs:
+        return 0
 
     # Mark packages delivered + locked
     for p in pkgs:
@@ -71,10 +83,10 @@ def lock_delivered_packages_for_invoice(
         p.locked_reason = reason
         p.locked_at = now
 
-    # ✅ AUTO-ARCHIVE shipments that became fully delivered
+    # AUTO-ARCHIVE shipments that became fully delivered
     # Pull shipment_ids via association table (reliable)
     pkg_ids = [p.id for p in pkgs]
-    shipment_ids = set()
+    shipment_ids: set[int] = set()
 
     if pkg_ids:
         sid_rows = (
@@ -115,7 +127,11 @@ def lock_delivered_packages_for_invoice(
             if total_pkgs > 0 and delivered_pkgs == total_pkgs:
                 sh.is_archived = True
                 sh.archived_at = now
-                sh.archived_by_admin_id = actor_admin_id
+
+                # only set if your model has the field AND you passed an admin id
+                if actor_admin_id is not None and hasattr(sh, "archived_by_admin_id"):
+                    sh.archived_by_admin_id = actor_admin_id
+
                 if hasattr(sh, "archive_reason"):
                     sh.archive_reason = "AUTO_ALL_PACKAGES_DELIVERED"
 

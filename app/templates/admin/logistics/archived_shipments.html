@@ -10,7 +10,6 @@
       <div class="text-muted small">These shipment batches are locked because all packages were delivered.</div>
     </div>
 
-    {# ✅ FIX: use the correct dashboard tab name (shipmentLog) #}
     <a class="btn btn-outline-dark btn-sm"
        href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog') }}">
       <i class="bi bi-arrow-left"></i> Back to Shipment Batches
@@ -30,10 +29,9 @@
               <th class="text-end">Packages</th>
               <th class="text-end">Total Weight (lbs)</th>
               <th class="text-end">Total Billed (JMD)</th>
-              <th class="text-end" style="width:140px;">Action</th>
+              <th class="text-end" style="width:200px;">Action</th>
             </tr>
           </thead>
-
           <tbody>
             {% if rows and rows|length %}
               {% for r in rows %}
@@ -41,6 +39,7 @@
                 <td class="text-nowrap">
                   <div class="fw-bold">
                     {{ r.sl_name or r.sl_id }}
+                    <span class="badge bg-warning text-dark ms-1">ARCHIVED</span>
                   </div>
                   {% if r.sl_name %}
                     <div class="small text-muted">Ref: {{ r.sl_id }}</div>
@@ -48,19 +47,11 @@
                 </td>
 
                 <td class="text-nowrap">
-                  {% if r.created_at %}
-                    {{ r.created_at.strftime("%Y-%m-%d %I:%M %p") }}
-                  {% else %}
-                    -
-                  {% endif %}
+                  {% if r.created_at %}{{ r.created_at.strftime("%Y-%m-%d %I:%M %p") }}{% else %}-{% endif %}
                 </td>
 
                 <td class="text-nowrap">
-                  {% if r.archived_at %}
-                    {{ r.archived_at.strftime("%Y-%m-%d %I:%M %p") }}
-                  {% else %}
-                    -
-                  {% endif %}
+                  {% if r.archived_at %}{{ r.archived_at.strftime("%Y-%m-%d %I:%M %p") }}{% else %}-{% endif %}
                 </td>
 
                 <td class="text-nowrap">
@@ -79,25 +70,26 @@
                 <td class="text-end">{{ "%.2f"|format((r.total_billed_jmd or 0)|float) }}</td>
 
                 <td class="text-end">
-                  <form method="POST"
-                        action="{{ url_for('logistics.unarchive_shipment', shipment_id=r.shipment_id) }}"
-                        class="m-0 d-inline">
-                    {# ✅ Recommended CSRF handling:
-                       - If this page receives bulk_form from the route, use bulk_form.hidden_tag()
-                       - Otherwise fall back to csrf_token()
-                    #}
-                    {% if bulk_form is defined %}
-                      {{ bulk_form.hidden_tag() }}
-                    {% else %}
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    {% endif %}
-
-                    <button type="submit"
-                            class="btn btn-sm btn-outline-warning"
-                            onclick="return confirm('Unarchive this shipment? It will return to active Shipment Batches.');">
-                      Unarchive
+                  <div class="d-inline-flex gap-2">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary js-open-logs"
+                            data-shipment-id="{{ r.shipment_id }}"
+                            data-title="{{ r.sl_name or r.sl_id }}"
+                            data-bs-toggle="modal"
+                            data-bs-target="#archiveLogsModal">
+                      <i class="bi bi-clock-history"></i> Logs
                     </button>
-                  </form>
+
+                    <form method="POST"
+                          action="{{ url_for('logistics.unarchive_shipment', shipment_id=r.shipment_id) }}"
+                          class="m-0">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn btn-sm btn-outline-warning"
+                              onclick="return confirm('Unarchive this shipment? It will return to active Shipment Batches.')">
+                        Unarchive
+                      </button>
+                    </form>
+                  </div>
                 </td>
               </tr>
               {% endfor %}
@@ -109,11 +101,119 @@
               </tr>
             {% endif %}
           </tbody>
-
         </table>
       </div>
     </div>
   </div>
 
 </div>
+
+<!-- Logs Modal -->
+<div class="modal fade" id="archiveLogsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-clock-history me-1"></i>
+          Archive Logs — <span id="logsModalTitle">Shipment</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <div id="logsLoading" class="text-muted small">Loading…</div>
+
+        <div class="table-responsive" id="logsTableWrap" style="display:none;">
+          <table class="table table-sm table-striped align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th style="width:120px;">Action</th>
+                <th>Reason</th>
+                <th style="width:180px;">By</th>
+                <th style="width:200px;">When</th>
+              </tr>
+            </thead>
+            <tbody id="logsTbody"></tbody>
+          </table>
+        </div>
+
+        <div id="logsEmpty" class="text-muted small" style="display:none;">No logs yet.</div>
+        <div id="logsError" class="alert alert-danger py-2 px-3 small" style="display:none;"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function fmtIso(iso) {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString();
+  }
+
+  async function loadLogs(shipmentId, titleText) {
+    document.getElementById("logsModalTitle").textContent = titleText || ("Shipment #" + shipmentId);
+
+    const loading = document.getElementById("logsLoading");
+    const wrap = document.getElementById("logsTableWrap");
+    const tbody = document.getElementById("logsTbody");
+    const empty = document.getElementById("logsEmpty");
+    const err = document.getElementById("logsError");
+
+    loading.style.display = "";
+    wrap.style.display = "none";
+    empty.style.display = "none";
+    err.style.display = "none";
+    tbody.innerHTML = "";
+
+    try {
+      const res = await fetch(`/admin/logistics/shipments/${shipmentId}/archive_logs`);
+      const data = await res.json();
+
+      loading.style.display = "none";
+
+      if (!data || !data.success) {
+        err.textContent = (data && data.error) ? data.error : "Failed to load logs.";
+        err.style.display = "";
+        return;
+      }
+
+      const rows = data.rows || [];
+      if (!rows.length) {
+        empty.style.display = "";
+        return;
+      }
+
+      rows.forEach(r => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><span class="badge bg-secondary">${(r.action || "-")}</span></td>
+          <td>${(r.reason || "-")}</td>
+          <td>${(r.actor || "System")}</td>
+          <td class="text-nowrap">${fmtIso(r.created_at)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      wrap.style.display = "";
+    } catch (e) {
+      loading.style.display = "none";
+      err.textContent = "Error loading logs: " + (e && e.message ? e.message : e);
+      err.style.display = "";
+    }
+  }
+
+  document.addEventListener("click", function (e) {
+    const btn = e.target.closest(".js-open-logs");
+    if (!btn) return;
+    loadLogs(btn.dataset.shipmentId, btn.dataset.title);
+  });
+})();
+</script>
 {% endblock %}

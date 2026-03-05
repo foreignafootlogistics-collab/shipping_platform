@@ -211,7 +211,7 @@
               {% for s in shipments %}
                 {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
                 <li class="list-group-item d-flex justify-content-between align-items-start border-0
-                           {% if is_active %}active bg-purple text-white{% endif %}">
+                           {% if is_active %}active bg-purple text-white{% endif %}"
                            {% if s.is_archived and not is_active %}opacity-75{% endif %}">
         <a class="flex-grow-1 text-decoration-none
                            {% if is_active %}text-white{% else %}text-dark{% endif %}"

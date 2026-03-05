@@ -2661,6 +2661,7 @@ def archive_shipment(shipment_id):
         )
 
     shipment.is_archived = True
+    shipment.is_locked = True
     shipment.archived_at = datetime.now(timezone.utc)
     shipment.archived_by_admin_id = getattr(current_user, "id", None)
 
@@ -2695,6 +2696,7 @@ def unarchive_shipment(shipment_id):
         )
 
     shipment.is_archived = False
+    shipment.is_locked = False
     shipment.archived_at = None
     shipment.archived_by_admin_id = None
 
@@ -2716,6 +2718,76 @@ def unarchive_shipment(shipment_id):
     )
 
 
+@logistics_bp.route("/shipment_archive_logs")
+@admin_required
+def shipment_archive_logs_page():
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 50, type=int)
+
+    q = (
+        db.session.query(
+            ShipmentArchiveLog,
+            ShipmentLog.sl_id,
+            ShipmentLog.sl_name,
+            User.full_name.label("actor_name"),
+            User.email.label("actor_email"),
+        )
+        .join(ShipmentLog, ShipmentLog.id == ShipmentArchiveLog.shipment_id)
+        .outerjoin(User, User.id == ShipmentArchiveLog.actor_admin_id)
+        .order_by(ShipmentArchiveLog.created_at.desc())
+    )
+
+    pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+
+    rows = []
+    for log, sl_id, sl_name, actor_name, actor_email in pagination.items:
+        rows.append({
+            "id": log.id,
+            "shipment_id": log.shipment_id,
+            "shipment_label": (sl_name or sl_id),
+            "shipment_ref": sl_id,
+            "action": log.action,
+            "reason": log.reason,
+            "actor_name": actor_name,
+            "actor_email": actor_email,
+            "created_at": log.created_at,
+        })
+
+    return render_template(
+        "admin/logistics/shipment_archive_logs.html",
+        rows=rows,
+        pagination=pagination,
+        per_page=per_page,
+    )
+
+@logistics_bp.route("/shipments/<int:shipment_id>/archive_logs")
+@admin_required
+def shipment_archive_logs_api(shipment_id):
+
+    logs = (
+        ShipmentArchiveLog.query
+        .filter(ShipmentArchiveLog.shipment_id == shipment_id)
+        .order_by(ShipmentArchiveLog.created_at.desc())
+        .limit(200)
+        .all()
+    )
+
+    rows = []
+
+    for l in logs:
+        actor = None
+        if l.actor_admin:
+            actor = l.actor_admin.full_name or l.actor_admin.email
+
+        rows.append({
+            "id": l.id,
+            "action": l.action,
+            "reason": l.reason,
+            "actor": actor or "System",
+            "created_at": l.created_at.isoformat() if l.created_at else None,
+        })
+
+    return jsonify({"success": True, "rows": rows})
 # --------------------------------------------------------------------------------------
 # Shipment Utilities & Routes (ORM-only)
 # --------------------------------------------------------------------------------------

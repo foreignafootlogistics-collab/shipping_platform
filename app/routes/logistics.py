@@ -847,6 +847,13 @@ def logistics_dashboard():
     raw_tab = request.args.get("tab") or request.form.get("tab")
     tab = normalize_tab(raw_tab)
 
+    shipments_pagination = None
+    shipments = []
+    shipments_parsed = []
+    selected_shipment = None
+    selected_shipment_id = None
+    shipment_pkg_rows = []
+
     if request.method == "GET" and tab == "view_packages":
         raw_date_from = (request.args.get("date_from") or "").strip()
         raw_date_to   = (request.args.get("date_to") or "").strip()
@@ -1072,7 +1079,16 @@ def logistics_dashboard():
     # ----------------------------------------------------------------------------------
     # Shipments (GET context)
     # ----------------------------------------------------------------------------------
-    shipments = ShipmentLog.query.order_by(ShipmentLog.created_at.desc()).all()
+    ship_page = int(request.args.get("ship_page", 1))
+    ship_per_page = 12
+
+    shipments_pagination = (
+        ShipmentLog.query
+        .order_by(ShipmentLog.created_at.desc())
+        .paginate(page=ship_page, per_page=ship_per_page, error_out=False)
+    )
+
+    shipments = shipments_pagination.items
     shipments_parsed = []
     for s in shipments:
         shipments_parsed.append({
@@ -1388,6 +1404,7 @@ def logistics_dashboard():
         selected_shipment_id=selected_shipment_id,
         shipment_packages=shipment_pkg_rows,
         all_packages=parsed_packages,
+        shipments_pagination=shipments_pagination,
 
         search=search,
         status_filter=status_filter,
@@ -2486,6 +2503,79 @@ def view_packages():
     return render_template("admin/logistics/view_packages.html",
                            all_packages=all_packages,
                            bulk_form=PackageBulkActionForm())
+
+
+
+@logistics_bp.post("/shipmentlog/assign")
+@admin_required(roles=["operations"])
+def assign_packages_to_shipment():
+    return_to = (request.form.get("return_to") or "").strip() 
+
+    mode = (request.form.get("mode") or "existing").strip()  # "new" or "existing"
+    target_id = request.form.get("shipment_id", type=int)
+
+    raw_ids = request.form.getlist("package_ids")
+    pkg_ids = sorted({int(x) for x in raw_ids if str(x).isdigit()})
+
+    if not pkg_ids:
+        flash("No packages selected.", "warning")
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+
+    # 🚫 block UNASSIGNED
+    unassigned_id = get_unassigned_user_id()
+    if unassigned_id:
+        bad_count = (
+            db.session.query(func.count(Package.id))
+            .filter(Package.id.in_(pkg_ids), Package.user_id == unassigned_id)
+            .scalar()
+            or 0
+        )
+        if bad_count:
+            flash("🚫 UNASSIGNED packages cannot be moved into shipments. Assign them to a customer first.", "danger")
+            return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+
+    # pick or create shipment
+    shipment = None
+
+    if mode == "new":
+        sl_name = (request.form.get("new_sl_name") or "").strip() or None
+
+        shipment = ShipmentLog(sl_id=_next_sl_id())
+        if hasattr(ShipmentLog, "sl_name"):
+            shipment.sl_name = sl_name
+
+        db.session.add(shipment)
+        db.session.flush()  # get shipment.id
+    else:
+        if not target_id:
+            flash("Please choose an existing shipment.", "warning")
+            return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+
+        shipment = db.session.get(ShipmentLog, target_id)
+        if not shipment:
+            flash("Shipment not found.", "danger")
+            return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+
+    # load pkgs
+    pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
+    if not pkgs:
+        flash("No matching packages found.", "warning")
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+
+    # move packages (ensures 1 shipment max)
+    moved = 0
+    for p in pkgs:
+        move_package_to_shipment(p, shipment)
+        moved += 1
+
+    db.session.commit()
+
+    flash(
+        f"Moved {moved} package(s) to shipment {shipment.sl_id}.",
+        "success"
+    )
+    return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id, return_to=return_to), code=303)
+
 
 # --------------------------------------------------------------------------------------
 # Shipment Utilities & Routes (ORM-only)

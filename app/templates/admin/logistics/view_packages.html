@@ -40,15 +40,17 @@
       <input type="hidden" name="unassigned_only" value="{{ '1' if unassigned_only else '' }}">
       <input type="hidden" name="epc_only" value="{{ '1' if epc_only else '' }}">
       <input type="hidden" name="not_notified_only" value="{{ '1' if not_notified_only else '' }}">
+      <input type="hidden" name="return_to" id="returnToInput" value="">
 
       <div class="d-flex align-items-center action-toolbar shadow-sm">
 
         <!-- Move to Shipment Log -->
-        <button type="submit"
+        <button type="button"
                 class="toolbar-btn"
+                id="openMoveToShipmentBtn"
                 title="Move to Shipment Log"
-                formaction="{{ url_for('logistics.create_shipment') }}"
-                formmethod="POST">
+                data-bs-toggle="modal"
+                data-bs-target="#moveToShipmentModal">
           <i class="bi bi-send"></i>
         </button>
 
@@ -651,6 +653,66 @@
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="submit" class="btn btn-purple">Assign</button>
       </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="moveToShipmentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="POST"
+          action="{{ url_for('logistics.assign_packages_to_shipment') }}"
+          class="modal-content"
+          id="moveToShipmentForm">
+
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Move selected packages to Shipment Log</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="small text-muted mb-2" id="moveToShipmentCount">No packages selected.</div>
+
+        <!-- mode -->
+        <div class="btn-group w-100 mb-3" role="group">
+          <input type="radio" class="btn-check" name="mode" id="modeExisting" value="existing" checked>
+          <label class="btn btn-outline-dark" for="modeExisting">Add to existing</label>
+
+          <input type="radio" class="btn-check" name="mode" id="modeNew" value="new">
+          <label class="btn btn-outline-dark" for="modeNew">Create new</label>
+        </div>
+
+        <!-- existing shipment picker -->
+        <div id="existingShipmentPane">
+          <label class="form-label fw-semibold">Choose shipment</label>
+          <select name="shipment_id" class="form-select">
+            <option value="">-- Select shipment --</option>
+            {% for s in shipments %}
+              <option value="{{ s.id }}">
+                {{ s.sl_id }}{% if s.sl_name %} — {{ s.sl_name }}{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Packages will be moved into that shipment.</div>
+        </div>
+
+        <!-- new shipment fields -->
+        <div id="newShipmentPane" class="d-none mt-3">
+          <label class="form-label fw-semibold">Optional shipment name</label>
+          <input type="text" name="new_sl_name" class="form-control" placeholder="e.g. March 2026 Air Freight #1">
+          <div class="form-text">A new SL_ID will be generated automatically.</div>
+        </div>
+
+        <!-- injected package_ids go here -->
+        <div id="moveToShipmentSelectedHolder"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-purple">Move Packages</button>
+      </div>
+
     </form>
   </div>
 </div>
@@ -1375,6 +1437,7 @@
       if (count) count.textContent = `${selected.length} package(s) selected.`;
     });
   }
+ 
 
  /* ============================
    DATATABLE INIT + EPC FILTER
@@ -1659,6 +1722,63 @@ document.addEventListener('DOMContentLoaded', function () {
     t = setTimeout(() => lookupAndShow(v), 450);
   });
 
+})();
+
+(function moveToShipmentModalLogic(){
+  const modalEl = document.getElementById('moveToShipmentModal');
+  if (!modalEl) return;
+
+  const openBtn = document.getElementById('openMoveToShipmentBtn');
+  const holder  = document.getElementById('moveToShipmentSelectedHolder');
+  const countEl = document.getElementById('moveToShipmentCount');
+
+  const existingPane = document.getElementById('existingShipmentPane');
+  const newPane      = document.getElementById('newShipmentPane');
+
+  function selectedIds(){
+    return Array.from(document.querySelectorAll('.package-checkbox:checked')).map(cb => cb.value);
+  }
+
+  // block opening if none selected
+  openBtn?.addEventListener('click', function (e) {
+    const ids = selectedIds();
+    if (!ids.length) {
+      e.preventDefault();
+      e.stopPropagation();
+      alert("⚠️ Please select at least one package.");
+      const m = bootstrap.Modal.getOrCreateInstance(modalEl);
+      m.hide();
+      return false;
+    }
+  });
+
+  // inject selected IDs when modal shows
+  modalEl.addEventListener('show.bs.modal', function(){
+    const ids = selectedIds();
+    holder.innerHTML = '';
+    ids.forEach(id => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'package_ids';
+      input.value = id;
+      holder.appendChild(input);
+    });
+    if (countEl) countEl.textContent = `${ids.length} package(s) selected.`;
+  });
+
+  // toggle panes based on mode
+  modalEl.addEventListener('change', function(e){
+    if (!e.target || e.target.name !== 'mode') return;
+    const mode = e.target.value;
+
+    if (mode === 'new') {
+      existingPane?.classList.add('d-none');
+      newPane?.classList.remove('d-none');
+    } else {
+      newPane?.classList.add('d-none');
+      existingPane?.classList.remove('d-none');
+    }
+  });
 })();
 </script>
 

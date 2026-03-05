@@ -52,7 +52,7 @@
       </a>
     </li>
   </ul>
-
+  
   <!-- Tab content -->
   <div class="tab-content mt-3" id="logisticsTabsContent">
 
@@ -188,7 +188,7 @@
                            {% if is_active %}active bg-purple text-white{% endif %}">
         <a class="flex-grow-1 text-decoration-none
                            {% if is_active %}text-white{% else %}text-dark{% endif %}"
-                     href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog', shipment_id=s.id) }}">
+                     href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog', shipment_id=s.id, ship_page=(shipments_pagination.page if shipments_pagination else 1)) }}">
                     <strong>{{ s.sl_name or s.sl_id }}</strong>
                     {% if s.sl_name %}
                     <small class="text-muted d-block {% if is_active %}text-light{% endif %}">
@@ -211,6 +211,48 @@
               </li>
             {% endif %}
           </ul>
+
+          {% if shipments_pagination and shipments_pagination.pages > 1 %}
+            <nav class="mt-2">
+              <ul class="pagination pagination-sm mb-0">
+
+                <li class="page-item {% if not shipments_pagination.has_prev %}disabled{% endif %}">
+                  <a class="page-link"
+                     href="{{ url_for('logistics.logistics_dashboard',
+                                      tab='shipmentLog',
+                                      shipment_id=selected_shipment_id,
+                                      ship_page=(shipments_pagination.prev_num if shipments_pagination.has_prev else 1)) }}">
+                    &laquo;
+                  </a>
+                </li>
+
+                {% for p in range(1, shipments_pagination.pages + 1) %}
+                  {% if p == 1 or p == shipments_pagination.pages or (p >= shipments_pagination.page-1 and p <= shipments_pagination.page+1) %}
+                    <li class="page-item {% if p == shipments_pagination.page %}active{% endif %}">
+                      <a class="page-link"
+                         href="{{ url_for('logistics.logistics_dashboard',
+                                          tab='shipmentLog',
+                                          shipment_id=selected_shipment_id,
+                                          ship_page=p) }}">
+                        {{ p }}
+                      </a>
+                    </li>
+                  {% endif %}
+                {% endfor %}
+
+                <li class="page-item {% if not shipments_pagination.has_next %}disabled{% endif %}">
+                  <a class="page-link"
+                     href="{{ url_for('logistics.logistics_dashboard',
+                                      tab='shipmentLog',
+                                      shipment_id=selected_shipment_id,
+                                      ship_page=(shipments_pagination.next_num if shipments_pagination.has_next else shipments_pagination.pages)) }}">
+                    &raquo;
+                  </a>
+                </li>
+
+              </ul>
+            </nav>
+          {% endif %}
         </div>
 
         <!-- Main: Packages -->
@@ -218,24 +260,31 @@
 
           <div class="d-flex justify-content-between align-items-center mb-3">
             {% if selected_shipment %}
-            <div class="d-flex align-items-center gap-2">
-              <h5 class="fw-bold text-purple mb-0">
-                🚚 Shipment Packages -
-                <span id="shipmentNameDisplay">
-                  {{ selected_shipment.sl_name or selected_shipment.sl_id }}
-                </span>
-
-                {% if selected_shipment.sl_name %}
-                  <span class="badge bg-light text-dark border ms-2">
-                    Ref: {{ selected_shipment.sl_id }}
+              <div class="d-flex align-items-center gap-2">
+                <h5 class="fw-bold text-purple mb-0">
+                  🚚 Shipment Packages -
+                  <span id="shipmentNameDisplay">
+                    {{ selected_shipment.sl_name or selected_shipment.sl_id }}
                   </span>
-                {% endif %}
-              </h5>
 
-              <button class="btn btn-sm btn-outline-purple" data-bs-toggle="modal" data-bs-target="#renameShipmentModal">
-                ✏️
-              </button>
-            </div>
+                  {% if selected_shipment.sl_name %}
+                    <span class="badge bg-light text-dark border ms-2">
+                      Ref: {{ selected_shipment.sl_id }}
+                    </span>
+                  {% endif %}
+                </h5>
+
+                <button class="btn btn-sm btn-outline-purple" data-bs-toggle="modal" data-bs-target="#renameShipmentModal">
+                  ✏️
+                </button>
+              </div>
+              <div>
+                {% set return_to = request.args.get('return_to') %}
+                <a class="btn btn-outline-dark btn-sm"
+                   href="{{ return_to or url_for('logistics.logistics_dashboard', tab='view_packages') }}">
+                  <i class="bi bi-arrow-left"></i> Back to View Packages
+                </a>
+              </div>                          
             {% endif %}
           </div>
 
@@ -1765,16 +1814,15 @@ function updateShipmentHeaderCheckbox() {
     return { weight, value };
   }
 
-  // ✅ IMPORTANT: keep modal show handler ONLY for lock + overrides + totals
+  /*
+  // ✅ TEMP DISABLED: modal show handler (can cause blank modal when pkgId isn't set yet)
   chargesModal.addEventListener('show.bs.modal', function () {
     const pkgId = (pkgIdInput?.value || '').trim();
     if (!pkgId) return;
 
-    // ✅ load pricing lock state from row hidden
     const lockedHidden = document.getElementById(`locked_${pkgId}`);
     setLocked((lockedHidden?.value || '0') === '1');
 
-    // ✅ preload overrides from hidden inputs
     const getHidden = (id) => Number(document.getElementById(id)?.value || 0).toFixed(2);
 
     if (resDuty)  resDuty.value  = getHidden(`duty_${pkgId}`);
@@ -1793,6 +1841,7 @@ function updateShipmentHeaderCheckbox() {
     if (resultBox) resultBox.style.display = 'block';
     if (btnApply) btnApply.style.display = 'inline-block';
   });
+  */
 
   btnCalc?.addEventListener('click', async function () {
     const category = (categorySelect?.value || 'Other');
@@ -2095,6 +2144,7 @@ document.getElementById('shipmentSearchForm')?.addEventListener('submit', async 
   }
 });
 
+/*
 window.openChargesModal = function (btn) {
   const chargesModal = document.getElementById('chargesModalSL');
   if (!chargesModal || !btn) return;
@@ -2114,7 +2164,6 @@ window.openChargesModal = function (btn) {
   if (pkgDescInput) pkgDescInput.value = desc;
   if (catSelect) catSelect.value = cat || 'Other';
 
-  // Pull weight/value from the SAME row the button is in (most reliable)
   const tr = btn.closest('tr');
   const wEl = tr?.querySelector(`#weight_${pkgId}`) || document.getElementById(`weight_${pkgId}`);
   const vEl = tr?.querySelector(`#value_${pkgId}`)  || document.getElementById(`value_${pkgId}`);
@@ -2122,12 +2171,12 @@ window.openChargesModal = function (btn) {
   if (weightInput) weightInput.value = wEl ? (wEl.value || "0") : "0";
   if (valueInput)  valueInput.value  = vEl ? (vEl.value || "0") : "0";
 
-  // Load lock state from hidden
   const lockedHidden = document.getElementById(`locked_${pkgId}`);
   if (lockToggle) lockToggle.checked = (lockedHidden?.value || '0') === '1';
 
   bootstrap.Modal.getOrCreateInstance(chargesModal).show();
 };
+*/
 
 /* ============================================================
    HOTFIX: Always populate charges modal on click

@@ -1,0 +1,119 @@
+{% extends "layout_admin.html" %}
+{% block title %}Archived Shipments{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <div>
+      <h3 class="mb-0">🗄️ Archived Shipments</h3>
+      <div class="text-muted small">These shipment batches are locked because all packages were delivered.</div>
+    </div>
+
+    {# ✅ FIX: use the correct dashboard tab name (shipmentLog) #}
+    <a class="btn btn-outline-dark btn-sm"
+       href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog') }}">
+      <i class="bi bi-arrow-left"></i> Back to Shipment Batches
+    </a>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle mb-0">
+          <thead class="table-dark">
+            <tr>
+              <th>Shipment</th>
+              <th>Created</th>
+              <th>Archived</th>
+              <th>Archived By</th>
+              <th class="text-end">Packages</th>
+              <th class="text-end">Total Weight (lbs)</th>
+              <th class="text-end">Total Billed (JMD)</th>
+              <th class="text-end" style="width:140px;">Action</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% if rows and rows|length %}
+              {% for r in rows %}
+              <tr>
+                <td class="text-nowrap">
+                  <div class="fw-bold">
+                    {{ r.sl_name or r.sl_id }}
+                  </div>
+                  {% if r.sl_name %}
+                    <div class="small text-muted">Ref: {{ r.sl_id }}</div>
+                  {% endif %}
+                </td>
+
+                <td class="text-nowrap">
+                  {% if r.created_at %}
+                    {{ r.created_at.strftime("%Y-%m-%d %I:%M %p") }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+
+                <td class="text-nowrap">
+                  {% if r.archived_at %}
+                    {{ r.archived_at.strftime("%Y-%m-%d %I:%M %p") }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+
+                <td class="text-nowrap">
+                  {% set admin = admins.get(r.archived_by_admin_id) if admins else None %}
+                  {% if admin %}
+                    {{ admin.full_name or admin.email }}
+                  {% elif r.archived_by_admin_id %}
+                    Admin #{{ r.archived_by_admin_id }}
+                  {% else %}
+                    System
+                  {% endif %}
+                </td>
+
+                <td class="text-end">{{ r.package_count or 0 }}</td>
+                <td class="text-end">{{ "%.2f"|format((r.total_weight_lbs or 0)|float) }}</td>
+                <td class="text-end">{{ "%.2f"|format((r.total_billed_jmd or 0)|float) }}</td>
+
+                <td class="text-end">
+                  <form method="POST"
+                        action="{{ url_for('logistics.unarchive_shipment', shipment_id=r.shipment_id) }}"
+                        class="m-0 d-inline">
+                    {# ✅ Recommended CSRF handling:
+                       - If this page receives bulk_form from the route, use bulk_form.hidden_tag()
+                       - Otherwise fall back to csrf_token()
+                    #}
+                    {% if bulk_form is defined %}
+                      {{ bulk_form.hidden_tag() }}
+                    {% else %}
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {% endif %}
+
+                    <button type="submit"
+                            class="btn btn-sm btn-outline-warning"
+                            onclick="return confirm('Unarchive this shipment? It will return to active Shipment Batches.');">
+                      Unarchive
+                    </button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="8" class="text-center text-muted py-4">
+                  No archived shipments yet.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

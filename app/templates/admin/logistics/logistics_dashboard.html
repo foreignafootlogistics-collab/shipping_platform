@@ -174,9 +174,35 @@
 
               <button class="btn btn-outline-danger" title="Delete current shipment"
                       data-bs-toggle="modal" data-bs-target="#deleteShipmentModal"
-                      {% if not selected_shipment %}disabled{% endif %}>
+                      {% if not selected_shipment or selected_shipment.is_archived %}disabled{% endif %}>
                 <i class="fas fa-trash-alt"></i>
               </button>
+
+              {# ✅ Archive / Unarchive buttons #}
+              {% if selected_shipment %}
+                {% if selected_shipment.is_archived %}              
+                  <button type="button"
+                          class="btn btn-outline-warning"
+                          title="Unarchive shipment"
+                          data-bs-toggle="modal"
+                          data-bs-target="#unarchiveShipmentModal">
+                    <i class="fas fa-box-open"></i>
+                  </button>
+                {% else %}
+                  <button type="button"
+                          class="btn btn-outline-dark"
+                          title="Archive shipment"
+                          data-bs-toggle="modal"
+                          data-bs-target="#archiveShipmentModal">
+                    <i class="fas fa-archive"></i>
+                  </button>
+                {% endif %}
+              {% endif %}
+
+              <a class="btn btn-outline-secondary btn-sm"
+                 href="{{ url_for('logistics.archived_shipments') }}">
+                🗄️ Archived
+              </a>
             </div>
           </div>
 
@@ -186,10 +212,14 @@
                 {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
                 <li class="list-group-item d-flex justify-content-between align-items-start border-0
                            {% if is_active %}active bg-purple text-white{% endif %}">
+                           {% if s.is_archived and not is_active %}opacity-75{% endif %}">
         <a class="flex-grow-1 text-decoration-none
                            {% if is_active %}text-white{% else %}text-dark{% endif %}"
                      href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog', shipment_id=s.id, ship_page=(shipments_pagination.page if shipments_pagination else 1)) }}">
                     <strong>{{ s.sl_name or s.sl_id }}</strong>
+                    {% if s.is_archived %}
+                      <span class="badge bg-warning text-dark ms-1">ARCHIVED</span>
+                    {% endif %}
                     {% if s.sl_name %}
                     <small class="text-muted d-block {% if is_active %}text-light{% endif %}">
                       {{ s.sl_id }}
@@ -546,6 +576,80 @@
         </div>
       </div>
 
+      <!-- Archive Shipment Batch Modal -->
+      <div class="modal fade" id="archiveShipmentModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+          <div class="modal-content">
+            <form method="POST"
+                  action="{{ url_for('logistics.archive_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
+              <div class="modal-header">
+                <h5 class="modal-title">Archive Shipment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+
+              <div class="modal-body">
+                {% if selected_shipment %}
+                  <p class="mb-1">
+                    Archive <strong>{{ selected_shipment.sl_name or selected_shipment.sl_id }}</strong>?
+                  </p>
+                  <small class="text-muted">
+                    This will hide the shipment from the main list but keeps all packages and invoices.
+                  </small>
+
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% else %}
+                  <p class="mb-0 text-muted">Select a shipment on the left first.</p>
+                {% endif %}
+              </div>
+
+              <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-dark btn-sm" {% if not selected_shipment %}disabled{% endif %}>
+                  <i class="fas fa-archive me-1"></i> Archive
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Unarchive Shipment Batch Modal -->
+      <div class="modal fade" id="unarchiveShipmentModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+          <div class="modal-content">
+            <form method="POST"
+                  action="{{ url_for('logistics.unarchive_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
+              <div class="modal-header">
+                <h5 class="modal-title">Unarchive Shipment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+
+              <div class="modal-body">
+                {% if selected_shipment %}
+                  <p class="mb-1">
+                    Unarchive <strong>{{ selected_shipment.sl_name or selected_shipment.sl_id }}</strong>?
+                  </p>
+                  <small class="text-muted">
+                    This will restore the shipment to the active list.
+                  </small>
+
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% else %}
+                  <p class="mb-0 text-muted">Select a shipment on the left first.</p>
+                {% endif %}
+              </div>
+
+              <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-warning btn-sm" {% if not selected_shipment %}disabled{% endif %}>
+                  <i class="fas fa-box-open me-1"></i> Unarchive
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
       <!-- Move to Shipment Modal -->
       <div class="modal fade" id="moveShipmentModal" tabindex="-1" aria-labelledby="moveShipmentLabel" aria-hidden="true">
         <div class="modal-dialog modal-sm modal-dialog-centered">
@@ -678,6 +782,8 @@
         </div>
       </div>
 
+      
+
       <!-- Attach Files Modal -->
       <div class="modal fade" id="attachInvoiceModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-md modal-dialog-centered">
@@ -792,7 +898,7 @@
               </div>
               <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-danger btn-sm" {% if not selected_shipment %}disabled{% endif %}>Delete</button>
+                <button type="submit" class="btn btn-danger btn-sm" {% if not selected_shipment or selected_shipment.is_archived %}disabled{% endif %}>Delete</button>
               </div>
             </form>
           </div>

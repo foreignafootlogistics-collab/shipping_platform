@@ -1841,7 +1841,11 @@ def bulk_invoice_payment():
                 inv.status = "paid"
                 inv.date_paid = now
                 if prev_status != "paid":
-                    lock_delivered_packages_for_invoice(inv.id, reason="Invoice fully paid")
+                    lock_delivered_packages_for_invoice(
+                        inv.id,
+                        reason="Invoice fully paid",
+                        actor_admin_id=current_user.id
+                    )
             elif float(payments_total or 0) > 0:
                 inv.status = "partial"
                 inv.date_paid = None

@@ -334,19 +334,36 @@ class PackageAttachment(db.Model):
         # templates can use a.url and it works for old + new rows
         return self.file_url or self.file_name
 
+from datetime import datetime, timezone
+
 class ShipmentLog(db.Model):
     __tablename__ = 'shipment_log'
 
     id = db.Column(db.Integer, primary_key=True)
     sl_id = db.Column(db.String, unique=True, nullable=False, index=True)
-    sl_name = db.Column(db.String(120), nullable=True)   # ✅ NEW (renameable)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    sl_name = db.Column(db.String(120), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+   
+    is_archived = db.Column(db.Boolean, nullable=False, default=False, index=True)    
+    archived_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    archived_by_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    archive_reason = db.Column(db.String(64), nullable=True)
+    archived_by_admin = db.relationship("User", foreign_keys=[archived_by_admin_id], lazy="joined")
+
+    # ✅ prevents immediate auto-rearchive after manual unarchive
+    unarchive_override_until = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
 
     packages = db.relationship(
         'Package',
         secondary='shipment_packages',
         back_populates='shipments'
-    )
+    )    
+
+    def archive_locked(self) -> bool:
+        if not self.unarchive_override_until:
+            return False
+        return self.unarchive_override_until > datetime.now(timezone.utc)
 
     def __repr__(self):
         return f"<ShipmentLog {self.sl_id}>"
@@ -357,6 +374,24 @@ shipment_packages = db.Table(
     db.Column('shipment_id', db.Integer, db.ForeignKey('shipment_log.id')),
     db.Column('package_id', db.Integer, db.ForeignKey('packages.id'))
 )
+
+class ShipmentArchiveLog(db.Model):
+    __tablename__ = "shipment_archive_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    shipment_id = db.Column(db.Integer, db.ForeignKey("shipment_log.id"), nullable=False, index=True)
+
+    action = db.Column(db.String(24), nullable=False)  # ARCHIVE / UNARCHIVE / AUTO_ARCHIVE
+    reason = db.Column(db.String(128), nullable=True)
+
+    actor_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    actor_admin = db.relationship("User", foreign_keys=[actor_admin_id], lazy="joined")
+
+    # ✅ timezone aware
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    shipment = db.relationship("ShipmentLog", backref=db.backref("archive_logs", lazy="dynamic"))
+
 
 class Claim(db.Model):
     __tablename__ = "claims"

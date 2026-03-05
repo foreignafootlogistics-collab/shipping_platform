@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func
 
 from app.extensions import db
-from app.models import Invoice, Package, Payment, Discount
+from app.models import Invoice, Package, Payment, Discount, ShipmentLog, shipment_packages
 
 
 def fetch_invoice_totals_pg(invoice_id: int):
@@ -58,14 +58,65 @@ def mark_invoice_packages_delivered(invoice_id: int):
         synchronize_session=False
     )
 
-def lock_delivered_packages_for_invoice(invoice_id: int, reason: str = "Invoice paid"):
-    pkgs = Package.query.filter_by(invoice_id=invoice_id).all()
-    now = datetime.now(timezone.utc)
+def lock_delivered_packages_for_invoice(
+        inv.id,
+        reason="Invoice fully paid",
+        actor_admin_id=current_user.id
+    )
 
+    # Mark packages delivered + locked
     for p in pkgs:
-        p.status = "delivered"
+        p.status = "delivered"     # keep lowercase everywhere
         p.is_locked = True
         p.locked_reason = reason
         p.locked_at = now
-    
+
+    # ✅ AUTO-ARCHIVE shipments that became fully delivered
+    # Pull shipment_ids via association table (reliable)
+    pkg_ids = [p.id for p in pkgs]
+    shipment_ids = set()
+
+    if pkg_ids:
+        sid_rows = (
+            db.session.query(shipment_packages.c.shipment_id)
+            .filter(shipment_packages.c.package_id.in_(pkg_ids))
+            .distinct()
+            .all()
+        )
+        shipment_ids = {r[0] for r in sid_rows if r and r[0]}
+
+    if shipment_ids:
+        for sid in shipment_ids:
+            sh = ShipmentLog.query.get(sid)
+            if not sh or bool(getattr(sh, "is_archived", False)):
+                continue
+
+            total_pkgs = (
+                db.session.query(func.count(Package.id))
+                .select_from(shipment_packages)
+                .join(Package, Package.id == shipment_packages.c.package_id)
+                .filter(shipment_packages.c.shipment_id == sid)
+                .scalar()
+                or 0
+            )
+
+            delivered_pkgs = (
+                db.session.query(func.count(Package.id))
+                .select_from(shipment_packages)
+                .join(Package, Package.id == shipment_packages.c.package_id)
+                .filter(
+                    shipment_packages.c.shipment_id == sid,
+                    func.lower(Package.status) == "delivered",
+                )
+                .scalar()
+                or 0
+            )
+
+            if total_pkgs > 0 and delivered_pkgs == total_pkgs:
+                sh.is_archived = True
+                sh.archived_at = now
+                sh.archived_by_admin_id = actor_admin_id
+                if hasattr(sh, "archive_reason"):
+                    sh.archive_reason = "AUTO_ALL_PACKAGES_DELIVERED"
+
     return len(pkgs)

@@ -9,7 +9,6 @@ import time
 import random
 import bcrypt
 import mimetypes
-from io import StringIO
 from datetime import datetime, timedelta, timezone, date
 from decimal import Decimal
 import requests
@@ -25,13 +24,13 @@ from werkzeug.utils import secure_filename
 import pandas as pd
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-from sqlalchemy import func, or_, and_, asc, desc, cast
+from sqlalchemy import func, or_, and_, asc, desc, cast, distinct
 from sqlalchemy.types import Date
 
 from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
 from app.models import (
-    Prealert, User, ScheduledDelivery, ShipmentLog, Invoice,  
+    Prealert, User, ScheduledDelivery, ShipmentLog, Invoice, ShipmentArchiveLog,
     Package, Payment, shipment_packages, PackageAttachment
 )
 from app.models import Message as DBMessage
@@ -174,6 +173,22 @@ def _load_preview_blob(token: str) -> dict | None:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+def _abort_if_archived(shipment):
+    """
+    If shipment is archived, block edits/mutations.
+    Returns a redirect Response if blocked, else None.
+    """
+    if not shipment:
+        return None
+
+    if bool(getattr(shipment, "is_archived", False)):
+        flash("🚫 This shipment is archived and cannot be modified.", "warning")
+        return redirect(
+            url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id),
+            code=303
+        )
+
+    return None
 
 def _normalize_headers(cols):
     norm = []
@@ -847,6 +862,14 @@ def logistics_dashboard():
     raw_tab = request.args.get("tab") or request.form.get("tab")
     tab = normalize_tab(raw_tab)
 
+    from app.utils.shipment_archive import sync_auto_archive_for_eligible_shipments
+
+    if request.method == "GET":
+        try:
+            sync_auto_archive_for_eligible_shipments(limit=200)
+        except Exception as e:
+            print("AUTO-ARCHIVE ERROR:", e)
+
     shipments_pagination = None
     shipments = []
     shipments_parsed = []
@@ -1084,6 +1107,7 @@ def logistics_dashboard():
 
     shipments_pagination = (
         ShipmentLog.query
+        .filter(ShipmentLog.archived_at.is_(False))
         .order_by(ShipmentLog.created_at.desc())
         .paginate(page=ship_page, per_page=ship_per_page, error_out=False)
     )
@@ -1096,6 +1120,8 @@ def logistics_dashboard():
             "sl_id": s.sl_id,
             "sl_name": s.sl_name,
             "created_at": s.created_at,
+            "is_archived": bool(getattr(s, "is_archived", False)),   
+            "archived_at": getattr(s, "archived_at", None),
         })
 
     selected_shipment_id = request.args.get('shipment_id', type=int)
@@ -1104,6 +1130,9 @@ def logistics_dashboard():
     else:
         selected_shipment = shipments[0] if shipments else None
         selected_shipment_id = selected_shipment.id if selected_shipment else None
+    if selected_shipment and bool(getattr(selected_shipment, "is_archived", False)):
+        flash("That shipment is archived.", "info")
+        return redirect(url_for("logistics.archived_shipments"))
 
     
     shipment_pkg_rows = []
@@ -1395,12 +1424,7 @@ def logistics_dashboard():
         summary_counts=summary_counts,
 
         shipments=shipments_parsed,
-        selected_shipment={
-            "id": selected_shipment.id,
-            "sl_id": selected_shipment.sl_id,
-            "sl_name": selected_shipment.sl_name,
-            "created_at": selected_shipment.created_at,
-        } if selected_shipment else None,
+        selected_shipment=selected_shipment,
         selected_shipment_id=selected_shipment_id,
         shipment_packages=shipment_pkg_rows,
         all_packages=parsed_packages,
@@ -1732,6 +1756,8 @@ def bulk_assign_packages():
 
     return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
 
+
+
 @logistics_bp.route("/shipments/<int:shipment_id>/packages/delete", methods=["POST"])
 @admin_required
 def delete_packages_from_shipment(shipment_id):
@@ -1912,9 +1938,6 @@ def admin_view_package_attachment(attachment_id):
         abort(404)
 
     return send_from_directory(upload_folder, url, as_attachment=False)
-
-
-
 
 
 # --------------------------------------------------------------------------------------
@@ -2556,6 +2579,10 @@ def assign_packages_to_shipment():
             flash("Shipment not found.", "danger")
             return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
 
+        blocked = _abort_if_archived(shipment)
+        if blocked:
+            return blocked
+
     # load pkgs
     pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
     if not pkgs:
@@ -2575,6 +2602,118 @@ def assign_packages_to_shipment():
         "success"
     )
     return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id, return_to=return_to), code=303)
+
+
+@logistics_bp.route("/archived_shipments")
+@admin_required
+def archived_shipments():
+    rows = (
+        db.session.query(
+            ShipmentLog.id.label("shipment_id"),
+            ShipmentLog.sl_id,
+            ShipmentLog.sl_name,
+            ShipmentLog.created_at,
+            ShipmentLog.archived_at,
+            ShipmentLog.archived_by_admin_id,
+            func.count(distinct(Package.id)).label("package_count"),
+            func.coalesce(func.sum(Package.grand_total), 0).label("total_billed_jmd"),
+            func.coalesce(func.sum(Package.weight), 0).label("total_weight_lbs"),
+        )
+        .select_from(ShipmentLog)
+        .outerjoin(shipment_packages, shipment_packages.c.shipment_id == ShipmentLog.id)
+        .outerjoin(Package, Package.id == shipment_packages.c.package_id)
+        .filter(ShipmentLog.is_archived.is_(True))
+        .group_by(
+            ShipmentLog.id,
+            ShipmentLog.sl_id,
+            ShipmentLog.sl_name,
+            ShipmentLog.created_at,
+            ShipmentLog.archived_at,
+            ShipmentLog.archived_by_admin_id,
+        )
+        .order_by(ShipmentLog.archived_at.desc().nullslast())
+        .all()
+    )
+
+    admin_ids = [r.archived_by_admin_id for r in rows if r.archived_by_admin_id]
+    admins = {}
+    if admin_ids:
+        for u in User.query.filter(User.id.in_(admin_ids)).all():
+            admins[u.id] = u
+
+    return render_template(
+        "admin/logistics/archived_shipments.html",
+        rows=rows,
+        admins=admins
+    )
+
+
+@logistics_bp.route("/shipments/<int:shipment_id>/archive", methods=["POST"])
+@admin_required
+def archive_shipment(shipment_id):
+    shipment = ShipmentLog.query.get_or_404(shipment_id)
+
+    if bool(getattr(shipment, "is_archived", False)):
+        flash("Shipment is already archived.", "info")
+        return redirect(
+            url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id),
+            code=303
+        )
+
+    shipment.is_archived = True
+    shipment.archived_at = datetime.now(timezone.utc)
+    shipment.archived_by_admin_id = getattr(current_user, "id", None)
+
+    db.session.add(
+        ShipmentArchiveLog(
+            shipment_id=shipment.id,
+            action="ARCHIVE",
+            reason="Manual archive",
+            actor_admin_id=getattr(current_user, "id", None),
+        )
+    )
+
+    db.session.commit()
+    flash("Shipment archived successfully.", "success")
+
+    return redirect(
+        url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id),
+        code=303
+    )
+
+
+@logistics_bp.route("/shipments/<int:shipment_id>/unarchive", methods=["POST"])
+@admin_required
+def unarchive_shipment(shipment_id):
+    shipment = ShipmentLog.query.get_or_404(shipment_id)
+
+    if not bool(getattr(shipment, "is_archived", False)):
+        flash("Shipment is already active.", "info")
+        return redirect(
+            url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id),
+            code=303
+        )
+
+    shipment.is_archived = False
+    shipment.archived_at = None
+    shipment.archived_by_admin_id = None
+
+    db.session.add(
+        ShipmentArchiveLog(
+            shipment_id=shipment.id,
+            action="UNARCHIVE",
+            reason="Manual unarchive",
+            actor_admin_id=getattr(current_user, "id", None),
+        )
+    )
+
+    db.session.commit()
+    flash("Shipment unarchived successfully.", "success")
+
+    return redirect(
+        url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id),
+        code=303
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -2611,6 +2750,10 @@ def _next_sl_id():
 @admin_required
 def rename_shipment(shipment_id):
     s = ShipmentLog.query.get_or_404(shipment_id)
+
+    blocked = _abort_if_archived(s)
+    if blocked:
+        return blocked
 
     new_name = (request.form.get("sl_name") or "").strip()
     if not new_name:
@@ -2705,6 +2848,11 @@ def delete_shipment(shipment_id):
     if not sl:
         flash("Shipment not found.", "warning")
         return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+
+    blocked = _abort_if_archived(sl)
+    if blocked:
+        return blocked
+
     sl_id = sl.sl_id
     try:
         db.session.delete(sl)
@@ -2796,6 +2944,9 @@ def move_packages_between_shipments():
         return redirect(url_for('logistics.logistics_dashboard',
                                 tab='shipmentLog',
                                 shipment_id=from_id or None))
+    blocked = _abort_if_archived(sl)
+    if blocked:
+        return blocked
 
     pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
     if not pkgs:
@@ -2820,6 +2971,12 @@ def move_packages_between_shipments():
 @logistics_bp.route('/shipmentlog/<int:shipment_id>/bulk-action', methods=['POST'])
 @admin_required
 def bulk_shipment_action(shipment_id):
+    shipment = ShipmentLog.query.get_or_404(shipment_id)
+
+    blocked = _abort_if_archived(shipment)
+    if blocked:
+        return blocked
+
     upload_form = UploadPackageForm()
     prealert_form = PreAlertForm()
     bulk_form = PackageBulkActionForm()
@@ -3187,6 +3344,10 @@ def bulk_shipment_action(shipment_id):
 def shipment_finance_invoice_preview_html(shipment_id):
     shipment = ShipmentLog.query.get_or_404(shipment_id)
 
+    blocked = _abort_if_archived(shipment)
+    if blocked:
+        return blocked
+
     # ✅ correct: use association table
     packages = (
         Package.query
@@ -3276,6 +3437,10 @@ def shipment_finance_invoice_preview_json(shipment_id):
     package_ids = payload.get("package_ids") or []
 
     ShipmentLog.query.get_or_404(shipment_id)
+
+    blocked = _abort_if_archived(shipment)
+    if blocked:
+        return blocked
 
     q = (
         Package.query

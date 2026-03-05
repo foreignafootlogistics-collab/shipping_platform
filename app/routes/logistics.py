@@ -1107,7 +1107,7 @@ def logistics_dashboard():
 
     shipments_pagination = (
         ShipmentLog.query
-        .filter(ShipmentLog.archived_is_(False))
+        .filter(ShipmentLog.is_archived_is_(False))
         .order_by(ShipmentLog.created_at.desc())
         .paginate(page=ship_page, per_page=ship_per_page, error_out=False)
     )

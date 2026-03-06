@@ -154,13 +154,19 @@
 
       <div class="row mb-3">
 
-        <!-- Sidebar: Shipments -->
+        <!-- Sidebar: Shipments (Option C: Active + Archived collapse) -->
         <div class="col-md-3">
+
           <div class="d-flex justify-content-between align-items-center mb-2">
-            <h5 class="fw-bold text-purple mb-0">📦 Shipment Batches</h5>
+            <h5 class="fw-bold text-purple mb-0 d-flex align-items-center gap-2">
+              📦 Shipment Batches
+              {% if archived_count %}
+                <span class="badge bg-light text-dark border">{{ archived_count }} archived</span>
+              {% endif %}
+            </h5>
 
             <div class="btn-group btn-group-sm" role="group" aria-label="Shipment toolbar">
-              <form method="POST" action="{{ url_for('logistics.create_empty_shipment') }}" class="d-inline">
+              <form method="POST"      action="{{ url_for('logistics.create_empty_shipment') }}" class="d-inline">
                 {{ bulk_form.hidden_tag() }}
                 <button type="submit" class="btn btn-outline-primary" title="Create a blank shipment log">
                   <i class="fas fa-plus"></i>
@@ -178,9 +184,9 @@
                 <i class="fas fa-trash-alt"></i>
               </button>
 
-              {# ✅ Archive / Unarchive buttons #}
+              {# Archive / Unarchive buttons #}
               {% if selected_shipment %}
-                {% if selected_shipment.is_archived %}              
+                {% if selected_shipment.is_archived %}
                   <button type="button"
                           class="btn btn-outline-warning"
                           title="Unarchive shipment"
@@ -199,90 +205,181 @@
                 {% endif %}
               {% endif %}
 
-              <a class="btn btn-outline-secondary btn-sm"
-                 href="{{ url_for('logistics.archived_shipments') }}">
-                🗄️ Archived
-              </a>
+              {# ✅ Toggle archived list on the SAME page #}
+              <button class="btn btn-outline-secondary"
+                      type="button"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#archivedShipmentsCollapse"
+                      aria-expanded="false"
+                      aria-controls="archivedShipmentsCollapse"
+                      title="Show/Hide archived shipments">
+                <i class="fas fa-folder-open"></i>
+              </button>
             </div>
           </div>
 
-          <ul class="list-group shadow-sm">
-            {% if shipments and shipments|length %}
-              {% for s in shipments %}
-                {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
-                <li class="list-group-item d-flex justify-content-between align-items-start border-0
-                           {% if is_active %}active bg-purple text-white{% endif %}"
-                           {% if s.is_archived and not is_active %}opacity-75{% endif %}">
-        <a class="flex-grow-1 text-decoration-none
-                           {% if is_active %}text-white{% else %}text-dark{% endif %}"
-                     href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog', shipment_id=s.id, ship_page=(shipments_pagination.page if shipments_pagination else 1)) }}">
-                    <strong>{{ s.sl_name or s.sl_id }}</strong>
-                    {% if s.is_archived %}
-                      <span class="badge bg-warning text-dark ms-1">ARCHIVED</span>
-                    {% endif %}
-                    {% if s.sl_name %}
-                    <small class="text-muted d-block {% if is_active %}text-light{% endif %}">
-                      {{ s.sl_id }}
-                    </small>
-                  {% endif %}
+          <style>
+            .ship-list { max-height: 62vh; overflow: auto; border-radius: 10px; }
+            .ship-item { border:0; border-bottom: 1px solid rgba(0,0,0,.06); padding:.55rem .70rem; }
+            .ship-item:last-child { border-bottom: 0; }
+            .ship-item a { text-decoration:none; display:block; }
+            .ship-meta { font-size:.78rem; line-height:1.1rem; }
+            .ship-pill { font-size:.70rem; padding:.15rem .45rem; border-radius: 999px; }
+          </style>
 
-                  <small class="text-muted d-block {% if is_active %}text-light{% endif %}">
-                    {{ (s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
-                  </small>
-                  </a>
-                </li>
-              {% endfor %}
-            {% else %}
-              <li class="list-group-item text-muted">
-                No shipment batches found.
-                <br>
-                <a href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}"
-                   class="btn btn-sm btn-purple mt-2">➕ Create Shipment</a>
-              </li>
-            {% endif %}
-          </ul>
+          <!-- ACTIVE SHIPMENTS -->
+          <div class="card shadow-sm mb-2">
+            <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
+              <div class="fw-semibold small">Active</div>
+              {% if active_pagination %}
+                <div class="text-muted small">
+                  Page {{ active_pagination.page }} / {{ active_pagination.pages }}
+                </div>
+              {% endif %}
+            </div>
 
-          {% if shipments_pagination and shipments_pagination.pages > 1 %}
-            <nav class="mt-2">
-              <ul class="pagination pagination-sm mb-0">
+            <div class="list-group ship-list">
+              {% if active_shipments and active_shipments|length %}
+                {% for s in active_shipments %}
+                  {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
+                  <div class="list-group-item ship-item {% if is_active %}active bg-purple text-white{% endif %}">
+                    <a class="{% if is_active %}text-white{% else %}text-dark{% endif %}"
+                       href="{{ url_for('logistics.logistics_dashboard',
+                                        tab='shipmentLog',
+                                        shipment_id=s.id,
+                                        ship_page=(active_pagination.page if active_pagination else 1)) }}">
 
-                <li class="page-item {% if not shipments_pagination.has_prev %}disabled{% endif %}">
-                  <a class="page-link"
-                     href="{{ url_for('logistics.logistics_dashboard',
-                                      tab='shipmentLog',
-                                      shipment_id=selected_shipment_id,
-                                      ship_page=(shipments_pagination.prev_num if shipments_pagination.has_prev else 1)) }}">
-                    &laquo;
-                  </a>
-                </li>
+                      <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div class="fw-bold text-truncate" style="max-width: 210px;">
+                          {{ s.sl_name or s.sl_id }}
+                        </div>
+                      </div>
 
-                {% for p in range(1, shipments_pagination.pages + 1) %}
-                  {% if p == 1 or p == shipments_pagination.pages or (p >= shipments_pagination.page-1 and p <= shipments_pagination.page+1) %}
-                    <li class="page-item {% if p == shipments_pagination.page %}active{% endif %}">
+                      {% if s.sl_name %}
+                        <div class="ship-meta text-muted {% if is_active %}text-light{% endif %}">
+                          {{ s.sl_id }}
+                        </div>
+                      {% endif %}
+
+                      <div class="ship-meta text-muted {% if is_active %}text-light{% endif %}">
+                        {{ (s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
+                      </div>
+
+                    </a>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <div class="list-group-item text-muted py-3">
+                  No active shipment batches found.
+                  <div class="mt-2">
+                    <a href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}"
+                       class="btn btn-sm btn-purple">➕ Create Shipment</a>
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+
+            {% if active_pagination and active_pagination.pages > 1 %}
+              <div class="card-footer py-2">
+                <nav>
+                  <ul class="pagination pagination-sm mb-0">
+
+                    <li class="page-item {% if not active_pagination.has_prev %}disabled{% endif %}">
                       <a class="page-link"
                          href="{{ url_for('logistics.logistics_dashboard',
                                           tab='shipmentLog',
-                                          shipment_id=selected_shipment_id,
-                                          ship_page=p) }}">
-                        {{ p }}
-                      </a>
-                    </li>
-                  {% endif %}
-                {% endfor %}
+                                  shipment_id=selected_shipment_id,
+                                          ship_page=(active_pagination.prev_num if active_pagination.has_prev else 1)) }}">
+                &laquo;
+              </a>
+            </li>
 
-                <li class="page-item {% if not shipments_pagination.has_next %}disabled{% endif %}">
+            {% for p in range(1, active_pagination.pages + 1) %}
+              {% if p == 1 or p == active_pagination.pages or (p >= active_pagination.page-1 and p <= active_pagination.page+1) %}
+                <li class="page-item {% if p == active_pagination.page %}active{% endif %}">
                   <a class="page-link"
                      href="{{ url_for('logistics.logistics_dashboard',
                                       tab='shipmentLog',
                                       shipment_id=selected_shipment_id,
-                                      ship_page=(shipments_pagination.next_num if shipments_pagination.has_next else shipments_pagination.pages)) }}">
-                    &raquo;
+                                      ship_page=p) }}">
+                    {{ p }}
                   </a>
                 </li>
+              {% endif %}
+            {% endfor %}
 
-              </ul>
-            </nav>
-          {% endif %}
+            <li class="page-item {% if not active_pagination.has_next %}disabled{% endif %}">
+              <a class="page-link"
+                 href="{{ url_for('logistics.logistics_dashboard',
+                                  tab='shipmentLog',
+                                  shipment_id=selected_shipment_id,
+                                  ship_page=(active_pagination.next_num if active_pagination.has_next else active_pagination.pages)) }}">
+                        &raquo;
+                      </a>
+                    </li>
+
+                  </ul>
+                </nav>
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- ARCHIVED SHIPMENTS (COLLAPSE) -->
+          <div class="collapse" id="archivedShipmentsCollapse">
+            <div class="card shadow-sm">
+              <div class="card-header py-2 bg-white d-flex justify-content-between align-items-center">
+                <div class="fw-semibold small">
+                  Archived
+                  {% if archived_count %}
+                    <span class="badge bg-warning text-dark ms-1 ship-pill">{{ archived_count }}</span>
+                  {% endif %}
+                </div>
+                <div class="text-muted small">Read-only</div>
+              </div>
+
+              <div class="list-group ship-list" style="max-height: 32vh;">
+                {% if archived_shipments and archived_shipments|length %}
+                  {% for s in archived_shipments %}
+                    {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
+                    <div class="list-group-item ship-item {% if is_active %}active bg-warning text-dark{% endif %}">
+                      <a class="{% if is_active %}text-dark{% else %}text-dark{% endif %}"
+                         href="{{ url_for('logistics.logistics_dashboard',
+                                          tab='shipmentLog',
+                                          shipment_id=s.id,
+                                          ship_page=(active_pagination.page if active_pagination else 1)) }}">
+
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                          <div class="fw-bold text-truncate" style="max-width: 200px;">
+                            {{ s.sl_name or s.sl_id }}
+                          </div>
+                          <span class="badge bg-warning text-dark ship-pill">ARCHIVED</span>
+                        </div>
+
+                        {% if s.sl_name %}
+                          <div class="ship-meta text-muted">
+                            {{ s.sl_id }}
+                          </div>
+                        {% endif %}
+
+                        <div class="ship-meta text-muted">
+                          Archived: {{ (s.archived_at or s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
+                        </div>
+                      </a>
+                    </div>
+                  {% endfor %}
+                {% else %}
+                  <div class="list-group-item text-muted py-3">
+                    No archived shipments found.
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="card-footer py-2 small text-muted">
+                Tip: open an archived batch to view packages; actions are blocked.
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <!-- Main: Packages -->

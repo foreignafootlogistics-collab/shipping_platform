@@ -869,10 +869,7 @@ def logistics_dashboard():
             sync_auto_archive_for_eligible_shipments(limit=200)
         except Exception as e:
             print("AUTO-ARCHIVE ERROR:", e)
-
-    shipments_pagination = None
-    shipments = []
-    shipments_parsed = []
+    
     selected_shipment = None
     selected_shipment_id = None
     shipment_pkg_rows = []
@@ -1105,34 +1102,71 @@ def logistics_dashboard():
     ship_page = int(request.args.get("ship_page", 1))
     ship_per_page = 12
 
-    shipments_pagination = (
+    # --------------------------
+    # ACTIVE shipments (paginated)
+    # --------------------------
+    active_pagination = (
         ShipmentLog.query
         .filter(ShipmentLog.is_archived.is_(False))
         .order_by(ShipmentLog.created_at.desc())
         .paginate(page=ship_page, per_page=ship_per_page, error_out=False)
     )
 
-    shipments = shipments_pagination.items
-    shipments_parsed = []
-    for s in shipments:
-        shipments_parsed.append({
+    active_shipments = []
+    for s in active_pagination.items:
+        active_shipments.append({
             "id": s.id,
             "sl_id": s.sl_id,
             "sl_name": s.sl_name,
             "created_at": s.created_at,
-            "is_archived": bool(getattr(s, "is_archived", False)),   
+            "is_archived": bool(getattr(s, "is_archived", False)),
             "archived_at": getattr(s, "archived_at", None),
         })
 
-    selected_shipment_id = request.args.get('shipment_id', type=int)
+    # --------------------------
+    # ARCHIVED shipments (small list for sidebar)
+    # --------------------------
+    archived_shipments = (
+        ShipmentLog.query
+        .filter(ShipmentLog.is_archived.is_(True))
+        .order_by(ShipmentLog.archived_at.desc().nullslast(), ShipmentLog.created_at.desc())
+        .limit(50)
+        .all()
+    )
+
+    archived_count = (
+        db.session.query(func.count(ShipmentLog.id))
+        .filter(ShipmentLog.is_archived.is_(True))
+        .scalar()
+        or 0
+    )
+
+    archived_shipments_parsed = []
+    for s in archived_shipments:
+        archived_shipments_parsed.append({
+            "id": s.id,
+            "sl_id": s.sl_id,
+            "sl_name": s.sl_name,
+            "created_at": s.created_at,
+            "is_archived": True,
+            "archived_at": getattr(s, "archived_at", None),
+        })
+
+    archived_ids = {s["id"] for s in archived_shipments_parsed}
+
+    # --------------------------
+    # SELECT shipment (allow archived too!)
+    # --------------------------
+    selected_shipment_id = request.args.get("shipment_id", type=int)
+
     if selected_shipment_id:
         selected_shipment = db.session.get(ShipmentLog, selected_shipment_id)
     else:
-        selected_shipment = shipments[0] if shipments else None
+        # default: first active shipment
+        first_active = active_pagination.items[0] if active_pagination.items else None
+        selected_shipment = first_active
         selected_shipment_id = selected_shipment.id if selected_shipment else None
-    if selected_shipment and bool(getattr(selected_shipment, "is_archived", False)):
-        flash("That shipment is archived.", "info")
-        return redirect(url_for("logistics.archived_shipments"))
+
 
     
     shipment_pkg_rows = []
@@ -1423,12 +1457,14 @@ def logistics_dashboard():
         preview_errors=preview_errors,
         summary_counts=summary_counts,
 
-        shipments=shipments_parsed,
+        active_shipments=active_shipments,
+        active_pagination=active_pagination,
+        archived_shipments=archived_shipments_parsed,
+        archived_count=archived_count,        
         selected_shipment=selected_shipment,
         selected_shipment_id=selected_shipment_id,
         shipment_packages=shipment_pkg_rows,
-        all_packages=parsed_packages,
-        shipments_pagination=shipments_pagination,
+        all_packages=parsed_packages,        
 
         search=search,
         status_filter=status_filter,

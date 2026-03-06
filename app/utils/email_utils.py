@@ -1,6 +1,6 @@
 import time
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 import smtplib
 import requests
 from math import ceil
@@ -851,32 +851,33 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
             w = float(p.get("weight") or 0)
         except (TypeError, ValueError):
             w = 0.0
-        weight_display = str(int(ceil(w)))  # rounded like your screenshot
+        weight_display = str(int(ceil(w)))
 
         row_html.append(f"""
-          <tr>
-            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
-              {awb}
-            </td>
-            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
-              {merchant}
-            </td>
-            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
-              {tracking}
-            </td>
-            <td style="padding:12px 14px; border-top:1px solid #e5e7eb; color:#111827; font-size:14px;">
-              {weight_display}
-            </td>
-          </tr>
-        """)
+<tr>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #e5e7eb; color:#111827; word-break:break-word; overflow-wrap:anywhere;">
+    {awb}
+  </td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #e5e7eb; color:#111827; word-break:break-word; overflow-wrap:anywhere;">
+    {merchant}
+  </td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #e5e7eb; color:#111827; word-break:break-word; overflow-wrap:anywhere;">
+    {tracking}
+  </td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #e5e7eb; color:#111827; text-align:center; white-space:nowrap;">
+    {weight_display}
+  </td>
+</tr>
+""")
 
     rows_block = "\n".join(row_html) if row_html else """
       <tr>
-        <td colspan="4" style="padding:10px; border-top:1px solid #e5e7eb; color:#6b7280; font-size:13px;">
+        <td colspan="4" style="padding:8px 8px; border:1px solid #e5e7eb; color:#6b7280; font-size:11.5px;">
           No packages found on this invoice.
         </td>
       </tr>
     """
+
 
     greeting_name = (full_name or "").strip() or "Customer"
 
@@ -920,24 +921,25 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
                   <div style="height:14px;"></div>
 
                   <!-- TABLE -->
-                  <div style="display:block; width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:12px 0;">
-                    <table width="100%" cellpadding="0" cellspacing="0"
-                           style="border-collapse:collapse; background:#ffffff;
-                           border:1px solid #e5e7eb; border-radius:10px;
-                           overflow:hidden; min-width:720px; table-layout:fixed;">
+                  <table cellpadding="0" cellspacing="0" width="100%"
+                         style="border-collapse:collapse; width:100%; table-layout:fixed; background:#ffffff; border:1px solid #e5e7eb;">
                     <thead>
-                      <tr style="background:#f5f2fb;">
-                        <th align="left" style="padding:8px 10px; color:#4A148C; font-family:Arial, sans-serif; font-size:13px; font-weight:800; border-right:1px solid #e5e7eb;">
+                      <tr style="background:#f5f2fb; color:#4A148C;">
+                        <th width="24%" align="left"
+                            style="padding:6px 6px; font-family:Arial, sans-serif; font-size:11.5px; font-weight:800; border:1px solid #e5e7eb; word-break:break-word; overflow-wrap:anywhere;">
                           AWB/BL
                         </th>
-                        <th align="left" style="padding:8px 10px; color:#4A148C; font-family:Arial, sans-serif; font-size:13px; font-weight:800; border-right:1px solid #e5e7eb;">
+                        <th width="28%" align="left"
+                            style="padding:6px 6px; font-family:Arial, sans-serif; font-size:11.5px; font-weight:800; border:1px solid #e5e7eb; word-break:break-word; overflow-wrap:anywhere;">
                           Merchant
                         </th>
-                        <th align="left" style="padding:8px 10px; color:#4A148C; font-family:Arial, sans-serif; font-size:13px; font-weight:800; border-right:1px solid #e5e7eb;">
+                        <th width="34%" align="left"
+                            style="padding:6px 6px; font-family:Arial, sans-serif; font-size:11.5px; font-weight:800; border:1px solid #e5e7eb; word-break:break-word; overflow-wrap:anywhere;">
                           Tracking #
                         </th>
-                        <th align="left" style="padding:8px 10px; color:#4A148C; font-family:Arial, sans-serif; font-size:13px; font-weight:800;">
-                          Weight
+                        <th width="14%" align="center"
+                            style="padding:6px 6px; font-family:Arial, sans-serif; font-size:11.5px; font-weight:800; border:1px solid #e5e7eb; white-space:nowrap;">
+                          Wt
                         </th>
                       </tr>
                     </thead>
@@ -945,7 +947,6 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
                       {rows_block}
                     </tbody>
                   </table>
-                  </div>
 
                   <div style="height:18px;"></div>
 
@@ -953,7 +954,7 @@ def send_invoice_email(to_email, full_name, invoice, pdf_bytes=None, recipient_u
                   <div style="font-family:Arial, sans-serif; font-size:18px; color:#111827; font-weight:700;">
                     Total Due:
                   </div>
-                  <div style="font-family:Arial, sans-serif; font-size:54px; line-height:1.05; font-weight:900; color:#FFD400; margin-top:6px;">
+                  <div style="font-family:Arial, sans-serif; font-size:40px; line-height:1.05; font-weight:900; color:#FFD400; margin-top:6px;">
                     ${total_due_num:,.2f}
                   </div>
 

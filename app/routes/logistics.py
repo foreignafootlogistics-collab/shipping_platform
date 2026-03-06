@@ -3357,7 +3357,10 @@ def bulk_shipment_action(shipment_id):
                 continue
 
             if not user.email:
-                failed.append("(no email on file)")
+                inv.invoice_email_failed = True
+                inv.invoice_email_failed_at = datetime.now(timezone.utc)
+                inv.invoice_email_failure_reason = "No email address on file"
+                failed.append(f"Invoice {inv.invoice_number or inv.id} (no email on file)")
                 continue
 
             amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
@@ -3387,8 +3390,15 @@ def bulk_shipment_action(shipment_id):
             )
 
             if ok:
+                inv.invoice_emailed_at = datetime.now(timezone.utc)
+                inv.invoice_email_failed = False
+                inv.invoice_email_failed_at = None
+                inv.invoice_email_failure_reason = None
                 sent += 1
             else:
+                inv.invoice_email_failed = True
+                inv.invoice_email_failed_at = datetime.now(timezone.utc)
+                inv.invoice_email_failure_reason = "Invoice email send failed"
                 failed.append(user.email)
 
         db.session.commit()
@@ -3398,8 +3408,112 @@ def bulk_shipment_action(shipment_id):
             if skipped_unassigned:
                 msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
             flash(msg, "success")
+
         if failed:
             flash("Some invoice emails failed: " + ", ".join(failed), "danger")
+
+        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
+    # -------------------------
+    # RESEND FAILED INVOICE EMAILS
+    # -------------------------
+    elif action == "resend_failed_invoices":
+        if not eligible_pkgs:
+            flash("🚫 All selected packages are UNASSIGNED. Assign them to a customer first.", "warning")
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
+        invoice_ids = sorted({p.invoice_id for p in eligible_pkgs if p.invoice_id})
+        if not invoice_ids:
+            flash("The eligible selected packages are not attached to any invoices yet.", "warning")
+            if skipped_unassigned:
+                flash(f"🚫 Also skipped {skipped_unassigned} UNASSIGNED package(s).", "warning")
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
+        rows = (
+            db.session.query(Invoice, User)
+            .join(User, Invoice.user_id == User.id)
+            .filter(Invoice.id.in_(invoice_ids))
+            .all()
+        )
+
+        if not rows:
+            flash("No invoices found for the selected packages.", "warning")
+            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+
+        from app.utils import email_utils
+
+        resent = 0
+        skipped = 0
+        failed = []
+
+        for idx, (inv, user) in enumerate(rows):
+            _email_throttle(idx)
+
+            # Retry only invoices marked as failed
+            if not bool(getattr(inv, "invoice_email_failed", False)):
+                skipped += 1
+                continue
+
+            # extra safety: never email the UNASSIGNED user
+            if unassigned_id and int(getattr(user, "id", 0) or 0) == int(unassigned_id):
+                skipped += 1
+                continue
+
+            if not user.email:
+                inv.invoice_email_failed = True
+                inv.invoice_email_failed_at = datetime.now(timezone.utc)
+                inv.invoice_email_failure_reason = "No email address on file"
+                failed.append(f"Invoice {inv.invoice_number or inv.id} (no email on file)")
+                continue
+
+            amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
+
+            invoice_dict = {
+                "number": inv.invoice_number or f"INV-{inv.id}",
+                "date": getattr(inv, "date_issued", None) or getattr(inv, "created_at", None),
+                "total_due": amount_due,
+                "packages": []
+            }
+
+            inv_pkgs = Package.query.filter(Package.invoice_id == inv.id).all()
+            for p in inv_pkgs:
+                invoice_dict["packages"].append({
+                    "house_awb": p.house_awb or "-",
+                    "merchant": getattr(p, "merchant", None) or getattr(p, "shipper", None) or "-",
+                    "tracking_number": p.tracking_number or "-",
+                    "weight": float(p.weight or 0),
+                })
+
+            ok = email_utils.send_invoice_email(
+                to_email=user.email,
+                full_name=user.full_name or user.email,
+                invoice=invoice_dict,
+                pdf_bytes=None,
+                recipient_user_id=user.id
+            )
+
+            if ok:
+                inv.invoice_emailed_at = datetime.now(timezone.utc)
+                inv.invoice_email_failed = False
+                inv.invoice_email_failed_at = None
+                inv.invoice_email_failure_reason = None
+                resent += 1
+            else:
+                inv.invoice_email_failed = True
+                inv.invoice_email_failed_at = datetime.now(timezone.utc)
+                inv.invoice_email_failure_reason = "Retry failed"
+                failed.append(user.email)
+
+        db.session.commit()
+
+        msg = f"Retry complete. Sent: {resent}, Skipped: {skipped}."
+        if skipped_unassigned:
+            msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
+
+        flash(msg, "success" if resent else "warning")
+
+        if failed:
+            flash("Some retry invoice emails failed: " + ", ".join(failed), "danger")
 
         return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
 

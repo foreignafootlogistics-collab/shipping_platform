@@ -178,6 +178,12 @@ class Invoice(db.Model):
     user = db.relationship("User", back_populates="invoices")
     packages = db.relationship("Package", back_populates="invoice", lazy=True)
 
+    invoice_emailed_at = db.Column(db.DateTime, nullable=True)
+    invoice_email_failed = db.Column(db.Boolean, default=False, nullable=False)
+
+    invoice_email_failed_at = db.Column(db.DateTime, nullable=True)
+    invoice_email_failure_reason = db.Column(db.Text, nullable=True)
+
     def __repr__(self):
         return f"<Invoice {self.invoice_number} User {self.user_id}>"
 

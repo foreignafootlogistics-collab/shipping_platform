@@ -492,6 +492,7 @@
                   <option value="finance_invoice">💼 Finance Invoice</option>
                   <option value="notify_ready">📣 Email: Ready for Pick-Up</option>
                   <option value="send_invoices">📧 Email: Invoices (Totals)</option>
+                  <option value="resend_failed_invoices">🔁 Resend Failed Invoice Emails</option>
                   <option value="remove_from_shipment">🗑 Remove from this Shipment</option>
                   <option value="purge_shipment_invoices">🧹 Purge Shipment Invoices (Unpaid Only)</option>
                 </select>
@@ -559,7 +560,24 @@
                       <small class="text-muted">{{ pkg.tracking_number }}</small>
                     </td>
 
-                    <td>{{ pkg.house_awb or '-' }}</td>
+                    <td>
+                      <div class="d-inline-flex align-items-center gap-1">
+                        <span>{{ pkg.house_awb or '-' }}</span>
+
+                        {% if pkg.invoice %}
+                        {% if pkg.invoice.invoice_emailed_at %}
+                        <i class="bi bi-envelope-check-fill text-success ms-1" style="font-size:0.9rem;"
+                          title="Invoice emailed on {{ pkg.invoice.invoice_emailed_at.strftime('%Y-%m-%d %I:%M %p') }}"></i>
+                        {% elif pkg.invoice.invoice_email_failed %}
+                        <i class="bi bi-envelope-x-fill text-danger ms-1" style="font-size:0.9rem;"
+                          title="Invoice email failed{% if pkg.invoice.invoice_email_failure_reason %}: {{ pkg.invoice.invoice_email_failure_reason }}{% endif %}"></i>
+                        {% else %}
+                        <i class="bi bi-envelope text-secondary ms-1" style="font-size:0.9rem;"
+                          title="Invoice created but not emailed yet"></i>
+                        {% endif %}
+                        {% endif %}
+                      </div>
+                    </td>
 
                     <td>
                       <div>{{ pkg.description or '-' }}</div>

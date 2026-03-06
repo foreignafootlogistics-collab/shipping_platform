@@ -565,17 +565,25 @@
                         <span>{{ pkg.house_awb or '-' }}</span>
 
                         {% if pkg.invoice %}
-                        {% if pkg.invoice.invoice_emailed_at %}
-                        <i class="bi bi-envelope-check-fill text-success ms-1" style="font-size:0.9rem;"
-                          title="Invoice emailed on {{ pkg.invoice.invoice_emailed_at.strftime('%Y-%m-%d %I:%M %p') }}"></i>
-                        {% elif pkg.invoice.invoice_email_failed %}
-                        <i class="bi bi-envelope-x-fill text-danger ms-1" style="font-size:0.9rem;"
-                          title="Invoice email failed{% if pkg.invoice.invoice_email_failure_reason %}: {{ pkg.invoice.invoice_email_failure_reason }}{% endif %}"></i>
-                        {% else %}
-                        <i class="bi bi-envelope text-secondary ms-1" style="font-size:0.9rem;"
-                          title="Invoice created but not emailed yet"></i>
+                          {% if pkg.invoice.invoice_emailed_at %}
+                            <i class="bi bi-envelope-check-fill text-success ms-1"
+                               style="font-size:0.9rem;"
+                               title="Invoice emailed on {{ pkg.invoice.invoice_emailed_at.strftime('%Y-%m-%d %I:%M %p') }}"></i>
+                          {% elif pkg.invoice.invoice_email_failed %}
+                            <i class="bi bi-envelope-x-fill text-danger ms-1" 
+                               style="font-size:0.9rem;"
+                               title="Invoice email failed{% if pkg.invoice.invoice_email_failure_reason %}: {{ pkg.invoice.invoice_email_failure_reason }}{% endif %}"></i>
+                          {% else %}
+                            <i class="bi bi-envelope text-secondary ms-1" 
+                               style="font-size:0.9rem;"
+                               title="Invoice created but not emailed yet"></i>
+                          {% endif %}
                         {% endif %}
-                        {% endif %}
+                      </div>
+                      <div class="small text-muted mt-1">
+                        invoice_id={{ pkg.invoice_id or 'None' }} |
+                        has_invoice={{ 'YES' if pkg.invoice else 'NO' }} |
+                        emailed_at={{ pkg.invoice.invoice_emailed_at if pkg.invoice else 'NO-INVOICE' }}
                       </div>
                     </td>
 

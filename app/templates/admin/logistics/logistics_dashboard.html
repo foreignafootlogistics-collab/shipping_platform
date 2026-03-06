@@ -9,50 +9,46 @@
 
   <!-- Flash messages -->
   {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <div class="container mt-3">
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
+  {% if messages %}
+  <div class="container mt-3">
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% endwith %}
 
   <!-- Tabs -->
   <ul class="nav nav-tabs logistics-tabs" id="logisticsTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <a class="nav-link {% if active_tab == 'prealert' %}active{% endif %}"
-         id="prealerts-tab"
-         href="{{ url_for('logistics.logistics_dashboard', tab='prealert') }}">
+      <a class="nav-link {% if active_tab == 'prealert' %}active{% endif %}" id="prealerts-tab"
+        href="{{ url_for('logistics.logistics_dashboard', tab='prealert') }}">
         Pre-Alert Shipments
       </a>
     </li>
     <li class="nav-item" role="presentation">
-      <a class="nav-link {% if active_tab == 'view_packages' %}active{% endif %}"
-         id="view-tab"
-         href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}">
+      <a class="nav-link {% if active_tab == 'view_packages' %}active{% endif %}" id="view-tab"
+        href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}">
         View Packages
       </a>
     </li>
     <li class="nav-item" role="presentation">
-      <a class="nav-link {% if active_tab == 'shipmentLog' %}active{% endif %}"
-         id="shipment-tab"
-         href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog') }}">
+      <a class="nav-link {% if active_tab == 'shipmentLog' %}active{% endif %}" id="shipment-tab"
+        href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog') }}">
         Shipment Log
       </a>
     </li>
     <li class="nav-item" role="presentation">
-      <a class="nav-link {% if active_tab == 'uploadPackages' %}active{% endif %}"
-         id="upload-tab"
-         href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
+      <a class="nav-link {% if active_tab == 'uploadPackages' %}active{% endif %}" id="upload-tab"
+        href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
         Upload Packages
       </a>
     </li>
   </ul>
-  
+
   <!-- Tab content -->
   <div class="tab-content mt-3" id="logisticsTabsContent">
 
@@ -79,61 +75,62 @@
           </thead>
           <tbody>
             {% if prealerts %}
-              {% for p in prealerts %}
-              <tr>
-                <td>{{ p.code }}</td>
-                <td>
-                  {{ p.customer_name or 'N/A' }}<br>
-                  <small class="text-muted">{{ p.registration_number or '' }}</small>
-                </td>
-                <td>{{ p.vendor_name or 'N/A' }}</td>
-                <td>{{ p.courier_name or 'N/A' }}</td>
-                <td>{{ p.tracking_number or 'N/A' }}</td>
-                <td>{% if p.purchase_date %}{{ p.purchase_date }}{% else %}N/A{% endif %}</td>
-                <td>{{ p.package_contents or 'N/A' }}</td>
-                <td>${{ '%.2f'|format(p.item_value_usd or 0) }}</td>
-                <td>
-                  {% if p.invoice_filename %}
-                    <a class="btn btn-sm btn-link p-0"
-                       href="{{ url_for('logistics.admin_prealert_invoice', prealert_id=p.id) }}"
-                       target="_blank">
-                       View
-                    </a>
+            {% for p in prealerts %}
+            <tr>
+              <td>{{ p.code }}</td>
+              <td>
+                {{ p.customer_name or 'N/A' }}<br>
+                <small class="text-muted">{{ p.registration_number or '' }}</small>
+              </td>
+              <td>{{ p.vendor_name or 'N/A' }}</td>
+              <td>{{ p.courier_name or 'N/A' }}</td>
+              <td>{{ p.tracking_number or 'N/A' }}</td>
+              <td>{% if p.purchase_date %}{{ p.purchase_date }}{% else %}N/A{% endif %}</td>
+              <td>{{ p.package_contents or 'N/A' }}</td>
+              <td>${{ '%.2f'|format(p.item_value_usd or 0) }}</td>
+              <td>
+                {% if p.invoice_filename %}
+                <a class="btn btn-sm btn-link p-0"
+                  href="{{ url_for('logistics.admin_prealert_invoice', prealert_id=p.id) }}" target="_blank">
+                  View
+                </a>
 
-                    <a class="btn btn-sm btn-link p-0 ms-2"
-                       href="{{ url_for('logistics.admin_prealert_invoice_download', prealert_id=p.id) }}">
-                       Download
-                    </a>
-                    {% if p.invoice_original_name %}
-                      <div class="small text-muted mt-1">{{ p.invoice_original_name }}</div>
-                    {% endif %}
-                  {% else %}
-                    <span class="text-muted">N/A</span>
-                  {% endif %}
-                </td>
+                <a class="btn btn-sm btn-link p-0 ms-2"
+                  href="{{ url_for('logistics.admin_prealert_invoice_download', prealert_id=p.id) }}">
+                  Download
+                </a>
+                {% if p.invoice_original_name %}
+                <div class="small text-muted mt-1">{{ p.invoice_original_name }}</div>
+                {% endif %}
+                {% else %}
+                <span class="text-muted">N/A</span>
+                {% endif %}
+              </td>
 
-                <td>
-                  {% if p.linked_package_id %}
-                    <span class="badge bg-success">Linked</span>
-                    <div class="small text-muted">Pkg #{{ p.linked_package_id }}</div>
-                  {% else %}
-                    <span class="badge bg-secondary">Not linked</span>
-                  {% endif %}
-                </td>
+              <td>
+                {% if p.linked_package_id %}
+                <span class="badge bg-success">Linked</span>
+                <div class="small text-muted">Pkg #{{ p.linked_package_id }}</div>
+                {% else %}
+                <span class="badge bg-secondary">Not linked</span>
+                {% endif %}
+              </td>
 
-                <td>
-                  {% if p.linked_at %}
-                    {{ p.linked_at }}
-                  {% else %}
-                    <span class="text-muted">—</span>
-                  {% endif %}
-                </td>
-                  
-                <td>{% if p.created_at %}{{ p.created_at }}{% else %}N/A{% endif %}</td>
-              </tr>
-              {% endfor %}
+              <td>
+                {% if p.linked_at %}
+                {{ p.linked_at }}
+                {% else %}
+                <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+
+              <td>{% if p.created_at %}{{ p.created_at }}{% else %}N/A{% endif %}</td>
+            </tr>
+            {% endfor %}
             {% else %}
-              <tr><td colspan="12" class="text-center text-muted">No pre-alert shipments found.</td></tr>
+            <tr>
+              <td colspan="12" class="text-center text-muted">No pre-alert shipments found.</td>
+            </tr>
             {% endif %}
           </tbody>
         </table>
@@ -154,223 +151,212 @@
 
       <div class="row mb-3">
 
-        <!-- Sidebar: Shipments (Option C: Active + Archived collapse) -->
+        <!-- Sidebar: Shipments -->
         <div class="col-md-3">
 
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h5 class="fw-bold text-purple mb-0 d-flex align-items-center gap-2">
-              📦 Shipment Batches
-              {% if archived_count %}
-                <span class="badge bg-light text-dark border">{{ archived_count }} archived</span>
-              {% endif %}
-            </h5>
+          <!-- ACTION BAR -->
+          <div class="shipment-actions-bar mb-2">
+            <div class="shipment-toolbar">
 
-            <div class="btn-group btn-group-sm" role="group" aria-label="Shipment toolbar">
-              <form method="POST"      action="{{ url_for('logistics.create_empty_shipment') }}" class="d-inline">
+              <!-- Create -->
+              <form method="POST" action="{{ url_for('logistics.create_empty_shipment') }}">
                 {{ bulk_form.hidden_tag() }}
-                <button type="submit" class="btn btn-outline-primary" title="Create a blank shipment log">
+                <button type="submit" class="ship-tool-btn" title="Create a blank shipment log">
                   <i class="fas fa-plus"></i>
                 </button>
               </form>
 
-              <button class="btn btn-outline-success" title="Search packages"
-                      data-bs-toggle="modal" data-bs-target="#shipmentSearchModal">
+              <!-- Search -->
+              <button type="button" class="ship-tool-btn" title="Search packages" data-bs-toggle="modal"
+                data-bs-target="#shipmentSearchModal">
                 <i class="fas fa-search"></i>
               </button>
 
-              <button class="btn btn-outline-danger" title="Delete current shipment"
-                      data-bs-toggle="modal" data-bs-target="#deleteShipmentModal"
-                      {% if not selected_shipment or selected_shipment.is_archived %}disabled{% endif %}>
+              <!-- Delete -->
+              <button type="button" class="ship-tool-btn" title="Delete current shipment" data-bs-toggle="modal"
+                data-bs-target="#deleteShipmentModal" {% if not selected_shipment or selected_shipment.is_archived
+                %}disabled{% endif %}>
                 <i class="fas fa-trash-alt"></i>
               </button>
 
-              {# Archive / Unarchive buttons #}
+              <!-- Archive / Unarchive -->
               {% if selected_shipment %}
-                {% if selected_shipment.is_archived %}
-                  <button type="button"
-                          class="btn btn-outline-warning"
-                          title="Unarchive shipment"
-                          data-bs-toggle="modal"
-                          data-bs-target="#unarchiveShipmentModal">
-                    <i class="fas fa-box-open"></i>
-                  </button>
-                {% else %}
-                  <button type="button"
-                          class="btn btn-outline-dark"
-                          title="Archive shipment"
-                          data-bs-toggle="modal"
-                          data-bs-target="#archiveShipmentModal">
-                    <i class="fas fa-archive"></i>
-                  </button>
-                {% endif %}
+              {% if selected_shipment.is_archived %}
+              <button type="button" class="ship-tool-btn" title="Unarchive shipment" data-bs-toggle="modal"
+                data-bs-target="#unarchiveShipmentModal">
+                <i class="fas fa-box-open"></i>
+              </button>
+              {% else %}
+              <button type="button" class="ship-tool-btn" title="Archive shipment" data-bs-toggle="modal"
+                data-bs-target="#archiveShipmentModal">
+                <i class="fas fa-archive"></i>
+              </button>
+              {% endif %}
               {% endif %}
 
-              {# ✅ Toggle archived list on the SAME page #}
-              <button class="btn btn-outline-secondary"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#archivedShipmentsCollapse"
-                      aria-expanded="false"
-                      aria-controls="archivedShipmentsCollapse"
-                      title="Show/Hide archived shipments">
+              <!-- Archived collapse toggle -->
+              <button type="button" class="ship-tool-btn" title="Show archived shipments" data-bs-toggle="collapse"
+                data-bs-target="#archivedShipmentsCollapse" aria-expanded="false"
+                aria-controls="archivedShipmentsCollapse">
                 <i class="fas fa-folder-open"></i>
               </button>
+
+              <!-- Logs page -->
+              <a class="ship-tool-btn" href="{{ url_for('logistics.shipment_archive_logs_page') }}"
+                title="View shipment archive logs">
+                <i class="bi bi-clock-history"></i>
+              </a>
+
             </div>
           </div>
 
-          <style>
-            .ship-list { max-height: 62vh; overflow: auto; border-radius: 10px; }
-            .ship-item { border:0; border-bottom: 1px solid rgba(0,0,0,.06); padding:.55rem .70rem; }
-            .ship-item:last-child { border-bottom: 0; }
-            .ship-item a { text-decoration:none; display:block; }
-            .ship-meta { font-size:.78rem; line-height:1.1rem; }
-            .ship-pill { font-size:.70rem; padding:.15rem .45rem; border-radius: 999px; }
-          </style>
+          <!-- TITLE -->
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="fw-bold text-purple mb-0">📦 Shipment Batches</h5>
+            <span class="badge rounded-pill bg-light text-dark border">
+              {{ archived_count or 0 }} archived
+            </span>
+          </div>
+
+          <!-- ACTIVE HEADER -->
+          <div class="shipment-section-head">
+            <span>Active</span>
+            <small class="text-muted">
+              Page {{ active_pagination.page if active_pagination else 1 }}
+              /
+              {{ active_pagination.pages if active_pagination else 1 }}
+            </small>
+          </div>
 
           <!-- ACTIVE SHIPMENTS -->
-          <div class="card shadow-sm mb-2">
-            <div class="card-header py-2 bg-light d-flex justify-content-between align-items-center">
-              <div class="fw-semibold small">Active</div>
-              {% if active_pagination %}
-                <div class="text-muted small">
-                  Page {{ active_pagination.page }} / {{ active_pagination.pages }}
+          <ul class="list-group shadow-sm shipment-list">
+            {% if active_shipments and active_shipments|length %}
+            {% for s in active_shipments %}
+            {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
+
+            <li class="list-group-item shipment-item {% if is_active %}is-active{% endif %}">
+              <a class="shipment-link {% if is_active %}text-white{% else %}text-dark{% endif %}" href="{{ url_for('logistics.logistics_dashboard',
+                                  tab='shipmentLog',
+                                  shipment_id=s.id,
+                                  ship_page=(active_pagination.page if active_pagination else 1)) }}">
+
+                <div class="shipment-title">
+                  <strong class="text-truncate d-block">
+                    {{ s.sl_name or s.sl_id }}
+                  </strong>
+
+                  <small class="{% if is_active %}text-white-50{% else %}text-muted{% endif %}">
+                    {{ s.sl_id }}
+                  </small>
                 </div>
-              {% endif %}
-            </div>
 
-            <div class="list-group ship-list">
-              {% if active_shipments and active_shipments|length %}
-                {% for s in active_shipments %}
-                  {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
-                  <div class="list-group-item ship-item {% if is_active %}active bg-purple text-white{% endif %}">
-                    <a class="{% if is_active %}text-white{% else %}text-dark{% endif %}"
-                       href="{{ url_for('logistics.logistics_dashboard',
-                                        tab='shipmentLog',
-                                        shipment_id=s.id,
-                                        ship_page=(active_pagination.page if active_pagination else 1)) }}">
-
-                      <div class="d-flex justify-content-between align-items-start gap-2">
-                        <div class="fw-bold text-truncate" style="max-width: 210px;">
-                          {{ s.sl_name or s.sl_id }}
-                        </div>
-                      </div>
-
-                      {% if s.sl_name %}
-                        <div class="ship-meta text-muted {% if is_active %}text-light{% endif %}">
-                          {{ s.sl_id }}
-                        </div>
-                      {% endif %}
-
-                      <div class="ship-meta text-muted {% if is_active %}text-light{% endif %}">
-                        {{ (s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
-                      </div>
-
-                    </a>
-                  </div>
-                {% endfor %}
-              {% else %}
-                <div class="list-group-item text-muted py-3">
-                  No active shipment batches found.
-                  <div class="mt-2">
-                    <a href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}"
-                       class="btn btn-sm btn-purple">➕ Create Shipment</a>
-                  </div>
-                </div>
-              {% endif %}
-            </div>
-
-            {% if active_pagination and active_pagination.pages > 1 %}
-              <div class="card-footer py-2">
-                <nav>
-                  <ul class="pagination pagination-sm mb-0">
-
-                    <li class="page-item {% if not active_pagination.has_prev %}disabled{% endif %}">
-                      <a class="page-link"
-                         href="{{ url_for('logistics.logistics_dashboard',
-                                          tab='shipmentLog',
-                                  shipment_id=selected_shipment_id,
-                                          ship_page=(active_pagination.prev_num if active_pagination.has_prev else 1)) }}">
-                &laquo;
+                <small class="{% if is_active %}text-white-50{% else %}text-muted{% endif %}">
+                  {{ (s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
+                </small>
               </a>
             </li>
+            {% endfor %}
+            {% else %}
+            <li class="list-group-item text-muted">
+              No shipment batches found.
+              <br>
+              <a href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}"
+                class="btn btn-sm btn-purple mt-2">
+                ➕ Create Shipment
+              </a>
+            </li>
+            {% endif %}
+          </ul>
 
-            {% for p in range(1, active_pagination.pages + 1) %}
-              {% if p == 1 or p == active_pagination.pages or (p >= active_pagination.page-1 and p <= active_pagination.page+1) %}
-                <li class="page-item {% if p == active_pagination.page %}active{% endif %}">
-                  <a class="page-link"
-                     href="{{ url_for('logistics.logistics_dashboard',
+          <!-- ACTIVE PAGINATION -->
+          {% if active_pagination and active_pagination.pages > 1 %}
+          <nav class="mt-2">
+            <ul class="pagination pagination-sm mb-0">
+
+              <li class="page-item {% if not active_pagination.has_prev %}disabled{% endif %}">
+                <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
+                                  tab='shipmentLog',
+                                  shipment_id=selected_shipment_id,
+                                  ship_page=(active_pagination.prev_num if active_pagination.has_prev else 1)) }}">
+                  &laquo;
+                </a>
+              </li>
+
+              {% for p in range(1, active_pagination.pages + 1) %}
+              {% if p == 1 or p == active_pagination.pages or (p >= active_pagination.page - 1 and p <=
+                active_pagination.page + 1) %} <li
+                class="page-item {% if p == active_pagination.page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
                                       tab='shipmentLog',
                                       shipment_id=selected_shipment_id,
                                       ship_page=p) }}">
-                    {{ p }}
-                  </a>
+                  {{ p }}
+                </a>
                 </li>
-              {% endif %}
-            {% endfor %}
+                {% endif %}
+                {% endfor %}
 
-            <li class="page-item {% if not active_pagination.has_next %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('logistics.logistics_dashboard',
+                <li class="page-item {% if not active_pagination.has_next %}disabled{% endif %}">
+                  <a class="page-link"
+                    href="{{ url_for('logistics.logistics_dashboard',
                                   tab='shipmentLog',
                                   shipment_id=selected_shipment_id,
                                   ship_page=(active_pagination.next_num if active_pagination.has_next else active_pagination.pages)) }}">
-                        &raquo;
-                      </a>
-                    </li>
+                    &raquo;
+                  </a>
+                </li>
 
-                  </ul>
-                </nav>
-              </div>
-            {% endif %}
-          </div>
+            </ul>
+          </nav>
+          {% endif %}
 
           <!-- ARCHIVED SHIPMENTS (COLLAPSE) -->
-          <div class="collapse" id="archivedShipmentsCollapse">
+          <div class="collapse mt-3" id="archivedShipmentsCollapse">
             <div class="card shadow-sm">
               <div class="card-header py-2 bg-white d-flex justify-content-between align-items-center">
                 <div class="fw-semibold small">
                   Archived
                   {% if archived_count %}
-                    <span class="badge bg-warning text-dark ms-1 ship-pill">{{ archived_count }}</span>
+                  <span class="badge bg-warning text-dark ms-1 ship-pill">{{ archived_count }}</span>
                   {% endif %}
                 </div>
                 <div class="text-muted small">Read-only</div>
               </div>
 
-              <div class="list-group ship-list" style="max-height: 32vh;">
+              <div class="list-group ship-list" style="max-height: 32vh; overflow-y:auto;">
                 {% if archived_shipments and archived_shipments|length %}
-                  {% for s in archived_shipments %}
-                    {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
-                    <div class="list-group-item ship-item {% if is_active %}active bg-warning text-dark{% endif %}">
-                      <a class="{% if is_active %}text-dark{% else %}text-dark{% endif %}"
-                         href="{{ url_for('logistics.logistics_dashboard',
-                                          tab='shipmentLog',
-                                          shipment_id=s.id,
-                                          ship_page=(active_pagination.page if active_pagination else 1)) }}">
+                {% for s in archived_shipments %}
+                {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
 
-                        <div class="d-flex justify-content-between align-items-start gap-2">
-                          <div class="fw-bold text-truncate" style="max-width: 200px;">
-                            {{ s.sl_name or s.sl_id }}
-                          </div>
-                          <span class="badge bg-warning text-dark ship-pill">ARCHIVED</span>
-                        </div>
+                <div class="list-group-item ship-item {% if is_active %}active bg-warning text-dark{% endif %}">
+                  <a class="text-dark text-decoration-none" href="{{ url_for('logistics.logistics_dashboard',
+                                      tab='shipmentLog',
+                                      shipment_id=s.id,
+                                      ship_page=(active_pagination.page if active_pagination else 1)) }}">
 
-                        {% if s.sl_name %}
-                          <div class="ship-meta text-muted">
-                            {{ s.sl_id }}
-                          </div>
-                        {% endif %}
-
-                        <div class="ship-meta text-muted">
-                          Archived: {{ (s.archived_at or s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
-                        </div>
-                      </a>
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                      <div class="fw-bold text-truncate" style="max-width: 200px;">
+                        {{ s.sl_name or s.sl_id }}
+                      </div>
+                      <span class="badge bg-warning text-dark ship-pill">ARCHIVED</span>
                     </div>
-                  {% endfor %}
+
+                    {% if s.sl_name %}
+                    <div class="ship-meta text-muted">
+                      {{ s.sl_id }}
+                    </div>
+                    {% endif %}
+
+                    <div class="ship-meta text-muted">
+                      Archived: {{ (s.archived_at or s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
+                    </div>
+                  </a>
+                </div>
+                {% endfor %}
                 {% else %}
-                  <div class="list-group-item text-muted py-3">
-                    No archived shipments found.
-                  </div>
+                <div class="list-group-item text-muted py-3">
+                  No archived shipments found.
+                </div>
                 {% endif %}
               </div>
 
@@ -387,42 +373,38 @@
 
           <div class="d-flex justify-content-between align-items-center mb-3">
             {% if selected_shipment %}
-              <div class="d-flex align-items-center gap-2 flex-nowrap">
-                <h5 class="fw-bold text-purple mb-0 text-truncate" style="max-width: 650px;">
-                  🚚 Shipment Packages -
-                  <span id="shipmentNameDisplay">
-                    {{ selected_shipment.sl_name or selected_shipment.sl_id }}
-                  </span>
+            <div class="d-flex align-items-center gap-2 flex-nowrap">
+              <h5 class="fw-bold text-purple mb-0 text-truncate" style="max-width: 650px;">
+                🚚 Shipment Packages -
+                <span id="shipmentNameDisplay">
+                  {{ selected_shipment.sl_name or selected_shipment.sl_id }}
+                </span>
 
-                  {% if selected_shipment.sl_name %}
-                    <span class="badge bg-light text-dark border ms-2">
-                      Ref: {{ selected_shipment.sl_id }}
-                    </span>
-                  {% endif %}
-                </h5>
+                {% if selected_shipment.sl_name %}
+                <span class="badge bg-light text-dark border ms-2">
+                  Ref: {{ selected_shipment.sl_id }}
+                </span>
+                {% endif %}
+              </h5>
 
-                <button class="btn btn-sm btn-outline-purple flex-shrink-0"
-                        data-bs-toggle="modal"
-                        data-bs-target="#renameShipmentModal">
-                  ✏️
-                </button>
-              </div>
-              <div>
-                {% set return_to = request.args.get('return_to') %}
-                <a class="btn btn-outline-dark btn-sm"
-                   href="{{ return_to or url_for('logistics.logistics_dashboard', tab='view_packages') }}">
-                  <i class="bi bi-arrow-left"></i> Back to View Packages
-                </a>
-              </div>                          
+              <button class="btn btn-sm btn-outline-purple flex-shrink-0" data-bs-toggle="modal"
+                data-bs-target="#renameShipmentModal">
+                ✏️
+              </button>
+            </div>
+            <div>
+              {% set return_to = request.args.get('return_to') %}
+              <a class="btn btn-outline-dark btn-sm"
+                href="{{ return_to or url_for('logistics.logistics_dashboard', tab='view_packages') }}">
+                <i class="bi bi-arrow-left"></i> Back to View Packages
+              </a>
+            </div>
             {% endif %}
           </div>
 
           {% if selected_shipment %}
-          <form method="POST"
-                id="shipmentForm"
-                class="d-block"
-                action="{{ url_for('logistics.bulk_shipment_action', shipment_id=selected_shipment.id) }}"
-                novalidate>
+          <form method="POST" id="shipmentForm" class="d-block"
+            action="{{ url_for('logistics.bulk_shipment_action', shipment_id=selected_shipment.id) }}" novalidate>
 
             {{ bulk_form.hidden_tag() }}
             <input type="hidden" name="tab" value="shipmentLog">
@@ -444,7 +426,8 @@
 
                   <div class="col-md-3">
                     <label class="form-label small mb-0">House AWB</label>
-                    <input type="text" id="fltHouseAwb" class="form-control form-control-sm" placeholder="e.g. HAWB / Control #">
+                    <input type="text" id="fltHouseAwb" class="form-control form-control-sm"
+                      placeholder="e.g. HAWB / Control #">
                   </div>
 
                   <div class="col-md-3">
@@ -455,8 +438,10 @@
                   <div class="col-md-3">
                     <label class="form-label small mb-0">Weight Range (lbs)</label>
                     <div class="d-flex gap-2">
-                      <input type="number" step="0.01" id="fltWMin" class="form-control form-control-sm" placeholder="Min">
-                      <input type="number" step="0.01" id="fltWMax" class="form-control form-control-sm" placeholder="Max">
+                      <input type="number" step="0.01" id="fltWMin" class="form-control form-control-sm"
+                        placeholder="Min">
+                      <input type="number" step="0.01" id="fltWMax" class="form-control form-control-sm"
+                        placeholder="Max">
                     </div>
                   </div>
 
@@ -511,10 +496,8 @@
                   <option value="purge_shipment_invoices">🧹 Purge Shipment Invoices (Unpaid Only)</option>
                 </select>
 
-                <button type="button"
-                        id="shipmentApplyBtn"
-                        class="btn btn-purple btn-sm"
-                        onclick="handleShipmentApply(event)">
+                <button type="button" id="shipmentApplyBtn" class="btn btn-purple btn-sm"
+                  onclick="handleShipmentApply(event)">
                   Apply
                 </button>
               </div>
@@ -544,29 +527,21 @@
                   {% for pkg in shipment_packages %}
                   <tr>
                     <td>
-                      <input type="checkbox"
-                             name="package_ids"
-                             value="{{ pkg.id }}"
-                             class="package-checkbox"
-                             onclick="updateShipmentHeaderCheckbox()">
+                      <input type="checkbox" name="package_ids" value="{{ pkg.id }}" class="package-checkbox"
+                        onclick="updateShipmentHeaderCheckbox()">
                     </td>
 
                     <td class="text-center align-middle">
                       <!-- ✅ IMPORTANT: include data-category so modal opens correctly -->
-                      <button type="button"
-                              class="btn btn-sm btn-outline-primary mb-1 js-open-charges"
-                              data-bs-toggle="modal"
-                              data-bs-target="#chargesModalSL"
-                              data-pkg-id="{{ pkg.id }}"
-                              data-desc="{{ pkg.description or pkg.tracking_number or ('Package #' ~ pkg.id) }}" 
-                              data-category="{{ pkg.category or 'Other' }}">                           
+                      <button type="button" class="btn btn-sm btn-outline-primary mb-1 js-open-charges"
+                        data-bs-toggle="modal" data-bs-target="#chargesModalSL" data-pkg-id="{{ pkg.id }}"
+                        data-desc="{{ pkg.description or pkg.tracking_number or ('Package #' ~ pkg.id) }}"
+                        data-category="{{ pkg.category or 'Other' }}">
                         <i class="bi bi-calculator"></i>
                       </button>
                       <br>
-                      <button type="button"
-                              class="btn btn-sm btn-outline-secondary js-open-attach"
-                              data-pkg-id="{{ pkg.id }}"
-                              title="Attach invoice / files">
+                      <button type="button" class="btn btn-sm btn-outline-secondary js-open-attach"
+                        data-pkg-id="{{ pkg.id }}" title="Attach invoice / files">
                         <i class="bi bi-paperclip"></i>
                       </button>
                     </td>
@@ -591,23 +566,20 @@
 
                       {% set atts = pkg.attachments %}
                       {% if atts and atts|length %}
-                        <div class="mt-1 d-flex flex-wrap gap-2 pkg-attach-wrap">
-                          {% for a in atts %}
-                            <a class="pkg-attach-icon"
-                               target="_blank"
-                               href="{{ url_for('logistics.admin_view_package_attachment', attachment_id=a.id) }}"
-                               title="{{ a.original_name or 'Attachment' }}">
-                              <i class="bi bi-paperclip"></i>                              
-                            </a>
+                      <div class="mt-1 d-flex flex-wrap gap-2 pkg-attach-wrap">
+                        {% for a in atts %}
+                        <a class="pkg-attach-icon" target="_blank"
+                          href="{{ url_for('logistics.admin_view_package_attachment', attachment_id=a.id) }}"
+                          title="{{ a.original_name or 'Attachment' }}">
+                          <i class="bi bi-paperclip"></i>
+                        </a>
 
-                            <button type="button"
-                                    class="btn btn-link btn-sm p-0 text-danger js-del-attach"
-                                    title="Delete"
-                                    data-del-url="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=a.id) }}">
-                              <i class="bi bi-x-circle"></i>
-                            </button>
-                          {% endfor %}
-                        </div>
+                        <button type="button" class="btn btn-link btn-sm p-0 text-danger js-del-attach" title="Delete"
+                          data-del-url="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=a.id) }}">
+                          <i class="bi bi-x-circle"></i>
+                        </button>
+                        {% endfor %}
+                      </div>
                       {% endif %}
                     </td>
 
@@ -618,45 +590,41 @@
 
                     <!-- ✅ MUST HAVE name=weight_{id} -->
                     <td>
-                      <input id="weight_{{ pkg.id }}"
-                             name="weight_{{ pkg.id }}"
-                             type="number" step="0.01" min="0"
-                             class="form-control form-control-sm text-end"
-                             value="{{ pkg.weight or 0 }}">
+                      <input id="weight_{{ pkg.id }}" name="weight_{{ pkg.id }}" type="number" step="0.01" min="0"
+                        class="form-control form-control-sm text-end" value="{{ pkg.weight or 0 }}">
                     </td>
 
                     <!-- ✅ MUST HAVE name=value_{id} -->
                     <td>
-                      <input id="value_{{ pkg.id }}"
-                             name="value_{{ pkg.id }}"
-                             type="number" step="0.01" min="0"
-                             class="form-control form-control-sm text-end"
-                             value="{{ pkg.value if pkg.value is not none else 0 }}">
+                      <input id="value_{{ pkg.id }}" name="value_{{ pkg.id }}" type="number" step="0.01" min="0"
+                        class="form-control form-control-sm text-end"
+                        value="{{ pkg.value if pkg.value is not none else 0 }}">
                     </td>
 
                     <td>
                       <input id="amount_due_{{ pkg.id }}" type="number" step="0.01"
-                             class="form-control form-control-sm text-end"
-                             value="{{ pkg.amount_due or 0 }}"
-                             readonly>
+                        class="form-control form-control-sm text-end" value="{{ pkg.amount_due or 0 }}" readonly>
 
                       <!-- ✅ CRITICAL: category per row for server calc -->
-                      <input type="hidden"
-                             id="category_{{ pkg.id }}"
-                             name="category_{{ pkg.id }}"
-                             value="{{ pkg.category or 'Other' }}">
-                      <input type="hidden" id="locked_{{ pkg.id }}" name="locked_{{ pkg.id }}" value="{{ 1 if pkg.pricing_locked else 0 }}">
+                      <input type="hidden" id="category_{{ pkg.id }}" name="category_{{ pkg.id }}"
+                        value="{{ pkg.category or 'Other' }}">
+                      <input type="hidden" id="locked_{{ pkg.id }}" name="locked_{{ pkg.id }}"
+                        value="{{ 1 if pkg.pricing_locked else 0 }}">
                       <!-- ✅ Hidden manual override fields -->
-                      <input type="hidden" name="duty_{{ pkg.id }}"    id="duty_{{ pkg.id }}"    value="{{ pkg.duty or 0 }}">
-                      <input type="hidden" name="gct_{{ pkg.id }}"     id="gct_{{ pkg.id }}"     value="{{ pkg.gct or 0 }}">
-                      <input type="hidden" name="scf_{{ pkg.id }}"     id="scf_{{ pkg.id }}"     value="{{ pkg.scf or 0 }}">
-                      <input type="hidden" name="envl_{{ pkg.id }}"    id="envl_{{ pkg.id }}"    value="{{ pkg.envl or 0 }}">
-                      <input type="hidden" name="caf_{{ pkg.id }}"     id="caf_{{ pkg.id }}"     value="{{ pkg.caf or 0 }}">
-                      <input type="hidden" name="stamp_{{ pkg.id }}"   id="stamp_{{ pkg.id }}"   value="{{ pkg.stamp or 0 }}">
+                      <input type="hidden" name="duty_{{ pkg.id }}" id="duty_{{ pkg.id }}" value="{{ pkg.duty or 0 }}">
+                      <input type="hidden" name="gct_{{ pkg.id }}" id="gct_{{ pkg.id }}" value="{{ pkg.gct or 0 }}">
+                      <input type="hidden" name="scf_{{ pkg.id }}" id="scf_{{ pkg.id }}" value="{{ pkg.scf or 0 }}">
+                      <input type="hidden" name="envl_{{ pkg.id }}" id="envl_{{ pkg.id }}" value="{{ pkg.envl or 0 }}">
+                      <input type="hidden" name="caf_{{ pkg.id }}" id="caf_{{ pkg.id }}" value="{{ pkg.caf or 0 }}">
+                      <input type="hidden" name="stamp_{{ pkg.id }}" id="stamp_{{ pkg.id }}"
+                        value="{{ pkg.stamp or 0 }}">
 
-                      <input type="hidden" name="freight_{{ pkg.id }}"  id="freight_{{ pkg.id }}"  value="{{ pkg.freight_fee or 0 }}">
-                      <input type="hidden" name="handling_{{ pkg.id }}" id="handling_{{ pkg.id }}" value="{{ pkg.storage_fee or 0 }}">
-                      <input type="hidden" name="other_{{ pkg.id }}"    id="other_{{ pkg.id }}"    value="{{ pkg.other_charges or 0 }}">
+                      <input type="hidden" name="freight_{{ pkg.id }}" id="freight_{{ pkg.id }}"
+                        value="{{ pkg.freight_fee or 0 }}">
+                      <input type="hidden" name="handling_{{ pkg.id }}" id="handling_{{ pkg.id }}"
+                        value="{{ pkg.storage_fee or 0 }}">
+                      <input type="hidden" name="other_{{ pkg.id }}" id="other_{{ pkg.id }}"
+                        value="{{ pkg.other_charges or 0 }}">
                     </td>
                   </tr>
                   {% endfor %}
@@ -664,7 +632,7 @@
               </table>
             </div>
             {% else %}
-              <p class="text-muted">No packages in this shipment.</p>
+            <p class="text-muted">No packages in this shipment.</p>
             {% endif %}
 
           </form>
@@ -678,7 +646,7 @@
         <div class="modal-dialog modal-sm modal-dialog-centered">
           <div class="modal-content">
             <form method="POST"
-                  action="{{ url_for('logistics.archive_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
+              action="{{ url_for('logistics.archive_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
               <div class="modal-header">
                 <h5 class="modal-title">Archive Shipment</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -686,16 +654,16 @@
 
               <div class="modal-body">
                 {% if selected_shipment %}
-                  <p class="mb-1">
-                    Archive <strong>{{ selected_shipment.sl_name or selected_shipment.sl_id }}</strong>?
-                  </p>
-                  <small class="text-muted">
-                    This will hide the shipment from the main list but keeps all packages and invoices.
-                  </small>
+                <p class="mb-1">
+                  Archive <strong>{{ selected_shipment.sl_name or selected_shipment.sl_id }}</strong>?
+                </p>
+                <small class="text-muted">
+                  This will hide the shipment from the main list but keeps all packages and invoices.
+                </small>
 
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% else %}
-                  <p class="mb-0 text-muted">Select a shipment on the left first.</p>
+                <p class="mb-0 text-muted">Select a shipment on the left first.</p>
                 {% endif %}
               </div>
 
@@ -715,7 +683,7 @@
         <div class="modal-dialog modal-sm modal-dialog-centered">
           <div class="modal-content">
             <form method="POST"
-                  action="{{ url_for('logistics.unarchive_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
+              action="{{ url_for('logistics.unarchive_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
               <div class="modal-header">
                 <h5 class="modal-title">Unarchive Shipment</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -723,16 +691,16 @@
 
               <div class="modal-body">
                 {% if selected_shipment %}
-                  <p class="mb-1">
-                    Unarchive <strong>{{ selected_shipment.sl_name or selected_shipment.sl_id }}</strong>?
-                  </p>
-                  <small class="text-muted">
-                    This will restore the shipment to the active list.
-                  </small>
+                <p class="mb-1">
+                  Unarchive <strong>{{ selected_shipment.sl_name or selected_shipment.sl_id }}</strong>?
+                </p>
+                <small class="text-muted">
+                  This will restore the shipment to the active list.
+                </small>
 
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% else %}
-                  <p class="mb-0 text-muted">Select a shipment on the left first.</p>
+                <p class="mb-0 text-muted">Select a shipment on the left first.</p>
                 {% endif %}
               </div>
 
@@ -748,29 +716,29 @@
       </div>
 
       <!-- Move to Shipment Modal -->
-      <div class="modal fade" id="moveShipmentModal" tabindex="-1" aria-labelledby="moveShipmentLabel" aria-hidden="true">
+      <div class="modal fade" id="moveShipmentModal" tabindex="-1" aria-labelledby="moveShipmentLabel"
+        aria-hidden="true">
         <div class="modal-dialog modal-sm modal-dialog-centered">
           <div class="modal-content">
-            <form method="POST"
-                  action="{{ url_for('logistics.move_packages_between_shipments') }}"
-                  id="moveShipmentForm"
-                  onsubmit="return validateMoveShipmentForm();">
+            <form method="POST" action="{{ url_for('logistics.move_packages_between_shipments') }}"
+              id="moveShipmentForm" onsubmit="return validateMoveShipmentForm();">
               <div class="modal-header">
                 <h5 class="modal-title" id="moveShipmentLabel">Move Packages</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
               </div>
               <div class="modal-body">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="from_shipment_id" value="{{ selected_shipment.id if selected_shipment else 0 }}">
+                <input type="hidden" name="from_shipment_id"
+                  value="{{ selected_shipment.id if selected_shipment else 0 }}">
                 <div id="movePackageIdsContainer"></div>
 
                 <label class="form-label small">Destination Shipment</label>
                 <select class="form-select form-select-sm" name="to_shipment_id" required>
                   <option value="">Select…</option>
                   {% for s in shipments %}
-                    {% if not selected_shipment or s.id != selected_shipment.id %}
-                      <option value="{{ s.id }}">{{ s.sl_name or s.sl_id }}</option>
-                    {% endif %}
+                  {% if not selected_shipment or s.id != selected_shipment.id %}
+                  <option value="{{ s.id }}">{{ s.sl_name or s.sl_id }}</option>
+                  {% endif %}
                   {% endfor %}
                 </select>
 
@@ -794,7 +762,8 @@
 
             <div class="modal-header" style="background:#4a148c; color:#fff;">
               <h5 class="modal-title" id="chargesModalLabel">Calculate Charges for Package</h5>
-              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                aria-label="Close"></button>
             </div>
 
             <div class="modal-body">
@@ -811,7 +780,7 @@
                     <label for="chargesCategory" class="form-label fw-semibold">Category</label>
                     <select id="chargesCategory" class="form-select form-select-sm">
                       {% for cat in categories %}
-                        <option value="{{ cat }}">{{ cat }}</option>
+                      <option value="{{ cat }}">{{ cat }}</option>
                       {% endfor %}
                     </select>
                   </div>
@@ -826,10 +795,9 @@
                     <input type="number" step="0.01" id="chargesValue" class="form-control form-control-sm">
                   </div>
                 </div>
-                
+
                 <div class="d-flex align-items-center justify-content-between
-                            border rounded p-2 mb-2"
-                     style="background:#f8f9fa;">
+                            border rounded p-2 mb-2" style="background:#f8f9fa;">
                   <div class="small">
                     <div class="fw-semibold">Manual override</div>
                     <div class="text-muted">When ON, auto-calc won’t overwrite your typed values.</div>
@@ -845,21 +813,81 @@
                 <div id="chargesResult" style="display:none;">
                   <h6 class="fw-bold mb-2">Breakdown</h6>
                   <div class="row g-2 small">
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted">Duty</div><input type="number" step="0.01" id="resDuty" class="form-control form-control-sm text-end"></div></div>
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted">GCT</div><input type="number" step="0.01" id="resGct" class="form-control form-control-sm text-end"></div></div>
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted">SCF</div><input type="number" step="0.01" id="resScf" class="form-control form-control-sm text-end"></div></div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">Duty</div><input type="number" step="0.01" id="resDuty"
+                          class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">GCT</div><input type="number" step="0.01" id="resGct"
+                          class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">SCF</div><input type="number" step="0.01" id="resScf"
+                          class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
 
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted">ENVL</div><input type="number" step="0.01" id="resEnvl" class="form-control form-control-sm text-end"></div></div>
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted">CAF</div><input type="number" step="0.01" id="resCaf" class="form-control form-control-sm text-end"></div></div>
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted small">Stamp</div><input type="number" step="0.01" id="resStamp" class="form-control form-control-sm text-end"></div></div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">ENVL</div><input type="number" step="0.01" id="resEnvl"
+                          class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">CAF</div><input type="number" step="0.01" id="resCaf"
+                          class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted small">Stamp</div><input type="number" step="0.01" id="resStamp"
+                          class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
 
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted small">Customs Total</div><input type="number" step="0.01" id="resCustomsTotal" class="form-control form-control-sm text-end"></div></div>
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted">Freight</div><input type="number" step="0.01" id="resFreight" class="form-control form-control-sm text-end"></div></div>
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted">Handling</div><input type="number" step="0.01" id="resHandling" class="form-control form-control-sm text-end"></div></div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted small">Customs Total</div><input type="number" step="0.01"
+                          id="resCustomsTotal" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">Freight</div><input type="number" step="0.01" id="resFreight"
+                          class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted">Handling</div><input type="number" step="0.01" id="resHandling"
+                          class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
 
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted small">Freight Total</div><input type="number" step="0.01" id="resFreightTotal" class="form-control form-control-sm text-end"></div></div>
-                    <div class="col-md-4"><div class="border rounded p-2"><div class="text-muted small">Other Charges</div><input type="number" step="0.01" id="resOther" class="form-control form-control-sm text-end"></div></div>
-                    <div class="col-md-8"><div class="border rounded p-2 bg-light"><div class="text-muted">Grand Total (JMD)</div><input type="number" step="0.01" id="resTotal" class="form-control form-control-sm text-end"></div></div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted small">Freight Total</div><input type="number" step="0.01"
+                          id="resFreightTotal" class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted small">Other Charges</div><input type="number" step="0.01" id="resOther"
+                          class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+                    <div class="col-md-8">
+                      <div class="border rounded p-2 bg-light">
+                        <div class="text-muted">Grand Total (JMD)</div><input type="number" step="0.01" id="resTotal"
+                          class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -869,7 +897,8 @@
 
             <div class="modal-footer">
               <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-              <button type="button" id="btnApplyToPkg" class="btn btn-outline-success btn-sm" style="display:none;">Apply & Save</button>
+              <button type="button" id="btnApplyToPkg" class="btn btn-outline-success btn-sm"
+                style="display:none;">Apply & Save</button>
               <button type="button" id="btnCalcCharges" class="btn btn-purple btn-sm">
                 <i class="bi bi-calculator"></i> Calculate Charges
               </button>
@@ -879,7 +908,7 @@
         </div>
       </div>
 
-      
+
 
       <!-- Attach Files Modal -->
       <div class="modal fade" id="attachInvoiceModal" tabindex="-1" aria-hidden="true">
@@ -917,7 +946,8 @@
       </div>
 
       <!-- Search Packages Modal -->
-      <div class="modal fade" id="shipmentSearchModal" tabindex="-1" aria-labelledby="shipmentSearchLabel" aria-hidden="true">
+      <div class="modal fade" id="shipmentSearchModal" tabindex="-1" aria-labelledby="shipmentSearchLabel"
+        aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header">
@@ -962,7 +992,9 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td colspan="6" class="text-muted">Enter criteria and click Search.</td></tr>
+                    <tr>
+                      <td colspan="6" class="text-muted">Enter criteria and click Search.</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -976,32 +1008,35 @@
       </div>
 
       <!-- Delete Shipment Batch Modal -->
-      <div class="modal fade" id="deleteShipmentModal" tabindex="-1" aria-labelledby="deleteShipmentLabel" aria-hidden="true">
+      <div class="modal fade" id="deleteShipmentModal" tabindex="-1" aria-labelledby="deleteShipmentLabel"
+        aria-hidden="true">
         <div class="modal-dialog modal-sm modal-dialog-centered">
           <div class="modal-content">
-            <form method="POST" action="{{ url_for('logistics.delete_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
+            <form method="POST"
+              action="{{ url_for('logistics.delete_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
               <div class="modal-header">
                 <h5 class="modal-title" id="deleteShipmentLabel">Delete Shipment</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
               </div>
               <div class="modal-body">
                 {% if selected_shipment %}
-                  <p class="mb-0">Delete <strong>{{ selected_shipment.sl_id }}</strong>?</p>
-                  <small class="text-muted">Packages stay in the system; only the batch is removed.</small>
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <p class="mb-0">Delete <strong>{{ selected_shipment.sl_id }}</strong>?</p>
+                <small class="text-muted">Packages stay in the system; only the batch is removed.</small>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% else %}
-                  <p class="mb-0 text-muted">Select a shipment on the left first.</p>
+                <p class="mb-0 text-muted">Select a shipment on the left first.</p>
                 {% endif %}
               </div>
               <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-danger btn-sm" {% if not selected_shipment or selected_shipment.is_archived %}disabled{% endif %}>Delete</button>
+                <button type="submit" class="btn btn-danger btn-sm" {% if not selected_shipment or
+                  selected_shipment.is_archived %}disabled{% endif %}>Delete</button>
               </div>
             </form>
           </div>
         </div>
       </div>
-      
+
       <!-- Bulk Invoice Preview Modal -->
       <div class="modal fade" id="bulkInvoicePreviewModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -1042,10 +1077,8 @@
               <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                 Cancel
               </button>
-              <button id="btn-finalize-invoices"
-                      class="btn btn-purple"
-                      type="button"
-                      onclick="finalizeInvoicesFromModal(event)">
+              <button id="btn-finalize-invoices" class="btn btn-purple" type="button"
+                onclick="finalizeInvoicesFromModal(event)">
                 Generate Customer Invoice(s)
               </button>
             </div>
@@ -1053,7 +1086,7 @@
           </div>
         </div>
       </div>
-      
+
       <!-- ✅ Shipment Finance Invoice Preview Modal (Supplier Cost) -->
       <div class="modal fade" id="shipmentFinanceInvoiceModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -1084,7 +1117,7 @@
         <div class="modal-dialog modal-sm modal-dialog-centered">
           <div class="modal-content">
             <form method="POST"
-                  action="{{ url_for('logistics.rename_shipment', shipment_id=selected_shipment.id if selected_shipment else 0) }}">
+              action="{{ url_for('logistics.rename_shipment', shipment_id=selected_shipment.id if selected_shipment else 0) }}">
               <div class="modal-header">
                 <h5 class="modal-title">Rename Shipment</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -1094,7 +1127,7 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <label class="form-label small">Shipment Name</label>
                 <input type="text" name="sl_name" class="form-control form-control-sm"
-                       value="{{ selected_shipment.sl_name or selected_shipment.sl_id }}" required>
+                  value="{{ selected_shipment.sl_name or selected_shipment.sl_id }}" required>
                 <div class="form-text mt-1">
                   This is just a display name. The system ID remains unchanged.
                 </div>
@@ -1114,25 +1147,20 @@
 
     {# ---------------- UPLOAD PACKAGES TAB ---------------- #}
     {% if active_tab == 'uploadPackages' %}
-    <div class="tab-pane show active"
-         id="uploadPackages"
-         role="tabpanel"
-         aria-labelledby="upload-tab">
+    <div class="tab-pane show active" id="uploadPackages" role="tabpanel" aria-labelledby="upload-tab">
 
       <div class="card shadow-sm mt-3 border-0">
 
         <div class="card-header text-white"
-             style="background-color:#4a148c; border-top-left-radius:.5rem; border-top-right-radius:.5rem;">
+          style="background-color:#4a148c; border-top-left-radius:.5rem; border-top-right-radius:.5rem;">
           <h4 class="mb-0">Upload Packages from Excel/CSV</h4>
         </div>
 
         <div class="card-body p-4">
 
           <!-- 1) Upload-for-Preview Form -->
-          <form id="uploadForm"
-                method="POST"
-                enctype="multipart/form-data"
-                action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
+          <form id="uploadForm" method="POST" enctype="multipart/form-data"
+            action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
 
             {{ upload_form.hidden_tag() }}
             <input type="hidden" name="tab" value="uploadPackages">
@@ -1143,22 +1171,18 @@
               {{ upload_form.file(class_="form-control", accept=".xlsx,.csv") }}
 
               {% for error in upload_form.file.errors %}
-                <div class="text-danger small">{{ error }}</div>
+              <div class="text-danger small">{{ error }}</div>
               {% endfor %}
             </div>
 
             <div class="d-flex align-items-center gap-2">
               {{ upload_form.submit(class_="btn btn-purple", id="uploadBtn", value="Preview All") }}
 
-              <a href="{{ url_for('static', filename='templates/sample_upload.xlsx') }}"
-                 class="btn btn-outline-purple">
+              <a href="{{ url_for('static', filename='templates/sample_upload.xlsx') }}" class="btn btn-outline-purple">
                 Download Sample
               </a>
 
-              <div id="spinner"
-                   class="spinner-border text-purple ms-2"
-                   role="status"
-                   style="display:none;">
+              <div id="spinner" class="spinner-border text-purple ms-2" role="status" style="display:none;">
                 <span class="visually-hidden">Uploading...</span>
               </div>
             </div>
@@ -1166,146 +1190,136 @@
 
           <!-- Messages -->
           {% if message %}
-            <div class="alert alert-success mt-4">
-              {{ message }}
-            </div>
+          <div class="alert alert-success mt-4">
+            {{ message }}
+          </div>
           {% endif %}
 
           {% if errors and errors|length %}
-            <div class="alert alert-danger mt-4">
-              <ul class="mb-0">
-                {% for error in errors %}
-                  <li>{{ error }}</li>
-                {% endfor %}
-              </ul>
-            </div>
+          <div class="alert alert-danger mt-4">
+            <ul class="mb-0">
+              {% for error in errors %}
+              <li>{{ error }}</li>
+              {% endfor %}
+            </ul>
+          </div>
           {% endif %}
 
           <!-- 2) Full Preview Table + Confirm -->
           {% if preview_headers and preview_rows %}
 
-            <hr class="my-4">
+          <hr class="my-4">
 
-            <div class="d-flex align-items-center justify-content-between mb-2">
-              <h5 class="mb-0">Preview All Rows</h5>
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h5 class="mb-0">Preview All Rows</h5>
 
-              {% if summary_counts %}
-                <div class="small">
-                  <span class="badge badge-purple">Total: {{ summary_counts.total }}</span>
-                  <span class="badge badge-purple-soft">Valid: {{ summary_counts.valid }}</span>
-                  <span class="badge bg-danger">Invalid: {{ summary_counts.invalid }}</span>
-                </div>
-              {% endif %}
-
-              {% if preview_token and summary_counts and summary_counts.invalid %}
-                <a class="btn btn-sm btn-outline-danger"
-                   href="{{ url_for('logistics.download_preview_invalid', token=preview_token) }}">
-                  <i class="fas fa-file-csv me-1"></i> Download Invalid Rows
-                </a>
-              {% endif %}
+            {% if summary_counts %}
+            <div class="small">
+              <span class="badge badge-purple">Total: {{ summary_counts.total }}</span>
+              <span class="badge badge-purple-soft">Valid: {{ summary_counts.valid }}</span>
+              <span class="badge bg-danger">Invalid: {{ summary_counts.invalid }}</span>
             </div>
+            {% endif %}
 
-            <div class="table-responsive border rounded shadow-sm">
-              <table id="previewTable"
-                     class="table table-sm table-bordered table-striped align-middle mb-0">
+            {% if preview_token and summary_counts and summary_counts.invalid %}
+            <a class="btn btn-sm btn-outline-danger"
+              href="{{ url_for('logistics.download_preview_invalid', token=preview_token) }}">
+              <i class="fas fa-file-csv me-1"></i> Download Invalid Rows
+            </a>
+            {% endif %}
+          </div>
 
-                <thead class="bg-purple text-white">
-                  <tr>
-                    <th style="width:30px;">
-                      <input type="checkbox" id="selectAllPreview">
-                    </th>
+          <div class="table-responsive border rounded shadow-sm">
+            <table id="previewTable" class="table table-sm table-bordered table-striped align-middle mb-0">
 
-                    {% for h in preview_headers %}
-                      <th>{{ h }}</th>
-                    {% endfor %}
+              <thead class="bg-purple text-white">
+                <tr>
+                  <th style="width:30px;">
+                    <input type="checkbox" id="selectAllPreview">
+                  </th>
 
-                    <th>Status</th>
-                    <th style="display:none;">__row_index</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {% for row in preview_rows %}
-                    {% set i = loop.index0 %}
-                    {% set errs = (preview_errors.get(i) or preview_errors.get(i|string)) if preview_errors else None %}
-
-                    <tr class="{% if errs %}table-danger{% else %}table-light{% endif %}">
-                      <td>
-                        <input type="checkbox"
-                               class="row-select"
-                               value="{{ i }}"
-                               {% if not errs %}checked{% endif %}>
-                      </td>
-
-                      {% for h in preview_headers %}
-                        {% set val = row.get(h) %}
-                        <td class="{% if errs and ('Missing ' ~ h.replace('_',' ').title()) in errs %}bg-warning-subtle{% endif %}">
-                          {{ '' if val is none else val }}
-                        </td>
-                      {% endfor %}
-
-                      <td>
-                        {% if not errs %}
-                          <span class="badge badge-purple">Valid</span>
-                        {% else %}
-                          <span class="badge bg-danger">Invalid</span>
-                          <div class="small text-muted mt-1">
-                            {% for e in errs %}
-                              <div>• {{ e }}</div>
-                            {% endfor %}
-                          </div>
-                        {% endif %}
-                      </td>
-
-                      <td style="display:none;">{{ i }}</td>
-                    </tr>
+                  {% for h in preview_headers %}
+                  <th>{{ h }}</th>
                   {% endfor %}
-                </tbody>
 
-              </table>
+                  <th>Status</th>
+                  <th style="display:none;">__row_index</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {% for row in preview_rows %}
+                {% set i = loop.index0 %}
+                {% set errs = (preview_errors.get(i) or preview_errors.get(i|string)) if preview_errors else None %}
+
+                <tr class="{% if errs %}table-danger{% else %}table-light{% endif %}">
+                  <td>
+                    <input type="checkbox" class="row-select" value="{{ i }}" {% if not errs %}checked{% endif %}>
+                  </td>
+
+                  {% for h in preview_headers %}
+                  {% set val = row.get(h) %}
+                  <td
+                    class="{% if errs and ('Missing ' ~ h.replace('_',' ').title()) in errs %}bg-warning-subtle{% endif %}">
+                    {{ '' if val is none else val }}
+                  </td>
+                  {% endfor %}
+
+                  <td>
+                    {% if not errs %}
+                    <span class="badge badge-purple">Valid</span>
+                    {% else %}
+                    <span class="badge bg-danger">Invalid</span>
+                    <div class="small text-muted mt-1">
+                      {% for e in errs %}
+                      <div>• {{ e }}</div>
+                      {% endfor %}
+                    </div>
+                    {% endif %}
+                  </td>
+
+                  <td style="display:none;">{{ i }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+
+            </table>
+          </div>
+
+          <!-- Confirm form -->
+          <form id="confirmForm" method="POST"
+            action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
+            class="mt-3 d-flex flex-wrap align-items-end gap-2" onsubmit="return handleConfirmSubmit(event);">
+
+            {{ upload_form.csrf_token }}
+            <input type="hidden" name="tab" value="uploadPackages">
+            <input type="hidden" name="stage" value="confirm">
+            <input type="hidden" name="preview_token" value="{{ preview_token }}">
+            <input type="hidden" id="selectedIndicesInput" name="selected_indices" value="[]">
+
+            <div>
+              <label class="form-label mb-1 text-purple">Batch Size (optional)</label>
+              <input type="number" name="batch_size" class="form-control form-control-sm border-purple"
+                placeholder="e.g. 50">
+              <div class="form-text">Limit per submit to avoid timeouts.</div>
             </div>
 
-            <!-- Confirm form -->
-            <form id="confirmForm"
-                  method="POST"
-                  action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
-                  class="mt-3 d-flex flex-wrap align-items-end gap-2"
-                  onsubmit="return handleConfirmSubmit(event);">
+            <div class="ms-auto d-flex align-items-center gap-2">
+              <button type="button" id="selectValidBtn" class="btn btn-outline-purple btn-sm">
+                Select All Valid
+              </button>
 
-              {{ upload_form.csrf_token }}
-              <input type="hidden" name="tab" value="uploadPackages">
-              <input type="hidden" name="stage" value="confirm">
-              <input type="hidden" name="preview_token" value="{{ preview_token }}">
-              <input type="hidden" id="selectedIndicesInput" name="selected_indices" value="[]">
+              <button type="submit" class="btn btn-purple btn-sm">
+                <i class="fas fa-check-circle me-1"></i> Import Selected
+              </button>
 
-              <div>
-                <label class="form-label mb-1 text-purple">Batch Size (optional)</label>
-                <input type="number"
-                       name="batch_size"
-                       class="form-control form-control-sm border-purple"
-                       placeholder="e.g. 50">
-                <div class="form-text">Limit per submit to avoid timeouts.</div>
-              </div>
-
-              <div class="ms-auto d-flex align-items-center gap-2">
-                <button type="button"
-                        id="selectValidBtn"
-                        class="btn btn-outline-purple btn-sm">
-                  Select All Valid
-                </button>
-
-                <button type="submit"
-                        class="btn btn-purple btn-sm">
-                  <i class="fas fa-check-circle me-1"></i> Import Selected
-                </button>
-
-                <a href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
-                   class="btn btn-outline-danger btn-sm"
-                   onclick="return confirm('Cancel this upload and discard preview?');">
-                  <i class="fas fa-times-circle me-1"></i> Cancel Upload
-                </a>
-              </div>
-            </form>
+              <a href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
+                class="btn btn-outline-danger btn-sm"
+                onclick="return confirm('Cancel this upload and discard preview?');">
+                <i class="fas fa-times-circle me-1"></i> Cancel Upload
+              </a>
+            </div>
+          </form>
 
           {% endif %}
           {# end if preview_headers and preview_rows #}
@@ -1328,383 +1342,383 @@
 {{ super() }}
 
 <script>
-const categoryRates = {{ CATEGORIES|tojson }};
-const USD_TO_JMD    = {{ USD_TO_JMD }};
+  const categoryRates = {{ CATEGORIES| tojson }};
+  const USD_TO_JMD = {{ USD_TO_JMD }};
 
-/* =========================================================
-   KEEP SHIPMENT DATATABLE STATE (length/page/search)
-   ========================================================= */
-function saveShipmentDTState() {
-  try {
-    if (!window.jQuery || !$.fn.dataTable) return;
-    if (!$.fn.dataTable.isDataTable('#shipmentTable')) return;
+  /* =========================================================
+     KEEP SHIPMENT DATATABLE STATE (length/page/search)
+     ========================================================= */
+  function saveShipmentDTState() {
+    try {
+      if (!window.jQuery || !$.fn.dataTable) return;
+      if (!$.fn.dataTable.isDataTable('#shipmentTable')) return;
 
-    const dt2 = $('#shipmentTable').DataTable();
-    const st = {
-      pageLen: dt2.page.len(),
-      page: dt2.page(),
-      search: dt2.search()
-    };
-    localStorage.setItem('SL_SHIPMENT_DT_STATE', JSON.stringify(st));
-  } catch (e) {}
-}
+      const dt2 = $('#shipmentTable').DataTable();
+      const st = {
+        pageLen: dt2.page.len(),
+        page: dt2.page(),
+        search: dt2.search()
+      };
+      localStorage.setItem('SL_SHIPMENT_DT_STATE', JSON.stringify(st));
+    } catch (e) { }
+  }
 
-function restoreShipmentDTState() {
-  try {
-    if (!window.jQuery || !$.fn.dataTable) return;
-    if (!$.fn.dataTable.isDataTable('#shipmentTable')) return;
+  function restoreShipmentDTState() {
+    try {
+      if (!window.jQuery || !$.fn.dataTable) return;
+      if (!$.fn.dataTable.isDataTable('#shipmentTable')) return;
 
-    const raw = localStorage.getItem('SL_SHIPMENT_DT_STATE');
-    if (!raw) return;
+      const raw = localStorage.getItem('SL_SHIPMENT_DT_STATE');
+      if (!raw) return;
 
-    const st = JSON.parse(raw);
-    const dt2 = $('#shipmentTable').DataTable();
+      const st = JSON.parse(raw);
+      const dt2 = $('#shipmentTable').DataTable();
 
-    // ✅ set length first
-    if (st.pageLen) dt2.page.len(Number(st.pageLen) || 10);
+      // ✅ set length first
+      if (st.pageLen) dt2.page.len(Number(st.pageLen) || 10);
 
-    // ✅ set search next
-    if (typeof st.search === 'string') dt2.search(st.search);
+      // ✅ set search next
+      if (typeof st.search === 'string') dt2.search(st.search);
 
-    // ✅ draw once
-    dt2.draw(false);
+      // ✅ draw once
+      dt2.draw(false);
 
-    // ✅ set page last (after draw)
-    if (typeof st.page === 'number') {
-      dt2.page(st.page).draw(false);
+      // ✅ set page last (after draw)
+      if (typeof st.page === 'number') {
+        dt2.page(st.page).draw(false);
+      }
+    } catch (e) { }
+  }
+
+  /* ============================================================
+     ✅ URLS from Flask (prevents prefix bugs)
+     ============================================================ */
+  window.PKG_API_URL = "{{ url_for('logistics.api_get_package', pkg_id=0) }}";           // .../0
+  window.CALC_API_URL = "{{ url_for('logistics.shipment_calc_charges') }}";              // calc endpoint (if you use it)
+  window.SAVE_CHARGES_URL = "{{ url_for('logistics.api_save_package_charges', pkg_id=0) }}"; // .../0
+  window.UPDATE_PKG_URL = "{{ url_for('logistics.api_update_package', pkg_id=0) }}";        // .../0
+  window.INVOICE_PREVIEW_URL = "{{ url_for('logistics.bulk_invoice_preview') }}";
+  window.INVOICE_FINALIZE_URL = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
+
+  window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}"; // .../packages/0/attachments
+
+  function attachUrl(id) {
+    const sid = String(id || '').trim();
+    // replace "/0/" with "/<id>/" (only the first match)
+    return window.ATTACH_UPLOAD_URL.replace('/0/', `/${sid}/`);
+  }
+
+
+
+  function apiUrl(base, id) {
+    // base ends with "/0"
+    return String(base || '').replace(/0$/, String(id));
+  }
+
+  async function postJSON(url, body) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ csrf_token() }}'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error('Request failed: ' + txt);
     }
-  } catch (e) {}
-}
-
-/* ============================================================
-   ✅ URLS from Flask (prevents prefix bugs)
-   ============================================================ */
-window.PKG_API_URL      = "{{ url_for('logistics.api_get_package', pkg_id=0) }}";           // .../0
-window.CALC_API_URL     = "{{ url_for('logistics.shipment_calc_charges') }}";              // calc endpoint (if you use it)
-window.SAVE_CHARGES_URL = "{{ url_for('logistics.api_save_package_charges', pkg_id=0) }}"; // .../0
-window.UPDATE_PKG_URL   = "{{ url_for('logistics.api_update_package', pkg_id=0) }}";        // .../0
-window.INVOICE_PREVIEW_URL  = "{{ url_for('logistics.bulk_invoice_preview') }}";
-window.INVOICE_FINALIZE_URL = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
-
-window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}"; // .../packages/0/attachments
-
-function attachUrl(id) {
-  const sid = String(id || '').trim();
-  // replace "/0/" with "/<id>/" (only the first match)
-  return window.ATTACH_UPLOAD_URL.replace('/0/', `/${sid}/`);
-}
-
-
-
-function apiUrl(base, id) {
-  // base ends with "/0"
-  return String(base || '').replace(/0$/, String(id));
-}
-
-async function postJSON(url, body) {
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': '{{ csrf_token() }}'
-    },
-    body: JSON.stringify(body)
-  });
-  if (!r.ok) {
-    const txt = await r.text();
-    throw new Error('Request failed: ' + txt);
+    return r.json();
   }
-  return r.json();
-}
 
-function hasDataTables() {
-  return window.jQuery && $.fn && $.fn.DataTable;
-}
-
-function getShipmentIdFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const sid = params.get('shipment_id');
-  return sid ? Number(sid) : 0;
-}
-
-function validateMoveShipmentForm() {
-  const holder = document.getElementById('movePackageIdsContainer');
-  const count = holder ? holder.querySelectorAll('input[name="package_ids"]').length : 0;
-  if (!count) {
-    alert("⚠️ Please select at least one package before moving.");
-    return false;
+  function hasDataTables() {
+    return window.jQuery && $.fn && $.fn.DataTable;
   }
-  return true;
-}
 
-/* ==========================
-   FILTERS helpers
-   ========================== */
-function getFilterValues() {
-  const name = (document.getElementById('fltName')?.value || '').trim().toLowerCase();
-  const tracking = (document.getElementById('fltTracking')?.value || '').trim().toLowerCase();
-  const house_awb = (document.getElementById('fltHouseAwb')?.value || '').trim().toLowerCase();
-  const reg = (document.getElementById('fltReg')?.value || '').trim().toLowerCase();
+  function getShipmentIdFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get('shipment_id');
+    return sid ? Number(sid) : 0;
+  }
 
-  const wMinRaw = (document.getElementById('fltWMin')?.value || '').trim();
-  const wMaxRaw = (document.getElementById('fltWMax')?.value || '').trim();
-  const wMin = wMinRaw === '' ? null : Number(wMinRaw);
-  const wMax = wMaxRaw === '' ? null : Number(wMaxRaw);
-
-  return { name, tracking, house_awb, reg, wMin, wMax };
-}
-
-function parseCellText(td) {
-  if (!td) return '';
-  return (td.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
-function parseWeightFromRow(tr) {
-  const inp = tr.querySelector('input[id^="weight_"]');
-  const v = inp ? Number(inp.value || 0) : 0;
-  return isNaN(v) ? 0 : v;
-}
-
-/* ==========================
-   DATATABLES (FIXED)
-   ========================== */
-let dt = null;
-let dtInitialized = false;
-
-function installShipmentFilterHook() {
-  if (!window.jQuery || !$.fn || !$.fn.dataTable) return;
-  if ($.fn.dataTable.__faflShipmentFilterInstalled) return;
-  $.fn.dataTable.__faflShipmentFilterInstalled = true;
-
-  $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
-    if (!settings || settings.nTable?.id !== 'shipmentTable') return true;
-
-    const f = getFilterValues();
-    const api = new $.fn.dataTable.Api(settings);
-    const rowNode = api.row(dataIndex).node();
-    if (!rowNode) return true;
-
-    const userText = parseCellText(rowNode.querySelector('td:nth-child(3)'));
-    const pkgText  = parseCellText(rowNode.querySelector('td:nth-child(4)'));
-    const houseText = parseCellText(rowNode.querySelector('td:nth-child(5)'));
-    const w = parseWeightFromRow(rowNode);
-
-    if (f.name && !userText.includes(f.name)) return false;
-    if (f.reg && !userText.includes(f.reg)) return false;
-    if (f.tracking && !pkgText.includes(f.tracking)) return false;
-    if (f.house_awb && !houseText.includes(f.house_awb)) return false;
-    if (f.wMin != null && w < f.wMin) return false;
-    if (f.wMax != null && w > f.wMax) return false;
-
+  function validateMoveShipmentForm() {
+    const holder = document.getElementById('movePackageIdsContainer');
+    const count = holder ? holder.querySelectorAll('input[name="package_ids"]').length : 0;
+    if (!count) {
+      alert("⚠️ Please select at least one package before moving.");
+      return false;
+    }
     return true;
-  });
-}
-
-function bindShipmentLengthSelect() {
-  const sel = document.getElementById('shipmentLengthSelect');
-  if (!sel) return;
-  if (sel.dataset.bound === "1") return;
-  sel.dataset.bound = "1";
-
-  sel.addEventListener('change', function () {
-    const len = Number(this.value || 10);
-    if (dt) {
-      dt.page.len(len).draw(false);
-      saveShipmentDTState();
-    }
-  });
-}
-
-function syncShipmentLengthSelect() {
-  const sel = document.getElementById('shipmentLengthSelect');
-  if (!sel) return;
-  const current = (dt && dt.page && typeof dt.page.len === 'function') ? dt.page.len() : 10;
-  sel.value = String(current);
-}
-
-function initShipmentTable() {
-  if (dtInitialized) return;
-  if (!hasDataTables()) {
-    console.warn("DataTables not available (missing JS/CSS or super()).");
-    return;
   }
 
-  const $table = $('#shipmentTable');
-  if (!$table.length) return;
+  /* ==========================
+     FILTERS helpers
+     ========================== */
+  function getFilterValues() {
+    const name = (document.getElementById('fltName')?.value || '').trim().toLowerCase();
+    const tracking = (document.getElementById('fltTracking')?.value || '').trim().toLowerCase();
+    const house_awb = (document.getElementById('fltHouseAwb')?.value || '').trim().toLowerCase();
+    const reg = (document.getElementById('fltReg')?.value || '').trim().toLowerCase();
 
-  // If already initialized, just bind dropdown
-  if ($.fn.DataTable.isDataTable('#shipmentTable')) {
-    dt = $table.DataTable();
+    const wMinRaw = (document.getElementById('fltWMin')?.value || '').trim();
+    const wMaxRaw = (document.getElementById('fltWMax')?.value || '').trim();
+    const wMin = wMinRaw === '' ? null : Number(wMinRaw);
+    const wMax = wMaxRaw === '' ? null : Number(wMaxRaw);
+
+    return { name, tracking, house_awb, reg, wMin, wMax };
+  }
+
+  function parseCellText(td) {
+    if (!td) return '';
+    return (td.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function parseWeightFromRow(tr) {
+    const inp = tr.querySelector('input[id^="weight_"]');
+    const v = inp ? Number(inp.value || 0) : 0;
+    return isNaN(v) ? 0 : v;
+  }
+
+  /* ==========================
+     DATATABLES (FIXED)
+     ========================== */
+  let dt = null;
+  let dtInitialized = false;
+
+  function installShipmentFilterHook() {
+    if (!window.jQuery || !$.fn || !$.fn.dataTable) return;
+    if ($.fn.dataTable.__faflShipmentFilterInstalled) return;
+    $.fn.dataTable.__faflShipmentFilterInstalled = true;
+
+    $.fn.dataTable.ext.search.push(function (settings, data, dataIndex) {
+      if (!settings || settings.nTable?.id !== 'shipmentTable') return true;
+
+      const f = getFilterValues();
+      const api = new $.fn.dataTable.Api(settings);
+      const rowNode = api.row(dataIndex).node();
+      if (!rowNode) return true;
+
+      const userText = parseCellText(rowNode.querySelector('td:nth-child(3)'));
+      const pkgText = parseCellText(rowNode.querySelector('td:nth-child(4)'));
+      const houseText = parseCellText(rowNode.querySelector('td:nth-child(5)'));
+      const w = parseWeightFromRow(rowNode);
+
+      if (f.name && !userText.includes(f.name)) return false;
+      if (f.reg && !userText.includes(f.reg)) return false;
+      if (f.tracking && !pkgText.includes(f.tracking)) return false;
+      if (f.house_awb && !houseText.includes(f.house_awb)) return false;
+      if (f.wMin != null && w < f.wMin) return false;
+      if (f.wMax != null && w > f.wMax) return false;
+
+      return true;
+    });
+  }
+
+  function bindShipmentLengthSelect() {
+    const sel = document.getElementById('shipmentLengthSelect');
+    if (!sel) return;
+    if (sel.dataset.bound === "1") return;
+    sel.dataset.bound = "1";
+
+    sel.addEventListener('change', function () {
+      const len = Number(this.value || 10);
+      if (dt) {
+        dt.page.len(len).draw(false);
+        saveShipmentDTState();
+      }
+    });
+  }
+
+  function syncShipmentLengthSelect() {
+    const sel = document.getElementById('shipmentLengthSelect');
+    if (!sel) return;
+    const current = (dt && dt.page && typeof dt.page.len === 'function') ? dt.page.len() : 10;
+    sel.value = String(current);
+  }
+
+  function initShipmentTable() {
+    if (dtInitialized) return;
+    if (!hasDataTables()) {
+      console.warn("DataTables not available (missing JS/CSS or super()).");
+      return;
+    }
+
+    const $table = $('#shipmentTable');
+    if (!$table.length) return;
+
+    // If already initialized, just bind dropdown
+    if ($.fn.DataTable.isDataTable('#shipmentTable')) {
+      dt = $table.DataTable();
+      bindShipmentLengthSelect();
+      syncShipmentLengthSelect();
+      dtInitialized = true;
+      return;
+    }
+
+    installShipmentFilterHook();
+
+    dt = $table.DataTable({
+      pageLength: 10,
+      lengthChange: false,
+      pagingType: "simple_numbers",
+      dom:
+        "<'shipment-topbar d-flex justify-content-between align-items-center mb-2'<'shipment-pager-top'p>>" +
+        "rt" +
+        "<'d-none'i>",
+      order: [[4, 'asc']],
+      columnDefs: [
+        { orderable: false, targets: [0, 1, 3, 5, 7, 8, 9] }
+      ],
+      language: {
+        emptyTable: "No packages in this shipment.",
+        paginate: { previous: "«", next: "»" }
+      }
+    });
+
+    restoreShipmentDTState();
+    syncShipmentLengthSelect();
+
+    window.dt = dt;
+
     bindShipmentLengthSelect();
     syncShipmentLengthSelect();
+
+    // ✅ keep your checkbox logic working after paging
+    dt.on('draw', function () {
+      updateShipmentHeaderCheckbox();
+      syncShipmentLengthSelect();
+    });
+
+    // ✅ prevent header click sorting toggles
+    $(document)
+      .off('click.shipmentHeader', '#shipmentTable thead th:first-child, #selectAll')
+      .on('click.shipmentHeader', '#shipmentTable thead th:first-child, #selectAll', function (e) {
+        e.stopPropagation();
+      });
+
     dtInitialized = true;
-    return;
-  }
-
-  installShipmentFilterHook();
-
-  dt = $table.DataTable({
-    pageLength: 10,
-    lengthChange: false,
-    pagingType: "simple_numbers",
-    dom:
-      "<'shipment-topbar d-flex justify-content-between align-items-center mb-2'<'shipment-pager-top'p>>" +
-      "rt" +
-      "<'d-none'i>",
-    order: [[4, 'asc']],
-    columnDefs: [
-      { orderable: false, targets: [0, 1, 3, 5, 7, 8, 9] }
-    ],
-    language: {
-      emptyTable: "No packages in this shipment.",
-      paginate: { previous: "«", next: "»" }
-    }
-  });
-
-  restoreShipmentDTState();
-  syncShipmentLengthSelect();
-
-  window.dt = dt;
-
-  bindShipmentLengthSelect();
-  syncShipmentLengthSelect();
-
-  // ✅ keep your checkbox logic working after paging
-  dt.on('draw', function () {
     updateShipmentHeaderCheckbox();
-    syncShipmentLengthSelect();
-  });
-
-  // ✅ prevent header click sorting toggles
-  $(document)
-    .off('click.shipmentHeader', '#shipmentTable thead th:first-child, #selectAll')
-    .on('click.shipmentHeader', '#shipmentTable thead th:first-child, #selectAll', function (e) {
-      e.stopPropagation();
-    });
-
-  dtInitialized = true;
-  updateShipmentHeaderCheckbox();
-}
-
-/* ✅ Run it */
-document.addEventListener('DOMContentLoaded', function () {
-  initShipmentTable();
-});
-
-/* ==========================
-   FILTERS bind
-   ========================== */
-(function bindShipmentFilters(){
-  const btnApply = document.getElementById('btnApplyFilters');
-  const btnClear = document.getElementById('btnClearFilters');
-
-  function doApply() {
-    if (dt) { dt.draw(); return; }
-    const tbody = document.querySelector('#shipmentTable tbody');
-    if (!tbody) return;
-    const f = getFilterValues();
-
-    Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
-      const userText = parseCellText(tr.querySelector('td:nth-child(3)'));
-      const pkgText  = parseCellText(tr.querySelector('td:nth-child(4)'));
-      const houseText = parseCellText(tr.querySelector('td:nth-child(5)'));
-      const w = parseWeightFromRow(tr);
-
-      let ok = true;
-      if (f.name && !userText.includes(f.name)) ok = false;
-      if (f.reg && !userText.includes(f.reg)) ok = false;
-      if (f.tracking && !pkgText.includes(f.tracking)) ok = false;
-      if (f.house_awb && !houseText.includes(f.house_awb)) ok = false;
-      if (f.wMin != null && w < f.wMin) ok = false;
-      if (f.wMax != null && w > f.wMax) ok = false;
-
-      tr.style.display = ok ? '' : 'none';
-    });
   }
 
-  function doClear() {
-    ['fltName','fltTracking','fltHouseAwb','fltReg','fltWMin','fltWMax'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
+  /* ✅ Run it */
+  document.addEventListener('DOMContentLoaded', function () {
+    initShipmentTable();
+  });
+
+  /* ==========================
+     FILTERS bind
+     ========================== */
+  (function bindShipmentFilters() {
+    const btnApply = document.getElementById('btnApplyFilters');
+    const btnClear = document.getElementById('btnClearFilters');
+
+    function doApply() {
+      if (dt) { dt.draw(); return; }
+      const tbody = document.querySelector('#shipmentTable tbody');
+      if (!tbody) return;
+      const f = getFilterValues();
+
+      Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
+        const userText = parseCellText(tr.querySelector('td:nth-child(3)'));
+        const pkgText = parseCellText(tr.querySelector('td:nth-child(4)'));
+        const houseText = parseCellText(tr.querySelector('td:nth-child(5)'));
+        const w = parseWeightFromRow(tr);
+
+        let ok = true;
+        if (f.name && !userText.includes(f.name)) ok = false;
+        if (f.reg && !userText.includes(f.reg)) ok = false;
+        if (f.tracking && !pkgText.includes(f.tracking)) ok = false;
+        if (f.house_awb && !houseText.includes(f.house_awb)) ok = false;
+        if (f.wMin != null && w < f.wMin) ok = false;
+        if (f.wMax != null && w > f.wMax) ok = false;
+
+        tr.style.display = ok ? '' : 'none';
+      });
+    }
+
+    function doClear() {
+      ['fltName', 'fltTracking', 'fltHouseAwb', 'fltReg', 'fltWMin', 'fltWMax'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+
+      if (dt) { dt.draw(); return; }
+      const tbody = document.querySelector('#shipmentTable tbody');
+      if (!tbody) return;
+      Array.from(tbody.querySelectorAll('tr')).forEach(tr => tr.style.display = '');
+    }
+
+    btnApply?.addEventListener('click', doApply);
+    btnClear?.addEventListener('click', doClear);
+
+    ['fltName', 'fltTracking', 'fltHouseAwb', 'fltReg', 'fltWMin', 'fltWMax'].forEach(id => {
+      document.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); doApply(); }
+      });
+    });
+  })();
+
+  /* ============================================================
+   ✅ KEY FIX: Ensure DT pagination still posts weight/value/overrides
+     - We copy the selected rows’ fields into hidden inputs before submit.
+     ============================================================ */
+  function rebuildHiddenPostPayloadForSelected(form, ids) {
+    // remove old
+    document.getElementById('selectedIdsContainer')?.remove();
+
+    // ✅ Re-enable checkboxes in case a previous submit disabled them
+    form.querySelectorAll('input.package-checkbox[name="package_ids"]').forEach(cb => {
+      cb.disabled = false;
     });
 
-    if (dt) { dt.draw(); return; }
-    const tbody = document.querySelector('#shipmentTable tbody');
-    if (!tbody) return;
-    Array.from(tbody.querySelectorAll('tr')).forEach(tr => tr.style.display = '');
-  }
+    const holder = document.createElement('div');
+    holder.id = 'selectedIdsContainer';
 
-  btnApply?.addEventListener('click', doApply);
-  btnClear?.addEventListener('click', doClear);
+    function appendHidden(name, value) {
+      if (value === null || value === undefined) return;
+      const v = String(value).trim();
+      if (v === "") return; // ✅ DO NOT POST BLANKS
+      const i = document.createElement('input');
+      i.type = 'hidden';
+      i.name = name;
+      i.value = v;
+      holder.appendChild(i);
+    }
 
-  ['fltName','fltTracking','fltHouseAwb','fltReg','fltWMin','fltWMax'].forEach(id => {
-    document.getElementById(id)?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); doApply(); }
+    function getValById(prefix, id) {
+      const el = document.getElementById(prefix + id);
+      if (!el) return null; // ✅ return null instead of ""
+      return el.value;
+    }
+
+    ids.forEach(id => {
+      appendHidden('package_ids', id);
+
+      // weight/value/category
+      appendHidden(`weight_${id}`, getValById('weight_', id));
+      appendHidden(`value_${id}`, getValById('value_', id));
+      appendHidden(`category_${id}`, getValById('category_', id));
+
+      // manual overrides
+      appendHidden(`duty_${id}`, getValById('duty_', id));
+      appendHidden(`gct_${id}`, getValById('gct_', id));
+      appendHidden(`scf_${id}`, getValById('scf_', id));
+      appendHidden(`envl_${id}`, getValById('envl_', id));
+      appendHidden(`caf_${id}`, getValById('caf_', id));
+      appendHidden(`stamp_${id}`, getValById('stamp_', id));
+      appendHidden(`freight_${id}`, getValById('freight_', id));
+      appendHidden(`handling_${id}`, getValById('handling_', id));
+      appendHidden(`other_${id}`, getValById('other_', id));
     });
-  });
-})();
 
-/* ============================================================
- ✅ KEY FIX: Ensure DT pagination still posts weight/value/overrides
-   - We copy the selected rows’ fields into hidden inputs before submit.
-   ============================================================ */
-function rebuildHiddenPostPayloadForSelected(form, ids) {
-  // remove old
-  document.getElementById('selectedIdsContainer')?.remove();
+    // ✅ CRITICAL FIX: prevent posting package_ids twice
+    // (checkboxes + hidden inputs were doubling your count)
+    form.querySelectorAll('input.package-checkbox[name="package_ids"]').forEach(cb => {
+      cb.disabled = true;
+    });
 
-  // ✅ Re-enable checkboxes in case a previous submit disabled them
-  form.querySelectorAll('input.package-checkbox[name="package_ids"]').forEach(cb => {
-    cb.disabled = false;
-  });
-
-  const holder = document.createElement('div');
-  holder.id = 'selectedIdsContainer';
-
-  function appendHidden(name, value) {
-    if (value === null || value === undefined) return;
-    const v = String(value).trim();
-    if (v === "") return; // ✅ DO NOT POST BLANKS
-    const i = document.createElement('input');
-    i.type = 'hidden';
-    i.name = name;
-    i.value = v;
-    holder.appendChild(i);
-  }
-
-  function getValById(prefix, id) {
-    const el = document.getElementById(prefix + id);
-    if (!el) return null; // ✅ return null instead of ""
-    return el.value;
-  }
-
-  ids.forEach(id => {
-    appendHidden('package_ids', id);
-
-    // weight/value/category
-    appendHidden(`weight_${id}`, getValById('weight_', id));
-    appendHidden(`value_${id}`,  getValById('value_',  id));
-    appendHidden(`category_${id}`, getValById('category_', id));
-
-    // manual overrides
-    appendHidden(`duty_${id}`,     getValById('duty_', id));
-    appendHidden(`gct_${id}`,      getValById('gct_', id));
-    appendHidden(`scf_${id}`,      getValById('scf_', id));
-    appendHidden(`envl_${id}`,     getValById('envl_', id));
-    appendHidden(`caf_${id}`,      getValById('caf_', id));
-    appendHidden(`stamp_${id}`,    getValById('stamp_', id));
-    appendHidden(`freight_${id}`,  getValById('freight_', id));
-    appendHidden(`handling_${id}`, getValById('handling_', id));
-    appendHidden(`other_${id}`,    getValById('other_', id));
-  });
-
-  // ✅ CRITICAL FIX: prevent posting package_ids twice
-  // (checkboxes + hidden inputs were doubling your count)
-  form.querySelectorAll('input.package-checkbox[name="package_ids"]').forEach(cb => {
-    cb.disabled = true;
-  });
-
-  // ✅ Disable ALL visible row inputs so ONLY our hidden selected payload is posted
-  form.querySelectorAll(`
+    // ✅ Disable ALL visible row inputs so ONLY our hidden selected payload is posted
+    form.querySelectorAll(`
     input[name^="weight_"],
     input[name^="value_"],
     input[name^="category_"],
@@ -1719,278 +1733,278 @@ function rebuildHiddenPostPayloadForSelected(form, ids) {
     input[name^="other_"]
   `).forEach(el => { el.disabled = true; });
 
-  form.appendChild(holder);
-}
+    form.appendChild(holder);
+  }
 
 
-async function handleShipmentApply(e) {
-  if (e && e.preventDefault) e.preventDefault();
+  async function handleShipmentApply(e) {
+    if (e && e.preventDefault) e.preventDefault();
 
-  const form = document.getElementById('shipmentForm');
-  if (!form) { console.error('shipmentForm not found'); return; }
+    const form = document.getElementById('shipmentForm');
+    if (!form) { console.error('shipmentForm not found'); return; }
 
-  const applyBtn = document.getElementById('shipmentApplyBtn');
-  if (applyBtn) applyBtn.disabled = true;
+    const applyBtn = document.getElementById('shipmentApplyBtn');
+    if (applyBtn) applyBtn.disabled = true;
 
-  try {
-    const actionSel = form.querySelector('select[name="action"]');
-    const action = actionSel ? actionSel.value : '';
-    if (!action) { alert('⚠️ Please select an action.'); return; }
+    try {
+      const actionSel = form.querySelector('select[name="action"]');
+      const action = actionSel ? actionSel.value : '';
+      if (!action) { alert('⚠️ Please select an action.'); return; }
 
-    // gather selected IDs (across all DT pages)
-    let ids = [];
-    if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-      ids = dt.$('.package-checkbox:checked').map(function () { return this.value; }).get();
-    } else {
-      ids = Array.from(document.querySelectorAll('.package-checkbox:checked')).map(cb => cb.value);
-    }
+      // gather selected IDs (across all DT pages)
+      let ids = [];
+      if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+        ids = dt.$('.package-checkbox:checked').map(function () { return this.value; }).get();
+      } else {
+        ids = Array.from(document.querySelectorAll('.package-checkbox:checked')).map(cb => cb.value);
+      }
 
-    // Shipment-level actions (no selection required)
-    if (action === 'finance_invoice') {
-      const shipmentId = getShipmentIdFromUrl();
-      if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
-      await openShipmentFinanceInvoicePreviewJSON(shipmentId, []);
-      return;
-    }
+      // Shipment-level actions (no selection required)
+      if (action === 'finance_invoice') {
+        const shipmentId = getShipmentIdFromUrl();
+        if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
+        await openShipmentFinanceInvoicePreviewJSON(shipmentId, []);
+        return;
+      }
 
-    if (action === 'purge_shipment_invoices') {
-      const shipmentId = getShipmentIdFromUrl();
-      if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
+      if (action === 'purge_shipment_invoices') {
+        const shipmentId = getShipmentIdFromUrl();
+        if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
 
-      const proceed = confirm(
-        ids.length
-          ? `Purge invoices for ${ids.length} selected package(s)?\n\nOnly UNPAID invoices with NO payments will be removed.`
-          : `Purge ALL unpaid invoices for this shipment?\n\nOnly UNPAID invoices with NO payments will be removed.`
-      );
-      if (!proceed) return;
+        const proceed = confirm(
+          ids.length
+            ? `Purge invoices for ${ids.length} selected package(s)?\n\nOnly UNPAID invoices with NO payments will be removed.`
+            : `Purge ALL unpaid invoices for this shipment?\n\nOnly UNPAID invoices with NO payments will be removed.`
+        );
+        if (!proceed) return;
 
-      try {
-        const res = await fetch("{{ url_for('logistics.purge_shipment_invoices_json') }}", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "X-CSRFToken": "{{ csrf_token() }}",
-            "X-Requested-With": "XMLHttpRequest"
-          },
-          body: JSON.stringify({ shipment_id: shipmentId, package_ids: ids })
+        try {
+          const res = await fetch("{{ url_for('logistics.purge_shipment_invoices_json') }}", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              "X-CSRFToken": "{{ csrf_token() }}",
+              "X-Requested-With": "XMLHttpRequest"
+            },
+            body: JSON.stringify({ shipment_id: shipmentId, package_ids: ids })
+          });
+
+          const data = await res.json().catch(() => null);
+          if (!res.ok || !data || data.ok === false) {
+            throw new Error((data && (data.message || data.error)) || `HTTP ${res.status}`);
+          }
+
+          alert(data.message || "✅ Purge complete.");
+          if (data.redirect_url) window.location.href = data.redirect_url;
+          else window.location.reload();
+
+        } catch (err) {
+          console.error(err);
+          alert("❌ Purge failed.\n\n" + (err?.message || err));
+        }
+        return;
+      }
+
+      // Package-level actions (selection required)
+      if (!ids.length) { alert('⚠️ Please select at least one package.'); return; }
+
+      if (action === 'generate_invoice') {
+        try { await openInvoicePreview(ids); }
+        catch (err) { console.error(err); alert('⚠️ Could not load invoice preview.'); }
+        return;
+      }
+
+      if (action === 'move') {
+        const holder = document.getElementById('movePackageIdsContainer');
+        if (holder) holder.innerHTML = '';
+        ids.forEach(id => {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'package_ids';
+          input.value = id;
+          holder.appendChild(input);
         });
 
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data || data.ok === false) {
-          throw new Error((data && (data.message || data.error)) || `HTTP ${res.status}`);
-        }
+        const fromInput = document.querySelector('#moveShipmentForm input[name="from_shipment_id"]');
+        if (fromInput) fromInput.value = getShipmentIdFromUrl() || fromInput.value || 0;
 
-        alert(data.message || "✅ Purge complete.");
-        if (data.redirect_url) window.location.href = data.redirect_url;
-        else window.location.reload();
-
-      } catch (err) {
-        console.error(err);
-        alert("❌ Purge failed.\n\n" + (err?.message || err));
+        const modalEl = document.getElementById('moveShipmentModal');
+        if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        return;
       }
-      return;
+
+      // ✅ DT-safe payload
+      rebuildHiddenPostPayloadForSelected(form, ids);
+
+      if (!confirm(`Perform "${action}" on ${ids.length} package(s)?`)) return;
+      saveShipmentDTState();
+      form.submit();
+
+    } finally {
+      // If we submitted the form, page reloads anyway.
+      // If we returned early, we must re-enable button.
+      if (applyBtn) applyBtn.disabled = false;
     }
-
-    // Package-level actions (selection required)
-    if (!ids.length) { alert('⚠️ Please select at least one package.'); return; }
-
-    if (action === 'generate_invoice') {
-      try { await openInvoicePreview(ids); }
-      catch (err) { console.error(err); alert('⚠️ Could not load invoice preview.'); }
-      return;
-    }
-
-    if (action === 'move') {
-      const holder = document.getElementById('movePackageIdsContainer');
-      if (holder) holder.innerHTML = '';
-      ids.forEach(id => {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'package_ids';
-        input.value = id;
-        holder.appendChild(input);
-      });
-
-      const fromInput = document.querySelector('#moveShipmentForm input[name="from_shipment_id"]');
-      if (fromInput) fromInput.value = getShipmentIdFromUrl() || fromInput.value || 0;
-
-      const modalEl = document.getElementById('moveShipmentModal');
-      if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
-      return;
-    }
-
-    // ✅ DT-safe payload
-    rebuildHiddenPostPayloadForSelected(form, ids);
-
-    if (!confirm(`Perform "${action}" on ${ids.length} package(s)?`)) return;
-    saveShipmentDTState();
-    form.submit();
-
-  } finally {
-    // If we submitted the form, page reloads anyway.
-    // If we returned early, we must re-enable button.
-    if (applyBtn) applyBtn.disabled = false;
   }
-}
 
-/* ==========================
-   Init on ready
-   ========================== */
-(function () {
-  if (!window.jQuery) return;
-  $(function () {
-    if (hasDataTables() && $('#dashboardPrealertsTable').length) {
-      $('#dashboardPrealertsTable').DataTable({
-        order: [[0, 'desc']],
-        pageLength: 10,
-        language: { emptyTable: "No pre-alert shipments found." }
-      });
+  /* ==========================
+     Init on ready
+     ========================== */
+  (function () {
+    if (!window.jQuery) return;
+    $(function () {
+      if (hasDataTables() && $('#dashboardPrealertsTable').length) {
+        $('#dashboardPrealertsTable').DataTable({
+          order: [[0, 'desc']],
+          pageLength: 10,
+          language: { emptyTable: "No pre-alert shipments found." }
+        });
+      }
+      if (document.getElementById('shipmentTable')) initShipmentTable();
+      else bindShipmentLengthSelect();
+    });
+  })();
+
+  /* ==========================
+     Select all helpers
+     ========================== */
+  function toggleShipmentSelectAll(master) {
+    if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+      dt.$('.package-checkbox').prop('checked', master.checked);
+      updateShipmentHeaderCheckbox();
+      return;
     }
-    if (document.getElementById('shipmentTable')) initShipmentTable();
-    else bindShipmentLengthSelect();
-  });
-})();
-
-/* ==========================
-   Select all helpers
-   ========================== */
-function toggleShipmentSelectAll(master) {
-  if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-    dt.$('.package-checkbox').prop('checked', master.checked);
+    const tbody = document.querySelector('#shipmentTable tbody');
+    if (!tbody) return;
+    tbody.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = master.checked);
     updateShipmentHeaderCheckbox();
-    return;
-  }
-  const tbody = document.querySelector('#shipmentTable tbody');
-  if (!tbody) return;
-  tbody.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = master.checked);
-  updateShipmentHeaderCheckbox();
-}
-
-function updateShipmentHeaderCheckbox() {
-  const header = document.getElementById('selectAll');
-  const tbody  = document.querySelector('#shipmentTable tbody');
-  if (!header || !tbody) return;
-
-  if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-    const all = dt.$('.package-checkbox').length;
-    const chk = dt.$('.package-checkbox:checked').length;
-    header.checked = (all > 0 && all === chk);
-    return;
   }
 
-  const boxes = tbody.querySelectorAll('.package-checkbox');
-  const checked = tbody.querySelectorAll('.package-checkbox:checked');
-  header.checked = (boxes.length > 0 && boxes.length === checked.length);
-}
+  function updateShipmentHeaderCheckbox() {
+    const header = document.getElementById('selectAll');
+    const tbody = document.querySelector('#shipmentTable tbody');
+    if (!header || !tbody) return;
 
-/* ============================================================
-   CHARGES MODAL (single) - FINAL FIXED (NO BLANK MODAL)
-   - Fixes Bootstrap relatedTarget sometimes null
-   - Pulls weight/value from current row inputs (DataTables safe)
-   - Loads category from button OR hidden input
-   - Live sync override fields into hidden inputs for bulk posting
-   ============================================================ */
-(function initChargesModal(){
-  const chargesModal = document.getElementById('chargesModalSL');
-  if (!chargesModal) return;
+    if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+      const all = dt.$('.package-checkbox').length;
+      const chk = dt.$('.package-checkbox:checked').length;
+      header.checked = (all > 0 && all === chk);
+      return;
+    }
 
-  const pkgIdInput     = document.getElementById('chargesPkgId');
-  const pkgDescInput   = document.getElementById('chargesPkgDesc');
-  const weightInput    = document.getElementById('chargesWeight');
-  const valueInput     = document.getElementById('chargesValue');
-  const categorySelect = document.getElementById('chargesCategory');
-
-  const btnCalc        = document.getElementById('btnCalcCharges');
-  const btnApply       = document.getElementById('btnApplyToPkg');
-  const resultBox      = document.getElementById('chargesResult');
-  const errorBox       = document.getElementById('chargesError');
-
-  const resDuty         = document.getElementById('resDuty');
-  const resGct          = document.getElementById('resGct');
-  const resScf          = document.getElementById('resScf');
-  const resEnvl         = document.getElementById('resEnvl');
-  const resCaf          = document.getElementById('resCaf');
-  const resStamp        = document.getElementById('resStamp');
-  const resCustomsTotal = document.getElementById('resCustomsTotal');
-
-  const resFreight      = document.getElementById('resFreight');
-  const resHandling     = document.getElementById('resHandling');
-  const resFreightTotal = document.getElementById('resFreightTotal');
-  const resOther        = document.getElementById('resOther');
-  const resTotal        = document.getElementById('resTotal');
-
-  // ✅ Manual override toggle
-  const lockToggle = document.getElementById('pricingLockedToggle');
-
-  function isLocked() {
-    return !!lockToggle?.checked;
-  }
-  function setLocked(v) {
-    if (lockToggle) lockToggle.checked = !!v;
+    const boxes = tbody.querySelectorAll('.package-checkbox');
+    const checked = tbody.querySelectorAll('.package-checkbox:checked');
+    header.checked = (boxes.length > 0 && boxes.length === checked.length);
   }
 
+  /* ============================================================
+     CHARGES MODAL (single) - FINAL FIXED (NO BLANK MODAL)
+     - Fixes Bootstrap relatedTarget sometimes null
+     - Pulls weight/value from current row inputs (DataTables safe)
+     - Loads category from button OR hidden input
+     - Live sync override fields into hidden inputs for bulk posting
+     ============================================================ */
+  (function initChargesModal() {
+    const chargesModal = document.getElementById('chargesModalSL');
+    if (!chargesModal) return;
 
-  // ✅ remember last clicked trigger so we can recover when relatedTarget is null
-  let lastTriggerBtn = null;
+    const pkgIdInput = document.getElementById('chargesPkgId');
+    const pkgDescInput = document.getElementById('chargesPkgDesc');
+    const weightInput = document.getElementById('chargesWeight');
+    const valueInput = document.getElementById('chargesValue');
+    const categorySelect = document.getElementById('chargesCategory');
 
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('.js-open-charges');
-    if (!btn) return;
-    lastTriggerBtn = btn;
-  },   true); // ✅ capture mode
+    const btnCalc = document.getElementById('btnCalcCharges');
+    const btnApply = document.getElementById('btnApplyToPkg');
+    const resultBox = document.getElementById('chargesResult');
+    const errorBox = document.getElementById('chargesError');
+
+    const resDuty = document.getElementById('resDuty');
+    const resGct = document.getElementById('resGct');
+    const resScf = document.getElementById('resScf');
+    const resEnvl = document.getElementById('resEnvl');
+    const resCaf = document.getElementById('resCaf');
+    const resStamp = document.getElementById('resStamp');
+    const resCustomsTotal = document.getElementById('resCustomsTotal');
+
+    const resFreight = document.getElementById('resFreight');
+    const resHandling = document.getElementById('resHandling');
+    const resFreightTotal = document.getElementById('resFreightTotal');
+    const resOther = document.getElementById('resOther');
+    const resTotal = document.getElementById('resTotal');
+
+    // ✅ Manual override toggle
+    const lockToggle = document.getElementById('pricingLockedToggle');
+
+    function isLocked() {
+      return !!lockToggle?.checked;
+    }
+    function setLocked(v) {
+      if (lockToggle) lockToggle.checked = !!v;
+    }
 
 
-  function numVal(el) {
-    if (!el) return 0;
-    const v = parseFloat(el.value || '0');
-    return isNaN(v) ? 0 : v;
-  }
+    // ✅ remember last clicked trigger so we can recover when relatedTarget is null
+    let lastTriggerBtn = null;
 
-  function setHidden(id, val) {
-    const el = document.getElementById(id);
-    if (el) el.value = Number(val || 0).toFixed(2);
-  }
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.js-open-charges');
+      if (!btn) return;
+      lastTriggerBtn = btn;
+    }, true); // ✅ capture mode
 
-  function syncHiddenOverridesFromModal(pkgId) {
-    if (!pkgId) return;
-    setHidden(`duty_${pkgId}`,     numVal(resDuty));
-    setHidden(`gct_${pkgId}`,      numVal(resGct));
-    setHidden(`scf_${pkgId}`,      numVal(resScf));
-    setHidden(`envl_${pkgId}`,     numVal(resEnvl));
-    setHidden(`caf_${pkgId}`,      numVal(resCaf));
-    setHidden(`stamp_${pkgId}`,    numVal(resStamp));
-    setHidden(`freight_${pkgId}`,  numVal(resFreight));
-    setHidden(`handling_${pkgId}`, numVal(resHandling));
-    setHidden(`other_${pkgId}`,    numVal(resOther));
-  }
 
-  function recalcTotalsFromManual() {
-    const duty  = numVal(resDuty);
-    const gct   = numVal(resGct);
-    const scf   = numVal(resScf);
-    const envl  = numVal(resEnvl);
-    const caf   = numVal(resCaf);
-    const stamp = numVal(resStamp);
+    function numVal(el) {
+      if (!el) return 0;
+      const v = parseFloat(el.value || '0');
+      return isNaN(v) ? 0 : v;
+    }
 
-    const customsTotal = duty + gct + scf + envl + caf + stamp;
-    if (resCustomsTotal) resCustomsTotal.value = customsTotal.toFixed(2);
+    function setHidden(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.value = Number(val || 0).toFixed(2);
+    }
 
-    const freight  = numVal(resFreight);
-    const handling = numVal(resHandling);
-    const other    = numVal(resOther);
+    function syncHiddenOverridesFromModal(pkgId) {
+      if (!pkgId) return;
+      setHidden(`duty_${pkgId}`, numVal(resDuty));
+      setHidden(`gct_${pkgId}`, numVal(resGct));
+      setHidden(`scf_${pkgId}`, numVal(resScf));
+      setHidden(`envl_${pkgId}`, numVal(resEnvl));
+      setHidden(`caf_${pkgId}`, numVal(resCaf));
+      setHidden(`stamp_${pkgId}`, numVal(resStamp));
+      setHidden(`freight_${pkgId}`, numVal(resFreight));
+      setHidden(`handling_${pkgId}`, numVal(resHandling));
+      setHidden(`other_${pkgId}`, numVal(resOther));
+    }
 
-    const freightTotal = freight + handling + other;
-    if (resFreightTotal) resFreightTotal.value = freightTotal.toFixed(2);
+    function recalcTotalsFromManual() {
+      const duty = numVal(resDuty);
+      const gct = numVal(resGct);
+      const scf = numVal(resScf);
+      const envl = numVal(resEnvl);
+      const caf = numVal(resCaf);
+      const stamp = numVal(resStamp);
 
-    const grandTotal = customsTotal + freightTotal;
-    if (resTotal) resTotal.value = grandTotal.toFixed(2);
+      const customsTotal = duty + gct + scf + envl + caf + stamp;
+      if (resCustomsTotal) resCustomsTotal.value = customsTotal.toFixed(2);
 
-    const pkgId = (pkgIdInput?.value || '').trim();
-    syncHiddenOverridesFromModal(pkgId);
-  }
+      const freight = numVal(resFreight);
+      const handling = numVal(resHandling);
+      const other = numVal(resOther);
 
-    [resDuty,resGct,resScf,resEnvl,resCaf,resStamp,resFreight,resHandling,resOther].forEach(el => {
+      const freightTotal = freight + handling + other;
+      if (resFreightTotal) resFreightTotal.value = freightTotal.toFixed(2);
+
+      const grandTotal = customsTotal + freightTotal;
+      if (resTotal) resTotal.value = grandTotal.toFixed(2);
+
+      const pkgId = (pkgIdInput?.value || '').trim();
+      syncHiddenOverridesFromModal(pkgId);
+    }
+
+    [resDuty, resGct, resScf, resEnvl, resCaf, resStamp, resFreight, resHandling, resOther].forEach(el => {
       if (!el) return;
       el.addEventListener('input', () => {
         setLocked(true);          // ✅ if user edits manually, lock it
@@ -1999,345 +2013,345 @@ function updateShipmentHeaderCheckbox() {
     });
 
 
-  // ✅ DT-safe get weight/value from inputs
-  function getRowWeightValue(pkgId) {
-    // normal DOM
-    let wEl = document.getElementById(`weight_${pkgId}`);
-    let vEl = document.getElementById(`value_${pkgId}`);
+    // ✅ DT-safe get weight/value from inputs
+    function getRowWeightValue(pkgId) {
+      // normal DOM
+      let wEl = document.getElementById(`weight_${pkgId}`);
+      let vEl = document.getElementById(`value_${pkgId}`);
 
-    // DataTables fallback
-    if ((!wEl || !vEl) && window.dt && window.jQuery) {
-      const $row = dt.$(`input.package-checkbox[value="${pkgId}"]`).closest('tr');
-      if ($row && $row.length) {
-        if (!wEl) wEl = $row.find(`#weight_${pkgId}`)[0] || $row.find(`[name="weight_${pkgId}"]`)[0];
-        if (!vEl) vEl = $row.find(`#value_${pkgId}`)[0]  || $row.find(`[name="value_${pkgId}"]`)[0];
+      // DataTables fallback
+      if ((!wEl || !vEl) && window.dt && window.jQuery) {
+        const $row = dt.$(`input.package-checkbox[value="${pkgId}"]`).closest('tr');
+        if ($row && $row.length) {
+          if (!wEl) wEl = $row.find(`#weight_${pkgId}`)[0] || $row.find(`[name="weight_${pkgId}"]`)[0];
+          if (!vEl) vEl = $row.find(`#value_${pkgId}`)[0] || $row.find(`[name="value_${pkgId}"]`)[0];
+        }
       }
+
+      const weight = wEl ? (wEl.value || "0") : "0";
+      const value = vEl ? (vEl.value || "0") : "0";
+      return { weight, value };
     }
 
-    const weight = wEl ? (wEl.value || "0") : "0";
-    const value  = vEl ? (vEl.value  || "0") : "0";
-    return { weight, value };
-  }
+    /*
+    // ✅ TEMP DISABLED: modal show handler (can cause blank modal when pkgId isn't set yet)
+    chargesModal.addEventListener('show.bs.modal', function () {
+      const pkgId = (pkgIdInput?.value || '').trim();
+      if (!pkgId) return;
+  
+      const lockedHidden = document.getElementById(`locked_${pkgId}`);
+      setLocked((lockedHidden?.value || '0') === '1');
+  
+      const getHidden = (id) => Number(document.getElementById(id)?.value || 0).toFixed(2);
+  
+      if (resDuty)  resDuty.value  = getHidden(`duty_${pkgId}`);
+      if (resGct)   resGct.value   = getHidden(`gct_${pkgId}`);
+      if (resScf)   resScf.value   = getHidden(`scf_${pkgId}`);
+      if (resEnvl)  resEnvl.value  = getHidden(`envl_${pkgId}`);
+      if (resCaf)   resCaf.value   = getHidden(`caf_${pkgId}`);
+      if (resStamp) resStamp.value = getHidden(`stamp_${pkgId}`);
+      if (resFreight)  resFreight.value  = getHidden(`freight_${pkgId}`);
+      if (resHandling) resHandling.value = getHidden(`handling_${pkgId}`);
+      if (resOther)    resOther.value    = getHidden(`other_${pkgId}`);
+  
+      recalcTotalsFromManual();
+  
+      if (errorBox) { errorBox.style.display = 'none'; errorBox.textContent = ''; }
+      if (resultBox) resultBox.style.display = 'block';
+      if (btnApply) btnApply.style.display = 'inline-block';
+    });
+    */
 
-  /*
-  // ✅ TEMP DISABLED: modal show handler (can cause blank modal when pkgId isn't set yet)
-  chargesModal.addEventListener('show.bs.modal', function () {
-    const pkgId = (pkgIdInput?.value || '').trim();
-    if (!pkgId) return;
+    btnCalc?.addEventListener('click', async function () {
+      const category = (categorySelect?.value || 'Other');
+      const pkgId = (pkgIdInput?.value || '').trim();
+      if (!pkgId) return;
 
-    const lockedHidden = document.getElementById(`locked_${pkgId}`);
-    setLocked((lockedHidden?.value || '0') === '1');
+      if (isLocked()) {
+        alert("Manual override is ON. Turn it OFF to auto-calculate.");
+        return;
+      }
 
-    const getHidden = (id) => Number(document.getElementById(id)?.value || 0).toFixed(2);
+      // ✅ USE WHAT'S IN THE MODAL (do NOT pull from table here)
+      const weight = Number(weightInput?.value || 0);
+      const value = Number(valueInput?.value || 0);
 
-    if (resDuty)  resDuty.value  = getHidden(`duty_${pkgId}`);
-    if (resGct)   resGct.value   = getHidden(`gct_${pkgId}`);
-    if (resScf)   resScf.value   = getHidden(`scf_${pkgId}`);
-    if (resEnvl)  resEnvl.value  = getHidden(`envl_${pkgId}`);
-    if (resCaf)   resCaf.value   = getHidden(`caf_${pkgId}`);
-    if (resStamp) resStamp.value = getHidden(`stamp_${pkgId}`);
-    if (resFreight)  resFreight.value  = getHidden(`freight_${pkgId}`);
-    if (resHandling) resHandling.value = getHidden(`handling_${pkgId}`);
-    if (resOther)    resOther.value    = getHidden(`other_${pkgId}`);
 
-    recalcTotalsFromManual();
+      try {
+        const res = await fetch("{{ url_for('logistics.api_calculate_charges') }}", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+            "X-CSRFToken": "{{ csrf_token() }}"
+          },
+          body: JSON.stringify({
+            category: category,
+            weight: Number(weight || 0),
+            invoice_usd: Number(value || 0)
+          })
+        });
 
-    if (errorBox) { errorBox.style.display = 'none'; errorBox.textContent = ''; }
-    if (resultBox) resultBox.style.display = 'block';
-    if (btnApply) btnApply.style.display = 'inline-block';
-  });
-  */
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
 
-  btnCalc?.addEventListener('click', async function () {
-    const category = (categorySelect?.value || 'Other');
-    const pkgId    = (pkgIdInput?.value || '').trim();
-    if (!pkgId) return;
- 
-    if (isLocked()) {
-      alert("Manual override is ON. Turn it OFF to auto-calculate.");
-      return;
+        const pick = (obj, keys, fallback = 0) => {
+          for (const k of keys) {
+            if (obj && obj[k] != null && obj[k] !== "") return Number(obj[k]);
+          }
+          return fallback;
+        };
+        const fmt = (x) => Number(x || 0).toFixed(2);
+
+        // customs
+        if (resDuty) resDuty.value = fmt(pick(d, ['duty']));
+        if (resGct) resGct.value = fmt(pick(d, ['gct']));
+        if (resScf) resScf.value = fmt(pick(d, ['scf']));
+        if (resEnvl) resEnvl.value = fmt(pick(d, ['envl']));
+        if (resCaf) resCaf.value = fmt(pick(d, ['caf']));
+        if (resStamp) resStamp.value = fmt(pick(d, ['stamp']));
+
+        // freight/handling keys vary across versions
+        if (resFreight) resFreight.value = fmt(pick(d, ['freight_fee', 'freight']));
+        if (resHandling) resHandling.value = fmt(pick(d, ['handling_fee', 'handling', 'storage_fee']));
+        if (resOther) resOther.value = fmt(pick(d, ['other_charges', 'other', 'other_fee'], 0));
+
+
+        recalcTotalsFromManual();
+
+        if (errorBox) errorBox.style.display = 'none';
+        if (resultBox) resultBox.style.display = 'block';
+        if (btnApply) btnApply.style.display = 'inline-block';
+
+      } catch (err) {
+        console.error(err);
+        if (errorBox) {
+          errorBox.textContent = "Failed to calculate charges: " + (err.message || err);
+          errorBox.style.display = 'block';
+        }
+        if (resultBox) resultBox.style.display = 'none';
+        if (btnApply) btnApply.style.display = 'none';
+      }
+    });
+
+    btnApply?.addEventListener('click', async function () {
+      const pkgId = (pkgIdInput?.value || '').trim();
+      if (!pkgId) return;
+
+      const cat = (categorySelect?.value || 'Other');
+      const catHidden = document.getElementById(`category_${pkgId}`);
+      if (catHidden) catHidden.value = cat;
+
+      recalcTotalsFromManual();
+
+      const payload = {
+        category: cat,
+        value: numVal(valueInput),
+        weight: numVal(weightInput),
+
+        duty: numVal(resDuty),
+        gct: numVal(resGct),
+        scf: numVal(resScf),
+        envl: numVal(resEnvl),
+        caf: numVal(resCaf),
+        stamp: numVal(resStamp),
+
+        customs_total: numVal(resCustomsTotal),
+
+        freight: numVal(resFreight),
+        handling: numVal(resHandling),
+        other_charges: numVal(resOther),
+
+        freight_total: numVal(resFreightTotal),
+        grand_total: numVal(resTotal),
+
+        amount_due: numVal(resTotal),
+        pricing_locked: isLocked(),
+        force: true
+      };
+
+      // update visible row inputs (SAFE - no optional chaining on assignment)
+      const amountEl = document.getElementById(`amount_due_${pkgId}`);
+      if (amountEl) amountEl.value = payload.amount_due.toFixed(2);
+
+      const valueEl = document.getElementById(`value_${pkgId}`);
+      if (valueEl) valueEl.value = payload.value.toFixed(2);
+
+      const weightEl = document.getElementById(`weight_${pkgId}`);
+      if (weightEl) weightEl.value = payload.weight.toFixed(2);
+
+
+      // sync hidden override fields
+      setHidden(`duty_${pkgId}`, payload.duty);
+      setHidden(`gct_${pkgId}`, payload.gct);
+      setHidden(`scf_${pkgId}`, payload.scf);
+      setHidden(`envl_${pkgId}`, payload.envl);
+      setHidden(`caf_${pkgId}`, payload.caf);
+      setHidden(`stamp_${pkgId}`, payload.stamp);
+      setHidden(`freight_${pkgId}`, payload.freight);
+      setHidden(`handling_${pkgId}`, payload.handling);
+      setHidden(`other_${pkgId}`, payload.other_charges);
+
+      const updateUrl = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace(/\/0$/, `/${pkgId}`);
+
+      try {
+        const res = await fetch(updateUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok || out.ok === false) throw new Error(out.error || `HTTP ${res.status}`);
+
+        // ✅ remember lock state in the row for next time modal opens
+        const lockedEl = document.getElementById(`locked_${pkgId}`);
+        if (lockedEl) lockedEl.value = payload.pricing_locked ? '1' : '0';
+
+        alert(`Saved charges for package ${pkgId}.`);
+        bootstrap.Modal.getInstance(chargesModal)?.hide();
+      } catch (err) {
+        console.error(err);
+        alert('⚠️ Error saving charges for this package.');
+      }
+    });
+
+  })();
+
+  // ===============================
+  // BULK INVOICE FINALIZE (GLOBAL) - robust
+  // supports: {selections:[{user_id, package_ids}]} OR {package_ids:[...]} OR {user_ids:[...]}
+  // handles non-JSON responses safely
+  // ===============================
+  window.finalizeInvoicesFromModal = async function (e) {
+    if (e) e.preventDefault();
+
+    const btn = document.getElementById("btn-finalize-invoices");
+    const oldText = btn ? btn.innerText : "";
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerText = "Generating…";
     }
-
-    // ✅ USE WHAT'S IN THE MODAL (do NOT pull from table here)
-    const weight = Number(weightInput?.value || 0);
-    const value  = Number(valueInput?.value  || 0);
-
 
     try {
-      const res = await fetch("{{ url_for('logistics.api_calculate_charges') }}", {
+      const checks = Array.from(
+        document.querySelectorAll("#inv-prev-tbody .inv-user:checked")
+      );
+
+      if (!checks.length) {
+        alert("⚠️ Please select at least one customer.");
+        return;
+      }
+
+      // Build selections (per-user)
+      const selections = checks
+        .map(cb => ({
+          user_id: Number(cb.dataset.uid || 0),
+          package_ids: String(cb.dataset.pkgs || "")
+            .split(",")
+            .map(x => parseInt(x, 10))
+            .filter(n => Number.isFinite(n) && n > 0)
+        }))
+        .filter(x => x.user_id && x.package_ids.length);
+
+      if (!selections.length) {
+        alert("⚠️ Nothing to invoice (missing package ids).");
+        return;
+      }
+
+      // Also build a flat package_ids list (for backends that expect it)
+      const package_ids = Array.from(
+        new Set(selections.flatMap(s => s.package_ids))
+      );
+
+      const url = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
+
+      let res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-CSRFToken": "{{ csrf_token() }}"
+          "X-CSRFToken": "{{ csrf_token() }}",
+          "X-Requested-With": "XMLHttpRequest"
         },
-        body: JSON.stringify({
-          category: category,
-          weight: Number(weight || 0),
-          invoice_usd: Number(value || 0)
-        })
+        body: JSON.stringify({ selections, package_ids, shipment_id: getShipmentIdFromUrl() })
       });
 
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      let data = null;
 
-      const pick = (obj, keys, fallback=0) => {
-        for (const k of keys) {
-          if (obj && obj[k] != null && obj[k] !== "") return Number(obj[k]);
+      if (ct.includes("application/json")) {
+        data = await res.json().catch(() => null);
+      } else {
+        const txt = await res.text().catch(() => "");
+        if (!res.ok) {
+          throw new Error(txt || `Finalize failed (HTTP ${res.status})`);
         }
-        return fallback;
-      };
-      const fmt = (x) => Number(x || 0).toFixed(2);
-
-      // customs
-      if (resDuty)  resDuty.value  = fmt(pick(d, ['duty']));
-      if (resGct)   resGct.value   = fmt(pick(d, ['gct']));
-      if (resScf)   resScf.value   = fmt(pick(d, ['scf']));
-      if (resEnvl)  resEnvl.value  = fmt(pick(d, ['envl']));
-      if (resCaf)   resCaf.value   = fmt(pick(d, ['caf']));
-      if (resStamp) resStamp.value = fmt(pick(d, ['stamp']));
-
-      // freight/handling keys vary across versions
-      if (resFreight)  resFreight.value  = fmt(pick(d, ['freight_fee', 'freight']));
-      if (resHandling) resHandling.value = fmt(pick(d, ['handling_fee', 'handling', 'storage_fee']));
-      if (resOther)    resOther.value    = fmt(pick(d, ['other_charges', 'other', 'other_fee'], 0));
-
-
-      recalcTotalsFromManual();
-
-      if (errorBox) errorBox.style.display = 'none';
-      if (resultBox) resultBox.style.display = 'block';
-      if (btnApply) btnApply.style.display = 'inline-block';
-
-    } catch (err) {
-      console.error(err);
-      if (errorBox) {
-        errorBox.textContent = "Failed to calculate charges: " + (err.message || err);
-        errorBox.style.display = 'block';
+        data = { ok: true };
       }
-      if (resultBox) resultBox.style.display = 'none';
-      if (btnApply) btnApply.style.display = 'none';
-    }
-  });
 
-  btnApply?.addEventListener('click', async function () {
-    const pkgId = (pkgIdInput?.value || '').trim();
-    if (!pkgId) return;
+      if (!res.ok || (data && data.ok === false)) {
+        throw new Error(
+          (data && data.error) || `Finalize failed (HTTP ${res.status})`
+        );
+      }
 
-    const cat = (categorySelect?.value || 'Other');
-    const catHidden = document.getElementById(`category_${pkgId}`);
-    if (catHidden) catHidden.value = cat;
+      const modalEl = document.getElementById("bulkInvoicePreviewModal");
+      if (modalEl) {
+        bootstrap.Modal.getInstance(modalEl)?.hide();
+      }
 
-    recalcTotalsFromManual();
+      // ✅ show prompt first
+      if (data && data.message) {
+        alert(data.message);
+      }
 
-    const payload = {
-      category: cat,
-      value:    numVal(valueInput),
-      weight:   numVal(weightInput),
-
-      duty:          numVal(resDuty),
-      gct:           numVal(resGct),
-      scf:           numVal(resScf),
-      envl:          numVal(resEnvl),
-      caf:           numVal(resCaf),
-      stamp:         numVal(resStamp),
-
-      customs_total: numVal(resCustomsTotal),
-
-      freight:       numVal(resFreight),
-      handling:      numVal(resHandling),
-      other_charges: numVal(resOther),
-
-      freight_total: numVal(resFreightTotal),
-      grand_total:   numVal(resTotal),
-
-      amount_due:    numVal(resTotal),
-      pricing_locked: isLocked(),
-      force: true
-    };
-
-    // update visible row inputs (SAFE - no optional chaining on assignment)
-    const amountEl = document.getElementById(`amount_due_${pkgId}`);
-    if (amountEl) amountEl.value = payload.amount_due.toFixed(2);
-
-    const valueEl = document.getElementById(`value_${pkgId}`);
-    if (valueEl) valueEl.value = payload.value.toFixed(2);
-
-    const weightEl = document.getElementById(`weight_${pkgId}`);
-    if (weightEl) weightEl.value = payload.weight.toFixed(2);
+      // Redirect if provided
+      if (data && data.redirect_url) {
+        window.location.href = data.redirect_url;
+      } else {
+        window.location.reload();
+      }
 
 
-    // sync hidden override fields
-    setHidden(`duty_${pkgId}`, payload.duty);
-    setHidden(`gct_${pkgId}`, payload.gct);
-    setHidden(`scf_${pkgId}`, payload.scf);
-    setHidden(`envl_${pkgId}`, payload.envl);
-    setHidden(`caf_${pkgId}`, payload.caf);
-    setHidden(`stamp_${pkgId}`, payload.stamp);
-    setHidden(`freight_${pkgId}`, payload.freight);
-    setHidden(`handling_${pkgId}`, payload.handling);
-    setHidden(`other_${pkgId}`, payload.other_charges);
-
-    const updateUrl = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace(/\/0$/, `/${pkgId}`);
-
-    try {
-      const res = await fetch(updateUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': '{{ csrf_token() }}'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok || out.ok === false) throw new Error(out.error || `HTTP ${res.status}`);
-
-      // ✅ remember lock state in the row for next time modal opens
-      const lockedEl = document.getElementById(`locked_${pkgId}`);
-      if (lockedEl) lockedEl.value = payload.pricing_locked ? '1' : '0';
-
-      alert(`Saved charges for package ${pkgId}.`);
-      bootstrap.Modal.getInstance(chargesModal)?.hide();
     } catch (err) {
       console.error(err);
-      alert('⚠️ Error saving charges for this package.');
+      alert("⚠️ Could not generate invoices.\n\n" + (err?.message || err));
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerText = oldText;
+      }
     }
-  });
+  };
 
-})();
-
-// ===============================
-// BULK INVOICE FINALIZE (GLOBAL) - robust
-// supports: {selections:[{user_id, package_ids}]} OR {package_ids:[...]} OR {user_ids:[...]}
-// handles non-JSON responses safely
-// ===============================
-window.finalizeInvoicesFromModal = async function (e) {
-  if (e) e.preventDefault();
-
-  const btn = document.getElementById("btn-finalize-invoices");
-  const oldText = btn ? btn.innerText : "";
-
-  if (btn) {
-    btn.disabled = true;
-    btn.innerText = "Generating…";
-  }
-
-  try {
-    const checks = Array.from(
-      document.querySelectorAll("#inv-prev-tbody .inv-user:checked")
-    );
-
-    if (!checks.length) {
-      alert("⚠️ Please select at least one customer.");
-      return;
-    }
-
-    // Build selections (per-user)
-    const selections = checks
-      .map(cb => ({
-        user_id: Number(cb.dataset.uid || 0),
-        package_ids: String(cb.dataset.pkgs || "")
-          .split(",")
-          .map(x => parseInt(x, 10))
-          .filter(n => Number.isFinite(n) && n > 0)
-      }))
-      .filter(x => x.user_id && x.package_ids.length);
-
-    if (!selections.length) {
-      alert("⚠️ Nothing to invoice (missing package ids).");
-      return;
-    }
-
-    // Also build a flat package_ids list (for backends that expect it)
-    const package_ids = Array.from(
-      new Set(selections.flatMap(s => s.package_ids))
-    );
-
-    const url = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
-
-    let res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "X-CSRFToken": "{{ csrf_token() }}",
-        "X-Requested-With": "XMLHttpRequest"
-      },
-      body: JSON.stringify({ selections, package_ids, shipment_id: getShipmentIdFromUrl() })
+  /* ==========================
+     SHIPMENT SEARCH MODAL
+     ========================== */
+  document.getElementById('shipmentSearchForm')?.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const params = new URLSearchParams(new FormData(this));
+    const res = await fetch('{{ url_for("logistics.search_shipment_packages") }}?' + params.toString(), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
+    const data = await res.json();
 
-    const ct = (res.headers.get("content-type") || "").toLowerCase();
-    let data = null;
+    const tbody = document.querySelector('#shipmentSearchResults tbody');
+    tbody.innerHTML = '';
 
-    if (ct.includes("application/json")) {
-      data = await res.json().catch(() => null);
-    } else {
-      const txt = await res.text().catch(() => "");
-      if (!res.ok) {
-        throw new Error(txt || `Finalize failed (HTTP ${res.status})`);
-      }
-      data = { ok: true };
+    if (!data.rows || !data.rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-muted">No results.</td></tr>';
+      return;
     }
 
-    if (!res.ok || (data && data.ok === false)) {
-      throw new Error(
-        (data && data.error) || `Finalize failed (HTTP ${res.status})`
-      );
-    }
-
-    const modalEl = document.getElementById("bulkInvoicePreviewModal");
-    if (modalEl) {
-      bootstrap.Modal.getInstance(modalEl)?.hide();
-    }
-
-    // ✅ show prompt first
-    if (data && data.message) {
-      alert(data.message);
-    }
-
-    // Redirect if provided
-    if (data && data.redirect_url) {
-      window.location.href = data.redirect_url;
-    } else {
-      window.location.reload();
-    }
-
-
-  } catch (err) {
-    console.error(err);
-    alert("⚠️ Could not generate invoices.\n\n" + (err?.message || err));
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerText = oldText;
-    }
-  }
-};
-
-/* ==========================
-   SHIPMENT SEARCH MODAL
-   ========================== */
-document.getElementById('shipmentSearchForm')?.addEventListener('submit', async function (e) {
-  e.preventDefault();
-  const params = new URLSearchParams(new FormData(this));
-  const res = await fetch('{{ url_for("logistics.search_shipment_packages") }}?' + params.toString(), {
-    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-  });
-  const data = await res.json();
-
-  const tbody = document.querySelector('#shipmentSearchResults tbody');
-  tbody.innerHTML = '';
-
-  if (!data.rows || !data.rows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-muted">No results.</td></tr>';
-    return;
-  }
-
-  for (const r of data.rows) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
+    for (const r of data.rows) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
       <td>${r.full_name || '-'}</td>
       <td>${r.registration_number || '-'}</td>
       <td>${r.tracking_number || '-'}</td>
@@ -2345,156 +2359,156 @@ document.getElementById('shipmentSearchForm')?.addEventListener('submit', async 
       <td>${r.description || '-'}</td>
       <td>${r.sl_id || '-'}</td>
     `;
-    tbody.appendChild(tr);
-  }
-});
+      tbody.appendChild(tr);
+    }
+  });
 
-/*
-window.openChargesModal = function (btn) {
-  const chargesModal = document.getElementById('chargesModalSL');
-  if (!chargesModal || !btn) return;
+  /*
+  window.openChargesModal = function (btn) {
+    const chargesModal = document.getElementById('chargesModalSL');
+    if (!chargesModal || !btn) return;
+  
+    const pkgIdInput   = document.getElementById('chargesPkgId');
+    const pkgDescInput = document.getElementById('chargesPkgDesc');
+    const weightInput  = document.getElementById('chargesWeight');
+    const valueInput   = document.getElementById('chargesValue');
+    const catSelect    = document.getElementById('chargesCategory');
+    const lockToggle   = document.getElementById('pricingLockedToggle');
+  
+    const pkgId = (btn.getAttribute('data-pkg-id') || '').trim();
+    const desc  = (btn.getAttribute('data-desc') || '').trim();
+    const cat   = (btn.getAttribute('data-category') || 'Other').trim();
+  
+    if (pkgIdInput) pkgIdInput.value = pkgId;
+    if (pkgDescInput) pkgDescInput.value = desc;
+    if (catSelect) catSelect.value = cat || 'Other';
+  
+    const tr = btn.closest('tr');
+    const wEl = tr?.querySelector(`#weight_${pkgId}`) || document.getElementById(`weight_${pkgId}`);
+    const vEl = tr?.querySelector(`#value_${pkgId}`)  || document.getElementById(`value_${pkgId}`);
+  
+    if (weightInput) weightInput.value = wEl ? (wEl.value || "0") : "0";
+    if (valueInput)  valueInput.value  = vEl ? (vEl.value || "0") : "0";
+  
+    const lockedHidden = document.getElementById(`locked_${pkgId}`);
+    if (lockToggle) lockToggle.checked = (lockedHidden?.value || '0') === '1';
+  
+    bootstrap.Modal.getOrCreateInstance(chargesModal).show();
+  };
+  */
 
-  const pkgIdInput   = document.getElementById('chargesPkgId');
-  const pkgDescInput = document.getElementById('chargesPkgDesc');
-  const weightInput  = document.getElementById('chargesWeight');
-  const valueInput   = document.getElementById('chargesValue');
-  const catSelect    = document.getElementById('chargesCategory');
-  const lockToggle   = document.getElementById('pricingLockedToggle');
+  /* ============================================================
+     HOTFIX: Always populate charges modal on click
+     - Works even when Bootstrap relatedTarget is missing
+     - Works even when DataTables swaps DOM rows
+     - Also fixes Select All with DataTables
+     ============================================================ */
 
-  const pkgId = (btn.getAttribute('data-pkg-id') || '').trim();
-  const desc  = (btn.getAttribute('data-desc') || '').trim();
-  const cat   = (btn.getAttribute('data-category') || 'Other').trim();
+  (function hotfixChargesAndSelectAll() {
+    // ---------- CHARGES MODAL POPULATE ----------
+    const modalEl = document.getElementById('chargesModalSL');
+    if (modalEl) {
+      const pkgIdInput = document.getElementById('chargesPkgId');
+      const pkgDescInput = document.getElementById('chargesPkgDesc');
+      const weightInput = document.getElementById('chargesWeight');
+      const valueInput = document.getElementById('chargesValue');
+      const categorySelect = document.getElementById('chargesCategory');
 
-  if (pkgIdInput) pkgIdInput.value = pkgId;
-  if (pkgDescInput) pkgDescInput.value = desc;
-  if (catSelect) catSelect.value = cat || 'Other';
+      function findRowByPkgId(pkgId) {
+        // normal DOM
+        let tr = document.querySelector(`input.package-checkbox[value="${pkgId}"]`)?.closest('tr');
+        if (tr) return tr;
 
-  const tr = btn.closest('tr');
-  const wEl = tr?.querySelector(`#weight_${pkgId}`) || document.getElementById(`weight_${pkgId}`);
-  const vEl = tr?.querySelector(`#value_${pkgId}`)  || document.getElementById(`value_${pkgId}`);
-
-  if (weightInput) weightInput.value = wEl ? (wEl.value || "0") : "0";
-  if (valueInput)  valueInput.value  = vEl ? (vEl.value || "0") : "0";
-
-  const lockedHidden = document.getElementById(`locked_${pkgId}`);
-  if (lockToggle) lockToggle.checked = (lockedHidden?.value || '0') === '1';
-
-  bootstrap.Modal.getOrCreateInstance(chargesModal).show();
-};
-*/
-
-/* ============================================================
-   HOTFIX: Always populate charges modal on click
-   - Works even when Bootstrap relatedTarget is missing
-   - Works even when DataTables swaps DOM rows
-   - Also fixes Select All with DataTables
-   ============================================================ */
-
-(function hotfixChargesAndSelectAll(){
-  // ---------- CHARGES MODAL POPULATE ----------
-  const modalEl = document.getElementById('chargesModalSL');
-  if (modalEl) {
-    const pkgIdInput     = document.getElementById('chargesPkgId');
-    const pkgDescInput   = document.getElementById('chargesPkgDesc');
-    const weightInput    = document.getElementById('chargesWeight');
-    const valueInput     = document.getElementById('chargesValue');
-    const categorySelect = document.getElementById('chargesCategory');
-
-    function findRowByPkgId(pkgId) {
-      // normal DOM
-      let tr = document.querySelector(`input.package-checkbox[value="${pkgId}"]`)?.closest('tr');
-      if (tr) return tr;
-
-      // DataTables: search all row nodes
-      if (window.dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-        const nodes = dt.rows().nodes().toArray();
-        for (const n of nodes) {
-          const cb = n.querySelector(`input.package-checkbox[value="${pkgId}"]`);
-          if (cb) return n;
+        // DataTables: search all row nodes
+        if (window.dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+          const nodes = dt.rows().nodes().toArray();
+          for (const n of nodes) {
+            const cb = n.querySelector(`input.package-checkbox[value="${pkgId}"]`);
+            if (cb) return n;
+          }
         }
+        return null;
       }
-      return null;
+
+      function populateFromButton(btn) {
+        const pkgId = (btn.getAttribute('data-pkg-id') || '').trim();
+        const desc = (btn.getAttribute('data-desc') || '').trim();
+        const catBtn = (btn.getAttribute('data-category') || '').trim();
+
+        if (!pkgId) return;
+
+        if (pkgIdInput) pkgIdInput.value = pkgId;
+        if (pkgDescInput) pkgDescInput.value = desc;
+
+        // category
+        const catHidden = document.getElementById(`category_${pkgId}`);
+        const catRow = (catHidden?.value || '').trim();
+        if (categorySelect) categorySelect.value = catBtn || catRow || 'Other';
+
+        // weight/value from row inputs (DT safe)
+        const row = findRowByPkgId(pkgId);
+
+        const wEl = row?.querySelector(`#weight_${pkgId}`) || document.getElementById(`weight_${pkgId}`);
+        const vEl = row?.querySelector(`#value_${pkgId}`) || document.getElementById(`value_${pkgId}`);
+
+        if (weightInput) weightInput.value = (wEl?.value ?? '0');
+        if (valueInput) valueInput.value = (vEl?.value ?? '0');
+      }
+
+      // Populate BEFORE Bootstrap opens modal
+      document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.js-open-charges');
+        if (!btn) return;
+        populateFromButton(btn);
+      }, true);
     }
 
-    function populateFromButton(btn) {
-      const pkgId = (btn.getAttribute('data-pkg-id') || '').trim();
-      const desc  = (btn.getAttribute('data-desc') || '').trim();
-      const catBtn = (btn.getAttribute('data-category') || '').trim();
+    // ---------- SELECT ALL FIX (DataTables safe) ----------
+    document.addEventListener('change', function (e) {
+      const master = e.target;
+      if (!master || master.id !== 'selectAll') return;
 
-      if (!pkgId) return;
+      const checked = !!master.checked;
 
-      if (pkgIdInput)   pkgIdInput.value = pkgId;
-      if (pkgDescInput) pkgDescInput.value = desc;
-
-      // category
-      const catHidden = document.getElementById(`category_${pkgId}`);
-      const catRow = (catHidden?.value || '').trim();
-      if (categorySelect) categorySelect.value = catBtn || catRow || 'Other';
-
-      // weight/value from row inputs (DT safe)
-      const row = findRowByPkgId(pkgId);
-
-      const wEl = row?.querySelector(`#weight_${pkgId}`) || document.getElementById(`weight_${pkgId}`);
-      const vEl = row?.querySelector(`#value_${pkgId}`)  || document.getElementById(`value_${pkgId}`);
-
-      if (weightInput) weightInput.value = (wEl?.value ?? '0');
-      if (valueInput)  valueInput.value  = (vEl?.value ?? '0');
-    }
-
-    // Populate BEFORE Bootstrap opens modal
-    document.addEventListener('click', function (e) {
-      const btn = e.target.closest('.js-open-charges');
-      if (!btn) return;
-      populateFromButton(btn);
+      if (window.dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
+        // select across all DT rows
+        dt.rows().nodes().to$().find('.package-checkbox').prop('checked', checked);
+      } else {
+        document.querySelectorAll('#shipmentTable .package-checkbox').forEach(cb => cb.checked = checked);
+      }
     }, true);
-  }
 
-  // ---------- SELECT ALL FIX (DataTables safe) ----------
-  document.addEventListener('change', function(e){
-    const master = e.target;
-    if (!master || master.id !== 'selectAll') return;
+  })();
 
-    const checked = !!master.checked;
+  /* ================================
+     BULK INVOICE PREVIEW + FINALIZE
+  ================================ */
 
-    if (window.dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-      // select across all DT rows
-      dt.rows().nodes().to$().find('.package-checkbox').prop('checked', checked);
-    } else {
-      document.querySelectorAll('#shipmentTable .package-checkbox').forEach(cb => cb.checked = checked);
+  async function openInvoicePreview(selectedPkgIds) {
+
+    const data = await postJSON(
+      "{{ url_for('logistics.bulk_invoice_preview') }}",
+      { package_ids: selectedPkgIds }
+    );
+
+    const tbody = document.querySelector('#inv-prev-tbody');
+
+    if (!tbody) {
+      alert('Preview table body #inv-prev-tbody not found in DOM.');
+      return;
     }
-  }, true);
 
-})();
+    tbody.innerHTML = '';
 
-/* ================================
-   BULK INVOICE PREVIEW + FINALIZE
-================================ */
+    let grand = 0;
 
-async function openInvoicePreview(selectedPkgIds) {
+    for (const row of (data.rows || [])) {
 
-  const data = await postJSON(
-    "{{ url_for('logistics.bulk_invoice_preview') }}",
-    { package_ids: selectedPkgIds }
-  );
+      grand += Number(row.total_due || 0);
 
-  const tbody = document.querySelector('#inv-prev-tbody');
+      const tr = document.createElement('tr');
 
-  if (!tbody) {
-    alert('Preview table body #inv-prev-tbody not found in DOM.');
-    return;
-  }
-
-  tbody.innerHTML = '';
-
-  let grand = 0;
-
-  for (const row of (data.rows || [])) {
-
-    grand += Number(row.total_due || 0);
-
-    const tr = document.createElement('tr');
-
-    tr.innerHTML = `
+      tr.innerHTML = `
       <td>
         <input type="checkbox"
                class="inv-user"
@@ -2514,11 +2528,11 @@ async function openInvoicePreview(selectedPkgIds) {
       </td>
     `;
 
-    tbody.appendChild(tr);
-  }
+      tbody.appendChild(tr);
+    }
 
-  if (!(data.rows || []).length) {
-    tbody.innerHTML = `
+    if (!(data.rows || []).length) {
+      tbody.innerHTML = `
       <tr>
         <td colspan="4" class="text-muted">
           No eligible packages to invoice
@@ -2526,87 +2540,87 @@ async function openInvoicePreview(selectedPkgIds) {
         </td>
       </tr>
     `;
+    }
+
+    const totalCell = document.getElementById('inv-prev-total');
+    if (totalCell) {
+      totalCell.textContent = grand.toFixed(2);
+    }
+
+    const note = document.getElementById('detained-note');
+    if (note) {
+      const parts = [];
+
+      if (data.detained_skipped)
+        parts.push(`• ${data.detained_skipped} detained package(s) skipped`);
+
+      if (data.already_invoiced_skipped)
+        parts.push(`• ${data.already_invoiced_skipped} already-invoiced package(s) skipped`);
+
+      note.textContent = parts.join(' ');
+    }
+
+    const modalEl = document.getElementById('bulkInvoicePreviewModal');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
   }
 
-  const totalCell = document.getElementById('inv-prev-total');
-  if (totalCell) {
-    totalCell.textContent = grand.toFixed(2);
-  }
+  /* =====================================
+     SHIPMENT FINANCE INVOICE (OPTION A)
+  ===================================== */
 
-  const note = document.getElementById('detained-note');
-  if (note) {
-    const parts = [];
+  function openShipmentFinanceInvoiceModalWithHtml(html) {
+    const bodyEl = document.getElementById('shipmentFinanceInvoiceBody');
+    if (bodyEl) bodyEl.innerHTML = html;
 
-    if (data.detained_skipped)
-      parts.push(`• ${data.detained_skipped} detained package(s) skipped`);
-
-    if (data.already_invoiced_skipped)
-      parts.push(`• ${data.already_invoiced_skipped} already-invoiced package(s) skipped`);
-
-    note.textContent = parts.join(' ');
-  }
-
-  const modalEl = document.getElementById('bulkInvoicePreviewModal');
-  const modal = new bootstrap.Modal(modalEl);
-  modal.show();
-}
-
-/* =====================================
-   SHIPMENT FINANCE INVOICE (OPTION A)
-===================================== */
-
-function openShipmentFinanceInvoiceModalWithHtml(html) {
-  const bodyEl = document.getElementById('shipmentFinanceInvoiceBody');
-  if (bodyEl) bodyEl.innerHTML = html;
-
-  const modalEl = document.getElementById('shipmentFinanceInvoiceModal');
-  if (!modalEl) {
-    alert("Shipment finance invoice modal not found.");
-    return;
-  }
-
-  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-  modal.show();
-}
-
-
-async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
-
-  const url = "{{ url_for('logistics.shipment_finance_invoice_preview_json', shipment_id=0) }}"
-    .replace("/0/", `/${shipmentId}/`);
-
-  try {
-
-    const r = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRFToken": "{{ csrf_token() }}",
-        "X-Requested-With": "XMLHttpRequest"
-      },
-      body: JSON.stringify({ package_ids: packageIds || [] })
-    });
-
-    const data = await r.json();
-
-    if (!r.ok || !data.ok) {
-      console.error("Finance preview-json failed:", r.status, data);
-      alert(`⚠️ Finance invoice preview failed (${r.status}). ${data.error || ""}`);
+    const modalEl = document.getElementById('shipmentFinanceInvoiceModal');
+    if (!modalEl) {
+      alert("Shipment finance invoice modal not found.");
       return;
     }
 
-    const fmt2 = (n) => Number(n || 0).toFixed(2);
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+  }
 
-    const usd_to_jmd     = Number(data.usd_to_jmd || 0);
-    const pkgCount       = Number(data.package_count || 0);
-    const freightUsd     = Number(data.freight_usd || 0);
-    const freightJmd     = freightUsd * usd_to_jmd;
-    const rateUsdPerKg   = Number(data.rate_usd_per_kg || 0);
 
-    let rowsHtml = "";
+  async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
 
-    /* ===== Freight Row ===== */
-    rowsHtml += `
+    const url = "{{ url_for('logistics.shipment_finance_invoice_preview_json', shipment_id=0) }}"
+      .replace("/0/", `/${shipmentId}/`);
+
+    try {
+
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": "{{ csrf_token() }}",
+          "X-Requested-With": "XMLHttpRequest"
+        },
+        body: JSON.stringify({ package_ids: packageIds || [] })
+      });
+
+      const data = await r.json();
+
+      if (!r.ok || !data.ok) {
+        console.error("Finance preview-json failed:", r.status, data);
+        alert(`⚠️ Finance invoice preview failed (${r.status}). ${data.error || ""}`);
+        return;
+      }
+
+      const fmt2 = (n) => Number(n || 0).toFixed(2);
+
+      const usd_to_jmd = Number(data.usd_to_jmd || 0);
+      const pkgCount = Number(data.package_count || 0);
+      const freightUsd = Number(data.freight_usd || 0);
+      const freightJmd = freightUsd * usd_to_jmd;
+      const rateUsdPerKg = Number(data.rate_usd_per_kg || 0);
+
+      let rowsHtml = "";
+
+      /* ===== Freight Row ===== */
+      rowsHtml += `
       <tr>
         <td><strong>Freight</strong></td>
         <td class="text-end">${pkgCount}</td>
@@ -2616,21 +2630,21 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
       </tr>
     `;
 
-    /* ===== Service Bands ===== */
-    let serviceUsdSum = 0;
-    let serviceJmdSum = 0;
+      /* ===== Service Bands ===== */
+      let serviceUsdSum = 0;
+      let serviceJmdSum = 0;
 
-    (data.service_bands || []).forEach(b => {
+      (data.service_bands || []).forEach(b => {
 
-      const count    = Number(b.count || 0);
-      const rateUsd  = Number(b.rate_usd || 0);
-      const lineUsd  = Number(b.line_usd || 0);
-      const lineJmd  = lineUsd * usd_to_jmd;
+        const count = Number(b.count || 0);
+        const rateUsd = Number(b.rate_usd || 0);
+        const lineUsd = Number(b.line_usd || 0);
+        const lineJmd = lineUsd * usd_to_jmd;
 
-      serviceUsdSum += lineUsd;
-      serviceJmdSum += lineJmd;
+        serviceUsdSum += lineUsd;
+        serviceJmdSum += lineJmd;
 
-      rowsHtml += `
+        rowsHtml += `
         <tr>
           <td>${b.band}</td>
           <td class="text-end">${count}</td>
@@ -2639,9 +2653,9 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
           <td class="text-end">${fmt2(lineJmd)}</td>
         </tr>
       `;
-    });
+      });
 
-    rowsHtml += `
+      rowsHtml += `
       <tr class="table-light fw-bold">
         <td colspan="3" class="text-end">Service Total</td>
         <td class="text-end">$${fmt2(serviceUsdSum)}</td>
@@ -2649,11 +2663,11 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
       </tr>
     `;
 
-    const tableUsdTotal = freightUsd + serviceUsdSum;
-    const tableJmdTotal = freightJmd + serviceJmdSum;
+      const tableUsdTotal = freightUsd + serviceUsdSum;
+      const tableJmdTotal = freightJmd + serviceJmdSum;
 
-    /* ===== Full HTML ===== */
-    const html = `
+      /* ===== Full HTML ===== */
+      const html = `
       <div class="mb-2">
         <div class="d-flex justify-content-between align-items-center">
           <h6 class="mb-0 fw-bold text-purple">
@@ -2763,26 +2777,26 @@ async function openShipmentFinanceInvoicePreviewJSON(shipmentId, packageIds) {
       </div>
     `;
 
-    openShipmentFinanceInvoiceModalWithHtml(html);
+      openShipmentFinanceInvoiceModalWithHtml(html);
 
-  } catch (err) {
-    console.error(err);
-    alert("⚠️ Unable to load shipment finance invoice preview (JSON).");
+    } catch (err) {
+      console.error(err);
+      alert("⚠️ Unable to load shipment finance invoice preview (JSON).");
+    }
   }
-}
 
 
-/* ===== Print Button ===== */
+  /* ===== Print Button ===== */
 
-document.getElementById('btnPrintShipmentFinance')
-  ?.addEventListener('click', function () {
+  document.getElementById('btnPrintShipmentFinance')
+    ?.addEventListener('click', function () {
 
-    const body = document.getElementById('shipmentFinanceInvoiceBody');
-    if (!body) return;
+      const body = document.getElementById('shipmentFinanceInvoiceBody');
+      if (!body) return;
 
-    const w = window.open('', '_blank');
+      const w = window.open('', '_blank');
 
-    w.document.write(`
+      w.document.write(`
       <html>
         <head>
           <title>Shipment Finance Invoice</title>
@@ -2794,286 +2808,318 @@ document.getElementById('btnPrintShipmentFinance')
       </html>
     `);
 
-    w.document.close();
-    w.focus();
-    w.print();
-  });
-  
-/* ======================
-   UPLOAD SPINNER
-====================== */
-
-(function () {
-
-  const form     = document.getElementById('uploadForm');
-  const spinner  = document.getElementById('spinner');
-  const uploadBtn = document.getElementById('uploadBtn');
-
-  if (form) {
-    form.addEventListener('submit', () => {
-      if (uploadBtn) uploadBtn.disabled = true;
-      if (spinner) spinner.style.display = 'inline-block';
+      w.document.close();
+      w.focus();
+      w.print();
     });
-  }
 
-  window.addEventListener('pageshow', () => {
-    if (uploadBtn) uploadBtn.disabled = false;
-    if (spinner) spinner.style.display = 'none';
-  });
+  /* ======================
+     UPLOAD SPINNER
+  ====================== */
 
-})();
+  (function () {
 
+    const form = document.getElementById('uploadForm');
+    const spinner = document.getElementById('spinner');
+    const uploadBtn = document.getElementById('uploadBtn');
 
-/* ==========================
-   UPLOAD PREVIEW TABLE (CSV)
-========================== */
-
-document.addEventListener('DOMContentLoaded', function () {
-
-  const tableEl = document.getElementById('previewTable');
-  if (!tableEl) return;
-
-  const getRowCheckboxes = () =>
-    Array.from(document.querySelectorAll('#previewTable input.row-select'));
-
-  const selectAll = document.getElementById('selectAllPreview');
-
-  if (selectAll) {
-    selectAll.addEventListener('change', function () {
-      const checked = this.checked;
-
-      getRowCheckboxes().forEach(cb => {
-        cb.checked = checked;
+    if (form) {
+      form.addEventListener('submit', () => {
+        if (uploadBtn) uploadBtn.disabled = true;
+        if (spinner) spinner.style.display = 'inline-block';
       });
+    }
+
+    window.addEventListener('pageshow', () => {
+      if (uploadBtn) uploadBtn.disabled = false;
+      if (spinner) spinner.style.display = 'none';
     });
-  }
 
-  const selectValidBtn = document.getElementById('selectValidBtn');
+  })();
 
-  if (selectValidBtn) {
-    selectValidBtn.addEventListener('click', function () {
 
-      getRowCheckboxes().forEach(cb => {
-        const tr = cb.closest('tr');
-        const isInvalid = tr && tr.classList.contains('table-danger');
+  /* ==========================
+     UPLOAD PREVIEW TABLE (CSV)
+  ========================== */
 
-        cb.checked = !isInvalid;
+  document.addEventListener('DOMContentLoaded', function () {
+
+    const tableEl = document.getElementById('previewTable');
+    if (!tableEl) return;
+
+    const getRowCheckboxes = () =>
+      Array.from(document.querySelectorAll('#previewTable input.row-select'));
+
+    const selectAll = document.getElementById('selectAllPreview');
+
+    if (selectAll) {
+      selectAll.addEventListener('change', function () {
+        const checked = this.checked;
+
+        getRowCheckboxes().forEach(cb => {
+          cb.checked = checked;
+        });
       });
+    }
 
-    });
-  }
+    const selectValidBtn = document.getElementById('selectValidBtn');
 
-});
+    if (selectValidBtn) {
+      selectValidBtn.addEventListener('click', function () {
 
+        getRowCheckboxes().forEach(cb => {
+          const tr = cb.closest('tr');
+          const isInvalid = tr && tr.classList.contains('table-danger');
 
-function handleConfirmSubmit(e) {
+          cb.checked = !isInvalid;
+        });
 
-  const table = document.getElementById('previewTable');
-  if (!table) return true;
+      });
+    }
 
-  const checkboxes = table.querySelectorAll('input.row-select:checked');
-  const indices = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
-
-  if (!indices.length) {
-    if (e) e.preventDefault();
-    alert('⚠️ Please select at least one valid row to import.');
-    return false;
-  }
-
-  const hidden = document.getElementById('selectedIndicesInput');
-  if (hidden) hidden.value = JSON.stringify(indices);
-
-  return true;
-}
-
-document.addEventListener('input', function(e){
-  if (!e.target) return;
-  if (!e.target.id) return;
-
-  const m = e.target.id.match(/^(weight|value)_(\d+)$/);
-  if (!m) return;
-
-  const field = m[1];
-  const pkgId  = m[2];
-
-  const openPkg = (document.getElementById('chargesPkgId')?.value || '').trim();
-  if (openPkg !== pkgId) return;
-
-  if (field === 'weight') document.getElementById('chargesWeight').value = e.target.value;
-  if (field === 'value')  document.getElementById('chargesValue').value  = e.target.value;
-});
-
-/* ==========================
-   PACKAGE ATTACHMENTS (ADMIN - MODAL ONLY)
-   ========================== */
-(function attachAdminFiles(){
-  const modalEl  = document.getElementById('attachInvoiceModal');
-  if (!modalEl) return;
-
-  const pkgIdInput = document.getElementById('attachPkgId');
-  const pkgLbl     = document.getElementById('attachPkgLabel');
-  const fileInput  = document.getElementById('attachFiles');
-  const statusEl   = document.getElementById('attachUploadStatus');
-  const uploadBtn  = document.getElementById('btnAttachUpload');
-
-  let currentPkgId = null;
-
-  // Open modal
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('.js-open-attach');
-    if (!btn) return;
-
-    currentPkgId = (btn.getAttribute('data-pkg-id') || '').trim();
-
-    if (pkgIdInput) pkgIdInput.value = currentPkgId;
-    if (pkgLbl) pkgLbl.textContent = currentPkgId || '—';
-    if (fileInput) fileInput.value = '';
-    if (statusEl) statusEl.textContent = 'Select a file to upload.';
-
-    bootstrap.Modal.getOrCreateInstance(modalEl).show();
   });
 
-  async function doUpload() {
-    const pkgId = (currentPkgId || (pkgIdInput ? pkgIdInput.value : '') || '').trim();
-    if (!pkgId || pkgId === '0') { alert('Package id missing.'); return; }
 
-    const files = fileInput ? fileInput.files : null;
-    if (!files || !files.length) { alert('Please choose a file.'); return; }
+  function handleConfirmSubmit(e) {
 
-    const csrf = (document.getElementById('attachCsrfToken')?.value || '').trim() || "{{ csrf_token() }}";
+    const table = document.getElementById('previewTable');
+    if (!table) return true;
 
-    const fd = new FormData();
-    if (csrf) fd.append('csrf_token', csrf);
-    for (const f of files) fd.append('attachments', f);
+    const checkboxes = table.querySelectorAll('input.row-select:checked');
+    const indices = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
 
-    if (statusEl) statusEl.textContent = 'Uploading…';
+    if (!indices.length) {
+      if (e) e.preventDefault();
+      alert('⚠️ Please select at least one valid row to import.');
+      return false;
+    }
 
-    const url = attachUrl(pkgId);
+    const hidden = document.getElementById('selectedIndicesInput');
+    if (hidden) hidden.value = JSON.stringify(indices);
 
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          ...(csrf ? { 'X-CSRFToken': csrf } : {})
-        },
-        body: fd
-      });
+    return true;
+  }
 
-      // handle JSON OR non-JSON response safely
-      const ct = (res.headers.get('content-type') || '').toLowerCase();
-      let data = null;
+  document.addEventListener('input', function (e) {
+    if (!e.target) return;
+    if (!e.target.id) return;
 
-      if (ct.includes('application/json')) {
-        data = await res.json().catch(() => null);
-      } else {
-        const txt = await res.text().catch(() => '');
-        if (!res.ok) throw new Error(txt || `Upload failed (HTTP ${res.status}).`);
-        data = { success: true };
-      }
+    const m = e.target.id.match(/^(weight|value)_(\d+)$/);
+    if (!m) return;
 
-      if (!res.ok || (data && data.success === false)) {
-        const msg = (data && (data.error || data.message)) || `Upload failed (HTTP ${res.status}).`;
-        alert(msg);
+    const field = m[1];
+    const pkgId = m[2];
+
+    const openPkg = (document.getElementById('chargesPkgId')?.value || '').trim();
+    if (openPkg !== pkgId) return;
+
+    if (field === 'weight') document.getElementById('chargesWeight').value = e.target.value;
+    if (field === 'value') document.getElementById('chargesValue').value = e.target.value;
+  });
+
+  /* ==========================
+     PACKAGE ATTACHMENTS (ADMIN - MODAL ONLY)
+     ========================== */
+  (function attachAdminFiles() {
+    const modalEl = document.getElementById('attachInvoiceModal');
+    if (!modalEl) return;
+
+    const pkgIdInput = document.getElementById('attachPkgId');
+    const pkgLbl = document.getElementById('attachPkgLabel');
+    const fileInput = document.getElementById('attachFiles');
+    const statusEl = document.getElementById('attachUploadStatus');
+    const uploadBtn = document.getElementById('btnAttachUpload');
+
+    let currentPkgId = null;
+
+    // Open modal
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.js-open-attach');
+      if (!btn) return;
+
+      currentPkgId = (btn.getAttribute('data-pkg-id') || '').trim();
+
+      if (pkgIdInput) pkgIdInput.value = currentPkgId;
+      if (pkgLbl) pkgLbl.textContent = currentPkgId || '—';
+      if (fileInput) fileInput.value = '';
+      if (statusEl) statusEl.textContent = 'Select a file to upload.';
+
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+
+    async function doUpload() {
+      const pkgId = (currentPkgId || (pkgIdInput ? pkgIdInput.value : '') || '').trim();
+      if (!pkgId || pkgId === '0') { alert('Package id missing.'); return; }
+
+      const files = fileInput ? fileInput.files : null;
+      if (!files || !files.length) { alert('Please choose a file.'); return; }
+
+      const csrf = (document.getElementById('attachCsrfToken')?.value || '').trim() || "{{ csrf_token() }}";
+
+      const fd = new FormData();
+      if (csrf) fd.append('csrf_token', csrf);
+      for (const f of files) fd.append('attachments', f);
+
+      if (statusEl) statusEl.textContent = 'Uploading…';
+
+      const url = attachUrl(pkgId);
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(csrf ? { 'X-CSRFToken': csrf } : {})
+          },
+          body: fd
+        });
+
+        // handle JSON OR non-JSON response safely
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        let data = null;
+
+        if (ct.includes('application/json')) {
+          data = await res.json().catch(() => null);
+        } else {
+          const txt = await res.text().catch(() => '');
+          if (!res.ok) throw new Error(txt || `Upload failed (HTTP ${res.status}).`);
+          data = { success: true };
+        }
+
+        if (!res.ok || (data && data.success === false)) {
+          const msg = (data && (data.error || data.message)) || `Upload failed (HTTP ${res.status}).`;
+          alert(msg);
+          if (statusEl) statusEl.textContent = 'Upload failed.';
+          return;
+        }
+
+        if (statusEl) statusEl.textContent = 'Uploaded!';
+        bootstrap.Modal.getInstance(modalEl)?.hide();
+        saveShipmentDTState();
+        setTimeout(() => window.location.reload(), 400);
+
+      } catch (err) {
+        console.error(err);
+        alert('Upload failed.\n\n' + (err?.message || err));
         if (statusEl) statusEl.textContent = 'Upload failed.';
-        return;
       }
-
-      if (statusEl) statusEl.textContent = 'Uploaded!';
-      bootstrap.Modal.getInstance(modalEl)?.hide();
-      saveShipmentDTState();
-      setTimeout(() => window.location.reload(), 400);
-
-    } catch (err) {
-      console.error(err);
-      alert('Upload failed.\n\n' + (err?.message || err));
-      if (statusEl) statusEl.textContent = 'Upload failed.';
     }
-  }
 
-  uploadBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    doUpload();
-  });
-})();
+    uploadBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      doUpload();
+    });
+  })();
 
 
-/* ==========================
-   DELETE ATTACHMENT (ADMIN)
-   - avoids submitting shipment bulk form
-   ========================== */
-(function deleteAdminAttachment(){
-  if (window.__faflDelAttachBound) return;
-  window.__faflDelAttachBound = true;
+  /* ==========================
+     DELETE ATTACHMENT (ADMIN)
+     - avoids submitting shipment bulk form
+     ========================== */
+  (function deleteAdminAttachment() {
+    if (window.__faflDelAttachBound) return;
+    window.__faflDelAttachBound = true;
 
-  document.addEventListener('click', async (e) => {
-    const btn = e.target.closest('.js-del-attach');
-    if (!btn) return;
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.js-del-attach');
+      if (!btn) return;
 
-    e.preventDefault();
-    e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
 
-    if (!confirm('Delete this attachment?')) return;
+      if (!confirm('Delete this attachment?')) return;
 
-    const url = btn.getAttribute('data-del-url');
-    if (!url) { alert('Delete URL missing.'); return; }
+      const url = btn.getAttribute('data-del-url');
+      if (!url) { alert('Delete URL missing.'); return; }
 
-    const csrf =
-      (document.getElementById('attachCsrfToken')?.value || '').trim() ||
-      (document.querySelector('#shipmentForm input[name="csrf_token"]')?.value || '').trim() ||
-      (document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '').trim() ||
-      "{{ csrf_token() }}";
+      const csrf =
+        (document.getElementById('attachCsrfToken')?.value || '').trim() ||
+        (document.querySelector('#shipmentForm input[name="csrf_token"]')?.value || '').trim() ||
+        (document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '').trim() ||
+        "{{ csrf_token() }}";
 
-    const fd = new FormData();
-    if (csrf) fd.append('csrf_token', csrf);
+      const fd = new FormData();
+      if (csrf) fd.append('csrf_token', csrf);
 
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-          ...(csrf ? { 'X-CSRFToken': csrf } : {})
-        },
-        body: fd
-      });
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(csrf ? { 'X-CSRFToken': csrf } : {})
+          },
+          body: fd
+        });
 
-      const ct = (res.headers.get('content-type') || '').toLowerCase();
-      let data = null;
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        let data = null;
 
-      if (ct.includes('application/json')) {
-        data = await res.json().catch(() => null);
-      } else {
-        const txt = await res.text().catch(() => '');
-        if (!res.ok) throw new Error(txt || `Delete failed (HTTP ${res.status}).`);
-        data = { success: true };
+        if (ct.includes('application/json')) {
+          data = await res.json().catch(() => null);
+        } else {
+          const txt = await res.text().catch(() => '');
+          if (!res.ok) throw new Error(txt || `Delete failed (HTTP ${res.status}).`);
+          data = { success: true };
+        }
+
+        if (!res.ok || (data && data.ok === false) || (data && data.success === false)) {
+          const msg = (data && (data.error || data.message)) || `Delete failed (HTTP ${res.status}).`;
+          alert(msg);
+          return;
+        }
+        saveShipmentDTState();
+        window.location.reload();
+      } catch (err) {
+        console.error(err);
+        alert('Delete failed.\n\n' + (err?.message || err));
       }
-
-      if (!res.ok || (data && data.ok === false) || (data && data.success === false)) {
-        const msg = (data && (data.error || data.message)) || `Delete failed (HTTP ${res.status}).`;
-        alert(msg);
-        return;
-      }
-      saveShipmentDTState();
-      window.location.reload();
-    } catch (err) {
-      console.error(err);
-      alert('Delete failed.\n\n' + (err?.message || err));
-    }
-  }, true);
-})();
+    }, true);
+  })();
 
 </script>
 
 <style>
-  .logistics-header { background-color: #4a148c; }
-  .logistics-tabs .nav-link { color: #4a148c; font-weight: 500; }
-  .logistics-tabs .nav-link.active { background-color: #4a148c; color: #fff !important; }
-  .bg-purple { background-color: #4a148c !important; }
-  .text-purple { color: #4a148c !important; }
-  .btn-purple { background-color: #4a148c; color: white; border: none; }
-  .btn-purple:hover { background-color: #6a1b9a; }
-  .table-hover tbody tr:hover { background-color: #f3e5f5; }
-  .table-sm th, .table-sm td { padding: 0.25rem 0.4rem; font-size: 0.75rem; }
+  .logistics-header {
+    background-color: #4a148c;
+  }
+
+  .logistics-tabs .nav-link {
+    color: #4a148c;
+    font-weight: 500;
+  }
+
+  .logistics-tabs .nav-link.active {
+    background-color: #4a148c;
+    color: #fff !important;
+  }
+
+  .bg-purple {
+    background-color: #4a148c !important;
+  }
+
+  .text-purple {
+    color: #4a148c !important;
+  }
+
+  .btn-purple {
+    background-color: #4a148c;
+    color: white;
+    border: none;
+  }
+
+  .btn-purple:hover {
+    background-color: #6a1b9a;
+  }
+
+  .table-hover tbody tr:hover {
+    background-color: #f3e5f5;
+  }
+
+  .table-sm th,
+  .table-sm td {
+    padding: 0.25rem 0.4rem;
+    font-size: 0.75rem;
+  }
 
   .badge-purple-soft {
     background: rgba(74, 20, 140, 0.12);
@@ -3081,45 +3127,76 @@ document.addEventListener('input', function(e){
     border: 1px solid rgba(74, 20, 140, 0.3);
   }
 
-  .border-purple { border-color: #4a148c !important; }
-  .btn-outline-purple {
-    background: transparent; color: #4a148c;
-    border: 1px solid #4a148c; transition: .2s;
+  .border-purple {
+    border-color: #4a148c !important;
   }
-  .btn-outline-purple:hover { background-color: #4a148c; color: #fff; }
-  .badge-purple { background-color: #4a148c; color: #fff; }
 
-  #shipmentTable thead th * { pointer-events: auto !important; }
-  #shipmentLengthSelect { min-width: 85px; }
+  .btn-outline-purple {
+    background: transparent;
+    color: #4a148c;
+    border: 1px solid #4a148c;
+    transition: .2s;
+  }
 
-  .tab-content > .tab-pane { display: none; }
-  .tab-content > .tab-pane.active,
-  .tab-content > .tab-pane.show { display: block !important; }
+  .btn-outline-purple:hover {
+    background-color: #4a148c;
+    color: #fff;
+  }
 
-  .shipment-bulkbar { row-gap: .5rem; }
+  .badge-purple {
+    background-color: #4a148c;
+    color: #fff;
+  }
+
+  #shipmentTable thead th * {
+    pointer-events: auto !important;
+  }
+
+  #shipmentLengthSelect {
+    min-width: 85px;
+  }
+
+  .tab-content>.tab-pane {
+    display: none;
+  }
+
+  .tab-content>.tab-pane.active,
+  .tab-content>.tab-pane.show {
+    display: block !important;
+  }
+
+  .shipment-bulkbar {
+    row-gap: .5rem;
+  }
 
   /* ============================================================
      ✅ Pagination look: « 1 2 » like screenshot
      ============================================================ */
-  .shipment-topbar{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:12px;
+  .shipment-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
   }
 
   /* keep pager left */
-  .shipment-topbar .shipment-pager-top{
-    display:flex;
-    align-items:center;
+  .shipment-topbar .shipment-pager-top {
+    display: flex;
+    align-items: center;
   }
 
   /* remove weird spacing DT adds */
-  .shipment-topbar .dataTables_paginate { margin: 0 !important; padding: 0 !important; }
-  .shipment-topbar .dataTables_paginate ul.pagination { margin: 0 !important; }
+  .shipment-topbar .dataTables_paginate {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .shipment-topbar .dataTables_paginate ul.pagination {
+    margin: 0 !important;
+  }
 
   /* DataTables pagination buttons */
-  .shipment-topbar .dataTables_paginate .paginate_button{
+  .shipment-topbar .dataTables_paginate .paginate_button {
     padding: 6px 10px !important;
     margin: 0 2px !important;
     border: 1px solid #e6e6e6 !important;
@@ -3130,45 +3207,55 @@ document.addEventListener('input', function(e){
     box-shadow: none !important;
   }
 
-  .shipment-topbar .dataTables_paginate .paginate_button:hover{
-    background: rgba(74,20,140,0.08) !important;
-    border-color: rgba(74,20,140,0.25) !important;
+  .shipment-topbar .dataTables_paginate .paginate_button:hover {
+    background: rgba(74, 20, 140, 0.08) !important;
+    border-color: rgba(74, 20, 140, 0.25) !important;
     color: #4a148c !important;
   }
 
   /* active page */
-  .shipment-topbar .dataTables_paginate .paginate_button.current{
+  .shipment-topbar .dataTables_paginate .paginate_button.current {
     background: #4a148c !important;
     color: #fff !important;
     border-color: #4a148c !important;
   }
 
   /* disabled arrows */
-  .shipment-topbar .dataTables_paginate .paginate_button.disabled{
+  .shipment-topbar .dataTables_paginate .paginate_button.disabled {
     opacity: .45;
     cursor: not-allowed !important;
   }
 
   /* If DT adds focus outline */
-  .shipment-topbar .dataTables_paginate .paginate_button:focus{
+  .shipment-topbar .dataTables_paginate .paginate_button:focus {
     outline: none !important;
     box-shadow: none !important;
   }
 
   /* (Optional) if you still use any DT length control elsewhere */
-  .shipment-show-top .dataTables_length { margin: 0 !important; }
-  .shipment-show-top .dataTables_length label{
-    display:flex; align-items:center; gap:8px; margin:0; white-space:nowrap;
+  .shipment-show-top .dataTables_length {
+    margin: 0 !important;
   }
-  .shipment-show-top .dataTables_length select { min-width: 90px; }
 
-  .pkg-attach-icon{
+  .shipment-show-top .dataTables_length label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    white-space: nowrap;
+  }
+
+  .shipment-show-top .dataTables_length select {
+    min-width: 90px;
+  }
+
+  .pkg-attach-icon {
     width: 26px;
     height: 26px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(74,20,140,.35);
+    border: 1px solid rgba(74, 20, 140, .35);
     background: #f5f0fa;
     color: #4a148c;
     border-radius: 8px;
@@ -3177,10 +3264,23 @@ document.addEventListener('input', function(e){
     line-height: 1;
   }
 
-  .pkg-attach-icon:hover{
-    background: rgba(74,20,140,.10);
+  .pkg-attach-icon:hover {
+    background: rgba(74, 20, 140, .10);
     color: #4a148c;
   }
+
+  .shipment-section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border: 1px solid rgba(0, 0, 0, .08);
+    border-radius: 12px;
+    background: #f8f9fa;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+
 
   /* ============================================================
    ✅ Stacked sort arrows for DataTables (works on dark headers)
@@ -3189,7 +3289,8 @@ document.addEventListener('input', function(e){
   #shipmentTable thead th.sorting_asc,
   #shipmentTable thead th.sorting_desc {
     position: relative;
-    padding-right: 22px;      /* room for arrows */
+    padding-right: 22px;
+    /* room for arrows */
     cursor: pointer;
   }
 
@@ -3215,7 +3316,7 @@ document.addEventListener('input', function(e){
     top: 38%;
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
-    border-bottom: 7px solid rgba(255,255,255,0.95);
+    border-bottom: 7px solid rgba(255, 255, 255, 0.95);
   }
 
   /* ▼ down triangle */
@@ -3225,14 +3326,135 @@ document.addEventListener('input', function(e){
     top: 58%;
     border-left: 5px solid transparent;
     border-right: 5px solid transparent;
-    border-top: 7px solid rgba(255,255,255,0.95);
+    border-top: 7px solid rgba(255, 255, 255, 0.95);
   }
 
   /* highlight current direction */
-  #shipmentTable thead th.sorting_asc::before { opacity: 1; }
-  #shipmentTable thead th.sorting_asc::after  { opacity: 0.15; }
-  #shipmentTable thead th.sorting_desc::before{ opacity: 0.15; }
-  #shipmentTable thead th.sorting_desc::after { opacity: 1; }
+  #shipmentTable thead th.sorting_asc::before {
+    opacity: 1;
+  }
 
+  #shipmentTable thead th.sorting_asc::after {
+    opacity: 0.15;
+  }
+
+  #shipmentTable thead th.sorting_desc::before {
+    opacity: 0.15;
+  }
+
+  #shipmentTable thead th.sorting_desc::after {
+    opacity: 1;
+  }
+
+  /* ============================================================
+     Shipment sidebar cleanup
+     ============================================================ */
+  .shipment-actions-bar .btn-group .btn {
+    border-radius: 10px;
+  }
+
+  .shipment-list {
+    max-height: 65vh;
+    overflow-y: auto;
+    border-radius: 12px;
+  }
+
+  .shipment-list .shipment-item {
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, .06);
+  }
+
+  .shipment-list .shipment-link {
+    display: block;
+    padding: 10px 10px;
+    text-decoration: none;
+  }
+
+  .shipment-list .shipment-title strong {
+    font-size: .95rem;
+    line-height: 1.2;
+  }
+
+  .shipment-list .shipment-link small {
+    font-size: .78rem;
+  }
+
+  .shipment-item.is-active .shipment-link {
+    background: #4a148c;
+    border-radius: 12px;
+    color: #fff !important;
+  }
+
+  .shipment-item.is-active .shipment-link small {
+    color: rgba(255, 255, 255, .75) !important;
+  }
+
+  .ship-list {
+    overflow-y: auto;
+  }
+
+  .ship-item a {
+    display: block;
+    text-decoration: none;
+  }
+
+  .ship-meta {
+    font-size: .78rem;
+    line-height: 1.25;
+  }
+
+  .ship-pill {
+    font-size: .68rem;
+    border-radius: 999px;
+  }
+
+  .shipment-toolbar {
+    display: inline-flex;
+    align-items: stretch;
+    overflow: hidden;
+    border: 1px solid rgba(74, 20, 140, .28);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .05);
+  }
+
+  .shipment-toolbar form {
+    margin: 0;
+  }
+
+  .ship-tool-btn {
+    width: 42px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    color: #4a148c;
+    border: 0;
+    border-right: 1px solid rgba(74, 20, 140, .16);
+    text-decoration: none;
+    transition: background .18s ease, color .18s ease;
+  }
+
+  .shipment-toolbar .ship-tool-btn:last-child {
+    border-right: 0;
+  }
+
+  .ship-tool-btn:hover {
+    background: rgba(74, 20, 140, .08);
+    color: #4a148c;
+  }
+
+  .ship-tool-btn:disabled {
+    color: #aaa;
+    background: #f7f7f7;
+    cursor: not-allowed;
+  }
+
+  .ship-tool-btn i {
+    font-size: .95rem;
+    line-height: 1;
+  }
 </style>
 {% endblock %}

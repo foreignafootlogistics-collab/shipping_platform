@@ -1174,15 +1174,24 @@ def logistics_dashboard():
 
         # 1) get packages in shipment (+ user display fields)
         rows = (
-            db.session.query(Package, User.full_name, User.registration_number)
+            db.session.query(
+                Package,
+                User.full_name,
+                User.registration_number,
+                Invoice.invoice_number,
+                Invoice.invoice_emailed_at,
+                Invoice.invoice_email_failed,
+                Invoice.invoice_email_failure_reason,
+            )
             .join(User, Package.user_id == User.id)
             .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+            .outerjoin(Invoice, Package.invoice_id == Invoice.id)            
             .filter(shipment_packages.c.shipment_id == selected_shipment.id)
             .order_by(Package.id.desc())
             .all()
         )
 
-        shipment_pkg_ids = [p.id for (p, _, _) in rows]
+        shipment_pkg_ids = [p.id for (p, _, _, _, _, _, _) in rows]
 
         # 2) load attachments in ONE query
         attachments_by_pkg = {}
@@ -1208,7 +1217,7 @@ def logistics_dashboard():
 
         # 3) build final dict rows INCLUDING attachments
         shipment_pkg_rows = []
-        for p, full_name, reg in rows:
+        for p, full_name, reg, invoice_number, invoice_emailed_at, invoice_email_failed, invoice_email_failure_reason in rows:
             atts = attachments_by_pkg.get(p.id, [])
             created_dt = _parse_dt_maybe(p.created_at)
             recv_dt = _parse_dt_maybe(
@@ -1238,6 +1247,10 @@ def logistics_dashboard():
                 "epc": getattr(p, "epc", 0),
                 "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
                 "invoice_id": p.invoice_id,
+                "invoice_number": invoice_number,
+                "invoice_emailed_at": invoice_emailed_at,
+                "invoice_email_failed": bool(invoice_email_failed) if invoice_email_failed is not None else False,
+                "invoice_email_failure_reason": invoice_email_failure_reason,
 
                 # ✅ NEW
                 "att_count": len(atts),

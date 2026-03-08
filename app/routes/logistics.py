@@ -26,6 +26,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from sqlalchemy import func, or_, and_, asc, desc, cast, distinct
 from sqlalchemy.types import Date
+from weasyprint import HTML
 
 from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
@@ -727,6 +728,59 @@ def _redirect_or_send_attachment(path_or_url: str):
         abort(404)
 
     return send_from_directory(upload_folder, u, as_attachment=False)
+
+def _get_shipment_export_rows(shipment_id: int):
+    shipment = ShipmentLog.query.get_or_404(shipment_id)
+
+    rows = (
+        db.session.query(
+            Package,
+            User.full_name,
+            User.registration_number
+        )
+        .join(User, Package.user_id == User.id)
+        .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+        .filter(shipment_packages.c.shipment_id == shipment_id)
+        .order_by(Package.id.desc())
+        .all()
+    )
+
+    packages = []
+    total_weight = 0.0
+    total_value = 0.0
+    total_due = 0.0
+
+    for p, full_name, reg in rows:
+        weight = float(p.weight or 0)
+        value = float(getattr(p, "value", 0) or 0)
+        amount_due = float(getattr(p, "amount_due", 0) or 0)
+
+        total_weight += weight
+        total_value += value
+        total_due += amount_due
+
+        packages.append({
+            "id": p.id,
+            "customer_name": full_name or "",
+            "registration_number": reg or "",
+            "tracking_number": p.tracking_number or "",
+            "house_awb": p.house_awb or "",
+            "description": p.description or "",
+            "date_received": getattr(p, "date_received", None),
+            "weight": weight,
+            "value": value,
+            "amount_due": amount_due,
+            "status": p.status or "",
+        })
+
+    return {
+        "shipment": shipment,
+        "packages": packages,
+        "total_packages": len(packages),
+        "total_weight": total_weight,
+        "total_value": total_value,
+        "total_due": total_due,
+    }
 
   
 
@@ -1454,6 +1508,13 @@ def logistics_dashboard():
     first_page  = 1 if page != 1 else None
     last_page   = total_pages if page != total_pages else None
 
+    shipments = (
+        ShipmentLog.query
+        .filter(ShipmentLog.is_archived.is_(False))
+        .order_by(ShipmentLog.created_at.desc())
+        .all()
+    )
+
     return render_template(
         "admin/logistics/logistics_dashboard.html",
         upload_form=upload_form,
@@ -1472,6 +1533,7 @@ def logistics_dashboard():
 
         active_shipments=active_shipments,
         active_pagination=active_pagination,
+        shipments=shipments,
         archived_shipments=archived_shipments_parsed,
         archived_count=archived_count,        
         selected_shipment=selected_shipment,
@@ -1988,6 +2050,164 @@ def admin_view_package_attachment(attachment_id):
 
     return send_from_directory(upload_folder, url, as_attachment=False)
 
+@logistics_bp.route("/shipmentlog/<int:shipment_id>/print", methods=["GET"])
+@admin_required
+def print_shipment_log(shipment_id):
+    data = _get_shipment_export_rows(shipment_id)
+
+    return render_template(
+        "admin/logistics/print_shipment_log.html",
+        shipment=data["shipment"],
+        packages=data["packages"],
+        total_packages=data["total_packages"],
+        total_weight=data["total_weight"],
+        total_value=data["total_value"],
+        total_due=data["total_due"],
+    )
+
+@logistics_bp.route("/shipmentlog/<int:shipment_id>/download-csv", methods=["GET"])
+@admin_required
+def download_shipment_log_csv(shipment_id):
+    data = _get_shipment_export_rows(shipment_id)
+    shipment = data["shipment"]
+    packages = data["packages"]
+
+    sio = io.StringIO()
+    writer = csv.writer(sio)
+
+    writer.writerow([
+        "Package ID",
+        "Customer Name",
+        "Registration Number",
+        "Tracking Number",
+        "House AWB",
+        "Description",
+        "Date Received",
+        "Weight (lbs)",
+        "Item Value (USD)",
+        "Outstanding (JMD)",
+        "Status",
+    ])
+
+    for p in packages:
+        writer.writerow([
+            p["id"],
+            p["customer_name"],
+            p["registration_number"],
+            p["tracking_number"],
+            p["house_awb"],
+            p["description"],
+            p["date_received"].strftime("%Y-%m-%d") if p["date_received"] else "",
+            f'{p["weight"]:.2f}',
+            f'{p["value"]:.2f}',
+            f'{p["amount_due"]:.2f}',
+            p["status"],
+        ])
+
+    writer.writerow([])
+    writer.writerow(["TOTAL PACKAGES", data["total_packages"]])
+    writer.writerow(["TOTAL WEIGHT (lbs)", f'{data["total_weight"]:.2f}'])
+    writer.writerow(["TOTAL VALUE (USD)", f'{data["total_value"]:.2f}'])
+    writer.writerow(["TOTAL OUTSTANDING (JMD)", f'{data["total_due"]:.2f}'])
+
+    output = sio.getvalue().encode("utf-8")
+    filename = f'{(shipment.sl_name or shipment.sl_id or "shipment").replace(" ", "_")}_log.csv'
+
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+@logistics_bp.route("/shipmentlog/<int:shipment_id>/download-excel", methods=["GET"])
+@admin_required
+def download_shipment_log_excel(shipment_id):
+    data = _get_shipment_export_rows(shipment_id)
+    shipment = data["shipment"]
+    packages = data["packages"]
+
+    rows = []
+    for p in packages:
+        rows.append({
+            "Package ID": p["id"],
+            "Customer Name": p["customer_name"],
+            "Registration Number": p["registration_number"],
+            "Tracking Number": p["tracking_number"],
+            "House AWB": p["house_awb"],
+            "Description": p["description"],
+            "Date Received": p["date_received"].strftime("%Y-%m-%d") if p["date_received"] else "",
+            "Weight (lbs)": p["weight"],
+            "Item Value (USD)": p["value"],
+            "Outstanding (JMD)": p["amount_due"],
+            "Status": p["status"],
+        })
+
+    df = pd.DataFrame(rows)
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Shipment Log")
+        ws = writer.sheets["Shipment Log"]
+
+        summary_row = len(df) + 3
+        ws[f"A{summary_row}"] = "Total Packages"
+        ws[f"B{summary_row}"] = data["total_packages"]
+
+        ws[f"A{summary_row+1}"] = "Total Weight (lbs)"
+        ws[f"B{summary_row+1}"] = data["total_weight"]
+
+        ws[f"A{summary_row+2}"] = "Total Value (USD)"
+        ws[f"B{summary_row+2}"] = data["total_value"]
+
+        ws[f"A{summary_row+3}"] = "Total Outstanding (JMD)"
+        ws[f"B{summary_row+3}"] = data["total_due"]
+
+        for col in ws.columns:
+            max_len = 0
+            letter = col[0].column_letter
+            for cell in col:
+                try:
+                    max_len = max(max_len, len(str(cell.value or "")))
+                except Exception:
+                    pass
+            ws.column_dimensions[letter].width = min(max_len + 2, 40)
+
+    buf.seek(0)
+
+    filename = f'{(shipment.sl_name or shipment.sl_id or "shipment").replace(" ", "_")}_log.xlsx'
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+@logistics_bp.route("/shipmentlog/<int:shipment_id>/download-pdf", methods=["GET"])
+@admin_required
+def download_shipment_log_pdf(shipment_id):
+    data = _get_shipment_export_rows(shipment_id)
+
+    html = render_template(
+        "admin/logistics/pdf_shipment_log.html",
+        shipment=data["shipment"],
+        packages=data["packages"],
+        total_packages=data["total_packages"],
+        total_weight=data["total_weight"],
+        total_value=data["total_value"],
+        total_due=data["total_due"],
+    )
+
+    pdf_io = io.BytesIO()
+    HTML(string=html, base_url=request.host_url).write_pdf(pdf_io)
+    pdf_io.seek(0)
+
+    filename = f'{(data["shipment"].sl_name or data["shipment"].sl_id or "shipment").replace(" ", "_")}_log.pdf'
+    return send_file(
+        pdf_io,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/pdf"
+    )
 
 # --------------------------------------------------------------------------------------
 # Preview invalid rows CSV download
@@ -3023,6 +3243,152 @@ def search_shipment_packages():
         "sl_id": r[6],
     } for r in q.all()]
     return jsonify({"rows": rows})
+
+@logistics_bp.route("/shipmentlog/search-packages", methods=["GET"])
+@admin_required
+def shipmentlog_search_packages():
+    """
+    Search packages for the shipment-log modal.
+    Returns both logged and unlogged packages.
+    Includes current shipment info so frontend can show:
+      - not in shipment
+      - already in this shipment
+      - in another shipment
+    """
+
+    name = (request.args.get("name") or "").strip()
+    tracking = (request.args.get("tracking") or "").strip()
+    house = (request.args.get("house") or "").strip()
+    reg = (request.args.get("reg") or "").strip()
+    current_shipment_id = request.args.get("current_shipment_id", type=int)
+
+    q = (
+        db.session.query(
+            Package.id.label("package_id"),
+            Package.tracking_number,
+            Package.house_awb,
+            Package.description,
+            Package.status,
+            Package.is_locked,
+            Package.weight,
+            Package.date_received,
+            User.full_name,
+            User.registration_number,
+            ShipmentLog.id.label("shipment_id"),
+            ShipmentLog.sl_id.label("shipment_ref"),
+            ShipmentLog.sl_name.label("shipment_name"),
+            ShipmentLog.is_archived.label("shipment_archived"),
+        )
+        .join(User, Package.user_id == User.id)
+        .outerjoin(shipment_packages, shipment_packages.c.package_id == Package.id)
+        .outerjoin(ShipmentLog, ShipmentLog.id == shipment_packages.c.shipment_id)
+    )
+
+    if name:
+        q = q.filter(User.full_name.ilike(f"%{name}%"))
+    if tracking:
+        q = q.filter(Package.tracking_number.ilike(f"%{tracking}%"))
+    if house:
+        q = q.filter(Package.house_awb.ilike(f"%{house}%"))
+    if reg:
+        q = q.filter(User.registration_number.ilike(f"%{reg}%"))
+
+    rows = q.order_by(User.full_name.asc(), Package.id.desc()).limit(300).all()
+
+    results = []
+    for r in rows:
+        shipment_label = "-"
+        if r.shipment_id:
+            shipment_label = r.shipment_name or r.shipment_ref or "-"
+
+        state = "unlogged"
+        if r.shipment_id:
+            if current_shipment_id and int(r.shipment_id) == int(current_shipment_id):
+                state = "in_current_shipment"
+            else:
+                state = "in_other_shipment"
+
+        results.append({
+            "id": r.package_id,
+            "customer_name": r.full_name,
+            "registration_number": r.registration_number,
+            "tracking_number": r.tracking_number or "",
+            "house_awb": r.house_awb or "",
+            "description": r.description or "",
+            "weight": float(r.weight or 0),
+            "date_received": r.date_received.strftime("%Y-%m-%d") if r.date_received else "",
+            "status": r.status or "",
+            "is_locked": bool(r.is_locked),
+            "shipment_id": r.shipment_id,
+            "shipment_label": shipment_label,
+            "shipment_archived": bool(r.shipment_archived) if r.shipment_id else False,
+            "state": state,
+        })
+
+    return jsonify({"rows": results})
+
+@logistics_bp.route('/shipmentlog/search-results/assign', methods=['POST'])
+@admin_required
+def assign_search_results_to_shipment():
+    mode = (request.form.get("mode") or "existing").strip()
+    target_id = request.form.get("shipment_id", type=int)
+    new_sl_name = (request.form.get("new_sl_name") or "").strip() or None
+
+    raw_ids = request.form.getlist("package_ids")
+    pkg_ids = sorted({int(x) for x in raw_ids if str(x).isdigit()})
+
+    if not pkg_ids:
+        flash("No packages selected.", "warning")
+        return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+
+    unassigned_id = get_unassigned_user_id()
+    if unassigned_id:
+        bad_count = (
+            db.session.query(func.count(Package.id))
+            .filter(Package.id.in_(pkg_ids), Package.user_id == unassigned_id)
+            .scalar()
+            or 0
+        )
+        if bad_count:
+            flash("🚫 UNASSIGNED packages cannot be moved into shipments. Assign them to a customer first.", "danger")
+            return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+
+    shipment = None
+
+    if mode == "new":
+        shipment = ShipmentLog(sl_id=_next_sl_id())
+        if hasattr(shipment, "sl_name"):
+            shipment.sl_name = new_sl_name
+        db.session.add(shipment)
+        db.session.flush()
+    else:
+        if not target_id:
+            flash("Please choose an existing shipment.", "warning")
+            return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+
+        shipment = db.session.get(ShipmentLog, target_id)
+        if not shipment:
+            flash("Shipment not found.", "danger")
+            return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+
+        blocked = _abort_if_archived(shipment)
+        if blocked:
+            return blocked
+
+    pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
+    if not pkgs:
+        flash("No matching packages found.", "warning")
+        return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+
+    moved = 0
+    for p in pkgs:
+        move_package_to_shipment(p, shipment)
+        moved += 1
+
+    db.session.commit()
+
+    flash(f"Moved {moved} package(s) to shipment {shipment.sl_name or shipment.sl_id}.", "success")
+    return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog', shipment_id=shipment.id))
 
 @logistics_bp.route('/shipmentlog/move', methods=['POST'])
 @admin_required

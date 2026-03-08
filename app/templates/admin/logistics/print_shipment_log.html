@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Shipment Log</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      color: #222;
+    }
+    .header {
+      border-bottom: 2px solid #4a148c;
+      margin-bottom: 18px;
+      padding-bottom: 10px;
+    }
+    .brand {
+      color: #4a148c;
+      font-size: 24px;
+      font-weight: bold;
+    }
+    .sub {
+      color: #666;
+      font-size: 12px;
+    }
+    .summary {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin: 14px 0 18px;
+    }
+    .summary-box {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px 14px;
+      min-width: 160px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 7px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #4a148c;
+      color: white;
+    }
+    tfoot td {
+      font-weight: bold;
+      background: #f8f4fc;
+    }
+    .no-print {
+      margin-bottom: 15px;
+    }
+    @media print {
+      .no-print { display: none; }
+      body { margin: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print">
+    <button onclick="window.print()">Print / Save PDF</button>
+  </div>
+
+  <div class="header">
+    <div class="brand">Foreign A Foot Logistics Limited</div>
+    <div class="sub">Shipment Log Report</div>
+    <div class="sub">
+      Shipment: <strong>{{ shipment.sl_name or shipment.sl_id }}</strong>
+      {% if shipment.sl_name %}(Ref: {{ shipment.sl_id }}){% endif %}
+    </div>
+    <div class="sub">
+      Created: {{ shipment.created_at.strftime('%Y-%m-%d %I:%M %p') if shipment.created_at else '' }}
+    </div>
+  </div>
+
+  <div class="summary">
+    <div class="summary-box"><strong>Total Packages:</strong><br>{{ total_packages }}</div>
+    <div class="summary-box"><strong>Total Weight:</strong><br>{{ "%.2f"|format(total_weight) }} lbs</div>
+    <div class="summary-box"><strong>Total Value:</strong><br>USD {{ "%.2f"|format(total_value) }}</div>
+    <div class="summary-box"><strong>Total Outstanding:</strong><br>JMD {{ "%.2f"|format(total_due) }}</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Customer</th>
+        <th>Reg #</th>
+        <th>Tracking #</th>
+        <th>House AWB</th>
+        <th>Description</th>
+        <th>Date Received</th>
+        <th>Weight</th>
+        <th>Value</th>
+        <th>Outstanding</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in packages %}
+      <tr>
+        <td>{{ p.customer_name }}</td>
+        <td>{{ p.registration_number }}</td>
+        <td>{{ p.tracking_number }}</td>
+        <td>{{ p.house_awb }}</td>
+        <td>{{ p.description }}</td>
+        <td>{{ p.date_received.strftime("%Y-%m-%d") if p.date_received else "" }}</td>
+        <td>{{ "%.2f"|format(p.weight) }}</td>
+        <td>{{ "%.2f"|format(p.value) }}</td>
+        <td>{{ "%.2f"|format(p.amount_due) }}</td>
+        <td>{{ p.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="6">Totals</td>
+        <td>{{ "%.2f"|format(total_weight) }}</td>
+        <td>{{ "%.2f"|format(total_value) }}</td>
+        <td>{{ "%.2f"|format(total_due) }}</td>
+        <td>{{ total_packages }} pkg(s)</td>
+      </tr>
+    </tfoot>
+  </table>
+</body>
+</html>

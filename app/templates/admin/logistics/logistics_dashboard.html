@@ -371,9 +371,9 @@
         <!-- Main: Packages -->
         <div class="col-md-9">
 
-          <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="shipment-header d-flex justify-content-between align-items-center mb-3">
             {% if selected_shipment %}
-            <div class="d-flex align-items-center gap-2 flex-nowrap">
+            <div class="d-flex align-items-center gap-1 shipment-title-wrap">
               <h5 class="fw-bold text-purple mb-0 text-truncate" style="max-width: 650px;">
                 🚚 Shipment Packages -
                 <span id="shipmentNameDisplay">
@@ -387,17 +387,56 @@
                 {% endif %}
               </h5>
 
-              <button class="btn btn-sm btn-outline-purple flex-shrink-0" data-bs-toggle="modal"
+              <button class="btn btn-sm btn-outline-purple flex-shrink-0" 
+                data-bs-toggle="modal"
                 data-bs-target="#renameShipmentModal">
                 ✏️
               </button>
             </div>
-            <div>
-              {% set return_to = request.args.get('return_to') %}
-              <a class="btn btn-outline-dark btn-sm"
-                href="{{ return_to or url_for('logistics.logistics_dashboard', tab='view_packages') }}">
-                <i class="bi bi-arrow-left"></i> Back to View Packages
-              </a>
+            <div class="d-flex align-items-center gap-2 shipment-actions">
+
+              <!-- export toolbar -->
+              <div class="shipment-export-toolbar">
+                <a href="{{ url_for('logistics.print_shipment_log', shipment_id=selected_shipment.id) }}"
+                   class="ship-export-btn"
+                   target="_blank"
+                   title="Print shipment log">
+                  <i class="bi bi-printer"></i>
+                </a>
+
+                <span class="ship-export-divider"></span>
+
+                <a href="{{ url_for('logistics.download_shipment_log_csv', shipment_id=selected_shipment.id) }}"
+                   class="ship-export-btn"
+                   title="Download CSV">
+                  <i class="bi bi-filetype-csv"></i>
+                </a>
+
+                <span class="ship-export-divider"></span>
+
+                <a href="{{ url_for('logistics.download_shipment_log_excel', shipment_id=selected_shipment.id) }}"
+                   class="ship-export-btn"
+                   title="Download Excel">
+                  <i class="bi bi-file-earmark-excel"></i>
+                </a>
+
+                <span class="ship-export-divider"></span>
+
+                <a href="{{ url_for('logistics.download_shipment_log_pdf', shipment_id=selected_shipment.id) }}"
+                   class="ship-export-btn"
+                   title="Download PDF">
+                  <i class="bi bi-file-earmark-pdf"></i>
+                </a>
+              </div>
+
+              <div>
+            
+                {% set return_to = request.args.get('return_to') %}
+                <a class="btn btn-outline-dark btn-sm"
+                  href="{{ return_to or url_for('logistics.logistics_dashboard', tab='view_packages') }}">
+                  <i class="bi bi-arrow-left"></i> Back to View Packages
+                </a>
+              </div>            
             </div>
             {% endif %}
           </div>
@@ -1009,17 +1048,21 @@ Not emailed yet"></i>
                 <table class="table table-sm table-striped align-middle mb-0" id="shipmentSearchResults">
                   <thead class="table-light">
                     <tr>
+                      <th style="width:40px;">
+                        <input type="checkbox" id="searchSelectAll">
+                      </th>
                       <th>Customer</th>
-                      <th>Reg #</th>
                       <th>Tracking #</th>
                       <th>House AWB</th>
                       <th>Description</th>
+                      <th>Date Received</th>
+                      <th>Weight</th>
                       <th>Shipment Batch</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody id="shipmentSearchResultsBody">
                     <tr>
-                      <td colspan="6" class="text-muted">Enter criteria and click Search.</td>
+                      <td colspan="8" class="text-muted">Enter criteria and click Search.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -1028,10 +1071,65 @@ Not emailed yet"></i>
 
             <div class="modal-footer">
               <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+              <button type="button" class="btn btn-purple btn-sm" id="btnAddSearchResultsToShipment">
+                <i class="bi bi-plus-circle"></i> Add / Move Selected Packages
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      <!-- Move Search Results to Shipment Modal -->
+      <div class="modal fade" id="searchMoveShipmentModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+          <div class="modal-content">
+            <form method="POST" action="{{ url_for('logistics.assign_search_results_to_shipment') }}">
+              <div class="modal-header">
+                <h5 class="modal-title">Add / Move Packages</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+
+              <div class="modal-body">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div id="searchMovePackageIdsContainer"></div>
+
+                <div class="mb-3">
+                  <label class="form-label small">Destination Type</label>
+                  <select class="form-select form-select-sm" name="mode" id="searchMoveMode" required>
+                    <option value="existing" selected>Existing Shipment</option>
+                    <option value="new">New Shipment</option>
+                  </select>
+                </div>
+
+                <div class="mb-3" id="searchExistingShipmentWrap">
+                  <label class="form-label small">Choose Existing Shipment</label>
+                  <select class="form-select form-select-sm" name="shipment_id">
+                    <option value="">Select…</option>
+                    {% for s in active_shipments %}
+                      <option value="{{ s.id }}">{{ s.sl_name or s.sl_id }}</option>                      
+                    {% endfor %}
+                  </select>
+                </div>
+
+                <div class="mb-3 d-none" id="searchNewShipmentWrap">
+                  <label class="form-label small">New Shipment Name (optional)</label>
+                  <input type="text" class="form-control form-control-sm" name="new_sl_name"
+                         placeholder="e.g. March Barrel Batch">
+                </div>
+              </div>
+
+              <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
+                  Cancel
+                </button>
+                <button type="submit" class="btn btn-purple btn-sm">
+                  Continue
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>     
 
       <!-- Delete Shipment Batch Modal -->
       <div class="modal fade" id="deleteShipmentModal" tabindex="-1" aria-labelledby="deleteShipmentLabel"
@@ -1426,7 +1524,9 @@ Not emailed yet"></i>
   window.INVOICE_PREVIEW_URL = "{{ url_for('logistics.bulk_invoice_preview') }}";
   window.INVOICE_FINALIZE_URL = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
 
-  window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}"; // .../packages/0/attachments
+  window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}"; 
+
+  window.CURRENT_SHIPMENT_ID = {{ selected_shipment.id if selected_shipment else 0 }};  
 
   function attachUrl(id) {
     const sid = String(id || '').trim();
@@ -2361,33 +2461,134 @@ Not emailed yet"></i>
      ========================== */
   document.getElementById('shipmentSearchForm')?.addEventListener('submit', async function (e) {
     e.preventDefault();
-    const params = new URLSearchParams(new FormData(this));
-    const res = await fetch('{{ url_for("logistics.search_shipment_packages") }}?' + params.toString(), {
+
+    const form = this;
+    const url = new URL("{{ url_for('logistics.shipmentlog_search_packages') }}", window.location.origin);
+
+    url.searchParams.set("name", form.name.value || "");
+    url.searchParams.set("reg", form.reg.value || "");
+    url.searchParams.set("tracking", form.tracking.value || "");
+    url.searchParams.set("house", form.house.value || "");
+    url.searchParams.set("current_shipment_id", window.CURRENT_SHIPMENT_ID || 0);
+
+    const res = await fetch(url.toString(), {
       headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
-    const data = await res.json();
 
-    const tbody = document.querySelector('#shipmentSearchResults tbody');
+    const data = await res.json();
+    const tbody = document.querySelector('#shipmentSearchResultsBody');    
     tbody.innerHTML = '';
 
+    const searchSelectAll = document.getElementById('searchSelectAll');
+    if (searchSelectAll) searchSelectAll.checked = false;
+
     if (!data.rows || !data.rows.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-muted">No results.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="text-muted">No results.</td></tr>';
       return;
     }
 
     for (const r of data.rows) {
+      let shipmentText = r.shipment_label || '-';
+
+      if (r.state === 'in_current_shipment') {
+        shipmentText = `${shipmentText} (Current)`;
+      } else if (r.state === 'in_other_shipment') {
+        shipmentText = `${shipmentText} (Other Shipment)`;
+      }
+
+      const disabled = r.state === 'in_current_shipment' ? 'disabled' : '';
+
       const tr = document.createElement('tr');
       tr.innerHTML = `
-      <td>${r.full_name || '-'}</td>
-      <td>${r.registration_number || '-'}</td>
-      <td>${r.tracking_number || '-'}</td>
-      <td>${r.house_awb || '-'}</td>
-      <td>${r.description || '-'}</td>
-      <td>${r.sl_id || '-'}</td>
-    `;
+        <td>
+          <input type="checkbox"
+                 class="search-pkg-checkbox"
+                 value="${r.id}"
+                 ${disabled}>
+        </td>
+        <td>
+        <strong>${r.customer_name || '-'}</strong><br>
+        <small class="text-muted">${r.registration_number || ''}</small>
+        </td>
+        <td>${r.tracking_number || '-'}</td>
+        <td>${r.house_awb || '-'}</td>
+        <td>${r.description || '-'}</td>
+        <td>${r.date_received || '-'}</td>
+        <td>${Number(r.weight || 0).toFixed(2)}</td>
+        <td>${shipmentText}</td>
+    `  ;
       tbody.appendChild(tr);
     }
   });
+
+  /* select all in search modal */
+  document.getElementById('searchSelectAll')?.addEventListener('change', function () {
+    const checked = this.checked;
+    document.querySelectorAll('.search-pkg-checkbox:not(:disabled)').forEach(cb => {
+      cb.checked = checked;
+    });
+  });
+
+  /* add/move selected search results into current shipment */
+  document.getElementById('btnAddSearchResultsToShipment')?.addEventListener('click', function () {
+    const selected = Array.from(document.querySelectorAll('.search-pkg-checkbox:checked'))
+      .map(cb => cb.value);
+
+    if (!selected.length) {
+      alert("Please select at least one package.");
+      return;
+    }   
+
+    const holder = document.getElementById('searchMovePackageIdsContainer');
+    if (holder) holder.innerHTML = '';
+
+    selected.forEach(id => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'package_ids';
+      input.value = id;
+      holder.appendChild(input);
+    });
+
+    const modalEl = document.getElementById('searchMoveShipmentModal');
+    if (modalEl) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+  });
+
+  document.getElementById('searchMoveMode')?.addEventListener('change', function () {
+    const mode = this.value;
+    const existingWrap = document.getElementById('searchExistingShipmentWrap');
+    const newWrap = document.getElementById('searchNewShipmentWrap');
+    const existingSelect = existingWrap?.querySelector('select[name="shipment_id"]');
+    const newNameInput = newWrap?.querySelector('input[name="new_sl_name"]');
+
+    if (mode === 'new') {
+      existingWrap?.classList.add('d-none');
+      newWrap?.classList.remove('d-none');
+
+      if (existingSelect) {
+        existingSelect.required = false;
+        existingSelect.value = '';
+      }
+      if (newNameInput) {
+        newNameInput.required = false; // optional name
+      }
+    } else {
+      existingWrap?.classList.remove('d-none');
+      newWrap?.classList.add('d-none');
+
+      if (existingSelect) {
+        existingSelect.required = true;
+      }
+      if (newNameInput) {
+        newNameInput.required = false;
+        newNameInput.value = '';
+      }
+    }    
+  });
+
+  document.getElementById('searchMoveMode')?.dispatchEvent(new Event('change'));
 
   /*
   window.openChargesModal = function (btn) {
@@ -3481,6 +3682,67 @@ Not emailed yet"></i>
   .ship-tool-btn i {
     font-size: .95rem;
     line-height: 1;
+  }
+  /* Shipment header layout */
+  .shipment-header{
+    flex-wrap: nowrap;
+    gap: 10px;
+  }
+
+  .shipment-title-wrap{
+    min-width: 0;
+    gap: 6px !important;
+  }
+
+  .shipment-title-wrap h5{
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0;
+  }
+
+  .shipment-actions{
+    flex-shrink: 0;
+    white-space: nowrap;
+    flex-wrap: nowrap !important;
+  }
+  .shipment-export-toolbar {
+    display: inline-flex;
+    align-items: center;
+    background: #fff;
+    border: 1px solid rgba(74, 20, 140, 0.22);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    flex-shrink: 0;
+  }
+
+  .ship-export-btn {
+    width: 36px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #4a148c;
+    text-decoration: none;
+    background: #fff;
+    transition: background .18s ease, color .18s ease;
+    flex-shrink: 0;
+  }
+
+  .ship-export-btn:hover {
+    background: rgba(74, 20, 140, 0.08);
+    color: #4a148c;
+  }
+  .ship-export-btn i{
+    font-size: .9rem;
+    line-height: 1;
+  }
+
+  .ship-export-divider {
+    width: 1px;
+    height: 20px;
+    background: rgba(74, 20, 140, 0.18);
   }
 </style>
 {% endblock %}

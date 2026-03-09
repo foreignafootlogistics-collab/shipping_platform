@@ -3433,9 +3433,19 @@ def move_packages_between_shipments():
 
     if not to_id or not pkg_ids:
         flash("Select destination shipment and at least one package.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard',
-                                tab='shipmentLog',
-                                shipment_id=from_id or None))
+        return redirect(url_for(
+            'logistics.logistics_dashboard',
+            tab='shipmentLog',
+            shipment_id=from_id or None
+        ))
+
+    if from_id and to_id and from_id == to_id:
+        flash("Selected packages are already in that shipment.", "info")
+        return redirect(url_for(
+            'logistics.logistics_dashboard',
+            tab='shipmentLog',
+            shipment_id=from_id
+        ))
 
     # ✅ BLOCK UNASSIGNED from being moved into any shipment
     unassigned_id = get_unassigned_user_id()
@@ -3449,26 +3459,47 @@ def move_packages_between_shipments():
         )
         if bad_count:
             flash("🚫 UNASSIGNED packages cannot be moved into shipments. Assign them to a customer first.", "danger")
-            return redirect(url_for('logistics.logistics_dashboard',
-                                    tab='shipmentLog',
-                                    shipment_id=from_id or None))
+            return redirect(url_for(
+                'logistics.logistics_dashboard',
+                tab='shipmentLog',
+                shipment_id=from_id or None
+            ))
 
+    from_sl = db.session.get(ShipmentLog, from_id) if from_id else None
     to_sl = db.session.get(ShipmentLog, to_id)
+
+    if from_id and not from_sl:
+        flash("Source shipment not found.", "danger")
+        return redirect(url_for(
+            'logistics.logistics_dashboard',
+            tab='shipmentLog'
+        ))
+
     if not to_sl:
         flash("Destination shipment not found.", "danger")
-        return redirect(url_for('logistics.logistics_dashboard',
-                                tab='shipmentLog',
-                                shipment_id=from_id or None))
-    blocked = _abort_if_archived(sl)
+        return redirect(url_for(
+            'logistics.logistics_dashboard',
+            tab='shipmentLog',
+            shipment_id=from_id or None
+        ))
+
+    if from_sl:
+        blocked = _abort_if_archived(from_sl)
+        if blocked:
+            return blocked
+
+    blocked = _abort_if_archived(to_sl)
     if blocked:
         return blocked
 
     pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
     if not pkgs:
         flash("No matching packages found to move.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard',
-                                tab='shipmentLog',
-                                shipment_id=from_id or None))
+        return redirect(url_for(
+            'logistics.logistics_dashboard',
+            tab='shipmentLog',
+            shipment_id=from_id or None
+        ))
 
     moved = 0
     for p in pkgs:
@@ -3478,10 +3509,11 @@ def move_packages_between_shipments():
     db.session.commit()
 
     flash(f"Moved {moved} package(s) to shipment {to_sl.sl_id}.", "success")
-    return redirect(url_for('logistics.logistics_dashboard',
-                            tab='shipmentLog',
-                            shipment_id=to_id))
-
+    return redirect(url_for(
+        'logistics.logistics_dashboard',
+        tab='shipmentLog',
+        shipment_id=to_id
+    ))
 
 @logistics_bp.route('/shipmentlog/<int:shipment_id>/bulk-action', methods=['POST'])
 @admin_required

@@ -100,6 +100,7 @@
             <div class="mxk-mini-title">Our Fees</div>
             <div class="mxk-mini"><span>Freight</span><span>{{ (p.freight or 0)|jmd }}</span></div>
             <div class="mxk-mini"><span>Handling</span><span>{{ (p.handling or 0)|jmd }}</span></div>
+            <div class="mxk-mini"><span>Bad Address</span><span>{{ (p.bad_address_fee or 0)|jmd }}</span></div>
             <div class="mxk-mini"><span>Other</span><span>{{ (p.other_charges or 0)|jmd }}</span></div>
           </div>
           <div class="col-6">

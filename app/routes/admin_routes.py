@@ -1184,7 +1184,7 @@ def generate_invoice_route(user_id):
 
     totals = dict(
         duty=0, scf=0, envl=0, caf=0, gct=0, stamp=0,
-        freight=0, handling=0, other_charges=0, grand_total=0,
+        freight=0, handling=0, other_charges=0, bad_address=0, grand_total=0,
     )
     view_lines = []
 
@@ -1217,6 +1217,8 @@ def generate_invoice_route(user_id):
             handling      = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
 
             other_charges = float(getattr(p, "other_charges", 0) or 0)
+            bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0) 
+
             grand_total   = float(
                 getattr(p, "amount_due", 0)
                 or getattr(p, "grand_total", 0)
@@ -1238,6 +1240,7 @@ def generate_invoice_route(user_id):
                 "freight": freight,
                 "handling": handling,
                 "other_charges": other_charges,
+                "bad_address_fee": bad_address_fee,
                 "grand_total": grand_total,
                 "customs_total": float(getattr(p, "customs_total", 0) or 0),
                 "freight_total": float(getattr(p, "freight_total", 0) or 0),
@@ -1259,6 +1262,7 @@ def generate_invoice_route(user_id):
             stamp         = float(ch.get("stamp", 0) or 0)
             freight       = float(ch.get("freight", 0) or 0)
             handling      = float(ch.get("handling", 0) or 0)
+            bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0)
             other_charges = float(ch.get("other_charges", 0) or 0)
             grand_total   = float(ch.get("grand_total", 0) or 0)
 
@@ -1286,6 +1290,7 @@ def generate_invoice_route(user_id):
                 p.handling = handling
 
             p.other_charges = other_charges
+            p.bad_address_fee = bad_address_fee
             p.amount_due    = grand_total
             p.invoice_id    = inv.id
 
@@ -1299,6 +1304,7 @@ def generate_invoice_route(user_id):
         totals["freight"]       += freight
         totals["handling"]      += handling
         totals["other_charges"] += other_charges
+        totals["bad_address"]   += bad_address_fee
         totals["grand_total"]   += grand_total
 
         view_lines.append({
@@ -1306,6 +1312,7 @@ def generate_invoice_route(user_id):
             "description": desc,
             "weight":      wt,
             "value_usd":   val,
+            "bad_address_fee": bad_address_fee,
             **ch,
         })
 
@@ -1318,6 +1325,8 @@ def generate_invoice_route(user_id):
     inv.total_stamp    = totals["stamp"]
     inv.total_freight  = totals["freight"]
     inv.total_handling = totals["handling"]
+    if hasattr(inv, "total_bad_address"):
+        inv.total_bad_address = totals["bad_address"]
     inv.grand_total    = totals["grand_total"]
     inv.amount_due     = totals["grand_total"]
     inv.subtotal       = totals["grand_total"]
@@ -1346,6 +1355,7 @@ def generate_invoice_route(user_id):
             "caf":            x.get("caf", 0),
             "gct":            x.get("gct", 0),
             "other_charges":  x.get("other_charges", 0),
+            "bad_address_fee": x.get("bad_address_fee", 0),
             "discount_due":   x.get("discount_due", 0),
         } for x in view_lines],
     }
@@ -1466,9 +1476,8 @@ def view_customer_invoice(user_id):
 
     items = []
     totals = dict(
-        duty=0, scf=0, envl=0, caf=0, gct=0,
-        stamp=0, freight=0, handling=0, other_charges=0,
-        grand_total=0
+        duty=0, scf=0, envl=0, caf=0, gct=0, stamp=0,
+        freight=0, handling=0, other_charges=0, bad_address=0, grand_total=0,
     )
 
     for p in pkgs:
@@ -1497,6 +1506,7 @@ def view_customer_invoice(user_id):
         handling = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
 
         other_charges = float(getattr(p, "other_charges", 0) or 0)
+        bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0)
         grand_total   = float(getattr(p, "amount_due", 0) or getattr(p, "grand_total", 0) or 0)
 
         items.append({
@@ -1522,6 +1532,7 @@ def view_customer_invoice(user_id):
             "stamp": stamp,
 
             "other_charges": other_charges,
+            "bad_address_fee": bad_address_fee,
             "discount_due": float(getattr(p, "discount_due", 0) or 0),
 
             "amount_due": grand_total,       # ✅ REQUIRED by your template
@@ -1536,6 +1547,7 @@ def view_customer_invoice(user_id):
         totals["freight"]       += freight
         totals["handling"]      += handling
         totals["other_charges"] += other_charges
+        totals["bad_address"]   += bad_address_fee
         totals["grand_total"]   += grand_total
 
     subtotal = float(totals["grand_total"] or 0.0)
@@ -1592,6 +1604,7 @@ def view_customer_invoice(user_id):
                 "stamp": i["stamp"],
 
                 "other_charges": i["other_charges"],
+                "bad_address_fee": i.get("bad_address_fee", 0),
                 "discount_due": i["discount_due"],
 
                 "amount_due": i.get("amount_due", 0),

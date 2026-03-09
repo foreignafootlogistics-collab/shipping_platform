@@ -311,6 +311,7 @@
             <th>Description</th>
             <th class="text-end">LBS</th>
             <th class="text-end">Value (USD)</th>
+            <th class="text-end">Bad Address</th>
             <th class="text-end">Due (JMD)</th>
           </tr>
         </thead>
@@ -331,11 +332,12 @@
             <td>{{ p.description or "—" }}</td>
             <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
             <td class="text-end">${{ "%.2f"|format(p.value_usd or 0) }}</td>
+            <td class="text-end">JMD {{ "%.2f"|format(p.bad_address_fee or 0) }}</td>
             <td class="text-end">JMD {{ "%.2f"|format(p.amount_due or 0) }}</td>
           </tr>
           {% else %}
           <tr>
-            <td colspan="7" class="text-center text-muted py-4">No items.</td>
+            <td colspan="8" class="text-center text-muted py-4">No items.</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -573,6 +575,7 @@
             <tr><th>ENVL</th>     <td class="text-end" id="bd-envl-inline">—</td></tr>
             <tr><th>CAF</th>      <td class="text-end" id="bd-caf-inline">—</td></tr>
             <tr><th>Stamp</th>    <td class="text-end" id="bd-stamp-inline">—</td></tr>
+            <tr><th>Bad Address</th> <td class="text-end" id="bd-bad-address-inline">—</td></tr>
             <tr><th>Other</th>    <td class="text-end" id="bd-other-inline">—</td></tr>
             <tr class="table-light">
               <th>Total</th>
@@ -639,5 +642,80 @@ document.addEventListener("submit", async function (e) {
     alert(err.message || "Could not add payment.");
   }
 }, true);
+
+document.addEventListener("click", async function(e){
+
+  const btn = e.target.closest(".js-bd");
+  if(!btn) return;
+
+  const pkgId = btn.getAttribute("data-pkg");
+  if(!pkgId) return;
+
+  const overlay = document.getElementById("inlineBreakdownOverlay");
+  if(overlay) overlay.classList.remove("d-none");
+
+  const ids = [
+    "bd-duty-inline",
+    "bd-gct-inline",
+    "bd-freight-inline",
+    "bd-handling-inline",
+    "bd-scf-inline",
+    "bd-envl-inline",
+    "bd-caf-inline",
+    "bd-stamp-inline",
+    "bd-bad-address-inline",
+    "bd-other-inline",
+    "bd-total-inline"
+  ];
+
+  ids.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.textContent="…";
+  });
+
+  try{
+
+    const resp = await fetch(
+      "{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace("0", pkgId),
+      {headers:{"X-Requested-With":"XMLHttpRequest"}}
+    );
+
+    if(!resp.ok) throw new Error();
+
+    const d = await resp.json();
+
+    const nf = new Intl.NumberFormat(undefined,{
+      minimumFractionDigits:2,
+      maximumFractionDigits:2
+    });
+
+    const setVal = (id,val)=>{
+      const el=document.getElementById(id);
+      if(el) el.textContent=nf.format(val||0);
+    };
+
+    setVal("bd-duty-inline", d.duty);
+    setVal("bd-gct-inline", d.gct);
+    setVal("bd-freight-inline", d.freight);
+    setVal("bd-handling-inline", d.handling);
+    setVal("bd-scf-inline", d.scf);
+    setVal("bd-envl-inline", d.envl);
+    setVal("bd-caf-inline", d.caf);
+    setVal("bd-stamp-inline", d.stamp);
+    setVal("bd-bad-address-inline", d.bad_address_fee);
+    setVal("bd-other-inline", d.other_charges);
+    setVal("bd-total-inline", d.grand_total);
+
+  }
+  catch(err){
+    console.error(err);
+
+    ids.forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el.textContent="—";
+    });
+  }
+
+});
 </script>
 

@@ -944,12 +944,14 @@ def receipt_modal(payment_id):
         duty_total = 0.0
         handling_total = 0.0
         gct_total = 0.0
+        bad_address_total = 0.0
 
         for pkg in pkgs:
             freight_total += _num(getattr(pkg, "freight_fee", getattr(pkg, "freight", 0)))
             handling_total += _num(getattr(pkg, "storage_fee", getattr(pkg, "handling", 0)))
             duty_total += _num(getattr(pkg, "duty", 0))
             gct_total += _num(getattr(pkg, "gct", 0))
+            bad_address_total += _num(getattr(pkg, "bad_address_fee", 0))
 
         inv_total = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
         if inv_total <= 0:
@@ -960,6 +962,7 @@ def receipt_modal(payment_id):
             "duty": float(duty_total),
             "handling": float(handling_total),
             "gct": float(gct_total),
+            "bad_address": float(bad_address_total),
             "total": float(inv_total),
         }
 
@@ -1014,6 +1017,7 @@ def bill_invoice_modal(invoice_id):
             w = 1
 
         freight = float(get_freight(w) or 0)
+        bad_address_fee = _num(getattr(p, "bad_address_fee", 0))
 
         packages.append({
             "house_awb": p.house_awb or "",
@@ -1023,6 +1027,7 @@ def bill_invoice_modal(invoice_id):
             "freight": freight,
             "handling": _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
             "other_charges": _num(getattr(p, "other_charges", 0)),
+            "bad_address_fee": _num(getattr(p, "bad_address_fee", 0)),
             "duty": _num(getattr(p, "duty", 0)),
             "scf": _num(getattr(p, "scf", 0)),
             "envl": _num(getattr(p, "envl", 0)),
@@ -1125,6 +1130,7 @@ def receipt_pdf_inline(payment_id):
             "freight": freight,
             "handling": handling,
             "other_charges": _num(getattr(pkg, "other_charges", 0)),
+            "bad_address_fee": _num(getattr(pkg, "bad_address_fee", 0)),
             "duty": _num(getattr(pkg, "duty", 0)),
             "scf": _num(getattr(pkg, "scf", 0)),
             "envl": _num(getattr(pkg, "envl", 0)),
@@ -1261,6 +1267,7 @@ def view_invoice_customer(invoice_id):
             "freight":       _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
             "storage":       _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
             "other_charges": _num(getattr(p, "other_charges", 0)),
+            "bad_address_fee": _num(getattr(p, "bad_address_fee", 0)),
             "duty":          _num(getattr(p, "duty", 0)),
             "scf":           _num(getattr(p, "scf", 0)),
             "envl":          _num(getattr(p, "envl", 0)),
@@ -1319,6 +1326,7 @@ def invoice_pdf(invoice_id):
             "freight":       _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
             "storage":       _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
             "other_charges": _num(getattr(p, "other_charges", 0)),
+            "bad_address_fee": _num(getattr(p, "bad_address_fee", 0)),
             "duty":          _num(getattr(p, "duty", 0)),
             "scf":           _num(getattr(p, "scf", 0)),
             "envl":          _num(getattr(p, "envl", 0)),

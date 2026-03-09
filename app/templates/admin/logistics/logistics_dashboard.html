@@ -574,9 +574,14 @@
                     <td class="text-center align-middle">
                       <!-- ✅ IMPORTANT: include data-category so modal opens correctly -->
                       <button type="button" class="btn btn-sm btn-outline-primary mb-1 js-open-charges"
-                        data-bs-toggle="modal" data-bs-target="#chargesModalSL" data-pkg-id="{{ pkg.id }}"
+                        data-bs-toggle="modal" 
+                        data-bs-target="#chargesModalSL" 
+                        data-pkg-id="{{ pkg.id }}"
                         data-desc="{{ pkg.description or pkg.tracking_number or ('Package #' ~ pkg.id) }}"
-                        data-category="{{ pkg.category or 'Other' }}">
+                        data-category="{{ pkg.category or 'Other' }}"
+                        data-epc="{{ 1 if pkg.epc else 0 }}"
+                        data-bad-address="{{ 1 if pkg.bad_address else 0 }}"
+                        data-bad-address-fee="{{ pkg.bad_address_fee or 0 }}">
                         <i class="bi bi-calculator"></i>
                       </button>
                       <br>
@@ -690,6 +695,10 @@ Not emailed yet"></i>
                         value="{{ pkg.storage_fee or 0 }}">
                       <input type="hidden" name="other_{{ pkg.id }}" id="other_{{ pkg.id }}"
                         value="{{ pkg.other_charges or 0 }}">
+                      <input type="hidden" name="bad_address_{{ pkg.id }}" id="bad_address_{{ pkg.id }}"
+                        value="{{ 1 if pkg.bad_address else 0 }}">
+                      <input type="hidden" name="bad_address_fee_{{ pkg.id }}" id="bad_address_fee_{{ pkg.id }}"
+                        value="{{ pkg.bad_address_fee or 0 }}">
                     </td>
                   </tr>
                   {% endfor %}
@@ -861,6 +870,25 @@ Not emailed yet"></i>
                   </div>
                 </div>
 
+                <div class="row g-3 mb-2">
+                  <div class="col-md-6">
+                    <div class="form-check mt-4">
+                      <input class="form-check-input" type="checkbox" id="chargesBadAddress">
+                      <label class="form-check-label fw-semibold" for="chargesBadAddress">
+                        Bad Address
+                      </label>
+                      <div class="small text-muted">
+                        Apply when package arrived without a valid registration number and had to be manually assigned.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="col-md-6">
+                    <label for="chargesBadAddressFee" class="form-label fw-semibold">Bad Address Fee (JMD)</label>
+                    <input type="number" step="0.01" id="chargesBadAddressFee" class="form-control form-control-sm">
+                  </div>
+                </div>
+
                 <div class="d-flex align-items-center justify-content-between
                             border rounded p-2 mb-2" style="background:#f8f9fa;">
                   <div class="small">
@@ -932,6 +960,14 @@ Not emailed yet"></i>
                       <div class="border rounded p-2">
                         <div class="text-muted">Handling</div><input type="number" step="0.01" id="resHandling"
                           class="form-control form-control-sm text-end">
+                      </div>
+                    </div>
+
+                    <div class="col-md-4">
+                      <div class="border rounded p-2">
+                        <div class="text-muted small">Bad Address</div>
+                        <input type="number" step="0.01" id="resBadAddress"
+                               class="form-control form-control-sm text-end">
                       </div>
                     </div>
 
@@ -1526,7 +1562,8 @@ Not emailed yet"></i>
 
   window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}"; 
 
-  window.CURRENT_SHIPMENT_ID = {{ selected_shipment.id if selected_shipment else 0 }};  
+  window.CURRENT_SHIPMENT_ID = {{ selected_shipment.id if selected_shipment else 0 }}; 
+  window.BAD_ADDRESS_FEE_DEFAULT = {{ (settings.bad_address_fee_jmd or 500)|float }}; 
 
   function attachUrl(id) {
     const sid = String(id || '').trim();
@@ -1835,6 +1872,8 @@ Not emailed yet"></i>
       appendHidden(`freight_${id}`, getValById('freight_', id));
       appendHidden(`handling_${id}`, getValById('handling_', id));
       appendHidden(`other_${id}`, getValById('other_', id));
+      appendHidden(`bad_address_${id}`, getValById('bad_address_', id));
+      appendHidden(`bad_address_fee_${id}`, getValById('bad_address_fee_', id));
     });
 
     // ✅ CRITICAL FIX: prevent posting package_ids twice
@@ -1856,7 +1895,9 @@ Not emailed yet"></i>
     input[name^="stamp_"],
     input[name^="freight_"],
     input[name^="handling_"],
-    input[name^="other_"]
+    input[name^="other_"],
+    input[name^="bad_address_"],
+    input[name^="bad_address_fee_"]
   `).forEach(el => { el.disabled = true; });
 
     form.appendChild(holder);
@@ -2040,6 +2081,8 @@ Not emailed yet"></i>
     const weightInput = document.getElementById('chargesWeight');
     const valueInput = document.getElementById('chargesValue');
     const categorySelect = document.getElementById('chargesCategory');
+    const badAddressToggle = document.getElementById('chargesBadAddress');
+    const badAddressFeeInput = document.getElementById('chargesBadAddressFee');
 
     const btnCalc = document.getElementById('btnCalcCharges');
     const btnApply = document.getElementById('btnApplyToPkg');
@@ -2058,6 +2101,7 @@ Not emailed yet"></i>
     const resHandling = document.getElementById('resHandling');
     const resFreightTotal = document.getElementById('resFreightTotal');
     const resOther = document.getElementById('resOther');
+    const resBadAddress = document.getElementById('resBadAddress');
     const resTotal = document.getElementById('resTotal');
 
     // ✅ Manual override toggle
@@ -2103,6 +2147,12 @@ Not emailed yet"></i>
       setHidden(`freight_${pkgId}`, numVal(resFreight));
       setHidden(`handling_${pkgId}`, numVal(resHandling));
       setHidden(`other_${pkgId}`, numVal(resOther));
+
+      const badAddressHidden = document.getElementById(`bad_address_${pkgId}`);
+      if (badAddressHidden) badAddressHidden.value = badAddressToggle?.checked ? '1' : '0';
+
+      const badAddressFeeHidden = document.getElementById(`bad_address_fee_${pkgId}`);
+      if (badAddressFeeHidden) badAddressFeeHidden.value = numVal(resBadAddress).toFixed(2);
     }
 
     function recalcTotalsFromManual() {
@@ -2120,7 +2170,20 @@ Not emailed yet"></i>
       const handling = numVal(resHandling);
       const other = numVal(resOther);
 
-      const freightTotal = freight + handling + other;
+      let badAddressAmt = numVal(resBadAddress);
+
+      const badAddressOn = !!badAddressToggle?.checked;
+      const badAddressFee = numVal(badAddressFeeInput);
+
+      if (badAddressOn) {
+        badAddressAmt = badAddressFee;
+      } else {
+        badAddressAmt = 0;
+      }
+
+      if (resBadAddress) resBadAddress.value = badAddressAmt.toFixed(2);
+
+      const freightTotal = freight + handling + other + badAddressAmt;
       if (resFreightTotal) resFreightTotal.value = freightTotal.toFixed(2);
 
       const grandTotal = customsTotal + freightTotal;
@@ -2134,6 +2197,18 @@ Not emailed yet"></i>
       if (!el) return;
       el.addEventListener('input', () => {
         setLocked(true);          // ✅ if user edits manually, lock it
+        recalcTotalsFromManual();
+      });
+    });
+
+    [badAddressToggle, badAddressFeeInput].forEach(el => {
+      if (!el) return;
+      el.addEventListener('input', () => {
+        setLocked(true);
+        recalcTotalsFromManual();
+      });
+      el.addEventListener('change', () => {
+        setLocked(true);
         recalcTotalsFromManual();
       });
     });
@@ -2168,7 +2243,10 @@ Not emailed yet"></i>
       const lockedHidden = document.getElementById(`locked_${pkgId}`);
       setLocked((lockedHidden?.value || '0') === '1');
   
-      const getHidden = (id) => Number(document.getElementById(id)?.value || 0).toFixed(2);
+      function getHiddenVal(id) {
+        const el = document.getElementById(id);
+        return Number(el?.value || 0).toFixed(2);
+      }
   
       if (resDuty)  resDuty.value  = getHidden(`duty_${pkgId}`);
       if (resGct)   resGct.value   = getHidden(`gct_${pkgId}`);
@@ -2179,10 +2257,14 @@ Not emailed yet"></i>
       if (resFreight)  resFreight.value  = getHidden(`freight_${pkgId}`);
       if (resHandling) resHandling.value = getHidden(`handling_${pkgId}`);
       if (resOther)    resOther.value    = getHidden(`other_${pkgId}`);
+      if (resBadAddress) resBadAddress.value = getHiddenVal(`bad_address_fee_${pkgId}`);
   
       recalcTotalsFromManual();
   
-      if (errorBox) { errorBox.style.display = 'none'; errorBox.textContent = ''; }
+      if (errorBox) { 
+        errorBox.style.display = 'none';
+        errorBox.textContent = ''; 
+      }
       if (resultBox) resultBox.style.display = 'block';
       if (btnApply) btnApply.style.display = 'inline-block';
     });
@@ -2241,11 +2323,19 @@ Not emailed yet"></i>
         // freight/handling keys vary across versions
         if (resFreight) resFreight.value = fmt(pick(d, ['freight_fee', 'freight']));
         if (resHandling) resHandling.value = fmt(pick(d, ['handling_fee', 'handling', 'storage_fee']));
-        if (resOther) resOther.value = fmt(pick(d, ['other_charges', 'other', 'other_fee'], 0));
+        const otherVal = pick(d, ['other_charges', 'other', 'other_fee'], 0);
+
+        const badAddressOn = !!badAddressToggle?.checked;
+        const badAddressFee = numVal(badAddressFeeInput);
+        const badAddressVal = badAddressOn ? badAddressFee : 0;
+
+        if (resOther) resOther.value = fmt(otherVal);
+        if (resBadAddress) resBadAddress.value = fmt(badAddressVal);
 
 
         recalcTotalsFromManual();
 
+        
         if (errorBox) errorBox.style.display = 'none';
         if (resultBox) resultBox.style.display = 'block';
         if (btnApply) btnApply.style.display = 'inline-block';
@@ -2271,6 +2361,9 @@ Not emailed yet"></i>
 
       recalcTotalsFromManual();
 
+      const badAddressOn = !!badAddressToggle?.checked;
+      const badAddressFee = badAddressOn ? numVal(badAddressFeeInput) : 0;
+
       const payload = {
         category: cat,
         value: numVal(valueInput),
@@ -2288,12 +2381,14 @@ Not emailed yet"></i>
         freight: numVal(resFreight),
         handling: numVal(resHandling),
         other_charges: numVal(resOther),
+        bad_address: badAddressOn,
+        bad_address_fee: badAddressFee,
 
         freight_total: numVal(resFreightTotal),
         grand_total: numVal(resTotal),
 
         amount_due: numVal(resTotal),
-        pricing_locked: isLocked(),
+        pricing_locked: isLocked(),        
         force: true
       };
 
@@ -2318,6 +2413,12 @@ Not emailed yet"></i>
       setHidden(`freight_${pkgId}`, payload.freight);
       setHidden(`handling_${pkgId}`, payload.handling);
       setHidden(`other_${pkgId}`, payload.other_charges);
+
+      const badAddressHidden = document.getElementById(`bad_address_${pkgId}`);
+      if (badAddressHidden) badAddressHidden.value = payload.bad_address ? '1' : '0';
+
+      const badAddressFeeHidden = document.getElementById(`bad_address_fee_${pkgId}`);
+      if (badAddressFeeHidden) badAddressFeeHidden.value = Number(payload.bad_address_fee || 0).toFixed(2);
 
       const updateUrl = "{{ url_for('logistics.api_update_package', pkg_id=0) }}".replace(/\/0$/, `/${pkgId}`);
 
@@ -2640,6 +2741,14 @@ Not emailed yet"></i>
       const weightInput = document.getElementById('chargesWeight');
       const valueInput = document.getElementById('chargesValue');
       const categorySelect = document.getElementById('chargesCategory');
+      const badAddressToggle = document.getElementById('chargesBadAddress');
+      const badAddressFeeInput = document.getElementById('chargesBadAddressFee');
+      const resBadAddress = document.getElementById('resBadAddress');
+      const lockToggle = document.getElementById('pricingLockedToggle');
+
+      function setLocked(v) {
+        if (lockToggle) lockToggle.checked = !!v;
+      }
 
       function findRowByPkgId(pkgId) {
         // normal DOM
@@ -2661,6 +2770,9 @@ Not emailed yet"></i>
         const pkgId = (btn.getAttribute('data-pkg-id') || '').trim();
         const desc = (btn.getAttribute('data-desc') || '').trim();
         const catBtn = (btn.getAttribute('data-category') || '').trim();
+        const epcFlag = String(btn.getAttribute('data-epc') || '0') === '1';
+        const savedBadAddress = String(btn.getAttribute('data-bad-address') || '0') === '1';
+        const savedBadAddressFee = parseFloat(btn.getAttribute('data-bad-address-fee') || '0') || 0;
 
         if (!pkgId) return;
 
@@ -2680,8 +2792,32 @@ Not emailed yet"></i>
 
         if (weightInput) weightInput.value = (wEl?.value ?? '0');
         if (valueInput) valueInput.value = (vEl?.value ?? '0');
-      }
+             
+        // load bad address defaults
+        const shouldCheckBadAddress = savedBadAddress || epcFlag;
 
+        if (badAddressToggle) {
+          badAddressToggle.checked = shouldCheckBadAddress;
+        }
+
+        if (badAddressFeeInput) {
+          badAddressFeeInput.value =
+            savedBadAddressFee > 0
+              ? savedBadAddressFee.toFixed(2)
+              : Number(window.BAD_ADDRESS_FEE_DEFAULT || 500).toFixed(2);
+        }
+        if (resBadAddress) {
+          resBadAddress.value = (
+            shouldCheckBadAddress
+              ? (savedBadAddressFee > 0 ? savedBadAddressFee : Number(window.BAD_ADDRESS_FEE_DEFAULT || 500))
+              : 0
+          ).toFixed(2);
+        }
+
+        // load saved lock state
+        const lockedHidden = document.getElementById(`locked_${pkgId}`);
+        setLocked((lockedHidden?.value || '0') === '1');
+      }
       // Populate BEFORE Bootstrap opens modal
       document.addEventListener('click', function (e) {
         const btn = e.target.closest('.js-open-charges');

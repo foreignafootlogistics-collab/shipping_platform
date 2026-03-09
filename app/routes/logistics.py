@@ -518,9 +518,9 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
     if weight <= 0:
         return None
 
-    breakdown = calculate_charges(category, invoice_val, weight)
+    breakdown = calculate_charges(category, invoice_val, weight) or {}
 
-    # ✅ single writer (your existing helper)
+    # ✅ single writer for normal calculator fields
     apply_breakdown_to_package(p, breakdown, lock=False)
 
     # keep core fields in sync
@@ -530,6 +530,34 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
     p.value = invoice_val
     if hasattr(p, "declared_value"):
         p.declared_value = invoice_val
+
+    # -----------------------------------
+    # Apply bad address separately
+    # -----------------------------------
+    bad_address_on = bool(getattr(p, "bad_address", False))
+    bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0)
+
+    if not bad_address_on:
+        bad_address_fee = 0.0
+        if hasattr(p, "bad_address_fee"):
+            p.bad_address_fee = 0.0
+
+    normal_grand_total = float(
+        getattr(p, "grand_total", None)
+        or breakdown.get("grand_total")
+        or breakdown.get("total_amount")
+        or breakdown.get("total")
+        or breakdown.get("amount_due")
+        or 0.0
+    )
+
+    final_grand_total = normal_grand_total + bad_address_fee
+
+    if hasattr(p, "grand_total"):
+        p.grand_total = final_grand_total
+
+    if hasattr(p, "amount_due"):
+        p.amount_due = final_grand_total
 
     return breakdown
 
@@ -3564,6 +3592,24 @@ def bulk_shipment_action(shipment_id):
                 except Exception:
                     weight = float(getattr(p, "weight", 0) or 0)
 
+            # ---------- bad address ----------
+            raw_bad_address = request.form.get(f"bad_address_{p.id}")
+            raw_bad_address_fee = request.form.get(f"bad_address_fee_{p.id}")
+
+            bad_address = str(raw_bad_address or "0").strip() in ("1", "true", "True", "yes", "on")
+
+            try:
+                bad_address_fee = float(str(raw_bad_address_fee).strip()) if raw_bad_address_fee not in (None, "", "None") else 0.0
+            except Exception:
+                bad_address_fee = 0.0
+
+            # save the toggled values onto package before calc/apply
+            if hasattr(p, "bad_address"):
+                p.bad_address = bad_address
+
+            if hasattr(p, "bad_address_fee"):
+                p.bad_address_fee = bad_address_fee if bad_address else 0.0
+
             breakdown = _bulk_calc_apply_to_package(
                 p,
                 category=category,
@@ -4037,7 +4083,7 @@ def shipment_finance_invoice_preview_json(shipment_id):
     payload = request.get_json(silent=True) or {}
     package_ids = payload.get("package_ids") or []
 
-    ShipmentLog.query.get_or_404(shipment_id)
+    shipment = ShipmentLog.query.get_or_404(shipment_id)
 
     blocked = _abort_if_archived(shipment)
     if blocked:
@@ -4846,6 +4892,13 @@ def api_update_package(pkg_id):
         except (TypeError, ValueError):
             return default
 
+    def to_bool(x, default=False):
+        if x is None:
+            return default
+        if isinstance(x, bool):
+            return x
+        return str(x).strip().lower() in ("1", "true", "yes", "on")
+
     p = db.session.get(Package, pkg_id)
     if not p:
         return jsonify({"ok": False, "error": "Package not found"}), 404
@@ -4853,7 +4906,6 @@ def api_update_package(pkg_id):
     # ---------------------------------------------------
     # If pricing is locked, you can block edits (optional)
     # ---------------------------------------------------
-    # If you WANT to allow edits even when locked, comment this out.
     if getattr(p, "pricing_locked", False) and not data.get("force"):
         return jsonify({
             "ok": False,
@@ -4882,7 +4934,18 @@ def api_update_package(pkg_id):
         updated.append("value")
 
     # -------------------------
-    # Breakdown fields (NEW)
+    # Bad address fields
+    # -------------------------
+    if "bad_address" in data and hasattr(p, "bad_address"):
+        p.bad_address = to_bool(data.get("bad_address"), False)
+        updated.append("bad_address")
+
+    if "bad_address_fee" in data and hasattr(p, "bad_address_fee"):
+        p.bad_address_fee = to_num(data.get("bad_address_fee"), 0.0)
+        updated.append("bad_address_fee")
+
+    # -------------------------
+    # Breakdown fields
     # -------------------------
     breakdown_map = {
         "duty": "duty",
@@ -4894,11 +4957,9 @@ def api_update_package(pkg_id):
         "customs_total": "customs_total",
         "freight": "freight_fee",
         "freight_fee": "freight_fee",
- 
         "handling": "handling_fee",
         "handling_fee": "handling_fee",
         "storage_fee": "handling_fee",
-
         "freight_total": "freight_total",
         "grand_total": "grand_total",
         "other_charges": "other_charges",
@@ -4919,10 +4980,10 @@ def api_update_package(pkg_id):
     for client_key, col in breakdown_map.items():
         if client_key in data and data[client_key] is not None and hasattr(p, col):
             setattr(p, col, to_num(data[client_key], 0.0))
-            updated.append(client_key)
+            updated.append(client_key)   
 
     # -------------------------
-    # Locking flags (optional)
+    # Locking flags
     # -------------------------
     if "pricing_locked" in data and hasattr(p, "pricing_locked"):
         p.pricing_locked = bool(data.get("pricing_locked"))
@@ -4930,7 +4991,6 @@ def api_update_package(pkg_id):
 
     # Keep these in sync if present
     if hasattr(p, "grand_total") and hasattr(p, "amount_due"):
-        # If amount_due wasn't provided, use grand_total
         if "amount_due" not in data and "grand_total" in data:
             p.amount_due = float(p.grand_total or 0)
             updated.append("amount_due")

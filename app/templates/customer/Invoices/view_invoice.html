@@ -47,6 +47,7 @@
               <th class="text-end">Value</th>
               <th class="text-end">Freight</th>
               <th class="text-end">Storage</th>
+              <th class="text-end">Bad Address</th>
               <th class="text-end">Other</th>
               <th class="text-end">Duty</th>
               <th class="text-end">SCF</th>
@@ -65,6 +66,7 @@
                 <td class="text-end">{{ "%.2f"|format(p.value or 0) }}</td>
                 <td class="text-end">{{ p.freight|jmd }}</td>
                 <td class="text-end">{{ p.storage|jmd }}</td>
+                <td class="text-end">{{ p.bad_address_fee|jmd }}</td>
                 <td class="text-end">{{ p.other_charges|jmd }}</td>
                 <td class="text-end">{{ p.duty|jmd }}</td>
                 <td class="text-end">{{ p.scf|jmd }}</td>

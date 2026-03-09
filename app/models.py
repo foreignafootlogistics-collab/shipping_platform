@@ -235,6 +235,8 @@ class Package(db.Model):
     # Extra fees / adjustments
     other_charges = db.Column(db.Float, default=0.0, nullable=False)
     discount_due  = db.Column(db.Float, default=0.0, nullable=False)
+    bad_address = db.Column(db.Boolean, nullable=False, default=False)
+    bad_address_fee = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     
     # Invoice linkage
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True, index=True)
@@ -820,6 +822,7 @@ class Settings(db.Model):
     # Legacy simple rates (you can still use these elsewhere if you want)
     base_rate    = db.Column(db.Float, default=0.0)
     handling_fee = db.Column(db.Float, default=0.0)
+    bad_address_fee_jmd = db.Column(db.Numeric(10, 2), default=500)
 
     # --- FREIGHT TAB (top of 2nd screenshot) ---
     # “Special Bill freight Below 1lb (JMD)”

@@ -44,6 +44,7 @@
           <td>
             <div><b>Freight:</b> {{ (p.freight or 0)|jmd }}</div>
             <div><b>Handling:</b> {{ (p.handling or 0)|jmd }}</div>
+            <div><b>Bad Address:</b> {{ (p.bad_address_fee or 0)|jmd }}</div>
             <div><b>Other Charges:</b> {{ (p.other_charges or 0)|jmd }}</div>
           </td>
 

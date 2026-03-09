@@ -189,6 +189,7 @@ def update_rates():
         settings.gct_15_rate           = f('gct_15_rate')
         settings.caf_residential_jmd   = f('caf_residential_jmd')
         settings.caf_commercial_jmd    = f('caf_commercial_jmd')
+        settings.bad_address_fee_jmd   = f('bad_address_fee_jmd', 500.0)
 
         # --- Optional: update per-lb AdminRate table ---
         # inputs like rate_1, rate_2, ... rate_50

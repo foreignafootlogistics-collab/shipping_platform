@@ -161,6 +161,7 @@
         <td>
           Freight: JMD {{ "%.2f"|format(p.freight or 0) }}<br>
           Handling: JMD {{ "%.2f"|format(p.handling or p.storage or 0) }}<br>
+          Bad Address Fee: JMD {{ "%.2f"|format(p.bad_address_fee or 0) }}<br>
           Other Charges: JMD {{ "%.2f"|format(p.other_charges or 0) }}
         </td>
         <td>

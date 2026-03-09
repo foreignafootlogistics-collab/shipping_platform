@@ -151,6 +151,11 @@ def calculate_charges(category, invoice_usd, weight, *, settings=None):
     - Item value is USD.
     - ALL fees returned are JMD.
     - Does NOT include manual package other_charges (those live on the Package row).
+
+    UPDATED LOGIC:
+    - Customs now uses CIF-style base:
+        customs_base = base_jmd + freight
+    - Handling remains separate and is NOT included in customs base.
     """
     category = normalize_category(category)
     rates = CATEGORIES.get(category, CATEGORIES[DEFAULT_CATEGORY])
@@ -160,19 +165,42 @@ def calculate_charges(category, invoice_usd, weight, *, settings=None):
         settings = Settings.query.get(1)
 
     # ---------- SETTINGS ----------
-    customs_enabled = True if (settings and getattr(settings, "customs_enabled", None) is None) else bool(getattr(settings, "customs_enabled", True)) if settings else True
+    customs_enabled = (
+        True
+        if (settings and getattr(settings, "customs_enabled", None) is None)
+        else bool(getattr(settings, "customs_enabled", True))
+        if settings
+        else True
+    )
 
+    usd_to_jmd = (
+        _to_float(getattr(settings, "customs_exchange_rate", None), USD_TO_JMD_FALLBACK)
+        if settings else USD_TO_JMD_FALLBACK
+    )
+    diminimis_usd = (
+        _to_float(getattr(settings, "diminis_point_usd", None), DIMINIMIS_USD_FALLBACK)
+        if settings else DIMINIMIS_USD_FALLBACK
+    )
 
-    usd_to_jmd = _to_float(getattr(settings, "customs_exchange_rate", None), USD_TO_JMD_FALLBACK) if settings else USD_TO_JMD_FALLBACK
-    diminimis_usd = _to_float(getattr(settings, "diminis_point_usd", None), DIMINIMIS_USD_FALLBACK) if settings else DIMINIMIS_USD_FALLBACK
-
-    scf_rate_percent = _to_float(getattr(settings, "scf_rate", None), 0.3) if settings else 0.3
-    envl_rate_percent = _to_float(getattr(settings, "envl_rate", None), 0.5) if settings else 0.5
+    scf_rate_percent = (
+        _to_float(getattr(settings, "scf_rate", None), 0.3)
+        if settings else 0.3
+    )
+    envl_rate_percent = (
+        _to_float(getattr(settings, "envl_rate", None), 0.5)
+        if settings else 0.5
+    )
     scf_rate = scf_rate_percent / 100.0
     envl_rate = envl_rate_percent / 100.0
 
-    stamp = _to_float(getattr(settings, "stamp_duty_jmd", None), 100) if settings else 100
-    caf = _to_float(getattr(settings, "caf_residential_jmd", None), 2500) if settings else 2500
+    stamp = (
+        _to_float(getattr(settings, "stamp_duty_jmd", None), 100)
+        if settings else 100
+    )
+    caf = (
+        _to_float(getattr(settings, "caf_residential_jmd", None), 2500)
+        if settings else 2500
+    )
 
     # Category rates
     gct_rate_percent = _to_float(rates.get("gct", 16.5), 16.5)
@@ -185,28 +213,37 @@ def calculate_charges(category, invoice_usd, weight, *, settings=None):
     # base value in JMD
     base_jmd = invoice_usd * usd_to_jmd
 
+    # ---------- FREIGHT ----------
+    # Freight is calculated FIRST because customs will now use CIF:
+    # customs_base = base_jmd + freight
+    freight = _to_float(get_freight(weight_raw, settings=settings), 0.0)
+
+    # CIF / customs base
+    customs_base = base_jmd + freight
+
     # ---------- CUSTOMS ----------
     if (not customs_enabled) or (invoice_usd <= diminimis_usd):
-        duty = scf = envl = gct = 0.0
+        duty = 0.0
+        scf = 0.0
+        envl = 0.0
+        gct = 0.0
         stamp_val = 0.0
         caf_val = 0.0
         customs_total = 0.0
     else:
-        duty = base_jmd * (duty_rate_percent / 100.0)
-        scf = base_jmd * scf_rate
-        envl = base_jmd * envl_rate
+        duty = customs_base * (duty_rate_percent / 100.0)
+        scf = customs_base * scf_rate
+        envl = customs_base * envl_rate
 
         caf_val = caf
         stamp_val = stamp
 
-        gct = (base_jmd + duty + scf + envl + caf_val) * (gct_rate_percent / 100.0)
+        gct = (customs_base + duty + scf + envl + caf_val) * (gct_rate_percent / 100.0)
         customs_total = duty + scf + envl + caf_val + gct + stamp_val
 
-    # ---------- FREIGHT ----------
-    freight = _to_float(get_freight(weight_raw, settings=settings), 0.0)
-
     # ---------- HANDLING ----------
-    # keep your original handling rules, BUT support Settings handling_above_100_jmd
+    # Keep your original handling rules exactly as before.
+    # Handling remains separate and is NOT included in customs base.
     w_for_handling = weight_raw
     if settings and _to_float(getattr(settings, "handling_above_100_jmd", 0), 0) > 0 and w_for_handling > 100:
         handling = _to_float(getattr(settings, "handling_above_100_jmd", 0), 0)
@@ -229,7 +266,12 @@ def calculate_charges(category, invoice_usd, weight, *, settings=None):
 
     return {
         "category": category,
+
+        # original item-only converted value
         "base_jmd": round(base_jmd, 2),
+
+        # added so you can inspect/debug CIF if needed
+        "customs_base": round(customs_base, 2),
 
         "duty": round(duty, 2),
         "scf": round(scf, 2),

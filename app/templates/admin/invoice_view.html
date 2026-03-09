@@ -193,6 +193,7 @@
             <th>Date</th>
             <th class="text-end">LBS</th>
             <th class="text-end">Value (USD)</th>
+            <th class="text-end">Bad Address Fee</th>
             <th class="text-end">Due (JMD)</th>
           </tr>
         </thead>
@@ -223,10 +224,11 @@
             <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
             <td class="text-end">${{ "%.2f"|format(p.declared_value or p.value or 0) }}
 </td>
+            <td class="text-end">JMD {{ "%.2f"|format(p.bad_address_fee or 0) }}</td>
             <td class="text-end">JMD {{ "%.2f"|format(p.amount_due or 0) }}</td>
           </tr>
         {% else %}
-          <tr><td colspan="9" class="text-center text-muted py-4">No items.</td></tr>
+          <tr><td colspan="10" class="text-center text-muted py-4">No items.</td></tr>
         {% endfor %}
         </tbody>
       </table>
@@ -411,7 +413,8 @@
               <tr><th>ENVL</th>     <td class="text-end" id="bd-envl">—</td></tr>
               <tr><th>CAF</th>      <td class="text-end" id="bd-caf">—</td></tr>
               <tr><th>Stamp</th>    <td class="text-end" id="bd-stamp">—</td></tr>
-              <tr><th>Other</th>    <td class="text-end" id="bd-other">—</td></tr>
+              <tr><th>Other Charges</th> <td class="text-end" id="bd-other">—</td></tr>
+              <tr><th>Bad Address Fee</th> <td class="text-end" id="bd-bad-address">—</td></tr>
               <tr class="table-light"><th>Total</th><td class="text-end fw-bold" id="bd-total">—</td></tr>
             </tbody>
           </table>
@@ -594,7 +597,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const pkgId = btn.getAttribute("data-pkg");
     if (!pkgId) return;
 
-    const ids = ["bd-duty","bd-gct","bd-freight","bd-handling","bd-scf","bd-envl","bd-caf","bd-stamp","bd-other","bd-total"];
+    const ids = ["bd-duty","bd-gct","bd-freight","bd-handling","bd-scf","bd-envl","bd-caf","bd-stamp","bd-other","bd-bad-address","bd-total"];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = "…"; });
 
     fetch("{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace("0", pkgId))
@@ -609,8 +612,9 @@ document.addEventListener("DOMContentLoaded", function () {
         document.getElementById("bd-envl").textContent     = nf.format(d.envl || 0);
         document.getElementById("bd-caf").textContent      = nf.format(d.caf || 0);
         document.getElementById("bd-stamp").textContent    = nf.format(d.stamp || 0);
-        document.getElementById("bd-other").textContent    = nf.format(d.other || 0);
-        document.getElementById("bd-total").textContent    = nf.format(d.total_jmd || 0);
+        document.getElementById("bd-other").textContent       = nf.format(d.other_charges || 0);
+        document.getElementById("bd-bad-address").textContent = nf.format(d.bad_address_fee || 0);;
+        document.getElementById("bd-total").textContent    = nf.format(d.grand_total || 0);
       })
       .catch(() => ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = "—"; }));
   });

@@ -95,11 +95,8 @@
   <!-- HEADER -->
   <div class="proforma-header">
     <div class="proforma-logo">
-      {% set logo = logo_url or config.get("LOGO_URL") %}
-      {% if logo %}
-        <img src="{{ logo }}" alt="Logo">
-      {% endif %}
-
+      {% set logo = logo_url or config.get("LOGO_URL") or url_for('static', filename='logo.png', _external=True) %}
+      <img src="{{ logo }}" alt="Foreign A Foot Logistics Logo">
     </div>
 
     <div class="proforma-company">

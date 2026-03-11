@@ -1144,10 +1144,15 @@ def view_user(id):
                 Payment.method.label("payment_type"),
                 pay_amount_col.label("amount"),
                 Payment.invoice_id.label("invoice_id"),
-                db.literal(None).label("authorized_by"),
+                Payment.transaction_type.label("transaction_type"),
+                Payment.status.label("transaction_status"),
+                Payment.reference.label("reference"),
+                Payment.notes.label("notes"),
                 Invoice.invoice_number.label("invoice_number"),
-             )
+                User.full_name.label("authorized_by"),
+            )
             .outerjoin(Invoice, Payment.invoice_id == Invoice.id)
+            .outerjoin(User, Payment.authorized_by_admin_id == User.id)
             .filter(Payment.user_id == id)
         )
 

@@ -101,6 +101,8 @@
             <option value="paid" {% if status=='paid' %}selected{% endif %}>Paid</option>
             <option value="pending" {% if status=='pending' %}selected{% endif %}>Pending</option>
             <option value="partial" {% if status=='partial' %}selected{% endif %}>Partial</option>
+            <option value="completed" {% if status=='completed' %}selected{% endif %}>Completed</option>
+            <option value="reversed" {% if status=='reversed' %}selected{% endif %}>Reversed</option>
           </select>
         </div>
 
@@ -139,29 +141,44 @@
       <table class="table table-hover align-middle mb-0 txn-table">
         <thead class="table-purple text-white">
           <tr>
-            <th style="width:120px;">Type</th>
+            <th>Type</th>
             <th>Reference</th>
-            <th style="width:210px;">Date</th>
-            <th style="width:150px;">Status</th>
-            <th style="width:140px;">Method</th>
-            <th style="width:170px;" class="text-end">Amount Due</th>
-            <th style="width:170px;" class="text-end">Amount Paid</th>
-            <th style="width:170px;" class="text-end">Amount Owed</th>
+            <th>Date</th>
+            <th>Status</th>
+            <th>Method</th>
+            <th class="text-end">Amount Due</th>
+            <th class="text-end">Amount Paid</th>
+            <th class="text-end">Amount Owed</th>
           </tr>
         </thead>
         <tbody>
           {% for r in rows %}
           <tr class="transaction-row" data-url="{{ r.view_url }}" data-pdf="{{ r.pdf_url }}">
             <td>
+              {% set tx = (r.type or '')|lower %}
               {% set st = (r.status or '')|lower %}
-              {% set is_paid = (st == 'paid') %}
+              {% set is_closed = st in ['paid', 'completed'] %}
+
               <span class="d-inline-flex align-items-center gap-2">
-                {% if is_paid %}
-                  <i class="bi bi-lock-fill text-success" title="Closed / Paid"></i>
+                {% if is_closed %}
+                  <i class="bi bi-lock-fill text-success" title="Closed / Completed"></i>
                 {% else %}
                   <i class="bi bi-unlock-fill text-warning" title="Open / Pending"></i>
                 {% endif %}
-                <span class="badge rounded-pill bg-purple">Invoice</span>
+
+                {% if tx == 'invoice' %}
+                  <span class="badge rounded-pill bg-purple">Invoice</span>
+                {% elif tx == 'invoice_payment' %}
+                  <span class="badge rounded-pill bg-primary">Invoice Payment</span>
+                {% elif tx == 'delivery_payment' %}
+                  <span class="badge rounded-pill bg-info text-dark">Delivery Payment</span>
+                {% elif tx == 'package_refund' %}
+                  <span class="badge rounded-pill bg-success">Package Refund</span>
+                {% elif tx == 'delivery_refund' %}
+                  <span class="badge rounded-pill bg-warning text-dark">Delivery Refund</span>
+                {% else %}
+                  <span class="badge rounded-pill bg-secondary">Transaction</span>
+                {% endif %}
               </span>
             </td>
 
@@ -178,7 +195,6 @@
                 </a>                
               </div>
             </td>
-
             <td class="text-nowrap">
               {% if r.date %}
                 {{ r.date.strftime("%b %d, %Y") }} • {{ r.date.strftime("%I:%M %p").lstrip("0") }}
@@ -187,19 +203,25 @@
 
             <td class="text-nowrap">
               {% set st = (r.status or '')|lower %}
-              {% if st == 'paid' %}
-                <span class="badge bg-success">PAID</span>
+              {% if st in ['paid', 'completed'] %}
+                <span class="badge bg-success">{{ st|upper }}</span>
               {% elif st == 'partial' %}
                 <span class="badge bg-info text-dark">PARTIAL</span>
+              {% elif st == 'reversed' %}
+                <span class="badge bg-danger">REVERSED</span>
               {% else %}
                 <span class="badge bg-warning text-dark">PENDING</span>
               {% endif %}
             </td>
 
             <td class="text-nowrap">
+              {% set tx = (r.type or '')|lower %}
               {% set st = (r.status or '')|lower %}
-              {% if st == 'pending' %}
+
+              {% if tx == 'invoice' and st == 'pending' %}
                 <span class="text-warning fw-semibold">Awaiting Payment</span>
+              {% elif tx in ['package_refund', 'delivery_refund'] %}
+                <span class="text-success fw-semibold">{{ r.method or "Refund" }}</span>
               {% else %}
                 {{ r.method if r.method else "—" }}
               {% endif %}
@@ -231,21 +253,47 @@
       <div class="card shadow-sm mb-3 transaction-card" data-url="{{ r.view_url }}" data-pdf="{{ r.pdf_url }}">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center">
-            {% set is_paid = ((r.status or '')|lower == 'paid') %}
-            <span class="badge bg-purple rounded-pill d-inline-flex align-items-center gap-2">
-              {% if is_paid %}
+            {% set tx = (r.type or '')|lower %}
+            {% set st = (r.status or '')|lower %}
+            {% set is_closed = st in ['paid', 'completed'] %}
+
+            <span class="
+              badge rounded-pill d-inline-flex align-items-center gap-2
+              {% if tx == 'invoice' %}bg-purple
+              {% elif tx == 'invoice_payment' %}bg-primary
+              {% elif tx == 'delivery_payment' %}bg-info text-dark
+              {% elif tx == 'package_refund' %}bg-success
+              {% elif tx == 'delivery_refund' %}bg-warning text-dark
+              {% else %}bg-secondary{% endif %}
+            ">
+              {% if is_closed %}
                 <i class="bi bi-lock-fill"></i>
               {% else %}
                 <i class="bi bi-unlock-fill"></i>
               {% endif %}
-              Invoice
+
+              {% if tx == 'invoice' %}
+                Invoice
+              {% elif tx == 'invoice_payment' %}
+                Invoice Payment
+              {% elif tx == 'delivery_payment' %}
+                Delivery Payment
+              {% elif tx == 'package_refund' %}
+                Package Refund
+              {% elif tx == 'delivery_refund' %}
+                Delivery Refund
+              {% else %}
+                Transaction
+              {% endif %}
             </span>
 
             {% set st = (r.status or '')|lower %}
-            {% if st == 'paid' %}
-              <span class="badge bg-success">PAID</span>
+            {% if st in ['paid', 'completed'] %}
+              <span class="badge bg-success">{{ st|upper }}</span>
             {% elif st == 'partial' %}
               <span class="badge bg-info text-dark">PARTIAL</span>
+            {% elif st == 'reversed' %}
+              <span class="badge bg-danger">REVERSED</span>
             {% else %}
               <span class="badge bg-warning text-dark">PENDING</span>
             {% endif %}
@@ -279,9 +327,13 @@
 
           <div class="small text-muted mt-2">
             <span class="me-2">Method:</span>
+            {% set tx = (r.type or '')|lower %}
             {% set st = (r.status or '')|lower %}
-            {% if st == 'pending' %}
+
+            {% if tx == 'invoice' and st == 'pending' %}
               <span class="text-warning fw-semibold">Awaiting Payment</span>
+            {% elif tx in ['package_refund', 'delivery_refund'] %}
+              <span class="text-success fw-semibold">{{ r.method or "Refund" }}</span>
             {% else %}
               {{ r.method or "—" }}
             {% endif %}
@@ -453,6 +505,16 @@
     background:#f8fafc;
     padding:.35rem .6rem;
     border-radius:999px;
+  }
+
+  .txn-table {
+      table-layout: auto;
+      width: 100%;
+  }
+
+  .txn-table th,
+  .txn-table td {
+      white-space: nowrap;
   }
 
   .txn-card{

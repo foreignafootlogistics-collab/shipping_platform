@@ -769,11 +769,10 @@ def update_declared_value():
 # -----------------------------
 # Transactions (Bills & Payments)
 # -----------------------------
-from datetime import datetime, timedelta
-
 @customer_bp.route("/transactions/all", methods=["GET"])
 @customer_required
 def transactions_all():
+
     # -------------------------
     # pagination
     # -------------------------
@@ -790,13 +789,20 @@ def transactions_all():
     # filters
     # -------------------------
     q = (request.args.get("q") or "").strip()
-    status = (request.args.get("status") or "").strip().lower()  # paid | pending | partial | ""
-    days = request.args.get("days", type=int)  # 7 | 30 | None
+    status = (request.args.get("status") or "").strip().lower()
+    days = request.args.get("days", type=int)
 
     invoices = (
         Invoice.query
         .filter(Invoice.user_id == current_user.id)
         .order_by(Invoice.date_submitted.desc().nullslast(), Invoice.id.desc())
+        .all()
+    )
+
+    payments = (
+        Payment.query
+        .filter(Payment.user_id == current_user.id)
+        .order_by(Payment.created_at.desc(), Payment.id.desc())
         .all()
     )
 
@@ -811,43 +817,60 @@ def transactions_all():
 
     def normalize_method(m):
         m = (m or "").strip().lower()
-        if m in ("cash",):
+
+        if m == "cash":
             return "Cash"
+
         if m in ("card", "credit", "debit"):
             return "Card"
+
         if m in ("bank", "bank transfer", "transfer"):
             return "Bank Transfer"
-        if m in ("wallet",):
+
+        if m in ("wallet", "wallet_credit"):
             return "Wallet"
+
+        if m == "refund":
+            return "Refund"
+
         return m.title() if m else ""
+
+    def transaction_label(tx_type):
+        labels = {
+            "invoice_payment": "Invoice Payment",
+            "delivery_payment": "Delivery Payment",
+            "package_refund": "Package Refund",
+            "delivery_refund": "Delivery Refund",
+        }
+        return labels.get(tx_type, "Transaction")
 
     rows = []
 
-    # -------------------------
-    # build rows (invoice-only)
-    # -------------------------
+    # ======================================================
+    # INVOICE ROWS
+    # ======================================================
     for inv in invoices:
+
         inv_total = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
 
-        payments_list = getattr(inv, "payments", None) or []
-        paid_sum = 0.0
-        latest_payment = None
+        payments_list = [
+            p for p in (getattr(inv, "payments", None) or [])
+            if getattr(p, "transaction_type", "invoice_payment") == "invoice_payment"
+            and getattr(p, "status", "completed") == "completed"
+        ]
 
+        paid_sum = sum(_num(getattr(p, "amount_jmd", 0)) for p in payments_list)
+
+        latest_payment = None
         if payments_list:
-            # latest payment
-            payments_sorted = sorted(
+            latest_payment = sorted(
                 payments_list,
                 key=lambda x: (getattr(x, "created_at", None) or datetime.utcnow(), getattr(x, "id", 0)),
                 reverse=True
-            )
-            latest_payment = payments_sorted[0]
-
-            # total paid
-            paid_sum = sum(_num(getattr(p, "amount_jmd", 0)) for p in payments_list)
+            )[0]
 
         owed = max(inv_total - paid_sum, 0.0)
 
-        # status buckets
         if owed <= 0 and inv_total > 0:
             inv_status = "paid"
         elif paid_sum > 0:
@@ -855,9 +878,12 @@ def transactions_all():
         else:
             inv_status = "pending"
 
-        inv_date = _dt(inv.date_issued or inv.date_submitted or getattr(inv, "created_at", None))
+        inv_date = _dt(
+            inv.date_issued
+            or inv.date_submitted
+            or getattr(inv, "created_at", None)
+        )
 
-        # method label
         if inv_status in ("paid", "partial"):
             method_label = normalize_method(getattr(latest_payment, "method", "")) if latest_payment else ""
             method_label = method_label or "—"
@@ -869,26 +895,101 @@ def transactions_all():
             "date": inv_date,
             "reference_main": inv.invoice_number or f"INV-{inv.id}",
             "reference_sub": "",
-            "status": inv_status,        # paid | partial | pending
-            "method": method_label,      # Cash/Card/Bank Transfer/Wallet
+            "status": inv_status,
+            "method": method_label,
             "amount_due": inv_total,
             "amount_paid": paid_sum,
             "amount_owed": owed,
             "view_url": url_for("customer.bill_invoice_modal", invoice_id=inv.id),
             "pdf_url": url_for("customer.invoice_pdf", invoice_id=inv.id),
-            "is_paid": (inv_status == "paid"),
+            "is_paid": inv_status == "paid",
         })
 
-    # -------------------------
+    # ======================================================
+    # PAYMENT / REFUND ROWS
+    # ======================================================
+    for p in payments:
+
+        tx_type = (getattr(p, "transaction_type", "") or "").strip()
+        tx_status = (getattr(p, "status", "completed") or "completed").strip().lower()
+
+        amount = _num(getattr(p, "amount_jmd", 0))
+        created = _dt(getattr(p, "created_at", None))
+        method_label = normalize_method(getattr(p, "method", "")) or "—"
+
+        reference_main = f"TX-{p.id}"
+        reference_sub = transaction_label(tx_type)
+
+        inv = None
+
+        if tx_type == "invoice_payment":
+            inv = Invoice.query.filter_by(
+                id=p.invoice_id,
+                user_id=current_user.id
+            ).first()
+
+            if inv:
+                reference_sub = f"{transaction_label(tx_type)} • {inv.invoice_number or f'INV-{inv.id}'}"
+
+        elif tx_type == "delivery_payment":
+
+            if getattr(p, "scheduled_delivery_id", None):
+                reference_sub = f"{transaction_label(tx_type)} • Delivery #{p.scheduled_delivery_id}"
+
+        elif tx_type == "package_refund":
+
+            if getattr(p, "claim_id", None):
+                reference_sub = f"{transaction_label(tx_type)} • Claim #{p.claim_id}"
+
+        elif tx_type == "delivery_refund":
+
+            if getattr(p, "scheduled_delivery_id", None):
+                reference_sub = f"{transaction_label(tx_type)} • Delivery #{p.scheduled_delivery_id}"
+
+        if tx_type in ("package_refund", "delivery_refund"):
+            amount_due = 0.0
+            amount_paid = amount
+            amount_owed = 0.0
+        else:
+            amount_due = amount
+            amount_paid = amount if tx_status == "completed" else 0.0
+            amount_owed = 0.0 if tx_status == "completed" else amount
+
+        # ---------------------------
+        # decide which modal to open
+        # ---------------------------
+        if inv:
+            view_url = url_for("customer.bill_invoice_modal", invoice_id=inv.id)
+            pdf_url = url_for("customer.invoice_pdf", invoice_id=inv.id)
+        else:
+            view_url = url_for("customer.receipt_modal", payment_id=p.id)
+            pdf_url = url_for("customer.receipt_pdf_inline", payment_id=p.id)
+
+        rows.append({
+            "type": tx_type or "transaction",
+            "date": created,
+            "reference_main": reference_main,
+            "reference_sub": reference_sub,
+            "status": tx_status,
+            "method": method_label,
+            "amount_due": amount_due,
+            "amount_paid": amount_paid,
+            "amount_owed": amount_owed,
+            "view_url": view_url,
+            "pdf_url": pdf_url,
+            "is_paid": tx_status == "completed",
+        })
+
+    # ======================================================
     # DATE FILTER
-    # -------------------------
+    # ======================================================
     if days in (7, 30):
         cutoff = datetime.utcnow() - timedelta(days=days)
         rows = [r for r in rows if (r.get("date") or datetime.utcnow()) >= cutoff]
 
-    # -------------------------
+    # ======================================================
     # SEARCH FILTER
-    # -------------------------
+    # ======================================================
     if q:
         ql = q.lower()
 
@@ -897,19 +998,20 @@ def transactions_all():
 
         rows = [r for r in rows if ql in _hay(r)]
 
-    # -------------------------
+    # ======================================================
     # STATUS FILTER
-    # -------------------------
-    if status in ("paid", "pending", "partial"):
-        rows = [r for r in rows if (r.get("status") == status)]
+    # ======================================================
+    if status:
+        rows = [r for r in rows if (r.get("status") or "").lower() == status]
 
-    # -------------------------
+    # ======================================================
     # SORT + PAGINATE
-    # -------------------------
+    # ======================================================
     rows.sort(key=lambda r: r["date"], reverse=True)
 
     total = len(rows)
     total_pages = max((total + per_page - 1) // per_page, 1)
+
     if page > total_pages:
         page = total_pages
 
@@ -917,13 +1019,11 @@ def transactions_all():
     end = start + per_page
     page_rows = rows[start:end]
 
-    # -------------------------
+    # ======================================================
     # summary metrics
-    # -------------------------
-    invoice_count = len(invoices)
-    total_shipments = invoice_count
-    billing_records = invoice_count
-
+    # ======================================================
+    total_shipments = len(invoices)
+    billing_records = len(rows)
     total_owed = sum((r.get("amount_owed") or 0) for r in rows)
     pending_count = sum(1 for r in rows if (r.get("amount_owed") or 0) > 0)
 

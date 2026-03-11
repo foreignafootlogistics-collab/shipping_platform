@@ -773,22 +773,76 @@
           <table id="paymentsTable" class="table table-striped table-bordered">
             <thead class="table-dark">
               <tr>
-                <th>Bill #</th>
-                <th>Date of Payment</th>
+                <th>Transaction #</th>
+                <th>Date</th>
                 <th>Type</th>
+                <th>Status</th>
+                <th>Method</th>
                 <th>Amount</th>
                 <th>Authorized By</th>
+                <th>Reference</th>
                 <th>Invoice</th>
               </tr>
             </thead>
             <tbody>
               {% for payment in payments %}
               <tr>
-                <td>{{ payment.bill_number }}</td>
-                <td>{{ payment.payment_date }}</td>
-                <td>{{ payment.payment_type }}</td>
-                <td>${{ money(payment.amount) }}</td>
-                <td>{{ payment.authorized_by }}</td>
+                <td>TX-{{ payment.bill_number }}</td>
+
+                <td>
+                  {% if payment.payment_date %}
+                    {{ payment.payment_date.strftime("%Y-%m-%d %I:%M %p") if payment.payment_date.strftime is defined else payment.payment_date }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% set t = payment.transaction_type or '' %}
+                  {% if t == 'invoice_payment' %}
+                    <span class="badge bg-primary">Invoice Payment</span>
+                  {% elif t == 'delivery_payment' %}
+                    <span class="badge bg-info text-dark">Delivery Payment</span>
+                  {% elif t == 'package_refund' %}
+                    <span class="badge bg-success">Package Refund</span>
+                  {% elif t == 'delivery_refund' %}
+                    <span class="badge bg-warning text-dark">Delivery Refund</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ t or 'Transaction' }}</span>
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% set s = payment.transaction_status or '' %}
+                  {% if s == 'completed' %}
+                    <span class="badge bg-success">Completed</span>
+                  {% elif s == 'reversed' %}
+                    <span class="badge bg-danger">Reversed</span>
+                  {% elif s == 'pending' %}
+                    <span class="badge bg-warning text-dark">Pending</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ s or '—' }}</span>
+                  {% endif %}
+                </td>
+
+                <td>{{ payment.payment_type or '—' }}</td>
+
+                <td class="text-end">
+                  {% set t = payment.transaction_type or '' %}
+                  {% if t in ['package_refund', 'delivery_refund'] %}
+                    <span class="text-success fw-bold">+${{ money(payment.amount) }}</span>
+                  {% else %}
+                    <span class="fw-bold">${{ money(payment.amount) }}</span>
+                  {% endif %}
+                </td>
+
+                <td>{{ payment.authorized_by or 'System' }}</td>
+
+                <td>
+                  {{ payment.reference or '—' }}
+                  <div class="small text-muted">{{ payment.notes or '' }}</div>
+                </td>
+
                 <td>
                   {% if payment.invoice_number %}
                     <a href="{{ url_for('admin.view_invoice', invoice_id=payment.invoice_id) }}"
@@ -799,6 +853,10 @@
                     —
                   {% endif %}
                 </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="9" class="text-center text-muted py-4">No payments found.</td>
               </tr>
               {% endfor %}
             </tbody>

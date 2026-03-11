@@ -10,7 +10,7 @@ def fetch_invoice_totals_pg(invoice_id: int):
     Compute totals from DB:
       subtotal        -> invoice base total (JMD)
       discount_total  -> total discounts (JMD)
-      payments_total  -> total payments (JMD)
+      payments_total  -> total completed INVOICE payments only (JMD)
       total_due       -> remaining balance (JMD)
     """
     inv = Invoice.query.get(invoice_id)
@@ -39,17 +39,20 @@ def fetch_invoice_totals_pg(invoice_id: int):
         or 0.0
     )
 
-    pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
-    payments_total = (
-        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
-        .filter(Payment.invoice_id == invoice_id)
-        .scalar()
-        or 0.0
+    payments_q = db.session.query(func.coalesce(func.sum(Payment.amount_jmd), 0.0)).filter(
+        Payment.invoice_id == invoice_id
     )
 
-    total_due = max(subtotal - discount_total - payments_total, 0.0)
-    return float(subtotal), float(discount_total), float(payments_total), float(total_due)
+    if hasattr(Payment, "transaction_type"):
+        payments_q = payments_q.filter(Payment.transaction_type == "invoice_payment")
 
+    if hasattr(Payment, "status"):
+        payments_q = payments_q.filter(Payment.status == "completed")
+
+    payments_total = payments_q.scalar() or 0.0
+
+    total_due = max(float(subtotal) - float(discount_total) - float(payments_total), 0.0)
+    return float(subtotal), float(discount_total), float(payments_total), float(total_due)
 
 def mark_invoice_packages_delivered(invoice_id: int):
     """Mark all packages on invoice as delivered."""

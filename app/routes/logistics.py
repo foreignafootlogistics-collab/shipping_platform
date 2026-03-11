@@ -5504,29 +5504,76 @@ def scheduled_delivery_unassign_package(delivery_id, package_id):
     return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id))
 
 
-# ✅ NEW: Mark delivery fee PAID
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/mark-paid", methods=["POST"])
 @admin_required()
 def scheduled_delivery_mark_paid(delivery_id):
     d = ScheduledDelivery.query.get_or_404(delivery_id)
+
+    existing_payment = (
+        Payment.query
+        .filter(
+            Payment.user_id == d.user_id,
+            Payment.scheduled_delivery_id == d.id,
+            Payment.transaction_type == "delivery_payment",
+            Payment.status == "completed",
+        )
+        .first()
+    )
+
     d.fee_status = "Paid"
     d.paid_at = datetime.utcnow()
+
+    if not existing_payment:
+        payment = Payment(
+            user_id=d.user_id,
+            invoice_id=None,
+            scheduled_delivery_id=d.id,
+            method="Cash",
+            amount_jmd=float(d.delivery_fee or 0),
+            reference=d.invoice_number or f"DEL-{d.id}",
+            notes=f"Delivery fee payment for {d.invoice_number or ('Delivery #' + str(d.id))}",
+            transaction_type="delivery_payment",
+            status="completed",
+            source="admin",
+            authorized_by_admin_id=current_user.id,
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(payment)
+
     db.session.commit()
     flash(f"Delivery fee marked PAID for {d.invoice_number or f'#{d.id}'}", "success")
     return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=d.id))
 
 
-# ✅ NEW: Mark delivery fee UNPAID
 @logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/mark-unpaid", methods=["POST"])
 @admin_required()
 def scheduled_delivery_mark_unpaid(delivery_id):
     d = ScheduledDelivery.query.get_or_404(delivery_id)
+
     d.fee_status = "Unpaid"
     d.paid_at = None
+
+    existing_payment = (
+        Payment.query
+        .filter(
+            Payment.user_id == d.user_id,
+            Payment.scheduled_delivery_id == d.id,
+            Payment.transaction_type == "delivery_payment",
+            Payment.status == "completed",
+        )
+        .order_by(Payment.created_at.desc(), Payment.id.desc())
+        .first()
+    )
+
+    if existing_payment:
+        existing_payment.status = "reversed"
+        base_note = (existing_payment.notes or "").strip()
+        extra = "Marked unpaid by admin"
+        existing_payment.notes = f"{base_note} | {extra}" if base_note else extra
+
     db.session.commit()
     flash(f"Delivery fee marked UNPAID for {d.invoice_number or f'#{d.id}'}", "warning")
     return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=d.id))
-
 
 
 @logistics_bp.route('/shipmentlog/create-shipment', methods=['GET'])

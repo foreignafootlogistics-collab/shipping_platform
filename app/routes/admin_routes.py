@@ -1666,6 +1666,10 @@ def mark_invoice_paid():
             method=method,
             amount_jmd=amount,
             notes=notes,
+            transaction_type="invoice_payment",
+            status="completed",
+            source="admin",
+            authorized_by_admin_id=current_user.id,
             created_at=datetime.now(timezone.utc),
         )
         db.session.add(payment)
@@ -1858,6 +1862,10 @@ def bulk_invoice_payment():
                 method=method,
                 amount_jmd=float(pay_amt),
                 notes=notes,
+                transaction_type="invoice_payment",
+                status="completed",
+                source="admin",
+                authorized_by_admin_id=current_user.id,
                 created_at=now,
             )
             db.session.add(p)
@@ -2337,6 +2345,11 @@ def add_payment(invoice_id):
         "invoice_id": inv.id,
         "user_id": inv.user_id,
     }
+
+    payment_kwargs["transaction_type"] = "invoice_payment"
+    payment_kwargs["status"] = "completed"
+    payment_kwargs["source"] = "admin"
+    payment_kwargs["authorized_by_admin_id"] = current_user.id
 
     # amount field name
     if hasattr(Payment, "amount_jmd"):

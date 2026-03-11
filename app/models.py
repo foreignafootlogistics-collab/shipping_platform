@@ -698,17 +698,162 @@ class Discount(db.Model):
 
 class Payment(db.Model):
     __tablename__ = "payments"
-    id = db.Column(db.Integer, primary_key=True)
-    invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    method = db.Column(db.String(30), default="Cash")          # Cash | Card | Bank | Wallet
-    amount_jmd = db.Column(db.Float, nullable=False, default=0.0)
-    reference = db.Column(db.String(100))                      # POS ref #, bank ref, etc.
-    notes = db.Column(db.String(255))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    invoice = db.relationship('Invoice', backref=db.backref('payments', lazy=True, cascade="all, delete-orphan"))
-    user = db.relationship('User', backref=db.backref('payments', lazy=True))
+    id = db.Column(db.Integer, primary_key=True)
+
+    # ---------------------------------------------------------
+    # Core ownership
+    # ---------------------------------------------------------
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=False,
+        index=True
+    )
+
+    # ---------------------------------------------------------
+    # Admin / audit
+    # ---------------------------------------------------------
+    authorized_by_admin_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True,
+        index=True
+    )
+
+    source = db.Column(
+        db.String(30),
+        nullable=False,
+        default="admin",
+        index=True
+    )
+    # admin | customer_portal | system_auto | wallet
+
+    # ---------------------------------------------------------
+    # Optional linked records
+    # ---------------------------------------------------------
+    invoice_id = db.Column(
+        db.Integer,
+        db.ForeignKey("invoices.id"),
+        nullable=True,
+        index=True
+    )
+
+    scheduled_delivery_id = db.Column(
+        db.Integer,
+        db.ForeignKey("scheduled_deliveries.id"),
+        nullable=True,
+        index=True
+    )
+
+    package_id = db.Column(
+        db.Integer,
+        db.ForeignKey("packages.id"),
+        nullable=True,
+        index=True
+    )
+
+    claim_id = db.Column(
+        db.Integer,
+        db.ForeignKey("claims.id"),
+        nullable=True,
+        index=True
+    )
+
+    # ---------------------------------------------------------
+    # Transaction details
+    # ---------------------------------------------------------
+    method = db.Column(db.String(30), default="Cash")
+    amount_jmd = db.Column(db.Float, nullable=False, default=0.0)
+    reference = db.Column(db.String(100), nullable=True)
+    notes = db.Column(db.String(255), nullable=True)
+
+    # ---------------------------------------------------------
+    # Transaction classification
+    # ---------------------------------------------------------
+    transaction_type = db.Column(
+        db.String(30),
+        nullable=False,
+        default="invoice_payment",
+        index=True
+    )
+    # invoice_payment | delivery_payment | package_refund | delivery_refund | wallet_credit | adjustment
+
+    status = db.Column(
+        db.String(20),
+        nullable=False,
+        default="completed",
+        index=True
+    )
+    # pending | completed | failed | reversed
+
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        index=True
+    )
+
+    # ---------------------------------------------------------
+    # Relationships
+    # ---------------------------------------------------------
+    invoice = db.relationship(
+        "Invoice",
+        backref=db.backref("payments", lazy=True, cascade="all, delete-orphan"),
+        foreign_keys=[invoice_id]
+    )
+
+    user = db.relationship(
+        "User",
+        foreign_keys=[user_id],
+        backref=db.backref("payments", lazy=True, foreign_keys="Payment.user_id")
+    )
+
+    authorized_by = db.relationship(
+        "User",
+        foreign_keys=[authorized_by_admin_id],
+        lazy="joined"
+    )
+
+    scheduled_delivery = db.relationship(
+        "ScheduledDelivery",
+        backref=db.backref("payments", lazy=True),
+        foreign_keys=[scheduled_delivery_id]
+    )
+
+    package = db.relationship(
+        "Package",
+        backref=db.backref("payments", lazy=True),
+        foreign_keys=[package_id]
+    )
+
+    claim = db.relationship(
+        "Claim",
+        backref=db.backref("payments", lazy=True),
+        foreign_keys=[claim_id]
+    )
+
+    @property
+    def display_type(self):
+        labels = {
+            "invoice_payment": "Invoice Payment",
+            "delivery_payment": "Delivery Payment",
+            "package_refund": "Package Refund",
+            "delivery_refund": "Delivery Refund",
+            "wallet_credit": "Wallet Credit",
+            "adjustment": "Adjustment",
+        }
+        return labels.get(self.transaction_type, "Transaction")
+
+    @property
+    def is_refund(self):
+        return self.transaction_type in {"package_refund", "delivery_refund", "wallet_credit"}
+
+    @property
+    def is_payment(self):
+        return self.transaction_type in {"invoice_payment", "delivery_payment"}
+
+    def __repr__(self):
+        return f"<Payment id={self.id} type={self.transaction_type} user_id={self.user_id} amount_jmd={self.amount_jmd} status={self.status}>"
 
 
 class CalculatorLog(db.Model):

@@ -3,6 +3,8 @@ import os, re, io
 import math
 from math import ceil
 from datetime import datetime, date, timezone, timedelta
+import base64
+
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
@@ -69,6 +71,28 @@ customer_bp = Blueprint('customer', __name__, template_folder='templates/custome
 DELIVERY_FEE_AMOUNT = Decimal("1000.00")
 DELIVERY_FEE_CURRENCY = "JMD"
 
+
+
+def _static_image_data_uri(filename: str):
+    """
+    Convert a static image into a base64 data URI so WeasyPrint
+    can embed it reliably inside PDFs.
+    """
+    try:
+        path = os.path.join(current_app.static_folder, filename)
+        if not os.path.exists(path):
+            return None
+
+        mime, _ = mimetypes.guess_type(path)
+        if not mime:
+            mime = "image/png"
+
+        with open(path, "rb") as f:
+            data = base64.b64encode(f.read()).decode("ascii")
+
+        return f"data:{mime};base64,{data}"
+    except Exception:
+        return None
 
 def _calc_handling(weight_lbs: float) -> float:
     """
@@ -1242,7 +1266,7 @@ def view_invoice_customer(invoice_id):
     inv = Invoice.query.filter_by(id=invoice_id, user_id=current_user.id).first()
     if not inv:
         flash("Invoice not found or you don't have permission to view it.", "danger")
-        return redirect(url_for('customer.view_bills'))
+        return redirect(url_for('customer.transactions_all'))
 
     pkgs = (
         Package.query
@@ -1260,31 +1284,55 @@ def view_invoice_customer(invoice_id):
     packages = []
     for p in pkgs:
         packages.append({
-            "house_awb":     p.house_awb,
-            "description":   p.description,
-            "weight":        int(math.ceil(_num(p.weight))),
-            "value":         _num(getattr(p, "value", 0)),
-            "freight":       _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
-            "storage":       _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
-            "other_charges": _num(getattr(p, "other_charges", 0)),
+            "house_awb":       p.house_awb or "",
+            "description":     p.description or "",
+            "weight":          int(math.ceil(_num(getattr(p, "weight", 0)))),
+            "value":           _num(getattr(p, "value", getattr(p, "value_usd", 0))),
+            "freight":         _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
+            "storage":         _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
+            "other_charges":   _num(getattr(p, "other_charges", 0)),
             "bad_address_fee": _num(getattr(p, "bad_address_fee", 0)),
-            "duty":          _num(getattr(p, "duty", 0)),
-            "scf":           _num(getattr(p, "scf", 0)),
-            "envl":          _num(getattr(p, "envl", 0)),
-            "caf":           _num(getattr(p, "caf", 0)),
-            "gct":           _num(getattr(p, "gct", 0)),
-            "discount_due":  _num(getattr(p, "discount_due", 0)),
+            "duty":            _num(getattr(p, "duty", 0)),
+            "scf":             _num(getattr(p, "scf", 0)),
+            "envl":            _num(getattr(p, "envl", 0)),
+            "caf":             _num(getattr(p, "caf", 0)),
+            "gct":             _num(getattr(p, "gct", 0)),
+            "discount_due":    _num(getattr(p, "discount_due", 0)),
         })
+
+    subtotal = (
+        _num(getattr(inv, "subtotal", None))
+        or _num(getattr(inv, "grand_total", 0))
+        or _num(getattr(inv, "amount", 0))
+    )
+    discount_total = _num(getattr(inv, "discount_total", 0))
+
+    pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
+    payments_total = (
+        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
+        .filter(Payment.invoice_id == inv.id)
+        .scalar()
+        or 0.0
+    )
+
+    total_due = max(
+        (_num(getattr(inv, "grand_total", subtotal)) or subtotal)
+        - discount_total
+        - float(payments_total),
+        0.0
+    )
 
     invoice_dict = {
         "id":             inv.id,
-        "invoice_number":         inv.invoice_number,
+        "invoice_number": inv.invoice_number,
         "date":           inv.date_submitted or inv.created_at or datetime.utcnow(),
         "customer_code":  current_user.registration_number,
         "customer_name":  current_user.full_name,
-        "subtotal":       _num(getattr(inv, "subtotal", 0)),
-        "discount_total": _num(getattr(inv, "discount_total", 0)),
-        "total_due":      _num(getattr(inv, "grand_total", getattr(inv, "amount", 0))),
+        "status":         getattr(inv, "status", None),
+        "subtotal":       float(subtotal),
+        "discount_total": float(discount_total),
+        "payments_total": float(payments_total),
+        "total_due":      float(total_due),
         "packages":       packages,
         "branch":         getattr(inv, "branch", None),
         "staff":          getattr(inv, "staff", None),
@@ -1318,28 +1366,30 @@ def invoice_pdf(invoice_id):
     packages = []
     for p in pkgs:
         packages.append({
-            "house_awb":     p.house_awb or "",
-            "description":   p.description or "",
-            "weight":        int(math.ceil(_num(getattr(p, "weight", 0)))),
+            "house_awb":       p.house_awb or "",
+            "description":     p.description or "",
+            "weight":          int(math.ceil(_num(getattr(p, "weight", 0)))),
 
-            "value":         _num(getattr(p, "value", getattr(p, "value_usd", 0))),
-            "freight":       _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
-            "storage":       _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
-            "other_charges": _num(getattr(p, "other_charges", 0)),
+            "value":           _num(getattr(p, "value", getattr(p, "value_usd", 0))),
+            "freight":         _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
+            "storage":         _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
+            "other_charges":   _num(getattr(p, "other_charges", 0)),
             "bad_address_fee": _num(getattr(p, "bad_address_fee", 0)),
-            "duty":          _num(getattr(p, "duty", 0)),
-            "scf":           _num(getattr(p, "scf", 0)),
-            "envl":          _num(getattr(p, "envl", 0)),
-            "caf":           _num(getattr(p, "caf", 0)),
-            "gct":           _num(getattr(p, "gct", 0)),
-            "discount_due":  _num(getattr(p, "discount_due", 0)),
+            "duty":            _num(getattr(p, "duty", 0)),
+            "scf":             _num(getattr(p, "scf", 0)),
+            "envl":            _num(getattr(p, "envl", 0)),
+            "caf":             _num(getattr(p, "caf", 0)),
+            "gct":             _num(getattr(p, "gct", 0)),
+            "discount_due":    _num(getattr(p, "discount_due", 0)),
         })
 
-    # ✅ totals should NOT be 0 just because inv.subtotal is blank
-    subtotal = _num(getattr(inv, "subtotal", None)) or _num(getattr(inv, "grand_total", 0)) or _num(getattr(inv, "amount", 0))
+    subtotal = (
+        _num(getattr(inv, "subtotal", None))
+        or _num(getattr(inv, "grand_total", 0))
+        or _num(getattr(inv, "amount", 0))
+    )
     discount_total = _num(getattr(inv, "discount_total", 0))
 
-    # ✅ if you store payments in Payment.amount_jmd, use it
     pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
     payments_total = (
         db.session.query(func.coalesce(func.sum(pay_col), 0.0))
@@ -1348,25 +1398,48 @@ def invoice_pdf(invoice_id):
         or 0.0
     )
 
-    total_due = max((_num(getattr(inv, "grand_total", subtotal)) or subtotal) - discount_total - float(payments_total), 0.0)
+    total_due = max(
+        (_num(getattr(inv, "grand_total", subtotal)) or subtotal)
+        - discount_total
+        - float(payments_total),
+        0.0
+    )
+
+    from app.models import Settings
+    settings = Settings.query.get(1)
+
+    raw_logo = (settings.logo_path if settings and settings.logo_path else "logo.png") or "logo.png"
+    raw_logo = raw_logo.lstrip("/")
+    if raw_logo.lower().startswith("static/"):
+        raw_logo = raw_logo[7:]
+
+    logo_data_uri = _static_image_data_uri(raw_logo)
+    logo_url = url_for("static", filename=raw_logo, _external=True, _scheme="https")
 
     invoice_dict = {
-        "id":            inv.id,
-        "number":        inv.invoice_number,  # ✅ IMPORTANT: use "number" (matches your PDF templates)
-        "date":          inv.date_submitted or inv.created_at or datetime.utcnow(),
-        "customer_code": current_user.registration_number,
-        "customer_name": current_user.full_name,
-        "subtotal":      float(subtotal),
+        "id":             inv.id,
+        "number":         inv.invoice_number,
+        "date":           inv.date_submitted or inv.created_at or datetime.utcnow(),
+        "customer_code":  current_user.registration_number,
+        "customer_name":  current_user.full_name,
+        "subtotal":       float(subtotal),
         "discount_total": float(discount_total),
         "payments_total": float(payments_total),
-        "total_due":     float(total_due),
-        "packages":      packages,
+        "total_due":      float(total_due),
+        "packages":       packages,
+
+        # logo
+        "logo_data_uri":  logo_data_uri,
+        "logo_url":       logo_url,
+
+        # template extras
+        "settings":       settings,
+        "USD_TO_JMD":     getattr(settings, "usd_to_jmd", None) or USD_TO_JMD,
     }
 
     from app.utils.invoice_pdf import generate_invoice_pdf
-    rel = generate_invoice_pdf(invoice_dict)  # ✅ correct generator
+    rel = generate_invoice_pdf(invoice_dict)
     return redirect(url_for("static", filename=rel))
-
 
 # -----------------------------
 # Messaging

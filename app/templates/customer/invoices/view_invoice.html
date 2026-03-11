@@ -2,90 +2,325 @@
 {% block title %}Invoice {{ invoice.invoice_number }}{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-  <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="container my-4 invoice-page">
+
+  <!-- Top bar -->
+  <div class="invoice-topbar d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
     <div>
-      <h3 class="mb-0">Invoice {{ invoice.invoice_number }}</h3>
-      <div class="text-muted small">
-        Date: {{ invoice.date|datetimeformat('%Y-%m-%d %H:%M') if invoice.date else '' }}
+      <div class="small text-muted text-uppercase fw-semibold">Invoice Details</div>
+      <h2 class="mb-1 invoice-title">Invoice {{ invoice.invoice_number }}</h2>
+      <div class="small text-muted">
+        Date:
+        {{ invoice.date|datetimeformat('%b %d, %Y • %I:%M %p') if invoice.date else '' }}
       </div>
     </div>
 
     <div class="d-flex gap-2">
       <a class="btn btn-outline-secondary"
+         target="_blank"
          href="{{ url_for('customer.invoice_pdf', invoice_id=invoice.id) }}">
-        PDF
+        <i class="bi bi-file-earmark-pdf me-1"></i> PDF
       </a>
-      <a class="btn btn-secondary" href="{{ url_for('customer.view_bills') }}">Back</a>
+
+      <a class="btn btn-purple"
+         href="{{ url_for('customer.transactions_all') }}">
+        <i class="bi bi-arrow-left me-1"></i> Back
+      </a>
     </div>
   </div>
 
-  <div class="card shadow-sm">
-    <div class="card-body">
-      <div class="row g-3 mb-3">
-        <div class="col-md-6">
-          <div class="fw-semibold">Customer</div>
-          <div>{{ invoice.customer_name }}</div>
-          <div class="text-muted small">{{ invoice.customer_code }}</div>
+  {# status helpers #}
+  {% set total_due_amt = (invoice.total_due or 0)|float %}
+  {% set payments_amt = (invoice.payments_total or 0)|float %}
+
+  {% if total_due_amt <= 0 %}
+    {% set invoice_state = 'paid' %}
+  {% elif payments_amt > 0 %}
+    {% set invoice_state = 'partial' %}
+  {% else %}
+    {% set invoice_state = 'pending' %}
+  {% endif %}
+
+  <!-- Summary card -->
+  <div class="card border-0 shadow-sm invoice-summary-card mb-4">
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="invoice-logo-box">FAFL</div>
+          <div>
+            <div class="small text-muted">Customer</div>
+            <div class="fw-bold fs-5">{{ invoice.customer_name }}</div>
+            <div class="text-muted">{{ invoice.customer_code }}</div>
+          </div>
         </div>
 
-        <div class="col-md-6 text-md-end">
-          <div class="fw-semibold">Totals</div>
-          <div>Subtotal: <b>{{ invoice.subtotal|jmd }}</b></div>
-          <div>Discounts: <b>- {{ invoice.discount_total|jmd }}</b></div>
-          <div class="mt-1">Total Due: <b>{{ invoice.total_due|jmd }}</b></div>
+        <div class="text-md-end">
+          <span class="badge rounded-pill
+            {% if invoice_state == 'paid' %}
+              bg-success
+            {% elif invoice_state == 'partial' %}
+              bg-info text-dark
+            {% else %}
+              bg-warning text-dark
+            {% endif %}
+            px-3 py-2">
+            {% if invoice_state == 'paid' %}
+              PAID
+            {% elif invoice_state == 'partial' %}
+              PARTIAL
+            {% else %}
+              PENDING
+            {% endif %}
+          </span>
         </div>
       </div>
 
-      <div class="table-responsive">
-        <table class="table table-striped align-middle">
-          <thead class="table-dark">
-            <tr>
-              <th>House AWB</th>
-              <th>Description</th>
-              <th class="text-end">Weight</th>
-              <th class="text-end">Value</th>
-              <th class="text-end">Freight</th>
-              <th class="text-end">Storage</th>
-              <th class="text-end">Bad Address</th>
-              <th class="text-end">Other</th>
-              <th class="text-end">Duty</th>
-              <th class="text-end">SCF</th>
-              <th class="text-end">ENVL</th>
-              <th class="text-end">CAF</th>
-              <th class="text-end">GCT</th>
-              <th class="text-end">Discount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for p in invoice.packages %}
-              <tr>
-                <td>{{ p.house_awb }}</td>
-                <td>{{ p.description }}</td>
-                <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
-                <td class="text-end">{{ "%.2f"|format(p.value or 0) }}</td>
-                <td class="text-end">{{ p.freight|jmd }}</td>
-                <td class="text-end">{{ p.storage|jmd }}</td>
-                <td class="text-end">{{ p.bad_address_fee|jmd }}</td>
-                <td class="text-end">{{ p.other_charges|jmd }}</td>
-                <td class="text-end">{{ p.duty|jmd }}</td>
-                <td class="text-end">{{ p.scf|jmd }}</td>
-                <td class="text-end">{{ p.envl|jmd }}</td>
-                <td class="text-end">{{ p.caf|jmd }}</td>
-                <td class="text-end">{{ p.gct|jmd }}</td>
-                <td class="text-end">{{ p.discount_due|jmd }}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      <div class="row g-3 summary-row">
+        <div class="col-lg-3 col-md-6">
+          <div class="summary-box">
+            <div class="summary-label">Subtotal</div>
+            <div class="summary-value">{{ (invoice.subtotal or 0)|jmd }}</div>
+          </div>
+        </div>
 
-      {% if invoice.notes %}
-        <hr>
-        <div><span class="fw-semibold">Notes:</span> {{ invoice.notes }}</div>
-      {% endif %}
+        <div class="col-lg-3 col-md-6">
+          <div class="summary-box">
+            <div class="summary-label">Discounts</div>
+            <div class="summary-value">- {{ (invoice.discount_total or 0)|jmd }}</div>
+          </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+          <div class="summary-box payment-box">
+            <div class="summary-label">Payments</div>
+            <div class="summary-value">{{ (invoice.payments_total or 0)|jmd }}</div>
+            {% if (invoice.payments_total or 0) > 0 %}
+              <div class="small text-success fw-semibold mt-1">Received</div>
+            {% else %}
+              <div class="small text-muted mt-1">No payments yet</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-lg-3 col-md-6">
+          <div class="summary-box total-due-box">
+            <div class="summary-label">
+              {% if invoice_state == 'paid' %}Balance{% else %}Total Due{% endif %}
+            </div>
+            <div class="summary-value">{{ (invoice.total_due or 0)|jmd }}</div>
+            {% if invoice_state == 'paid' %}
+              <div class="small text-success fw-semibold mt-1">Paid in full</div>
+            {% elif invoice_state == 'partial' %}
+              <div class="small text-info fw-semibold mt-1">Partially paid</div>
+            {% else %}
+              <div class="small text-warning fw-semibold mt-1">Awaiting Payment</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
     </div>
   </div>
+
+  <!-- Packages -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">Packages</h5>
+        <span class="small text-muted">{{ invoice.packages|length }} item(s)</span>
+      </div>
+
+      {% for p in invoice.packages %}
+        <div class="package-card {% if not loop.last %}mb-3{% endif %}">
+          <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+            <div>
+              <div class="package-awb">{{ p.house_awb or "—" }}</div>
+              <div class="small text-muted mt-1">
+                {{ "%.1f"|format(p.weight or 0) }} lbs • USD ${{ "%.2f"|format(p.value or 0) }}
+              </div>
+              {% if p.description %}
+                <div class="small text-muted mt-1">{{ p.description }}</div>
+              {% endif %}
+            </div>
+
+            <div class="text-md-end">
+              <div class="small text-muted">Discount</div>
+              <div class="fw-bold">{{ (p.discount_due or 0)|jmd }}</div>
+            </div>
+          </div>
+
+          <div class="row g-3 mt-2">
+            <div class="col-md-6">
+              <div class="fee-box">
+                <div class="fee-title">Our Fees</div>
+                <div class="fee-row"><span>Freight</span><span>{{ (p.freight or 0)|jmd }}</span></div>
+                <div class="fee-row"><span>Storage</span><span>{{ (p.storage or 0)|jmd }}</span></div>
+                <div class="fee-row"><span>Bad Address</span><span>{{ (p.bad_address_fee or 0)|jmd }}</span></div>
+                <div class="fee-row"><span>Other</span><span>{{ (p.other_charges or 0)|jmd }}</span></div>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="fee-box">
+                <div class="fee-title">Government Fees</div>
+                <div class="fee-row"><span>Duty</span><span>{{ (p.duty or 0)|jmd }}</span></div>
+                <div class="fee-row"><span>SCF</span><span>{{ (p.scf or 0)|jmd }}</span></div>
+                <div class="fee-row"><span>ENVL</span><span>{{ (p.envl or 0)|jmd }}</span></div>
+                <div class="fee-row"><span>CAF</span><span>{{ (p.caf or 0)|jmd }}</span></div>
+                <div class="fee-row"><span>GCT</span><span>{{ (p.gct or 0)|jmd }}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <div class="text-muted small">No packages found for this invoice.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if invoice.notes %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-4">
+        <h5 class="mb-2">Notes</h5>
+        <div class="text-muted">{{ invoice.notes }}</div>
+      </div>
+    </div>
+  {% endif %}
 </div>
-{% endblock %}
 
+<style>
+  :root{
+    --fafl-purple:#4A148C;
+    --fafl-purple-soft:rgba(74,20,140,.08);
+    --fafl-border:#e5e7eb;
+    --fafl-text:#111827;
+    --fafl-muted:#6b7280;
+  }
+
+  .invoice-page{
+    max-width: 1100px;
+  }
+
+  .invoice-title{
+    font-weight: 800;
+    color: var(--fafl-text);
+  }
+
+  .btn-purple{
+    background: var(--fafl-purple);
+    color: #fff;
+    border: 1px solid var(--fafl-purple);
+  }
+  .btn-purple:hover{
+    color:#fff;
+    filter: brightness(.95);
+  }
+
+  .invoice-summary-card{
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  .invoice-logo-box{
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--fafl-purple);
+    color: #fff;
+    font-weight: 800;
+    letter-spacing: .5px;
+    box-shadow: 0 8px 18px rgba(74,20,140,.18);
+  }
+
+  .summary-box{
+    border: 1px solid var(--fafl-border);
+    border-radius: 16px;
+    padding: 14px 16px;
+    background: #fff;
+    height: 100%;
+    width: 100%;
+    min-height: 108px;
+  }
+
+  .summary-row > div{
+    display: flex;
+  }
+
+  .summary-box.payment-box{
+    background: linear-gradient(180deg, rgba(22,163,74,.05), #fff);
+  }
+
+  .total-due-box{
+    background: linear-gradient(180deg, var(--fafl-purple-soft), #fff);
+  }
+
+  .summary-label{
+    font-size: .85rem;
+    color: var(--fafl-muted);
+    margin-bottom: 6px;
+  }
+
+  .summary-value{
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--fafl-text);
+  }
+
+  .payment-box{
+    background: linear-gradient(180deg, rgba(22,163,74,.05), #fff);
+  }
+
+  .package-card{
+    border: 1px solid var(--fafl-border);
+    border-radius: 18px;
+    padding: 16px;
+    background: #fff;
+  }
+
+  .package-awb{
+    font-weight: 800;
+    font-size: 1.08rem;
+    color: var(--fafl-text);
+  }
+
+  .fee-box{
+    border: 1px solid #eef2f7;
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: #fcfcfd;
+    height: 100%;
+  }
+
+  .fee-title{
+    font-weight: 700;
+    font-size: .92rem;
+    margin-bottom: 8px;
+    color: var(--fafl-text);
+  }
+
+  .fee-row{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:3px 0;
+    font-size:.95rem;
+    color:var(--fafl-text);
+  }
+
+  @media (max-width: 767.98px){
+    .invoice-topbar{
+      align-items: flex-start !important;
+    }
+
+    .summary-value{
+      font-size: 1.05rem;
+    }
+
+    .fee-row{
+      font-size: .9rem;
+    }
+  }
+</style>
+{% endblock %}

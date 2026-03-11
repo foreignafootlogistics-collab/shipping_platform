@@ -902,6 +902,7 @@ def transactions_all():
             "amount_owed": owed,
             "view_url": url_for("customer.bill_invoice_modal", invoice_id=inv.id),
             "pdf_url": url_for("customer.invoice_pdf", invoice_id=inv.id),
+            "full_url": url_for("customer.view_invoice_customer", invoice_id=inv.id),
             "is_paid": inv_status == "paid",
         })
 
@@ -955,15 +956,23 @@ def transactions_all():
             amount_paid = amount if tx_status == "completed" else 0.0
             amount_owed = 0.0 if tx_status == "completed" else amount
 
-        # ---------------------------
-        # decide which modal to open
+                # ---------------------------
+        # decide which modal / pdf / full page to open
         # ---------------------------
         if inv:
             view_url = url_for("customer.bill_invoice_modal", invoice_id=inv.id)
             pdf_url = url_for("customer.invoice_pdf", invoice_id=inv.id)
+            full_url = url_for("customer.view_invoice_customer", invoice_id=inv.id)
+
+        elif tx_type in ("package_refund", "delivery_refund"):
+            view_url = url_for("customer.receipt_modal", payment_id=p.id)
+            pdf_url = None
+            full_url = None
+
         else:
             view_url = url_for("customer.receipt_modal", payment_id=p.id)
             pdf_url = url_for("customer.receipt_pdf_inline", payment_id=p.id)
+            full_url = url_for("customer.view_receipt", payment_id=p.id)
 
         rows.append({
             "type": tx_type or "transaction",
@@ -977,6 +986,7 @@ def transactions_all():
             "amount_owed": amount_owed,
             "view_url": view_url,
             "pdf_url": pdf_url,
+            "full_url": full_url,
             "is_paid": tx_status == "completed",
         })
 

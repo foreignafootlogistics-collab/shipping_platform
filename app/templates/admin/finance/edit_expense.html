@@ -7,7 +7,7 @@
 
   <div class="card shadow-sm">
     <div class="card-body">
-      <form method="POST" class="row g-3">
+      <form method="POST" class="row g-3" enctype="multipart/form-data">
         {{ form.hidden_tag() }}
 
         <div class="col-md-3">
@@ -30,9 +30,30 @@
           {{ form.description(class="form-control", rows=2) }}
         </div>
 
+        <div class="col-md-6">
+          <label class="form-label">Replace Attachment</label>
+          {{ form.attachment(class="form-control", accept=".pdf,.png,.jpg,.jpeg") }}
+          <div class="form-text">Leave blank to keep the current attachment. Allowed: PDF, JPG, JPEG, PNG.</div>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label">Current Attachment</label>
+          <div>
+            {% if expense.attachment_url %}
+              <a href="{{ url_for('finance.download_expense_attachment', expense_id=expense.id) }}"
+                 target="_blank"
+                 class="btn btn-sm btn-outline-primary">
+                📎 {{ expense.attachment_name or 'View Attachment' }}
+              </a>
+            {% else %}
+              <span class="text-muted">No attachment uploaded</span>
+            {% endif %}
+          </div>
+        </div>
+
         <div class="col-12 mt-3">
           <button type="submit" class="btn btn-primary">Update Expense</button>
-          <a href="{{ url_for('finance.view_expenses') }}" class="btn btn-secondary">Cancel</a>
+          <a href="{{ url_for('finance.monthly_expenses') }}" class="btn btn-secondary">Cancel</a>
         </div>
       </form>
     </div>

@@ -33,17 +33,14 @@
           {{ form.date(class="form-control") }}
         </div>
 
-        <!-- ✅ Description column ALSO contains attachment upload -->
+        <!-- Description + Attachment -->
         <div class="col-md-3">
           {{ form.description.label(class="form-label") }}
           {{ form.description(class="form-control", rows="2") }}
 
           <div class="mt-2">
             {{ form.attachment.label(class="form-label small text-muted mb-1") }}
-            {{ form.attachment(class="form-control form-control-sm") }}
-                class="form-control form-control-sm",
-                accept=".pdf,.png,.jpg,.jpeg"
-            ) }}
+            {{ form.attachment(class="form-control form-control-sm", accept=".pdf,.png,.jpg,.jpeg") }}
             <div class="form-text">PDF, JPG, JPEG, PNG (optional).</div>
           </div>
         </div>
@@ -66,16 +63,20 @@
               <th>Category</th>
               <th style="white-space:nowrap;">Amount ($)</th>
               <th>Description</th>
-              <th class="text-end" style="width:120px;">Actions</th>
+              <th class="text-end" style="width: 180px;">Actions</th>
             </tr>
           </thead>
 
           <tbody>
             {% for expense in expenses %}
             <tr>
-              <td style="white-space:nowrap;">{{ expense['date']|datetimeformat('%Y-%m-%d') }}</td>
+              <td style="white-space:nowrap;">
+                {{ expense['date']|datetimeformat('%Y-%m-%d') }}
+              </td>
               <td>{{ expense['category'] }}</td>
-              <td style="white-space:nowrap;">${{ '%.2f'|format(expense['amount']) }}</td>
+              <td style="white-space:nowrap;">
+                ${{ '%.2f'|format(expense['amount']) }}
+              </td>
 
               <td>
                 <div>{{ expense['description'] or '-' }}</div>
@@ -83,7 +84,8 @@
                 {% if expense['has_attachment'] %}
                   <div class="mt-1">
                     <a class="btn btn-sm btn-outline-primary"
-                       href="{{ url_for('finance.download_expense_attachment', expense_id=expense['id']) }}">
+                       href="{{ url_for('finance.download_expense_attachment', expense_id=expense['id']) }}"
+                       target="_blank">
                       📎 {{ expense['attachment_name'] or 'Attachment' }}
                     </a>
                   </div>
@@ -91,15 +93,22 @@
               </td>
 
               <td class="text-end">
-                <form method="POST"
-                      action="{{ url_for('finance.delete_expense', expense_id=expense['id']) }}"
-                      onsubmit="return confirm('Delete this expense? This will be logged.');"
-                      style="display:inline;">
-                  {{ form.hidden_tag() }}
-                  <button type="submit" class="btn btn-sm btn-danger">
-                    🗑 Delete
-                  </button>
-                </form>
+                <div class="d-inline-flex gap-2">
+                  <a href="{{ url_for('finance.edit_expense', expense_id=expense['id']) }}"
+                     class="btn btn-sm btn-outline-warning">
+                    ✏️ Edit
+                  </a>
+
+                  <form method="POST"
+                        action="{{ url_for('finance.delete_expense', expense_id=expense['id']) }}"
+                        onsubmit="return confirm('Delete this expense? This will be logged.');"
+                        style="display:inline;">
+                    {{ form.hidden_tag() }}
+                    <button type="submit" class="btn btn-sm btn-danger">
+                      🗑 Delete
+                    </button>
+                  </form>
+                </div>
               </td>
             </tr>
             {% else %}

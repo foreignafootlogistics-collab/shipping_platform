@@ -595,7 +595,6 @@ document.addEventListener("click", async function(e){
   const pkgId = btn.getAttribute("data-pkg");
   if(!pkgId) return;
 
-  // ✅ use the last/opened breakdown overlay in this injected HTML
   const overlays = document.querySelectorAll("#inlineBreakdownOverlay");
   const overlay = overlays[overlays.length - 1];
   if(!overlay) return;
@@ -633,6 +632,9 @@ document.addEventListener("click", async function(e){
 
     const d = await resp.json();
     console.log("BREAKDOWN JSON:", d);
+    console.log("All overlays:", document.querySelectorAll("#inlineBreakdownOverlay").length);
+    console.log("All bad address cells:", document.querySelectorAll('#bd-bad-address-inline').length);
+    console.log("All total cells:", document.querySelectorAll('#bd-total-inline').length);
 
     const nf = new Intl.NumberFormat(undefined, {
       minimumFractionDigits: 2,
@@ -655,6 +657,14 @@ document.addEventListener("click", async function(e){
     setVal("bd-bad-address-inline", d.bad_address_fee);
     setVal("bd-other-inline", d.other_charges);
     setVal("bd-total-inline", d.grand_total);
+
+    console.log("Visible bad address text:",
+      [...document.querySelectorAll('#bd-bad-address-inline')].map(el => el.textContent)
+    );
+
+    console.log("Visible total text:",
+      [...document.querySelectorAll('#bd-total-inline')].map(el => el.textContent)
+    );
 
   } catch (err) {
     console.error(err);

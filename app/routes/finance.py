@@ -69,7 +69,6 @@ def _upload_expense_attachment_to_cloudinary(file_storage):
 
     _init_cloudinary_from_config()
 
-    # Decide Cloudinary resource_type
     resource_type = "raw" if ext == ".pdf" else "image"
 
     res = cloudinary.uploader.upload(
@@ -81,7 +80,12 @@ def _upload_expense_attachment_to_cloudinary(file_storage):
         unique_filename=False,
     )
 
-    mime = file_storage.mimetype or ("application/pdf" if ext == ".pdf" else "image/jpeg")
+    if ext == ".pdf":
+        mime = "application/pdf"
+    elif ext == ".png":
+        mime = "image/png"
+    else:
+        mime = "image/jpeg"
 
     return (
         filename,
@@ -191,7 +195,7 @@ def _log_expense_action(action: str, expense, request_obj):
         expense_amount=float(getattr(expense, "amount", 0.0) or 0.0),
         expense_description=getattr(expense, "description", None),
         expense_attachment_name=getattr(expense, "attachment_name", None),
-        expense_attachment_stored=getattr(expense, "attachment_stored", None),
+        expense_attachment_stored=getattr(expense, "attachment_url", None),
         ip_address=(request_obj.headers.get("X-Forwarded-For", request_obj.remote_addr) or "")[:64],
         user_agent=(request_obj.headers.get("User-Agent", "") or "")[:255],
     )
@@ -875,7 +879,7 @@ def bulk_mark_invoices_paid():
 def monthly_expenses():
     form = ExpenseForm()
 
-    if form.validate_on_submit():
+    if request.method == "POST" and form.validate_on_submit():
         try:
             attachment_name = None
             attachment_url = None
@@ -883,7 +887,7 @@ def monthly_expenses():
             attachment_mime = None
             uploaded_at = None
 
-            # ✅ Cloudinary upload (PDF only)
+            # ✅ Allow PDF / JPG / JPEG / PNG
             file_obj = request.files.get("attachment")
             if file_obj and file_obj.filename:
                 attachment_name, attachment_url, attachment_public_id, attachment_mime = (
@@ -897,7 +901,7 @@ def monthly_expenses():
                 amount=float(form.amount.data),
                 description=form.description.data or '',
 
-                # ✅ Cloudinary fields (make sure these exist in Expense model)
+                # Cloudinary attachment fields
                 attachment_name=attachment_name,
                 attachment_url=attachment_url,
                 attachment_public_id=attachment_public_id,
@@ -906,9 +910,9 @@ def monthly_expenses():
             )
 
             db.session.add(new_expense)
-            db.session.flush()  # so new_expense.id exists for logging
+            db.session.flush()
 
-            # ✅ audit log (created)
+            # ✅ audit log
             _log_expense_action("CREATED", new_expense, request)
 
             db.session.commit()
@@ -919,7 +923,7 @@ def monthly_expenses():
             db.session.rollback()
             flash(f'Error adding expense: {e}', 'danger')
 
-    expenses_q = Expense.query.order_by(Expense.date.desc()).all()
+    expenses_q = Expense.query.order_by(Expense.date.desc(), Expense.id.desc()).all()
     expenses = []
     for e in expenses_q:
         expenses.append({
@@ -928,8 +932,10 @@ def monthly_expenses():
             'category': e.category,
             'amount': float(e.amount or 0),
             'description': e.description,
-            'attachment_name': e.attachment_name,
-            'has_attachment': bool(getattr(e, "attachment_url", None)),  # ✅ Cloudinary
+            'attachment_name': getattr(e, "attachment_name", None),
+            'attachment_url': getattr(e, "attachment_url", None),
+            'attachment_mime': getattr(e, "attachment_mime", None),
+            'has_attachment': bool(getattr(e, "attachment_url", None)),
         })
 
     total_expenses = sum(e['amount'] for e in expenses) if expenses else 0.0
@@ -967,8 +973,9 @@ def delete_expense(expense_id):
         # ✅ audit log BEFORE delete
         _log_expense_action("DELETED", expense, request)
 
-        # ✅ Delete from Cloudinary (if present)
+        # ✅ delete Cloudinary asset
         public_id = getattr(expense, "attachment_public_id", None)
+        mime = getattr(expense, "attachment_mime", None)
         if public_id:
             _delete_cloudinary_asset(public_id, mime)
 
@@ -986,60 +993,31 @@ def delete_expense(expense_id):
 @finance_bp.route('/expenses/add', methods=['GET', 'POST'])
 @admin_required
 def add_expense():
-    form = ExpenseForm()
-    if form.validate_on_submit():
-        try:
-            new_expense = Expense(
-                date=form.date.data,
-                category=form.category.data,
-                amount=float(form.amount.data),
-                description=form.description.data or '',
-            )
-            db.session.add(new_expense)
-            db.session.commit()
-            flash('Expense added successfully.', 'success')
-            return redirect(url_for('finance.view_expenses'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error adding expense: {e}', 'danger')
-
-    return render_template('admin/finance/add_expense.html', form=form)
+    return redirect(url_for('finance.monthly_expenses'))
 
 
 # ---------------------- VIEW EXPENSES ---------------------- #
 @finance_bp.route('/expenses')
 @admin_required
 def view_expenses():
-    expenses_q = Expense.query.order_by(Expense.date.desc()).all()
-    expenses = [
-        {
-            'id': e.id,
-            'date': e.date,
-            'category': e.category,
-            'amount': float(e.amount or 0),
-            'description': e.description,
-        }
-        for e in expenses_q
-    ]
-    return render_template('admin/finance/view_expenses.html', expenses=expenses)
-
+    return redirect(url_for('finance.monthly_expenses'))
 
 # ---------------------- EDIT EXPENSE ---------------------- #
 @finance_bp.route('/expenses/edit/<int:expense_id>', methods=['GET', 'POST'])
-@admin_required
+@admin_required(roles=['finance'])
 def edit_expense(expense_id):
     expense = db.session.get(Expense, expense_id)
     if not expense:
         flash("Expense not found.", "danger")
-        return redirect(url_for('finance.view_expenses'))
+        return redirect(url_for('finance.monthly_expenses'))
 
-    form = ExpenseForm()
+    form = ExpenseForm(obj=expense)
 
     if request.method == 'GET':
-        form.amount.data = expense.amount
-        form.category.data = expense.category
-        form.description.data = expense.description
         form.date.data = expense.date
+        form.category.data = expense.category
+        form.amount.data = expense.amount
+        form.description.data = expense.description
 
     if form.validate_on_submit():
         try:
@@ -1047,15 +1025,44 @@ def edit_expense(expense_id):
             expense.category = form.category.data
             expense.amount = float(form.amount.data)
             expense.description = form.description.data or ''
+
+            # ✅ Optional: replace attachment
+            file_obj = request.files.get("attachment")
+            if file_obj and file_obj.filename:
+                # delete old cloudinary file first
+                old_public_id = getattr(expense, "attachment_public_id", None)
+                old_mime = getattr(expense, "attachment_mime", None)
+                if old_public_id:
+                    _delete_cloudinary_asset(old_public_id, old_mime)
+
+                attachment_name, attachment_url, attachment_public_id, attachment_mime = (
+                    _upload_expense_attachment_to_cloudinary(file_obj)
+                )
+
+                expense.attachment_name = attachment_name
+                expense.attachment_url = attachment_url
+                expense.attachment_public_id = attachment_public_id
+                expense.attachment_mime = attachment_mime
+                expense.attachment_uploaded_at = datetime.utcnow()
+
+            db.session.flush()
+
+            # ✅ audit log
+            _log_expense_action("UPDATED", expense, request)
+
             db.session.commit()
             flash("Expense updated successfully.", "success")
-            return redirect(url_for('finance.view_expenses'))
+            return redirect(url_for('finance.monthly_expenses'))
+
         except Exception as e:
             db.session.rollback()
             flash(f"Error updating expense: {e}", "danger")
 
-    return render_template('admin/finance/edit_expense.html', form=form, expense=expense)
-
+    return render_template(
+        'admin/finance/edit_expense.html',
+        form=form,
+        expense=expense
+    )
 
 @finance_bp.route("/expense_audit_logs")
 @admin_required(roles=["finance"])

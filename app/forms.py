@@ -358,7 +358,7 @@ class ExpenseForm(FlaskForm):
             ("Supplies", "Supplies"),
             ("Marketing", "Marketing"),
             ("Maintenance", "Maintenance"),
-            ("Invoices", "Invoices"),  # ✅ NEW
+            ("Invoices", "Invoices"),
             ("Other", "Other"),
         ],
         validators=[DataRequired()]
@@ -368,13 +368,14 @@ class ExpenseForm(FlaskForm):
     date = DateField("Date", validators=[DataRequired()])
     description = TextAreaField("Description")
 
-    # ✅ NEW: PDF upload
+    # ✅ Allow PDF + images
     attachment = FileField(
-        "Attach PDF (optional)",
-        validators=[FileAllowed(["pdf"], "PDF files only.")]
+        "Attachment (optional)",
+        validators=[FileAllowed(["pdf", "jpg", "jpeg", "png"], "Only PDF, JPG, JPEG, PNG files are allowed.")]
     )
 
     submit = SubmitField("Add Expense")
+
 class AdminProfileForm(FlaskForm):
     name = StringField('Full Name', validators=[DataRequired()])
     email = StringField('Email', validators=[DataRequired(), Email()])

@@ -153,7 +153,7 @@
         </thead>
         <tbody>
           {% for r in rows %}
-          <tr class="transaction-row" data-url="{{ r.view_url }}" data-pdf="{{ r.pdf_url }}" data-full="{{ r.full_url or '' }}">
+          <tr class="transaction-row" data-url="{{ r.view_url }}" data-pdf="{{ r.pdf_url or '' }}">
             <td>
               {% set tx = (r.type or '')|lower %}
               {% set st = (r.status or '')|lower %}
@@ -250,7 +250,7 @@
   <!-- Mobile cards -->
   <div class="d-md-none">
     {% for r in rows %}
-      <div class="card shadow-sm mb-3 transaction-card" data-url="{{ r.view_url }}" data-pdf="{{ r.pdf_url }}" data-full="{{ r.full_url or '' }}">
+      <div class="card shadow-sm mb-3 transaction-card" data-url="{{ r.view_url }}" data-pdf="{{ r.pdf_url or '' }}">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-center">
             {% set tx = (r.type or '')|lower %}
@@ -396,16 +396,7 @@
     <div class="txn-panel-actions">
       <a href="#" class="btn btn-outline-secondary btn-sm w-100" id="panelPdfBtn" target="_blank" rel="noopener" style="display:none;">
         <i class="bi bi-file-earmark-pdf"></i> Open PDF
-      </a>
-
-      <a href="#"
-         class="btn btn-purple btn-sm w-100 mt-2"
-         id="panelFullBtn"
-         target="_blank"
-         rel="noopener"
-         style="display:none;">
-        <i class="bi bi-box-arrow-up-right"></i> View Full
-      </a>
+      </a>      
     </div>
     
 
@@ -423,8 +414,7 @@
   const body = document.getElementById("panelBody");
   const title = document.getElementById("panelTitle");
   const pdfBtn = document.getElementById("panelPdfBtn");
-  const fullBtn = document.getElementById("panelFullBtn");
-
+  
   function openPanel() {
     panel.classList.add("open");
     overlay.classList.add("show");
@@ -474,8 +464,7 @@
     e.preventDefault();
 
     const url = row.getAttribute("data-url");
-    const pdf = row.getAttribute("data-pdf") || "";
-    const full = row.getAttribute("data-full") || "";
+    const pdf = (row.getAttribute("data-pdf") || "").trim();
     const ref = row.querySelector(".ref-main") ? row.querySelector(".ref-main").innerText.trim() : "Details";
 
     title.textContent = ref;
@@ -486,14 +475,7 @@
     } else {
       pdfBtn.style.display = "none";
       pdfBtn.href = "#";
-    }
-    if (full) {
-      fullBtn.style.display = "";
-      fullBtn.href = full;
-    } else {
-      fullBtn.style.display = "none";
-      fullBtn.href = "#";
-    }
+    }  
 
     openPanel();
     if (url) loadDetails(url);

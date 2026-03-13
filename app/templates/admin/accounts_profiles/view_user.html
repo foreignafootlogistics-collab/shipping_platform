@@ -1146,7 +1146,14 @@
               </tr>
               {% else %}
               <tr>
-                <td colspan="8" class="text-center text-muted py-4">No claims found for this customer.</td>
+                <td class="text-center text-muted py-4">—</td>
+                <td class="text-center text-muted py-4">—</td>
+                <td class="text-center text-muted py-4">—</td>
+                <td class="text-center text-muted py-4">—</td>
+                <td class="text-center text-muted py-4">—</td>
+                <td class="text-center text-muted py-4">—</td>
+                <td class="text-center text-muted py-4">—</td>
+                <td class="text-center text-muted py-4">No claims found for this customer.</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -2657,7 +2664,7 @@ $(document).ready(function () {
   }
 
   // Claims
-  if ($('#claimsTable').length) {
+  if ($('#claimsTable').length && $('#claimsTable tbody tr').length > 0) {
     $('#claimsTable').DataTable({
       order: [[6, 'desc']],
       pageLength: 10

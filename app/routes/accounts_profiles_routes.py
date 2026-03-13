@@ -25,6 +25,7 @@ from sqlalchemy import func, or_, and_, select, case
 from sqlalchemy.exc import IntegrityError
 from urllib.parse import urlparse, urljoin
 from weasyprint import HTML
+from flask_login import current_user, login_required
 
 from app.forms import UploadUsersForm, ConfirmUploadForm
 from app.extensions import db

@@ -2340,16 +2340,14 @@ def add_payment(invoice_id):
         notes_parts.append(f"Authorised by: {authorized_by}")
     notes = "\n".join(notes_parts) if notes_parts else None
 
-    # ✅ Build kwargs depending on your Payment columns
     payment_kwargs = {
         "invoice_id": inv.id,
         "user_id": inv.user_id,
+        "transaction_type": "invoice_payment",
+        "status": "completed",
+        "source": "admin",
+        "authorized_by_admin_id": current_user.id,
     }
-
-    payment_kwargs["transaction_type"] = "invoice_payment"
-    payment_kwargs["status"] = "completed"
-    payment_kwargs["source"] = "admin"
-    payment_kwargs["authorized_by_admin_id"] = current_user.id
 
     # amount field name
     if hasattr(Payment, "amount_jmd"):
@@ -2363,15 +2361,12 @@ def add_payment(invoice_id):
     else:
         payment_kwargs["payment_type"] = method
 
-    # optional fields if they exist
+    # optional scalar fields only
     if hasattr(Payment, "reference"):
         payment_kwargs["reference"] = reference or None
 
     if hasattr(Payment, "notes"):
         payment_kwargs["notes"] = notes
-
-    if hasattr(Payment, "authorized_by"):
-        payment_kwargs["authorized_by"] = authorized_by or "Admin"
 
     if hasattr(Payment, "payment_date"):
         payment_kwargs["payment_date"] = datetime.utcnow()
@@ -2379,25 +2374,43 @@ def add_payment(invoice_id):
     if hasattr(Payment, "bill_number"):
         payment_kwargs["bill_number"] = f"BILL-{inv.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
+    # ---------------------------------
+    # Prevent duplicate payment submit
+    # ---------------------------------
+    recent_payment = (
+        Payment.query
+        .filter(
+            Payment.invoice_id == inv.id,
+            Payment.amount_jmd == amount,
+            Payment.method == method
+        )
+        .order_by(Payment.created_at.desc())
+        .first()
+    )
+
+    if recent_payment:
+        time_diff = (datetime.utcnow() - recent_payment.created_at).total_seconds()
+
+        # If the same payment was added in the last 10 seconds, block it
+        if time_diff < 10:
+            msg = "Duplicate payment detected. Please refresh."
+
+            if is_ajax:
+                return jsonify({"ok": False, "error": msg}), 400
+
+            flash(msg, "warning")
+            return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
+
     p = Payment(**payment_kwargs)
     db.session.add(p)
     db.session.flush()
 
-    # ✅ Sum payments using the correct column
-    pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
-    paid_sum = (
-        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
-        .filter(Payment.invoice_id == inv.id)
-        .scalar()
-        or 0.0
-    )
-
     subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
     inv.amount_due = float(total_due)
-    new_due = inv.amount_due
+
+    new_due = float(total_due or 0)
     base_total = float(subtotal or 0)
     paid_sum = float(payments_total or 0)
-
 
     previous_status = inv.status
 
@@ -2407,10 +2420,9 @@ def add_payment(invoice_id):
         inv.status = "paid"
         if hasattr(inv, "date_paid"):
             inv.date_paid = datetime.now(timezone.utc)
- 
+
         if previous_status != "paid":
             lock_delivered_packages_for_invoice(inv.id, reason="Invoice fully paid")
-
 
     elif 0 < new_due < base_total:
         inv.status = "partial"
@@ -2430,7 +2442,6 @@ def add_payment(invoice_id):
 
     flash(f"Payment of {amount:,.2f} JMD recorded for {inv.invoice_number}.", "success")
     return redirect(url_for("admin.view_invoice", invoice_id=inv.id))
-
 
 
 @admin_bp.route("/invoice/add-discount/<int:invoice_id>", methods=["POST"])

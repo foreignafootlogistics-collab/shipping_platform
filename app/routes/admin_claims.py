@@ -162,7 +162,15 @@ def review(claim_id):
                     method=method,
                     amount_jmd=float(refunded_amount_dec),
                     reference=(form.refund_reference.data or "").strip() or None,
-                    notes=f"Refund issued for claim {claim.case_id or ('#' + str(claim.id))}",
+                    notes=(
+                        f"Refund issued for claim {claim.case_id or ('#' + str(claim.id))} - "
+                        f"{(claim.user.full_name or 'Unknown Customer').strip()}"
+                        + (
+                            f" ({(claim.user.registration_number or '').strip()})"
+                            if (claim.user.registration_number or '').strip()
+                            else ""
+                        )
+                    ),
                     transaction_type="package_refund",
                     status="completed",
                     source="admin",

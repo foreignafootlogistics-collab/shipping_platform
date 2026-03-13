@@ -207,6 +207,27 @@ def _money(x):
     except Exception:
         return 0.0
 
+def _refund_expense_total(start_date=None, end_date=None):
+    """
+    Sum completed refund payments so they can be treated as finance expenses.
+    Includes:
+      - package_refund
+      - delivery_refund
+    """
+    q = (
+        db.session.query(func.coalesce(func.sum(Payment.amount_jmd), 0.0))
+        .filter(Payment.transaction_type.in_(["package_refund", "delivery_refund"]))
+        .filter(Payment.status == "completed")
+    )
+
+    if start_date:
+        q = q.filter(func.date(Payment.created_at) >= start_date)
+
+    if end_date:
+        q = q.filter(func.date(Payment.created_at) <= end_date)
+
+    return float(q.scalar() or 0.0)
+
 def _get_unpaid_user_rows(search=None, date_from=None, date_to=None):
     # sum payments per invoice
     pay_sum = (
@@ -378,12 +399,16 @@ def finance_dashboard():
         .scalar() or 0.0
     )
 
-    # Total expenses in period
-    total_expenses = (
+   
+    manual_expenses = (
         db.session.query(func.coalesce(func.sum(Expense.amount), 0.0))
         .filter(func.date(Expense.date).between(start_date, end_date))
         .scalar() or 0.0
     )
+
+    refund_expenses = _refund_expense_total(start_date, end_date)
+
+    total_expenses = float(manual_expenses or 0.0) + float(refund_expenses or 0.0)
 
     # Receivables for the period
     total_amount_due = (
@@ -445,6 +470,31 @@ def finance_dashboard():
         .order_by(func.coalesce(func.sum(Expense.amount), 0.0).desc())
         .all()
     )
+
+    exp_map = {str(r.category): float(r.total or 0) for r in expense_mix_rows}
+
+    refund_mix_rows = (
+        db.session.query(
+            Payment.transaction_type.label("category"),
+            func.coalesce(func.sum(Payment.amount_jmd), 0.0).label("total"),
+        )
+        .filter(Payment.transaction_type.in_(["package_refund", "delivery_refund"]))
+        .filter(Payment.status == "completed")
+        .filter(func.date(Payment.created_at).between(start_date, end_date))
+        .group_by(Payment.transaction_type)
+        .all()
+    )
+
+    for r in refund_mix_rows:
+        if r.category == "package_refund":
+            label = "Package Refund"
+        elif r.category == "delivery_refund":
+            label = "Delivery Refund"
+        else:
+            label = "Refund"
+
+        exp_map[label] = exp_map.get(label, 0.0) + float(r.total or 0)
+
     exp_labels = [r.category for r in expense_mix_rows]
     exp_values = [float(r.total or 0) for r in expense_mix_rows]
 
@@ -567,6 +617,8 @@ def finance_dashboard():
         due_rows=due_rows,
         usd_to_jmd=USD_TO_JMD,
         user_role=user_role,
+        manual_expenses=manual_expenses,
+        refund_expenses=refund_expenses,
     )
 
 
@@ -927,7 +979,8 @@ def monthly_expenses():
     expenses = []
     for e in expenses_q:
         expenses.append({
-            'id': e.id,
+            'id': f"expense-{e.id}",
+            'row_type': 'expense',
             'date': e.date,
             'category': e.category,
             'amount': float(e.amount or 0),
@@ -938,7 +991,53 @@ def monthly_expenses():
             'has_attachment': bool(getattr(e, "attachment_url", None)),
         })
 
-    total_expenses = sum(e['amount'] for e in expenses) if expenses else 0.0
+    # -----------------------------
+    # Refund payments as expenses
+    # -----------------------------
+    refund_rows = (
+        Payment.query
+        .filter(Payment.transaction_type.in_(["package_refund", "delivery_refund"]))
+        .filter(Payment.status == "completed")
+        .order_by(Payment.created_at.desc(), Payment.id.desc())
+        .all()
+    )
+
+    for p in refund_rows:
+        if p.transaction_type == "package_refund":
+            category = "Package Refund"
+        elif p.transaction_type == "delivery_refund":
+            category = "Delivery Refund"
+        else:
+            category = "Refund"
+
+        desc_bits = []
+
+        if getattr(p, "reference", None):
+            desc_bits.append(f"Ref: {p.reference}")
+
+        if getattr(p, "notes", None):
+            desc_bits.append(p.notes)
+
+        expenses.append({
+            'id': f"refund-{p.id}",
+            'row_type': 'refund',
+            'date': (p.created_at.date() if p.created_at else None),
+            'category': category,
+            'amount': float(p.amount_jmd or 0),
+            'description': " | ".join(desc_bits) if desc_bits else "Refund payment",
+            'attachment_name': None,
+            'attachment_url': None,
+            'attachment_mime': None,
+            'has_attachment': False,
+        })
+
+    # newest first across both manual expenses + refunds
+    expenses.sort(
+        key=lambda x: (x.get("date") or date.min, str(x.get("id") or "")),
+        reverse=True
+    )
+
+    total_expenses = sum(float(e.get('amount') or 0) for e in expenses) if expenses else 0.0
 
     return render_template(
         'admin/finance/monthly_expenses.html',
@@ -1202,6 +1301,8 @@ def monthly_income():
             'date_issued': r.date_issued,
         })
     total_amount_due = sum(r['amount_due'] for r in due_rows) if due_rows else 0.0
+    total_income = sum(r['amount'] for r in incomes) if incomes else 0.0
+    refund_expenses = _refund_expense_total(month_start, month_end)
 
     # Issued chart (daily)
     daily_due_raw = (
@@ -1229,6 +1330,7 @@ def monthly_income():
         total_amount_due=total_amount_due,
         due_labels=due_labels,
         due_values=due_values,
+        refund_expenses=refund_expenses,
     )
 
 
@@ -1289,6 +1391,25 @@ def monthly_profit_loss():
         if key in monthly_data:
             monthly_data[key]['expenses'] += float(r.amount or 0)
 
+    refund_rows = (
+        db.session.query(
+            Payment.amount_jmd.label("amount"),
+            Payment.created_at.label("date"),
+            Payment.transaction_type.label("transaction_type"),
+        )
+        .filter(Payment.transaction_type.in_(["package_refund", "delivery_refund"]))
+        .filter(Payment.status == "completed")
+        .all()
+    )
+
+    for r in refund_rows:
+        if not r.date:
+            continue
+        d = r.date if isinstance(r.date, date) else r.date.date()
+        key = d.strftime('%Y-%m')
+        if key in monthly_data:
+            monthly_data[key]['expenses'] += float(r.amount or 0)
+
     summary = []
     for key in month_keys:
         income = monthly_data[key]['income']
@@ -1304,6 +1425,19 @@ def monthly_profit_loss():
     current = monthly_data.get(current_month_key, {'income': 0.0, 'expenses': 0.0})
     total_income = current['income']
     total_expenses = current['expenses']
+
+    current_manual_expenses = 0.0
+    for r in expense_rows:
+        if not r.date:
+            continue
+        d = r.date if isinstance(r.date, date) else r.date.date()
+        if d.strftime('%Y-%m') == current_month_key:
+            current_manual_expenses += float(r.amount or 0)
+
+    current_refund_expenses = _refund_expense_total(
+        date(today.year, today.month, 1),
+        date(today.year, today.month, monthrange(today.year, today.month)[1])
+    )
     net_profit = total_income - total_expenses
 
     return render_template(
@@ -1312,4 +1446,6 @@ def monthly_profit_loss():
         total_expenses=total_expenses,
         net_profit=net_profit,
         summary=summary,
+        current_manual_expenses=current_manual_expenses,
+        current_refund_expenses=current_refund_expenses,
     )

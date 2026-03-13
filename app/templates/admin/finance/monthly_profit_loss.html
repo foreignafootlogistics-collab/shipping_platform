@@ -6,27 +6,42 @@
   <h2 class="mb-4">Monthly Profit / Loss</h2>
 
   <div class="row mb-4">
-    <div class="col-md-4">
-      <div class="card border-success">
+    <div class="col-md-3">
+      <div class="card border-success h-100">
         <div class="card-body">
           <h5>Total Income</h5>
-          <p class="fs-4 text-success">${{ "%.2f"|format(total_income) }}</p>
+          <p class="fs-4 text-success mb-0">${{ "%.2f"|format(total_income) }}</p>
         </div>
       </div>
     </div>
-    <div class="col-md-4">
-      <div class="card border-danger">
+
+    <div class="col-md-3">
+      <div class="card border-danger h-100">
         <div class="card-body">
           <h5>Total Expenses</h5>
-          <p class="fs-4 text-danger">${{ "%.2f"|format(total_expenses) }}</p>
+          <p class="fs-4 text-danger mb-1">${{ "%.2f"|format(total_expenses) }}</p>
+          <div class="small text-muted">
+            Manual: ${{ "%.2f"|format(current_manual_expenses or 0) }}<br>
+            Refunds: ${{ "%.2f"|format(current_refund_expenses or 0) }}
+          </div>
         </div>
       </div>
     </div>
-    <div class="col-md-4">
-      <div class="card border-primary">
+
+    <div class="col-md-3">
+      <div class="card border-warning h-100">
+        <div class="card-body">
+          <h5>Refund Expenses</h5>
+          <p class="fs-4 text-warning mb-0">${{ "%.2f"|format(current_refund_expenses or 0) }}</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-3">
+      <div class="card border-primary h-100">
         <div class="card-body">
           <h5>Net Profit / Loss</h5>
-          <p class="fs-4 {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+          <p class="fs-4 {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %} mb-0">
             ${{ "%.2f"|format(net_profit) }}
           </p>
         </div>

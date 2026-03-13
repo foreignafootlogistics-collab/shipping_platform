@@ -73,7 +73,13 @@
               <td style="white-space:nowrap;">
                 {{ expense['date']|datetimeformat('%Y-%m-%d') }}
               </td>
-              <td>{{ expense['category'] }}</td>
+              <td>
+                {{ expense['category'] }}
+                {% if expense['row_type'] == 'refund' %}
+                  <span class="badge bg-info text-dark ms-2">Refund</span>
+                {% endif %}
+              </td>
+
               <td style="white-space:nowrap;">
                 ${{ '%.2f'|format(expense['amount']) }}
               </td>
@@ -81,10 +87,10 @@
               <td>
                 <div>{{ expense['description'] or '-' }}</div>
 
-                {% if expense['has_attachment'] %}
+                {% if expense['row_type'] == 'expense' and expense['has_attachment'] %}
                   <div class="mt-1">
                     <a class="btn btn-sm btn-outline-primary"
-                       href="{{ url_for('finance.download_expense_attachment', expense_id=expense['id']) }}"
+                        href="{{ url_for('finance.download_expense_attachment', expense_id=(expense['id']|string).replace('expense-', '')) }}"
                        target="_blank">
                       📎 {{ expense['attachment_name'] or 'Attachment' }}
                     </a>
@@ -93,22 +99,26 @@
               </td>
 
               <td class="text-end">
-                <div class="d-inline-flex gap-2">
-                  <a href="{{ url_for('finance.edit_expense', expense_id=expense['id']) }}"
-                     class="btn btn-sm btn-outline-warning">
-                    ✏️ Edit
-                  </a>
+                {% if expense['row_type'] == 'expense' %}
+                  <div class="d-inline-flex gap-2">
+                    <a href="{{ url_for('finance.edit_expense', expense_id=(expense['id']|string).replace('expense-', '')) }}"
+                       class="btn btn-sm btn-outline-warning">
+                      ✏️ Edit
+                    </a>
 
-                  <form method="POST"
-                        action="{{ url_for('finance.delete_expense', expense_id=expense['id']) }}"
-                        onsubmit="return confirm('Delete this expense? This will be logged.');"
-                        style="display:inline;">
-                    {{ form.hidden_tag() }}
-                    <button type="submit" class="btn btn-sm btn-danger">
-                      🗑 Delete
-                    </button>
-                  </form>
-                </div>
+                    <form method="POST"
+                          action="{{ url_for('finance.delete_expense', expense_id=(expense['id']|string).replace('expense-', '')) }}"
+                          onsubmit="return confirm('Delete this expense? This will be logged.');"
+                          style="display:inline;">
+                      {{ form.hidden_tag() }}
+                      <button type="submit" class="btn btn-sm btn-danger">
+                        🗑 Delete
+                      </button>
+                    </form>
+                  </div>
+                {% else %}
+                  <span class="text-muted small">Auto-created from refund payment</span>
+                {% endif %}
               </td>
             </tr>
             {% else %}

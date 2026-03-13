@@ -74,7 +74,7 @@
       <a href="{{ url_for('finance.add_expense') }}" class="text-decoration-none">
         <div class="card card-kpi shadow-sm h-100 hover-shadow">
           <div class="card-body">
-            <div class="text-muted">Expenses</div>
+            <div class="text-muted">Total Expenses</div>
             <div class="fs-4 fw-bold text-danger money" data-jmd="{{ (total_expenses or 0)|float }}">0</div>
           </div>
         </div>
@@ -113,6 +113,29 @@
     </div>
     {% endif %}
   </div>
+
+  <!-- Expense Breakdown -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <div class="text-muted">Manual Expenses</div>
+            <div class="fs-5 fw-bold text-danger money" data-jmd="{{ (manual_expenses or 0)|float }}">0</div>
+            <div class="small text-muted">Expenses entered from Monthly Expenses page</div>
+          </div>
+        </div>
+      </div>
+ 
+      <div class="col-md-6">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <div class="text-muted">Refund Expenses</div>
+            <div class="fs-5 fw-bold text-danger money" data-jmd="{{ (refund_expenses or 0)|float }}">0</div>
+            <div class="small text-muted">Completed package and delivery refunds</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
   <!-- Charts + Aging -->
   <div class="row g-3 mb-4">

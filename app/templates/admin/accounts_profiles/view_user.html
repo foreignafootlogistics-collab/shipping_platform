@@ -213,6 +213,14 @@
         </li>
 
         <li class="nav-item" role="presentation">
+          <button class="nav-link {% if current_tab == 'claims' %}active{% endif %}"
+                  id="claims-tab" data-bs-toggle="tab"
+                  data-bs-target="#claims" type="button" role="tab">
+            <i class="bi bi-exclamation-diamond me-1"></i> Claims
+          </button>
+        </li>
+
+        <li class="nav-item" role="presentation">
           <button class="nav-link {% if current_tab == 'schedule' %}active{% endif %}"
                   id="schedule-delivery-tab" data-bs-toggle="tab"
                   data-bs-target="#schedule-delivery" type="button" role="tab">
@@ -263,6 +271,15 @@
               <i class="bi bi-plus-square"></i>
             </button>
 
+            <!-- Add Claim -->
+            <button type="button"
+                    class="btn btn-sm btn-outline-purple"
+                    data-bs-toggle="modal"
+                    data-bs-target="#addClaimModal"
+                    title="Add Claim">
+              <i class="bi bi-exclamation-diamond"></i>
+            </button>
+
 
             <!-- Bulk Delete -->
             <button type="button"
@@ -306,7 +323,8 @@
               <tr>
                 {% set st = (pkg.status or '')|lower %}
                 {% set bar_class =
-                    'status-overseas' if 'overseas' in st
+                    'status-refunded' if ('claim refunded' in st or 'refunded' in st)
+                    else 'status-overseas' if 'overseas' in st
                     else 'status-ready' if ('ready' in st or 'pickup' in st or 'pick up' in st)
                     else 'status-delivered' if ('delivered' in st or st == 'delivery' or 'out for delivery' in st)
                     else 'status-unknown'
@@ -1044,6 +1062,98 @@
         </div>
       </div>
 
+      <!-- Claims Tab -->
+      <div class="tab-pane fade {% if current_tab == 'claims' %}show active{% endif %}"
+           id="claims" role="tabpanel" aria-labelledby="claims-tab">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h6 class="mb-0">Customer Claims</h6>
+            <small class="text-muted">Claims submitted by or on behalf of this customer</small>
+          </div>
+
+          <button type="button"
+                  class="btn btn-sm btn-outline-purple"
+                  data-bs-toggle="modal"
+                  data-bs-target="#addClaimModal"
+                  title="Add Claim">
+            <i class="bi bi-plus-square me-1"></i> Add Claim
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table id="claimsTable" class="table table-striped table-bordered align-middle">
+            <thead class="table-dark">
+              <tr>
+                <th>Case ID</th>
+                <th>House AWB</th>
+                <th>Tracking #</th>
+                <th class="text-end">Item Value (JMD)</th>
+                <th>Refund Method</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th class="text-center">Open</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in user_claims %}
+              <tr>
+                <td class="fw-semibold">{{ c.case_id or ('CLM-' ~ c.id) }}</td>
+                <td>{{ c.house_awb or '—' }}</td>
+                <td>{{ c.tracking_number or '—' }}</td>
+                <td class="text-end">${{ money(c.item_value_jmd) }}</td>
+                <td>
+                  {% if c.refund_method == 'bank_transfer' %}
+                    <span class="badge bg-info text-dark">Bank Transfer</span>
+                  {% elif c.refund_method == 'wallet_credit' %}
+                    <span class="badge bg-primary">Wallet Credit</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Cash</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% set cs = (c.status or 'submitted')|lower %}
+                  {% if cs == 'submitted' %}
+                    <span class="badge bg-warning text-dark">Submitted</span>
+                  {% elif cs == 'under_review' %}
+                    <span class="badge bg-info text-dark">Under Review</span>
+                  {% elif cs == 'need_more_info' %}
+                    <span class="badge bg-secondary">Need More Info</span>
+                  {% elif cs == 'approved' %}
+                    <span class="badge bg-primary">Approved</span>
+                  {% elif cs == 'rejected' %}
+                    <span class="badge bg-danger">Rejected</span>
+                  {% elif cs == 'paid' %}
+                    <span class="badge bg-success">Paid</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ c.status }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if c.created_at %}
+                    {{ c.created_at.strftime("%Y-%m-%d %I:%M %p") if c.created_at.strftime is defined else c.created_at }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  <a href="{{ url_for('admin_claims.review', claim_id=c.id) }}"
+                     class="btn btn-sm btn-outline-purple"
+                     title="Open Claim">
+                    <i class="bi bi-box-arrow-up-right"></i>
+                  </a>
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="8" class="text-center text-muted py-4">No claims found for this customer.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
 
       <!-- Schedule Delivery Tab -->
       <div class="tab-pane fade {% if current_tab == 'schedule' %}show active{% endif %}"
@@ -1692,7 +1802,137 @@
     </div>
   </div>
    
-  
+    <!-- ✅ Add Claim Modal (Admin -> View User) -->
+  <div class="modal fade" id="addClaimModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+
+        <div class="modal-header" style="background-color:#4a148c; color:white;">
+          <h5 class="modal-title">
+            <i class="bi bi-exclamation-diamond me-1"></i> Add Claim for {{ user.full_name }}
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <form id="addClaimForm"
+              method="POST"
+              action="{{ url_for('accounts_profiles.create_claim_for_user', id=user_id) }}">
+
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="tab" value="{{ current_tab }}">
+          <input type="hidden" name="pkg_page" value="{{ pkg_page }}">
+          <input type="hidden" name="pkg_per_page" value="{{ pkg_per_page }}">
+          <input type="hidden" name="pkg_from" value="{{ pkg_from or '' }}">
+          <input type="hidden" name="pkg_to" value="{{ pkg_to or '' }}">
+          <input type="hidden" name="pkg_awb" value="{{ pkg_awb or '' }}">
+          <input type="hidden" name="pkg_tn" value="{{ pkg_tn or '' }}">
+          <input type="hidden" name="pkg_status" value="{{ pkg_status or '' }}">
+
+          <div class="modal-body">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">Select Package</label>
+                <select name="package_id" id="adminClaimPackageSelect" class="form-select">
+                  <option value="">-- Select overseas package --</option>
+                  {% for pkg in packages %}
+                    {% set pkg_status = (pkg.status or '')|lower %}
+                    {% if 'overseas' in pkg_status %}
+                      <option value="{{ pkg.id }}"
+                              data-awb="{{ pkg.house_awb or '' }}"
+                              data-tracking="{{ pkg.tracking_number or '' }}">
+                        {{ pkg.house_awb or 'No AWB' }}{% if pkg.tracking_number %} • {{ pkg.tracking_number }}{% endif %}{% if pkg.description %} • {{ pkg.description }}{% endif %}
+                      </option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+                <div class="form-text">Choose an overseas package to auto-fill House AWB and Tracking Number.</div>
+              </div>
+
+              <div class="col-md-6">                
+                <label class="form-label">House AWB</label>
+                <input type="text" name="house_awb" id="adminClaimHouseAwb" class="form-control" required placeholder="e.g. HAWB123">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Tracking Number</label>
+                <input type="text" name="tracking_number" id="adminClaimTrackingNumber" class="form-control" placeholder="Optional">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Item Value (JMD)</label>
+                <input type="number" step="0.01" min="0" name="item_value_jmd" class="form-control" required placeholder="e.g. 12000">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Refund Method</label>
+                <select name="refund_method" id="adminClaimRefundMethod" class="form-select">
+                  <option value="cash">Cash</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="wallet_credit">Wallet Credit</option>
+                </select>
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">Description</label>
+                <textarea name="description" class="form-control" rows="4" placeholder="Explain the claim reason..."></textarea>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Invoice URL (optional)</label>
+                <input type="text" name="invoice_url" class="form-control" placeholder="Optional link / leave blank">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Bank Statement URL (optional)</label>
+                <input type="text" name="bank_statement_url" class="form-control" placeholder="Optional link / leave blank">
+              </div>
+            </div>
+
+            <div id="adminClaimBankFields" class="row g-3 mt-1" style="display:none;">
+              <div class="col-md-6">
+                <label class="form-label">Bank Account Name</label>
+                <input type="text" name="bank_account_name" class="form-control" placeholder="Account holder name">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Bank Branch</label>
+                <input type="text" name="bank_branch" class="form-control" placeholder="Branch name">
+              </div>
+
+               <div class="col-md-6">
+                <label class="form-label">Bank Account Number</label>
+                <input type="text" name="bank_account_number" class="form-control" placeholder="Account number">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Bank Account Type</label>
+                <select name="bank_account_type" class="form-select">
+                  <option value="">Select type</option>
+                  <option value="savings">Savings</option>
+                  <option value="chequing">Chequing</option>
+                 </select>
+              </div>
+            </div>
+
+            <div class="alert alert-light border mt-3 mb-0">
+              <small class="text-muted">
+                This will create a claim on behalf of the customer and send it into the normal claims workflow.
+              </small>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-success">
+              <i class="bi bi-check2-circle me-1"></i> Save Claim
+            </button>
+          </div>
+
+        </form>
+
+      </div>
+    </div>
+  </div>
   <!-- Payments Filter Modal -->
   <div class="modal fade" id="paymentFilterModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -2209,6 +2449,7 @@ td.pkg-cell .pkg-status-bar.bar-danger  { background-color: #dc3545 !important; 
 td.pkg-cell .pkg-status-bar.bar-warning { background-color: #ffc107 !important; }  /* yellow */
 td.pkg-cell .pkg-status-bar.bar-primary { background-color: #0d6efd !important; }  /* blue */
 td.pkg-cell .pkg-status-bar.bar-success { background-color: #198754 !important; }  /* green */
+td.pkg-cell .pkg-status-bar.bar-dark    { background-color: #212529 !important; }  /* refunded */
 td.pkg-cell .pkg-status-bar.bar-secondary { background-color: #adb5bd !important; }
 
 /* Badge base */
@@ -2222,7 +2463,10 @@ td.pkg-cell span.badge.pkg-status-badge{
   color: #fff !important;
 }
 
-/* Badge colors (THIS is the real fix — forces background even if overridden elsewhere) */
+td.pkg-cell span.badge.pkg-status-badge.status-refunded{
+  background-color: #212529 !important;
+  color: #fff !important;
+}
 td.pkg-cell span.badge.pkg-status-badge.status-overseas{
   background-color: #dc3545 !important;
   color: #fff !important;
@@ -2408,6 +2652,14 @@ $(document).ready(function () {
   if ($('#prealertsTable').length) {
     $('#prealertsTable').DataTable({
       order: [[0, 'desc']],
+      pageLength: 10
+    });
+  }
+
+  // Claims
+  if ($('#claimsTable').length) {
+    $('#claimsTable').DataTable({
+      order: [[6, 'desc']],
       pageLength: 10
     });
   }
@@ -2939,7 +3191,8 @@ document.getElementById('addSinglePackageForm')
       const st = String(data.pkg.status || '').toLowerCase();
 
       let progressColor = 'secondary';
-      if (st === 'overseas') progressColor = 'danger';
+      if (st.includes('claim refunded') || st.includes('refunded')) progressColor = 'dark';
+      else if (st === 'overseas') progressColor = 'danger';
       else if (st.includes('local port') || st.includes('received at local port') || st.includes('arrived')) progressColor = 'warning';
       else if (st.includes('ready') || st.includes('pickup') || st.includes('pick up')) progressColor = 'primary';
       else if (st.includes('deliver') || st === 'delivery' || st === 'delivered' || st.includes('out for delivery')) progressColor = 'success';
@@ -2990,13 +3243,15 @@ document.getElementById('addSinglePackageForm')
               progressColor === 'danger' ? 'bg-danger' :
               progressColor === 'warning' ? 'bg-warning text-dark' :
               progressColor === 'primary' ? 'bg-primary' :
-              progressColor === 'success' ? 'bg-success' : 'bg-secondary'
+              progressColor === 'success' ? 'bg-success' :
+              progressColor === 'dark' ? 'bg-dark' : 'bg-secondary'
             }">
               ${data.pkg.status || 'Unknown'}
             </span>
 
             <div class="status-progress mt-1 ${progressColor}">
               <div class="fill" style="width:${
+                progressColor === 'dark' ? 100 :
                 progressColor === 'danger' ? 33 :
                 progressColor === 'warning' ? (st === 'unassigned' ? 0 : 66) :
                 progressColor === 'primary' ? 80 :
@@ -3056,6 +3311,47 @@ function openDeleteInvoiceModal(invoiceId, invoiceLabel){
 
   new bootstrap.Modal(modalEl).show();
 }
+
+/* ================================
+   Admin Add Claim via AJAX
+================================ */
+document.getElementById('addClaimForm')?.addEventListener('submit', function (e) {
+  e.preventDefault();
+
+  const form = this;
+  const formData = new FormData(form);
+
+  fetch(form.getAttribute('action'), {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    body: formData
+  })
+  .then(async (res) => {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to create claim');
+    }
+    return data;
+  })
+  .then((data) => {
+    if (!data.success) {
+      alert(data.error || 'Failed to create claim');
+      return;
+    }
+
+    bootstrap.Modal.getInstance(document.getElementById('addClaimModal'))?.hide();
+    form.reset();
+
+    alert(`Claim created successfully. Case ID: ${data.case_id}`);
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', 'packages');
+    window.location.href = url.toString();
+  })
+  .catch((err) => {
+    alert(err.message || 'Server error creating claim');
+  });
+});
 
 /* ----------------------------------------------------
    ✅ INVOICE DELETE: redirect back with tab=invoices
@@ -3431,5 +3727,42 @@ document.getElementById('deleteInvoiceForm')?.addEventListener('submit', functio
     }[m]));
   }
 })();
+
+document.addEventListener("DOMContentLoaded", function () {
+  const refundMethod = document.getElementById("adminClaimRefundMethod");
+  const bankFields = document.getElementById("adminClaimBankFields");
+
+  function toggleAdminClaimBankFields() {
+    if (!refundMethod || !bankFields) return;
+    bankFields.style.display = refundMethod.value === "bank_transfer" ? "" : "none";
+  }
+
+  if (refundMethod) {
+    refundMethod.addEventListener("change", toggleAdminClaimBankFields);
+    toggleAdminClaimBankFields();
+  }
+});
+document.addEventListener("DOMContentLoaded", function () {
+  const pkgSelect = document.getElementById("adminClaimPackageSelect");
+  const awbInput = document.getElementById("adminClaimHouseAwb");
+  const trackingInput = document.getElementById("adminClaimTrackingNumber");
+
+  function fillClaimPackageFields() {
+    if (!pkgSelect) return;
+
+    const opt = pkgSelect.options[pkgSelect.selectedIndex];
+    if (!opt) return;
+
+    const awb = opt.getAttribute("data-awb") || "";
+    const tracking = opt.getAttribute("data-tracking") || "";
+
+    if (awbInput) awbInput.value = awb;
+    if (trackingInput) trackingInput.value = tracking;
+  }
+
+  if (pkgSelect) {
+    pkgSelect.addEventListener("change", fillClaimPackageFields);
+  }
+});
 </script>
 {% endblock %}

@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import current_user
+from sqlalchemy import or_
 
 from app.extensions import db
 from app.models import Claim, ClaimAuditLog, Wallet, WalletTransaction, Payment
@@ -179,6 +180,38 @@ def review(claim_id):
                 claim.status = "paid"
 
             # ------------------------------------------------
+            # MARK LINKED PACKAGE AS CLAIM REFUNDED
+            # ------------------------------------------------
+            if getattr(claim, "package_id", None):
+                linked_pkg = claim.package
+                if linked_pkg:
+                    linked_pkg.status = "Claim Refunded"
+
+            elif claim.house_awb or claim.tracking_number:
+                from app.models import Package
+
+                filters = [Package.user_id == claim.user_id]
+                matchers = []
+
+                if claim.house_awb:
+                    matchers.append(Package.house_awb == claim.house_awb)
+
+                if claim.tracking_number:
+                    matchers.append(Package.tracking_number == claim.tracking_number)
+
+                if matchers:
+                    linked_pkg = (
+                        Package.query
+                        .filter(*filters)
+                        .filter(or_(*matchers))
+                        .order_by(Package.id.desc())
+                        .first()
+                    )
+
+                    if linked_pkg:
+                        linked_pkg.status = "Claim Refunded"
+
+            # ------------------------------------------------
             # WALLET CREDIT OPTION
             # ------------------------------------------------
 
@@ -285,3 +318,4 @@ def review(claim_id):
         form=form,
         logs=logs
     )
+

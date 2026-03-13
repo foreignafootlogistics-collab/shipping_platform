@@ -99,7 +99,21 @@ def create_claim():
             db.session.rollback()
             flash(f"Could not submit claim: {e}", "danger")
 
-    return render_template("customer/claims/create_claim.html", form=form)
+    eligible_packages = (
+        Package.query
+        .filter(
+            Package.user_id == current_user.id,
+            Package.status.in_(["Overseas", "Local Port"])
+        )
+        .order_by(Package.created_at.desc())
+        .all()
+    )
+
+    return render_template(
+        "customer/claims/create_claim.html",
+        form=form,
+        eligible_packages=eligible_packages
+    )
 
 
 @customer_claims_bp.route("/<int:claim_id>", methods=["GET"])

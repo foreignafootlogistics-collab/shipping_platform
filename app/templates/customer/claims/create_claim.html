@@ -46,17 +46,36 @@
               </div>
             </div>
 
+            <div class="col-12">
+              <label class="form-label">Select Package</label>
+              <select id="claim_package_select" class="form-select">
+                <option value="">-- Select eligible package --</option>
+                {% for pkg in eligible_packages %}
+                  <option value="{{ pkg.id }}"
+                          data-awb="{{ pkg.house_awb or '' }}"
+                          data-tracking="{{ pkg.tracking_number or '' }}">
+                    {{ pkg.house_awb or 'No AWB' }}
+                    {% if pkg.tracking_number %} • {{ pkg.tracking_number }}{% endif %}
+                    {% if pkg.description %} • {{ pkg.description }}{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+              <div class="form-text">
+                Choose one of your eligible packages to auto-fill House AWB and Tracking Number.
+              </div>
+            </div>
+
             <div class="col-md-6">
               {{ form.house_awb.label(class="form-label") }}
               <span class="text-danger">*</span>
-              {{ form.house_awb(class="form-control", placeholder="e.g. FAFL12345", required=True) }}
+              {{ form.house_awb(class="form-control", placeholder="e.g. FAFL12345", required=True, id="claim_house_awb") }}
               {% for e in form.house_awb.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
             <div class="col-md-6">
               {{ form.tracking_number.label(class="form-label") }}
               <span class="text-danger">*</span>
-              {{ form.tracking_number(class="form-control", placeholder="e.g. 1Z..., AMZ..., SHEIN...", required=True) }}
+              {{ form.tracking_number(class="form-control", placeholder="e.g. 1Z..., AMZ..., SHEIN...", required=True, id="claim_tracking_number") }}
               {% for e in form.tracking_number.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
@@ -197,6 +216,9 @@
 (function(){
   const methodSel = document.getElementById("refund_method");
   const bankFields = document.getElementById("bank_fields");
+  const pkgSelect = document.getElementById("claim_package_select");
+  const awbInput = document.getElementById("claim_house_awb");
+  const trackingInput = document.getElementById("claim_tracking_number");
 
   const bankInputs = [
     document.getElementById("bank_account_name"),
@@ -230,6 +252,23 @@
     if (!isBank) {
       bankInputs.forEach(el => { try { el.value = ""; } catch(e){} });
     }
+  }
+
+  function syncPackageSelection(){
+    if (!pkgSelect) return;
+
+    const opt = pkgSelect.options[pkgSelect.selectedIndex];
+    if (!opt) return;
+
+    const awb = opt.getAttribute("data-awb") || "";
+    const tracking = opt.getAttribute("data-tracking") || "";
+
+    if (awbInput) awbInput.value = awb;
+    if (trackingInput) trackingInput.value = tracking;
+  }
+
+  if (pkgSelect) {
+    pkgSelect.addEventListener("change", syncPackageSelection);
   }
 
   methodSel.addEventListener("change", sync);

@@ -37,8 +37,10 @@ from app.utils.messages import make_thread_key
 from app.models import (
     User, Invoice, Payment, Package, Prealert,
     Message as DBMessage,  # ✅ alias it like customer_routes.py
-    Settings, PackageAttachment, ScheduledDelivery
+    Settings, PackageAttachment, ScheduledDelivery, 
+    Claim, ClaimAuditLog
 )
+from app.models import generate_claim_case_id
 
 accounts_bp = Blueprint('accounts_profiles', __name__)
 
@@ -1218,6 +1220,22 @@ def view_user(id):
     today = date.today()
     tomorrow = today + timedelta(days=1)
 
+    # -------------------------
+    # Claims (for this user)
+    # -------------------------
+    user_claims = []
+    try:
+        user_claims = (
+            Claim.query
+            .filter(Claim.user_id == id)
+            .order_by(Claim.created_at.desc(), Claim.id.desc())
+            .all()
+        )
+    except Exception as e:
+        current_app.logger.exception("Error loading claims for user %s: %s", id, e)
+        db.session.rollback()
+        user_claims = []
+
     return render_template(
         'admin/accounts_profiles/view_user.html',
         user={
@@ -1295,6 +1313,7 @@ def view_user(id):
         scheduled_deliveries=scheduled_deliveries,
         today=today,
         tomorrow=tomorrow,
+        user_claims=user_claims,
     )
 
 
@@ -1525,6 +1544,130 @@ def delete_account(id: int):
         user={"id": user.id, "full_name": user.full_name or ''},
         next=next_url
     )
+
+@accounts_bp.route("/users/<int:id>/claims/create", methods=["POST"])
+@admin_required
+def create_claim_for_user(id):
+    user = db.session.get(User, id)
+    if not user:
+        return jsonify({"success": False, "error": "User not found"}), 404
+
+    house_awb = (request.form.get("house_awb") or "").strip()
+    tracking_number = (request.form.get("tracking_number") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    refund_method = (request.form.get("refund_method") or "cash").strip().lower()
+    try:
+        package_id = int(request.form.get("package_id") or 0)
+    except Exception:
+        package_id = 0
+
+    bank_account_name = (request.form.get("bank_account_name") or "").strip()
+    bank_branch = (request.form.get("bank_branch") or "").strip()
+    bank_account_number = (request.form.get("bank_account_number") or "").strip()
+    bank_account_type = (request.form.get("bank_account_type") or "").strip()
+
+    try:
+        item_value_jmd = float(request.form.get("item_value_jmd") or 0)
+    except Exception:
+        item_value_jmd = 0.0
+
+    if not house_awb:
+        return jsonify({"success": False, "error": "House AWB is required."}), 400
+
+    if item_value_jmd <= 0:
+        return jsonify({"success": False, "error": "Item value must be greater than 0."}), 400
+
+    if refund_method not in ("cash", "bank_transfer", "wallet_credit"):
+        refund_method = "cash"
+
+    if refund_method == "bank_transfer":
+        if not bank_account_name or not bank_branch or not bank_account_number or not bank_account_type:
+            return jsonify({
+                "success": False,
+                "error": "All bank details are required for bank transfer refunds."
+            }), 400
+
+    selected_package = None
+    if package_id:
+        selected_package = (
+            Package.query
+            .filter(
+                Package.id == package_id,
+                Package.user_id == user.id
+            )
+            .first()
+        )
+
+        if not selected_package:
+            return jsonify({
+                "success": False,
+                "error": "Selected package was not found for this customer."
+            }), 400
+
+    invoice_url = (request.form.get("invoice_url") or "").strip()
+
+    bank_statement_url = (request.form.get("bank_statement_url") or "").strip()
+
+    # placeholders allowed for admin-created claims
+    if not invoice_url:
+        invoice_url = "#"
+
+    if not bank_statement_url:
+        bank_statement_url = "#"
+
+    try:
+        claim = Claim(
+            case_id=generate_claim_case_id(),
+            user_id=user.id,
+            package_id=selected_package.id if selected_package else None,
+            house_awb=house_awb,
+            tracking_number=tracking_number or None,
+            item_value_jmd=item_value_jmd,
+            description=description or None,
+
+            invoice_url=invoice_url,
+            invoice_public_id=None,
+            bank_statement_url=bank_statement_url,
+            bank_statement_public_id=None,
+
+            refund_method=refund_method,
+            bank_account_name=bank_account_name or None,
+            bank_branch=bank_branch or None,
+            bank_account_number=bank_account_number or None,
+            bank_account_type=bank_account_type or None,
+
+            status="submitted",
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        db.session.add(claim)
+        db.session.flush()
+
+        db.session.add(
+            ClaimAuditLog(
+                claim_id=claim.id,
+                action="created",
+                from_status=None,
+                to_status="submitted",
+                actor_admin_id=current_user.id,
+                message=f"Admin created claim {claim.case_id} on behalf of customer {user.full_name}"
+            )
+        )
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "claim_id": claim.id,
+            "case_id": claim.case_id,
+            "status": claim.status,
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Failed to create admin claim for user %s", id)
+        return jsonify({"success": False, "error": f"Could not create claim: {e}"}), 500
 
 # -------------------------
 # Manage Account (simple editor)

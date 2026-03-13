@@ -409,6 +409,7 @@ class Claim(db.Model):
 
     # who submitted
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    package_id = db.Column(db.Integer, db.ForeignKey("packages.id"), nullable=True, index=True)
 
     # identifiers (customer enters)
     house_awb = db.Column(db.String(64), nullable=False, index=True)
@@ -465,6 +466,7 @@ class Claim(db.Model):
 
     user = db.relationship("User", foreign_keys=[user_id], backref=db.backref("claims", lazy="dynamic"))
     reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_admin_id], lazy="joined")
+    package = db.relationship("Package", foreign_keys=[package_id], lazy="joined")
 
 
 class ClaimAuditLog(db.Model):

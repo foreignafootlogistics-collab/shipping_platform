@@ -7,8 +7,13 @@
 {% set progress_width = 0 %}
 {% set color = '#6c757d' %}   {# default grey #}
 
+{# ✅ Claim Refunded = dark #}
+{% if 'claim refunded' in s_lc or 'refunded' in s_lc %}
+  {% set progress_width = 100 %}
+  {% set color = '#212529' %}
+
 {# ✅ Delivered = green #}
-{% if s_lc == 'delivered' or 'delivered' in s_lc %}
+{% elif s_lc == 'delivered' or 'delivered' in s_lc %}
   {% set progress_width = 100 %}
   {% set color = '#16a34a' %}
 

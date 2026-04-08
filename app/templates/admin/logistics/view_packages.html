@@ -1458,10 +1458,16 @@
 
 
   // ===============================
-  // Warehouse Finance Preview (View Packages toolbar)
-  // Uses current date period + active filters
+  // GLOBAL PAYLOAD (used by exports)
+  // ===============================
+  let warehouseExportPayload = null;
+
+
+  // ===============================
+  // Warehouse Finance Preview
   // ===============================
   document.getElementById('btnFinanceInvoicePreview')?.addEventListener('click', async function () {
+
     const payload = {
       date_from: document.getElementById('date_from')?.value || '',
       date_to: document.getElementById('date_to')?.value || '',
@@ -1477,6 +1483,9 @@
       status: ''
     };
 
+    // ✅ store globally for export buttons
+    warehouseExportPayload = payload;
+
     try {
       const data = await postJSON(
         "{{ url_for('logistics.view_packages_finance_invoice_preview_json') }}",
@@ -1491,8 +1500,6 @@
       const periodLabelEl = document.getElementById('warehouse-period-label');
       const countEl = document.getElementById('warehouse-package-count');
       const categoryCountEl = document.getElementById('warehouse-category-count');
-      const exportExcelBtn = document.getElementById('downloadWarehouseExcelBtn');
-      const exportPdfBtn = document.getElementById('downloadWarehousePdfBtn');
 
       if (!summaryTbody || !packagesTbody) {
         alert("⚠️ Warehouse preview modal elements not found.");
@@ -1504,11 +1511,14 @@
 
       const df = data.period?.date_from || '…';
       const dt = data.period?.date_to || '…';
+
       periodLabelEl.textContent = `Period: ${df} to ${dt}`;
       countEl.textContent = `${Number(data.package_count || 0)} packages`;
       categoryCountEl.textContent = `${Number((data.summary_rows || []).length)} weight categories used`;
 
-
+      // ===============================
+      // SUMMARY TABLE
+      // ===============================
       (data.summary_rows || []).forEach(row => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -1520,6 +1530,9 @@
         summaryTbody.appendChild(tr);
       });
 
+      // ===============================
+      // PACKAGE TABLE
+      // ===============================
       (data.package_rows || []).forEach(row => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -1534,6 +1547,9 @@
         packagesTbody.appendChild(tr);
       });
 
+      // ===============================
+      // TOTALS
+      // ===============================
       const grand = Number(data.grand_total || 0).toFixed(2);
       const usdToJmd = Number({{ USD_TO_JMD|tojson }});
       const grandJmd = (Number(data.grand_total || 0) * usdToJmd).toFixed(2);
@@ -1542,71 +1558,9 @@
       grandTotalTopEl.textContent = `${grand} USD`;
       grandTotalJmdEl.textContent = `≈ ${grandJmd} JMD`;
 
-      if (exportExcelBtn) {
-                    exportBtn.onclick = async function () {
-                         try {
-                              const resp = await fetch("{{ url_for('logistics.view_packages_finance_invoice_export_excel') }}", {
-                                 method: "POST",
-                                 headers: {
-                                       "Content-Type": "application/json",
-                                       "X-CSRFToken": "{{ csrf_token() }}"
-                                 },
-                                 body: JSON.stringify(payload)
-                             });
-
-                              if (!resp.ok) {
-                                 throw new Error("Excel export failed");
-                              }
-
-                               const blob = await resp.blob();
-                               const url = window.URL.createObjectURL(blob);
-                               const a = document.createElement('a');
-                               a.href = url;
-                               a.download = `warehouse_charges_${payload.date_from || 'start'}_to_${payload.date_to || 'end'}.xlsx`;
-                               document.body.appendChild(a);
-                               a.click();
-                               a.remove();
-                               window.URL.revokeObjectURL(url);
-                         }    catch (err) {
-                               console.error(err);
-                               alert("⚠️ Could not export Excel report.");
-                          }
-                     };
-                }
-
-                
-      if (exportPdfBtn) {
-        exportPdfBtn.onclick = async function () {
-          try {
-            const resp = await fetch("{{ url_for('logistics.view_packages_finance_invoice_export_pdf') }}", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": "{{ csrf_token() }}"
-              },
-              body: JSON.stringify(payload)
-            });
-
-            if (!resp.ok) {
-              throw new Error("PDF export failed");
-            }
-
-            const blob = await resp.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `warehouse_charges_${payload.date_from || 'start'}_to_${payload.date_to || 'end'}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
-          } catch (err) {
-            console.error(err);
-            alert("⚠️ Could not export PDF report.");
-          }
-        };
-      }
-
+      // ===============================
+      // SHOW MODAL
+      // ===============================
       const modalEl = document.getElementById('warehouseFinancePreviewModal');
       const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
       modal.show();
@@ -1617,6 +1571,93 @@
     }
   });
 
+
+  // ===============================
+  // EXPORT EXCEL
+  // ===============================
+  document.getElementById('downloadWarehouseExcelBtn')?.addEventListener('click', async function () {
+
+    if (!warehouseExportPayload) {
+      alert("⚠️ Please generate preview first.");
+      return;
+    }
+
+    try {
+      const resp = await fetch("{{ url_for('logistics.view_packages_finance_invoice_export_excel') }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": "{{ csrf_token() }}"
+        },
+        body: JSON.stringify(warehouseExportPayload)
+      });
+
+      if (!resp.ok) {
+        throw new Error("Excel export failed");
+      }
+
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `warehouse_charges_${warehouseExportPayload.date_from || 'start'}_to_${warehouseExportPayload.date_to || 'end'}.xlsx`;
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+
+    } catch (err) {
+      console.error(err);
+      alert("⚠️ Could not export Excel report.");
+    }
+  });
+
+
+  // ===============================
+  // EXPORT PDF
+  // ===============================
+  document.getElementById('downloadWarehousePdfBtn')?.addEventListener('click', async function () {
+
+    if (!warehouseExportPayload) {
+      alert("⚠️ Please generate preview first.");
+      return;
+    }
+
+    try {
+      const resp = await fetch("{{ url_for('logistics.view_packages_finance_invoice_export_pdf') }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": "{{ csrf_token() }}"
+        },
+        body: JSON.stringify(warehouseExportPayload)
+      });
+
+      if (!resp.ok) {
+        throw new Error("PDF export failed");
+      }
+
+      const blob = await resp.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `warehouse_charges_${warehouseExportPayload.date_from || 'start'}_to_${warehouseExportPayload.date_to || 'end'}.pdf`;
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+
+    } catch (err) {
+      console.error(err);
+      alert("⚠️ Could not export PDF report.");
+    }
+  });
 
   // Open bulk-assign only if at least one package is selected
   document.getElementById('openBulkAssignBtn')?.addEventListener('click', function (e) {

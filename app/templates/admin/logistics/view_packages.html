@@ -1542,7 +1542,7 @@
       grandTotalTopEl.textContent = `${grand} USD`;
       grandTotalJmdEl.textContent = `≈ ${grandJmd} JMD`;
 
-      if (exportBtn) {
+      if (exportExcelBtn) {
                     exportBtn.onclick = async function () {
                          try {
                               const resp = await fetch("{{ url_for('logistics.view_packages_finance_invoice_export_excel') }}", {

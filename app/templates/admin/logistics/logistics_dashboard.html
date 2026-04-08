@@ -705,6 +705,13 @@ Not emailed yet"></i>
                 </tbody>
               </table>
             </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-2 px-1">
+              <span id="shipmentTableInfo" class="text-muted small">
+                Showing 0–0 of 0
+              </span>
+            </div>
+
             {% else %}
             <p class="text-muted">No packages in this shipment.</p>
             {% endif %}
@@ -1724,10 +1731,11 @@ Not emailed yet"></i>
       pageLength: 10,
       lengthChange: false,
       pagingType: "simple_numbers",
+      info: true,
       dom:
         "<'shipment-topbar d-flex justify-content-between align-items-center mb-2'<'shipment-pager-top'p>>" +
         "rt" +
-        "<'d-none'i>",
+        "<'d-flex justify-content-between align-items-center mt-2'<'shipment-info'i>>",
       order: [[4, 'asc']],
       columnDefs: [
         { orderable: false, targets: [0, 1, 3, 5, 7, 8, 9] }
@@ -3624,6 +3632,10 @@ Not emailed yet"></i>
     margin-bottom: 10px;
   }
 
+  .shipment-info {
+    font-size: 0.85rem;
+    color: #6c757d;
+  }
 
   /* ============================================================
    ✅ Stacked sort arrows for DataTables (works on dark headers)

@@ -1731,7 +1731,7 @@ document.addEventListener('DOMContentLoaded', function () {
           const text = $('<div>').html(data || '').text().trim();
 
           if (type === 'sort' || type === 'type') {
-            const num = parseInt((data || '').replace(/\D/g, ''), 10);
+            const num = parseInt(text.replace(/\D/g, ''), 10);
             return isNaN(num) ? 0 : num;
           }
           return data;

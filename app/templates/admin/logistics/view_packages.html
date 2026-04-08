@@ -612,8 +612,12 @@
         <input type="hidden" id="attachPkgId" value="">
         <input type="hidden" id="attachCsrfToken" value="{{ csrf_token() }}">
 
-        <div class="mb-2 small text-muted">
+        <div class="mb-1 small text-muted">
           Package ID: <span class="fw-semibold" id="attachPkgLabel">—</span>
+        </div>
+
+        <div class="mb-2 small text-muted">
+          Item Value (USD): <span class="fw-semibold" id="attachPkgValue">0.00</span>
         </div>
 
         <div class="mb-3">
@@ -1806,6 +1810,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const pkgIdInput = document.getElementById('attachPkgId');
   const pkgLbl     = document.getElementById('attachPkgLabel');
+  const pkgValueLbl = document.getElementById('attachPkgValue');
   const fileInput  = document.getElementById('attachFiles');
   const statusEl   = document.getElementById('attachUploadStatus');
   const uploadBtn  = document.getElementById('btnAttachUpload');
@@ -1818,9 +1823,11 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!btn) return;
 
     currentPkgId = btn.getAttribute('data-pkg-id') || btn.getAttribute('data-pkg') || '';
+    const itemValue = btn.getAttribute('data-item-value') || '0.00';
 
     if (pkgIdInput) pkgIdInput.value = currentPkgId;
     if (pkgLbl) pkgLbl.textContent = currentPkgId || '—';
+    if (pkgValueLbl) pkgValueLbl.textContent = itemValue;
     if (fileInput) fileInput.value = '';
     if (statusEl) statusEl.textContent = 'Select a file to upload.';
 
@@ -1894,6 +1901,7 @@ document.addEventListener('DOMContentLoaded', function () {
   modalEl.addEventListener('hidden.bs.modal', () => {
     if (statusEl) statusEl.textContent = 'Select a file to upload.';
     if (fileInput) fileInput.value = '';
+    if (pkgValueLbl) pkgValueLbl.textContent = '0.00';
   });
 })();
 

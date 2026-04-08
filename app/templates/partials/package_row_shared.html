@@ -69,7 +69,8 @@
             title="Attach Invoice"
             data-bs-toggle="modal"
             data-bs-target="#attachInvoiceModal"
-            data-pkg-id="{{ _id }}">
+            data-pkg-id="{{ _id }}"
+            data-item-value="{{ '%.2f'|format(dv or 0) }}">
       <i class="fas fa-paperclip fa-sm"></i>
     </button>
 

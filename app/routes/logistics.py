@@ -498,6 +498,55 @@ def _normalize_weight(w):
     # Always round UP to nearest whole lb
     return float(math.ceil(val))
 
+def _warehouse_rate_row(weight):
+    """
+    Returns bracket metadata for ONE package based on its weight in lbs.
+    Rules:
+      0 - 10.000      => 1.60
+      10.001 - 25.000 => 2.15
+      25.001 - 50.000 => 4.65
+      50.001 - 100.000=> 7.00
+      >= 100.001      => 9.00
+    """
+    try:
+        w = float(weight or 0)
+    except Exception:
+        w = 0.0
+
+    if w <= 0:
+        return None
+
+    if w <= 10.000:
+        return {
+            "key": "0_10",
+            "label": "0 - 10.000 lb",
+            "rate": 1.60,
+        }
+    elif w <= 25.000:
+        return {
+            "key": "10_25",
+            "label": "10.001 - 25.000 lb",
+            "rate": 2.15,
+        }
+    elif w <= 50.000:
+        return {
+            "key": "25_50",
+            "label": "25.001 - 50.000 lb",
+            "rate": 4.65,
+        }
+    elif w <= 100.000:
+        return {
+            "key": "50_100",
+            "label": "50.001 - 100.000 lb",
+            "rate": 7.00,
+        }
+    else:
+        return {
+            "key": "100_plus",
+            "label": ">= 100.001 lb",
+            "rate": 9.00,
+        }
+
 def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float, weight: float):
     """
     One official calculator+writer used by bulk shipment action.
@@ -4377,6 +4426,135 @@ def bulk_invoice_preview():
     }), 200
 
 
+@logistics_bp.route(
+    "/view-packages/finance-invoice/preview-json",
+    methods=["POST"],
+    endpoint="view_packages_finance_invoice_preview_json"
+)
+@admin_required
+def view_packages_finance_invoice_preview_json():
+    payload = request.get_json(silent=True) or {}
+
+    date_from = (payload.get("date_from") or "").strip()
+    date_to = (payload.get("date_to") or "").strip()
+    house = (payload.get("house") or "").strip()
+    tracking = (payload.get("tracking") or "").strip()
+    user_code = (payload.get("user_code") or "").strip()
+    first_name = (payload.get("first_name") or "").strip()
+    last_name = (payload.get("last_name") or "").strip()
+    search = (payload.get("search") or "").strip()
+    status_filter = (payload.get("status") or "").strip()
+
+    epc_only = str(payload.get("epc_only") or "").lower() in ("1", "true", "yes", "on")
+    unassigned_only = str(payload.get("unassigned_only") or "").lower() in ("1", "true", "yes", "on")
+    not_notified_only = str(payload.get("not_notified_only") or "").lower() in ("1", "true", "yes", "on")
+
+    unassigned_id = get_unassigned_user_id()
+
+    q = (
+        db.session.query(
+            Package.id,
+            Package.weight,
+            Package.tracking_number,
+            Package.house_awb,
+            Package.description,
+            Package.date_received,
+            Package.created_at,
+        )
+        .join(User, Package.user_id == User.id)
+    )
+
+    q = _apply_pkg_filters(
+        q,
+        unassigned_id=unassigned_id,
+        date_from=date_from,
+        date_to=date_to,
+        house=house,
+        tracking=tracking,
+        user_code=user_code,
+        first_name=first_name,
+        last_name=last_name,
+        search=search,
+        status_filter=status_filter,
+        epc_only=epc_only,
+        unassigned_only=unassigned_only,
+        not_notified_only=not_notified_only,
+    )
+
+    q = q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).asc(), Package.id.asc())
+
+    packages = q.all()
+
+    brackets = {
+        "0_10": {
+            "label": "0 - 10.000 lb",
+            "rate": 1.60,
+            "count": 0,
+            "total": 0.0,
+        },
+        "10_25": {
+            "label": "10.001 - 25.000 lb",
+            "rate": 2.15,
+            "count": 0,
+            "total": 0.0,
+        },
+        "25_50": {
+            "label": "25.001 - 50.000 lb",
+            "rate": 4.65,
+            "count": 0,
+            "total": 0.0,
+        },
+        "50_100": {
+            "label": "50.001 - 100.000 lb",
+            "rate": 7.00,
+            "count": 0,
+            "total": 0.0,
+        },
+        "100_plus": {
+            "label": ">= 100.001 lb",
+            "rate": 9.00,
+            "count": 0,
+            "total": 0.0,
+        },
+    }
+
+    package_rows = []
+    grand_total = 0.0
+
+    for pid, weight, tracking_number, house_awb, description, date_received, created_at in packages:
+        meta = _warehouse_rate_row(weight)
+        if not meta:
+            continue
+
+        brackets[meta["key"]]["count"] += 1
+        brackets[meta["key"]]["total"] += float(meta["rate"])
+        grand_total += float(meta["rate"])
+
+        dt = date_received or created_at
+        package_rows.append({
+            "id": pid,
+            "tracking_number": tracking_number or "",
+            "house_awb": house_awb or "",
+            "description": description or "",
+            "weight": float(weight or 0),
+            "date_received": dt.strftime("%Y-%m-%d") if dt else "",
+            "band": meta["label"],
+            "rate": float(meta["rate"]),
+        })
+
+    summary_rows = [row for row in brackets.values() if row["count"] > 0]
+
+    return jsonify({
+        "ok": True,
+        "period": {
+            "date_from": date_from,
+            "date_to": date_to,
+        },
+        "package_count": len(package_rows),
+        "summary_rows": summary_rows,
+        "package_rows": package_rows,
+        "grand_total": round(grand_total, 2),
+    }), 200
 
 # ================================
 #  HELPER: INVOICE NUMBER

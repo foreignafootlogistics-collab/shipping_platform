@@ -386,6 +386,70 @@
   </div>
 </div>
 
+<!-- Warehouse Finance Preview Modal -->
+<div class="modal fade" id="warehouseFinancePreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-light">
+        <h5 class="modal-title">
+          <i class="bi bi-receipt me-1"></i> Warehouse Charges Preview
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+          <div>
+            <div class="small text-muted" id="warehouse-period-label">Period: —</div>
+            <div class="fw-semibold" id="warehouse-package-count">0 package(s)</div>
+          </div>
+          <div class="text-end">
+            <div class="small text-muted">Grand Total</div>
+            <div class="fw-bold fs-5" id="warehouse-grand-total-top">0.00 USD</div>
+          </div>
+        </div>
+
+        <div class="table-responsive mb-4">
+          <table class="table table-sm table-bordered align-middle">
+            <thead class="table-dark">
+              <tr>
+                <th>Weight Category</th>
+                <th class="text-end">Rate (USD)</th>
+                <th class="text-end"># Packages</th>
+                <th class="text-end">Category Total (USD)</th>
+              </tr>
+            </thead>
+            <tbody id="warehouse-summary-tbody"></tbody>
+            <tfoot>
+              <tr class="table-light fw-semibold">
+                <th colspan="3" class="text-end">Grand Total</th>
+                <th class="text-end" id="warehouse-grand-total">0.00</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm table-striped align-middle">
+            <thead class="table-dark">
+              <tr>
+                <th>Date Received</th>
+                <th>Tracking #</th>
+                <th>House AWB</th>
+                <th>Description</th>
+                <th class="text-end">Weight (lbs)</th>
+                <th>Category</th>
+                <th class="text-end">Rate (USD)</th>
+              </tr>
+            </thead>
+            <tbody id="warehouse-packages-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Pagination -->
 {% if total_pages > 1 %}
 <nav class="d-flex justify-content-between align-items-center mt-3" aria-label="Packages pagination">
@@ -1376,28 +1440,87 @@
 
 
   // ===============================
-  // Finance Invoice Preview (View Packages toolbar)
+  // Warehouse Finance Preview (View Packages toolbar)
+  // Uses current date period + active filters
   // ===============================
   document.getElementById('btnFinanceInvoicePreview')?.addEventListener('click', async function () {
-    const selected = Array.from(document.querySelectorAll('.package-checkbox:checked'))
-                          .map(cb => cb.value);
-
-    if (!selected.length) {
-      alert("⚠️ Please select at least one package.");
-      return;
-    }
-
-    // Reuse the same function from Shipment Log (openInvoicePreview)
-    if (typeof openInvoicePreview !== "function") {
-      alert("⚠️ Invoice preview function not found. Next step will add the modal + functions here too.");
-      return;
-    }
+    const payload = {
+      date_from: document.getElementById('date_from')?.value || '',
+      date_to: document.getElementById('date_to')?.value || '',
+      house: document.getElementById('house')?.value || '',
+      tracking: document.getElementById('tracking')?.value || '',
+      user_code: document.getElementById('user_code')?.value || '',
+      first_name: document.getElementById('first_name')?.value || '',
+      last_name: document.getElementById('last_name')?.value || '',
+      epc_only: document.getElementById('filterEpcOnly')?.checked ? '1' : '',
+      unassigned_only: document.getElementById('filterUnassigned')?.checked ? '1' : '',
+      not_notified_only: document.getElementById('filterNotNotifiedOnly')?.checked ? '1' : '',
+      search: '',
+      status: ''
+    };
 
     try {
-      await openInvoicePreview(selected);
+      const data = await postJSON(
+        "{{ url_for('logistics.view_packages_finance_invoice_preview_json') }}",
+        payload
+      );
+
+      const summaryTbody = document.getElementById('warehouse-summary-tbody');
+      const packagesTbody = document.getElementById('warehouse-packages-tbody');
+      const grandTotalEl = document.getElementById('warehouse-grand-total');
+      const grandTotalTopEl = document.getElementById('warehouse-grand-total-top');
+      const periodLabelEl = document.getElementById('warehouse-period-label');
+      const countEl = document.getElementById('warehouse-package-count');
+
+      if (!summaryTbody || !packagesTbody) {
+        alert("⚠️ Warehouse preview modal elements not found.");
+        return;
+      }
+
+      summaryTbody.innerHTML = '';
+      packagesTbody.innerHTML = '';
+
+      const df = data.period?.date_from || '…';
+      const dt = data.period?.date_to || '…';
+      periodLabelEl.textContent = `Period: ${df} to ${dt}`;
+      countEl.textContent = `${Number(data.package_count || 0)} package(s)`;
+
+      (data.summary_rows || []).forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.label}</td>
+          <td class="text-end">${Number(row.rate || 0).toFixed(2)}</td>
+          <td class="text-end">${Number(row.count || 0)}</td>
+          <td class="text-end">${Number(row.total || 0).toFixed(2)}</td>
+        `;
+        summaryTbody.appendChild(tr);
+      });
+
+      (data.package_rows || []).forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.date_received || ''}</td>
+          <td>${row.tracking_number || ''}</td>
+          <td>${row.house_awb || ''}</td>
+          <td>${row.description || ''}</td>
+          <td class="text-end">${Number(row.weight || 0).toFixed(2)}</td>
+          <td>${row.band || ''}</td>
+          <td class="text-end">${Number(row.rate || 0).toFixed(2)}</td>
+        `;
+        packagesTbody.appendChild(tr);
+      });
+
+      const grand = Number(data.grand_total || 0).toFixed(2);
+      grandTotalEl.textContent = grand;
+      grandTotalTopEl.textContent = `${grand} USD`;
+
+      const modalEl = document.getElementById('warehouseFinancePreviewModal');
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      modal.show();
+
     } catch (err) {
       console.error(err);
-      alert("⚠️ Could not load invoice preview.");
+      alert("⚠️ Could not load warehouse charges preview.");
     }
   });
 

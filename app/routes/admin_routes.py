@@ -323,9 +323,13 @@ def dashboard():
     start_date_str = request.args.get("start_date", "")
     end_date_str   = request.args.get("end_date", "")
 
-    deliveries_q = sa.select(ScheduledDelivery).order_by(
-        ScheduledDelivery.scheduled_date.desc(),
-        ScheduledDelivery.id.desc()
+    deliveries_q = (
+        sa.select(ScheduledDelivery)
+        .where(~ScheduledDelivery.status.in_(["Delivered", "Cancelled"]))
+        .order_by(
+            ScheduledDelivery.scheduled_date.desc(),
+            ScheduledDelivery.id.desc()
+        )
     )
 
     try:

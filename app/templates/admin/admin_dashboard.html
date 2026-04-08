@@ -158,21 +158,23 @@
         </thead>
         <tbody>
           {% for delivery in deliveries %}
-          <tr>
-            <td>{{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "" }}</td>
-            <td>{{ delivery.scheduled_time or "" }}</td>
-            <td>{{ delivery.user.full_name if delivery.user else "N/A" }}</td>
-            <td>{{ delivery.location or "" }}</td>
-            <td>{{ delivery.person_receiving or "" }}</td>
-            <td>{{ delivery.mobile_number or "" }}</td>
-            <td>{{ delivery.status or "Scheduled" }}</td>
-            <td>
-              <a class="btn btn-sm btn-outline-primary"
-                 href="{{ url_for('logistics.scheduled_delivery_view', delivery_id=delivery.id) }}">
-                View / Link Packages
-              </a>
-            </td>
-          </tr>
+            {% if (delivery.status or "Scheduled") not in ["Delivered", "Cancelled"] %}
+            <tr>
+              <td>{{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "" }}</td>
+              <td>{{ delivery.scheduled_time or "" }}</td>
+              <td>{{ delivery.user.full_name if delivery.user else "N/A" }}</td>
+              <td>{{ delivery.location or "" }}</td>
+              <td>{{ delivery.person_receiving or "" }}</td>
+              <td>{{ delivery.mobile_number or "" }}</td>
+              <td>{{ delivery.status or "Scheduled" }}</td>
+              <td>
+                <a class="btn btn-sm btn-outline-primary"
+                   href="{{ url_for('logistics.scheduled_delivery_view', delivery_id=delivery.id) }}">
+                  View / Link Packages
+                </a>
+              </td>
+            </tr>
+            {% endif %}
           {% endfor %}
         </tbody>
       </table>

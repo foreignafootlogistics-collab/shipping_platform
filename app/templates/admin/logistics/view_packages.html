@@ -1718,16 +1718,31 @@ document.addEventListener('DOMContentLoaded', function () {
     lengthChange: false,  // remove "Show entries"
     info: false,          // remove "Showing x to y"
     ordering: true,
-    order: [],
+    order: [[3, 'asc']],
 
     // Disable everything, enable ONLY House AWB (index 3)
     columnDefs: [
       { targets: "_all", orderable: false },
-      { targets: [3], orderable: true }
-    ]
-  });
 
-  var table = window.packagesDT;  
+      {
+        targets: [3], // House AWB column
+        orderable: true,
+        render: function (data, type, row) {
+          if (type === 'sort') {
+            // Extract number from FAFL0015660 → 15660
+            const num = parseInt((data || '').replace(/\D/g, ''), 10);
+            return isNaN(num) ? 0 : num;
+          }
+          return data;
+        }
+      }
+    ]
+    });
+
+    var table = window.packagesDT;  
+
+    // restore state (optional)
+    // if (typeof restorePackagesDTState === 'function') restorePackagesDTState();
 
   // ============================
   // EPC FILTER

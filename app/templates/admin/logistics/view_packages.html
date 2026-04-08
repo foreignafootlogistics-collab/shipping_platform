@@ -394,18 +394,36 @@
         <h5 class="modal-title">
           <i class="bi bi-receipt me-1"></i> Warehouse Charges Preview
         </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="d-flex align-items-center gap-2">
+          <button type="button"
+                  class="btn btn-outline-dark btn-sm"
+                  id="downloadWarehouseExcelBtn">
+            <i class="bi bi-file-earmark-excel me-1"></i> Excel
+          </button>
+
+          <button type="button"
+                  class="btn btn-outline-dark btn-sm"
+                  id="downloadWarehousePdfBtn">
+            <i class="bi bi-file-earmark-pdf me-1"></i> PDF
+          </button>
+
+          
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
       </div>
 
       <div class="modal-body">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
           <div>
             <div class="small text-muted" id="warehouse-period-label">Period: —</div>
-            <div class="fw-semibold" id="warehouse-package-count">0 package(s)</div>
+            <div class="fw-semibold" id="warehouse-package-count">0 packages</div>
+            <div class="small text-muted" id="warehouse-category-count">0 weight categories used</div>
           </div>
+
           <div class="text-end">
             <div class="small text-muted">Grand Total</div>
             <div class="fw-bold fs-5" id="warehouse-grand-total-top">0.00 USD</div>
+            <div class="small text-muted" id="warehouse-grand-total-jmd">≈ 0.00 JMD</div>
           </div>
         </div>
 
@@ -1469,8 +1487,12 @@
       const packagesTbody = document.getElementById('warehouse-packages-tbody');
       const grandTotalEl = document.getElementById('warehouse-grand-total');
       const grandTotalTopEl = document.getElementById('warehouse-grand-total-top');
+      const grandTotalJmdEl = document.getElementById('warehouse-grand-total-jmd');
       const periodLabelEl = document.getElementById('warehouse-period-label');
       const countEl = document.getElementById('warehouse-package-count');
+      const categoryCountEl = document.getElementById('warehouse-category-count');
+      const exportExcelBtn = document.getElementById('downloadWarehouseExcelBtn');
+      const exportPdfBtn = document.getElementById('downloadWarehousePdfBtn');
 
       if (!summaryTbody || !packagesTbody) {
         alert("⚠️ Warehouse preview modal elements not found.");
@@ -1483,7 +1505,9 @@
       const df = data.period?.date_from || '…';
       const dt = data.period?.date_to || '…';
       periodLabelEl.textContent = `Period: ${df} to ${dt}`;
-      countEl.textContent = `${Number(data.package_count || 0)} package(s)`;
+      countEl.textContent = `${Number(data.package_count || 0)} packages`;
+      categoryCountEl.textContent = `${Number((data.summary_rows || []).length)} weight categories used`;
+
 
       (data.summary_rows || []).forEach(row => {
         const tr = document.createElement('tr');
@@ -1511,8 +1535,77 @@
       });
 
       const grand = Number(data.grand_total || 0).toFixed(2);
+      const usdToJmd = Number({{ USD_TO_JMD|tojson }});
+      const grandJmd = (Number(data.grand_total || 0) * usdToJmd).toFixed(2);
+
       grandTotalEl.textContent = grand;
       grandTotalTopEl.textContent = `${grand} USD`;
+      grandTotalJmdEl.textContent = `≈ ${grandJmd} JMD`;
+
+      if (exportBtn) {
+                    exportBtn.onclick = async function () {
+                         try {
+                              const resp = await fetch("{{ url_for('logistics.view_packages_finance_invoice_export_excel') }}", {
+                                 method: "POST",
+                                 headers: {
+                                       "Content-Type": "application/json",
+                                       "X-CSRFToken": "{{ csrf_token() }}"
+                                 },
+                                 body: JSON.stringify(payload)
+                             });
+
+                              if (!resp.ok) {
+                                 throw new Error("Excel export failed");
+                              }
+
+                               const blob = await resp.blob();
+                               const url = window.URL.createObjectURL(blob);
+                               const a = document.createElement('a');
+                               a.href = url;
+                               a.download = `warehouse_charges_${payload.date_from || 'start'}_to_${payload.date_to || 'end'}.xlsx`;
+                               document.body.appendChild(a);
+                               a.click();
+                               a.remove();
+                               window.URL.revokeObjectURL(url);
+                         }    catch (err) {
+                               console.error(err);
+                               alert("⚠️ Could not export Excel report.");
+                          }
+                     };
+                }
+
+                
+      if (exportPdfBtn) {
+        exportPdfBtn.onclick = async function () {
+          try {
+            const resp = await fetch("{{ url_for('logistics.view_packages_finance_invoice_export_pdf') }}", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": "{{ csrf_token() }}"
+              },
+              body: JSON.stringify(payload)
+            });
+
+            if (!resp.ok) {
+              throw new Error("PDF export failed");
+            }
+
+            const blob = await resp.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `warehouse_charges_${payload.date_from || 'start'}_to_${payload.date_to || 'end'}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+          } catch (err) {
+            console.error(err);
+            alert("⚠️ Could not export PDF report.");
+          }
+        };
+      }
 
       const modalEl = document.getElementById('warehouseFinancePreviewModal');
       const modal = bootstrap.Modal.getOrCreateInstance(modalEl);

@@ -4554,7 +4554,435 @@ def view_packages_finance_invoice_preview_json():
         "summary_rows": summary_rows,
         "package_rows": package_rows,
         "grand_total": round(grand_total, 2),
+        "grand_total_jmd": round(grand_total * float(USD_TO_JMD or 1), 2),
     }), 200
+
+@logistics_bp.route(
+    "/view-packages/finance-invoice/export-excel",
+    methods=["POST"],
+    endpoint="view_packages_finance_invoice_export_excel"
+)
+@admin_required
+def view_packages_finance_invoice_export_excel():
+    payload = request.get_json(silent=True) or {}
+
+    date_from = (payload.get("date_from") or "").strip()
+    date_to = (payload.get("date_to") or "").strip()
+    house = (payload.get("house") or "").strip()
+    tracking = (payload.get("tracking") or "").strip()
+    user_code = (payload.get("user_code") or "").strip()
+    first_name = (payload.get("first_name") or "").strip()
+    last_name = (payload.get("last_name") or "").strip()
+    search = (payload.get("search") or "").strip()
+    status_filter = (payload.get("status") or "").strip()
+
+    epc_only = str(payload.get("epc_only") or "").lower() in ("1", "true", "yes", "on")
+    unassigned_only = str(payload.get("unassigned_only") or "").lower() in ("1", "true", "yes", "on")
+    not_notified_only = str(payload.get("not_notified_only") or "").lower() in ("1", "true", "yes", "on")
+
+    unassigned_id = get_unassigned_user_id()
+
+    q = (
+        db.session.query(
+            Package.id,
+            Package.weight,
+            Package.tracking_number,
+            Package.house_awb,
+            Package.description,
+            Package.date_received,
+            Package.created_at,
+        )
+        .join(User, Package.user_id == User.id)
+    )
+
+    q = _apply_pkg_filters(
+        q,
+        unassigned_id=unassigned_id,
+        date_from=date_from,
+        date_to=date_to,
+        house=house,
+        tracking=tracking,
+        user_code=user_code,
+        first_name=first_name,
+        last_name=last_name,
+        search=search,
+        status_filter=status_filter,
+        epc_only=epc_only,
+        unassigned_only=unassigned_only,
+        not_notified_only=not_notified_only,
+    )
+
+    q = q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).asc(), Package.id.asc())
+    packages = q.all()
+
+    brackets = {
+        "0_10": {
+            "label": "0 - 10.000 lb",
+            "rate": 1.60,
+            "count": 0,
+            "total": 0.0,
+        },
+        "10_25": {
+            "label": "10.001 - 25.000 lb",
+            "rate": 2.15,
+            "count": 0,
+            "total": 0.0,
+        },
+        "25_50": {
+            "label": "25.001 - 50.000 lb",
+            "rate": 4.65,
+            "count": 0,
+            "total": 0.0,
+        },
+        "50_100": {
+            "label": "50.001 - 100.000 lb",
+            "rate": 7.00,
+            "count": 0,
+            "total": 0.0,
+        },
+        "100_plus": {
+            "label": ">= 100.001 lb",
+            "rate": 9.00,
+            "count": 0,
+            "total": 0.0,
+        },
+    }
+
+    detail_rows = []
+    grand_total = 0.0
+
+    for pid, weight, tracking_number, house_awb, description, date_received, created_at in packages:
+        meta = _warehouse_rate_row(weight)
+        if not meta:
+            continue
+
+        brackets[meta["key"]]["count"] += 1
+        brackets[meta["key"]]["total"] += float(meta["rate"])
+        grand_total += float(meta["rate"])
+
+        dt = date_received or created_at
+        detail_rows.append({
+            "Date Received": dt.strftime("%Y-%m-%d") if dt else "",
+            "Tracking #": tracking_number or "",
+            "House AWB": house_awb or "",
+            "Description": description or "",
+            "Weight (lbs)": float(weight or 0),
+            "Category": meta["label"],
+            "Rate (USD)": float(meta["rate"]),
+        })
+
+    summary_rows = []
+    for row in brackets.values():
+        if row["count"] > 0:
+            summary_rows.append({
+                "Weight Category": row["label"],
+                "Rate (USD)": float(row["rate"]),
+                "# Packages": int(row["count"]),
+                "Category Total (USD)": float(row["total"]),
+            })
+
+    output = io.BytesIO()
+
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df_summary = pd.DataFrame(summary_rows)
+        df_details = pd.DataFrame(detail_rows)
+
+        if df_summary.empty:
+            df_summary = pd.DataFrame([{
+                "Weight Category": "No packages found",
+                "Rate (USD)": "",
+                "# Packages": 0,
+                "Category Total (USD)": 0.0,
+            }])
+
+        if df_details.empty:
+            df_details = pd.DataFrame([{
+                "Date Received": "",
+                "Tracking #": "",
+                "House AWB": "",
+                "Description": "No packages found for selected filters",
+                "Weight (lbs)": "",
+                "Category": "",
+                "Rate (USD)": "",
+            }])
+
+        df_summary.to_excel(writer, index=False, sheet_name="Summary", startrow=3)
+        df_details.to_excel(writer, index=False, sheet_name="Packages", startrow=3)
+
+        workbook = writer.book
+        ws_summary = writer.sheets["Summary"]
+        ws_packages = writer.sheets["Packages"]
+
+        title_fmt = workbook.add_format({"bold": True, "font_size": 14})
+        bold_fmt = workbook.add_format({"bold": True})
+        money_fmt = workbook.add_format({"num_format": '#,##0.00'})
+        weight_fmt = workbook.add_format({"num_format": '#,##0.00'})
+
+        period_text = f"Period: {date_from or '...'} to {date_to or '...'}"
+        ws_summary.write(0, 0, "Warehouse Charges Summary", title_fmt)
+        ws_summary.write(1, 0, period_text, bold_fmt)
+        ws_summary.write(2, 0, f"Grand Total (USD): {grand_total:.2f}", bold_fmt)
+
+        ws_packages.write(0, 0, "Warehouse Charges Package Breakdown", title_fmt)
+        ws_packages.write(1, 0, period_text, bold_fmt)
+        ws_packages.write(2, 0, f"Grand Total (USD): {grand_total:.2f}", bold_fmt)
+
+        ws_summary.set_column("A:A", 24)
+        ws_summary.set_column("B:D", 18, money_fmt)
+
+        ws_packages.set_column("A:A", 15)
+        ws_packages.set_column("B:B", 24)
+        ws_packages.set_column("C:C", 16)
+        ws_packages.set_column("D:D", 40)
+        ws_packages.set_column("E:E", 14, weight_fmt)
+        ws_packages.set_column("F:F", 22)
+        ws_packages.set_column("G:G", 14, money_fmt)
+
+    output.seek(0)
+
+    filename = f"warehouse_charges_{date_from or 'start'}_to_{date_to or 'end'}.xlsx"
+
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+@logistics_bp.route(
+    "/view-packages/finance-invoice/export-pdf",
+    methods=["POST"],
+    endpoint="view_packages_finance_invoice_export_pdf"
+)
+@admin_required
+def view_packages_finance_invoice_export_pdf():
+    payload = request.get_json(silent=True) or {}
+
+    date_from = (payload.get("date_from") or "").strip()
+    date_to = (payload.get("date_to") or "").strip()
+    house = (payload.get("house") or "").strip()
+    tracking = (payload.get("tracking") or "").strip()
+    user_code = (payload.get("user_code") or "").strip()
+    first_name = (payload.get("first_name") or "").strip()
+    last_name = (payload.get("last_name") or "").strip()
+    search = (payload.get("search") or "").strip()
+    status_filter = (payload.get("status") or "").strip()
+
+    epc_only = str(payload.get("epc_only") or "").lower() in ("1", "true", "yes", "on")
+    unassigned_only = str(payload.get("unassigned_only") or "").lower() in ("1", "true", "yes", "on")
+    not_notified_only = str(payload.get("not_notified_only") or "").lower() in ("1", "true", "yes", "on")
+
+    unassigned_id = get_unassigned_user_id()
+
+    q = (
+        db.session.query(
+            Package.id,
+            Package.weight,
+            Package.tracking_number,
+            Package.house_awb,
+            Package.description,
+            Package.date_received,
+            Package.created_at,
+        )
+        .join(User, Package.user_id == User.id)
+    )
+
+    q = _apply_pkg_filters(
+        q,
+        unassigned_id=unassigned_id,
+        date_from=date_from,
+        date_to=date_to,
+        house=house,
+        tracking=tracking,
+        user_code=user_code,
+        first_name=first_name,
+        last_name=last_name,
+        search=search,
+        status_filter=status_filter,
+        epc_only=epc_only,
+        unassigned_only=unassigned_only,
+        not_notified_only=not_notified_only,
+    )
+
+    q = q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).asc(), Package.id.asc())
+    packages = q.all()
+
+    brackets = {
+        "0_10": {"label": "0 - 10.000 lb", "rate": 1.60, "count": 0, "total": 0.0},
+        "10_25": {"label": "10.001 - 25.000 lb", "rate": 2.15, "count": 0, "total": 0.0},
+        "25_50": {"label": "25.001 - 50.000 lb", "rate": 4.65, "count": 0, "total": 0.0},
+        "50_100": {"label": "50.001 - 100.000 lb", "rate": 7.00, "count": 0, "total": 0.0},
+        "100_plus": {"label": ">= 100.001 lb", "rate": 9.00, "count": 0, "total": 0.0},
+    }
+
+    detail_rows = []
+    grand_total = 0.0
+
+    for pid, weight, tracking_number, house_awb, description, date_received, created_at in packages:
+        meta = _warehouse_rate_row(weight)
+        if not meta:
+            continue
+
+        brackets[meta["key"]]["count"] += 1
+        brackets[meta["key"]]["total"] += float(meta["rate"])
+        grand_total += float(meta["rate"])
+
+        dt = date_received or created_at
+        detail_rows.append({
+            "date_received": dt.strftime("%Y-%m-%d") if dt else "",
+            "tracking_number": tracking_number or "",
+            "house_awb": house_awb or "",
+            "description": description or "",
+            "weight": float(weight or 0),
+            "category": meta["label"],
+            "rate": float(meta["rate"]),
+        })
+
+    summary_rows = [row for row in brackets.values() if row["count"] > 0]
+
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    left = 40
+    right = width - 40
+    y = height - 40
+
+    def new_page():
+        nonlocal y
+        pdf.showPage()
+        y = height - 40
+
+    def ensure_space(min_y=60):
+        nonlocal y
+        if y < min_y:
+            new_page()
+
+    # Title
+    pdf.setFont("Helvetica-Bold", 15)
+    pdf.drawString(left, y, "Warehouse Charges Report")
+    y -= 22
+
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(left, y, f"Period: {date_from or '...'} to {date_to or '...'}")
+    y -= 14
+    pdf.drawString(left, y, f"Packages: {len(detail_rows)}")
+    y -= 14
+    pdf.drawString(left, y, f"Weight Categories Used: {len(summary_rows)}")
+    y -= 14
+    pdf.drawString(left, y, f"Grand Total (USD): {grand_total:.2f}")
+    y -= 14
+    pdf.drawString(left, y, f"Approx Grand Total (JMD): {(grand_total * float(USD_TO_JMD or 1)):.2f}")
+    y -= 24
+
+    # Summary section
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawString(left, y, "Summary by Weight Category")
+    y -= 18
+
+    pdf.setFont("Helvetica-Bold", 9)
+    pdf.drawString(left, y, "Category")
+    pdf.drawString(250, y, "Rate (USD)")
+    pdf.drawString(340, y, "# Packages")
+    pdf.drawString(430, y, "Category Total")
+    y -= 12
+
+    pdf.line(left, y, right, y)
+    y -= 12
+
+    pdf.setFont("Helvetica", 9)
+    if not summary_rows:
+        pdf.drawString(left, y, "No packages found for the selected filters.")
+        y -= 16
+    else:
+        for row in summary_rows:
+            ensure_space()
+            pdf.drawString(left, y, str(row["label"]))
+            pdf.drawRightString(315, y, f'{float(row["rate"]):.2f}')
+            pdf.drawRightString(395, y, f'{int(row["count"])}')
+            pdf.drawRightString(right, y, f'{float(row["total"]):.2f}')
+            y -= 14
+
+    y -= 10
+    ensure_space()
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawRightString(right, y, f"Grand Total: {grand_total:.2f} USD")
+    y -= 24
+
+    # Detail section
+    ensure_space(120)
+    pdf.setFont("Helvetica-Bold", 11)
+    pdf.drawString(left, y, "Package Breakdown")
+    y -= 18
+
+    headers = [
+        ("Date", 55),
+        ("Tracking #", 120),
+        ("House AWB", 75),
+        ("Description", 140),
+        ("Weight", 50),
+        ("Category", 95),
+        ("Rate", 45),
+    ]
+
+    def draw_detail_header():
+        nonlocal y
+        pdf.setFont("Helvetica-Bold", 8)
+        x = left
+        for label, col_w in headers:
+            pdf.drawString(x, y, label)
+            x += col_w
+        y -= 10
+        pdf.line(left, y, right, y)
+        y -= 10
+
+    def trim_text(text, max_len):
+        s = str(text or "")
+        return s if len(s) <= max_len else s[:max_len - 3] + "..."
+
+    draw_detail_header()
+    pdf.setFont("Helvetica", 7.5)
+
+    if not detail_rows:
+        pdf.drawString(left, y, "No packages found for the selected filters.")
+        y -= 12
+    else:
+        for row in detail_rows:
+            ensure_space(70)
+            if y < 80:
+                new_page()
+                draw_detail_header()
+                pdf.setFont("Helvetica", 7.5)
+
+            x = left
+            vals = [
+                trim_text(row["date_received"], 10),
+                trim_text(row["tracking_number"], 20),
+                trim_text(row["house_awb"], 14),
+                trim_text(row["description"], 28),
+                f'{float(row["weight"]):.2f}',
+                trim_text(row["category"], 18),
+                f'{float(row["rate"]):.2f}',
+            ]
+
+            for val, (_, col_w) in zip(vals, headers):
+                pdf.drawString(x, y, str(val))
+                x += col_w
+
+            y -= 11
+
+    pdf.save()
+    buffer.seek(0)
+
+    filename = f"warehouse_charges_{date_from or 'start'}_to_{date_to or 'end'}.pdf"
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/pdf"
+    )
 
 # ================================
 #  HELPER: INVOICE NUMBER

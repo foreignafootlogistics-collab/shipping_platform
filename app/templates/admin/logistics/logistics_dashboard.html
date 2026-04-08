@@ -704,14 +704,7 @@ Not emailed yet"></i>
                   {% endfor %}
                 </tbody>
               </table>
-            </div>
-
-            <div class="d-flex justify-content-between align-items-center mt-2 px-1">
-              <span id="shipmentTableInfo" class="text-muted small">
-                Showing 0–0 of 0
-              </span>
-            </div>
-
+            </div>     
             {% else %}
             <p class="text-muted">No packages in this shipment.</p>
             {% endif %}
@@ -1742,6 +1735,8 @@ Not emailed yet"></i>
       ],
       language: {
         emptyTable: "No packages in this shipment.",
+        info: "Showing _START_–_END_ of _TOTAL_",
+        infoEmpty: "Showing 0–0 of 0",
         paginate: { previous: "«", next: "»" }
       }
     });

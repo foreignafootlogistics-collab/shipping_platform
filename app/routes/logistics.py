@@ -24,6 +24,11 @@ from werkzeug.utils import secure_filename
 import pandas as pd
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_RIGHT
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from sqlalchemy import func, or_, and_, asc, desc, cast, distinct
 from sqlalchemy.types import Date
 from weasyprint import HTML
@@ -4829,150 +4834,119 @@ def view_packages_finance_invoice_export_pdf():
         grand_total += float(meta["rate"])
 
         dt = date_received or created_at
-        detail_rows.append({
-            "date_received": dt.strftime("%Y-%m-%d") if dt else "",
-            "tracking_number": tracking_number or "",
-            "house_awb": house_awb or "",
-            "description": description or "",
-            "weight": float(weight or 0),
-            "category": meta["label"],
-            "rate": float(meta["rate"]),
-        })
+        detail_rows.append([
+            dt.strftime("%Y-%m-%d") if dt else "",
+            tracking_number or "",
+            house_awb or "",
+            description or "",
+            f"{float(weight or 0):.2f}",
+            meta["label"],
+            f"{float(meta['rate']):.2f}",
+        ])
 
-    summary_rows = [row for row in brackets.values() if row["count"] > 0]
+    summary_rows = [["Weight Category", "Rate (USD)", "# Packages", "Category Total (USD)"]]
+    for row in brackets.values():
+        if row["count"] > 0:
+            summary_rows.append([
+                row["label"],
+                f"{float(row['rate']):.2f}",
+                str(int(row["count"])),
+                f"{float(row['total']):.2f}",
+            ])
 
-    buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    left = 40
-    right = width - 40
-    y = height - 40
-
-    def new_page():
-        nonlocal y
-        pdf.showPage()
-        y = height - 40
-
-    def ensure_space(min_y=60):
-        nonlocal y
-        if y < min_y:
-            new_page()
-
-    # Title
-    pdf.setFont("Helvetica-Bold", 15)
-    pdf.drawString(left, y, "Warehouse Charges Report")
-    y -= 22
-
-    pdf.setFont("Helvetica", 10)
-    pdf.drawString(left, y, f"Period: {date_from or '...'} to {date_to or '...'}")
-    y -= 14
-    pdf.drawString(left, y, f"Packages: {len(detail_rows)}")
-    y -= 14
-    pdf.drawString(left, y, f"Weight Categories Used: {len(summary_rows)}")
-    y -= 14
-    pdf.drawString(left, y, f"Grand Total (USD): {grand_total:.2f}")
-    y -= 14
-    pdf.drawString(left, y, f"Approx Grand Total (JMD): {(grand_total * float(USD_TO_JMD or 1)):.2f}")
-    y -= 24
-
-    # Summary section
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(left, y, "Summary by Weight Category")
-    y -= 18
-
-    pdf.setFont("Helvetica-Bold", 9)
-    pdf.drawString(left, y, "Category")
-    pdf.drawString(250, y, "Rate (USD)")
-    pdf.drawString(340, y, "# Packages")
-    pdf.drawString(430, y, "Category Total")
-    y -= 12
-
-    pdf.line(left, y, right, y)
-    y -= 12
-
-    pdf.setFont("Helvetica", 9)
-    if not summary_rows:
-        pdf.drawString(left, y, "No packages found for the selected filters.")
-        y -= 16
-    else:
-        for row in summary_rows:
-            ensure_space()
-            pdf.drawString(left, y, str(row["label"]))
-            pdf.drawRightString(315, y, f'{float(row["rate"]):.2f}')
-            pdf.drawRightString(395, y, f'{int(row["count"])}')
-            pdf.drawRightString(right, y, f'{float(row["total"]):.2f}')
-            y -= 14
-
-    y -= 10
-    ensure_space()
-    pdf.setFont("Helvetica-Bold", 10)
-    pdf.drawRightString(right, y, f"Grand Total: {grand_total:.2f} USD")
-    y -= 24
-
-    # Detail section
-    ensure_space(120)
-    pdf.setFont("Helvetica-Bold", 11)
-    pdf.drawString(left, y, "Package Breakdown")
-    y -= 18
-
-    headers = [
-        ("Date", 55),
-        ("Tracking #", 120),
-        ("House AWB", 75),
-        ("Description", 140),
-        ("Weight", 50),
-        ("Category", 95),
-        ("Rate", 45),
-    ]
-
-    def draw_detail_header():
-        nonlocal y
-        pdf.setFont("Helvetica-Bold", 8)
-        x = left
-        for label, col_w in headers:
-            pdf.drawString(x, y, label)
-            x += col_w
-        y -= 10
-        pdf.line(left, y, right, y)
-        y -= 10
-
-    def trim_text(text, max_len):
-        s = str(text or "")
-        return s if len(s) <= max_len else s[:max_len - 3] + "..."
-
-    draw_detail_header()
-    pdf.setFont("Helvetica", 7.5)
+    if len(summary_rows) == 1:
+        summary_rows.append(["No packages found", "", "0", "0.00"])
 
     if not detail_rows:
-        pdf.drawString(left, y, "No packages found for the selected filters.")
-        y -= 12
-    else:
-        for row in detail_rows:
-            ensure_space(70)
-            if y < 80:
-                new_page()
-                draw_detail_header()
-                pdf.setFont("Helvetica", 7.5)
+        detail_rows = [["", "", "", "No packages found for selected filters", "", "", ""]]
 
-            x = left
-            vals = [
-                trim_text(row["date_received"], 10),
-                trim_text(row["tracking_number"], 20),
-                trim_text(row["house_awb"], 14),
-                trim_text(row["description"], 28),
-                f'{float(row["weight"]):.2f}',
-                trim_text(row["category"], 18),
-                f'{float(row["rate"]):.2f}',
-            ]
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=24,
+        rightMargin=24,
+        topMargin=24,
+        bottomMargin=24,
+    )
 
-            for val, (_, col_w) in zip(vals, headers):
-                pdf.drawString(x, y, str(val))
-                x += col_w
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="RightSmall", parent=styles["Normal"], alignment=TA_RIGHT, fontSize=9))
+    styles.add(ParagraphStyle(name="Muted", parent=styles["Normal"], textColor=colors.HexColor("#666666"), fontSize=9))
+    styles.add(ParagraphStyle(name="TitlePurple", parent=styles["Title"], textColor=colors.HexColor("#4a148c")))
+    styles.add(ParagraphStyle(name="HeadingPurple", parent=styles["Heading2"], textColor=colors.HexColor("#4a148c"), fontSize=12))
 
-            y -= 11
+    elements = []
 
-    pdf.save()
+    logo_path = os.path.join(current_app.static_folder, "logo.png")
+    if os.path.exists(logo_path):
+        try:
+            elements.append(Image(logo_path, width=90, height=45))
+            elements.append(Spacer(1, 8))
+        except Exception:
+            pass
+
+    elements.append(Paragraph("Foreign A Foot Logistics Limited", styles["TitlePurple"]))
+    elements.append(Paragraph("Warehouse Charges Report", styles["HeadingPurple"]))
+    elements.append(Spacer(1, 8))
+
+    meta_data = [
+        [Paragraph("<b>Period</b>", styles["Normal"]), Paragraph(f"{date_from or '...'} to {date_to or '...'}", styles["Normal"])],
+        [Paragraph("<b>Total Packages</b>", styles["Normal"]), Paragraph(str(len(detail_rows) if detail_rows and detail_rows[0][3] != "No packages found for selected filters" else 0), styles["Normal"])],
+        [Paragraph("<b>Weight Categories Used</b>", styles["Normal"]), Paragraph(str(len(summary_rows) - 1 if len(summary_rows) > 1 else 0), styles["Normal"])],
+        [Paragraph("<b>Grand Total (USD)</b>", styles["Normal"]), Paragraph(f"{grand_total:.2f}", styles["Normal"])],
+        [Paragraph("<b>Approx Grand Total (JMD)</b>", styles["Normal"]), Paragraph(f"{(grand_total * float(USD_TO_JMD or 1)):.2f}", styles["Normal"])],
+    ]
+
+    meta_table = Table(meta_data, colWidths=[170, 170])
+    meta_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f3e8ff")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
+        ("PADDING", (0, 0), (-1, -1), 6),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    elements.append(meta_table)
+    elements.append(Spacer(1, 14))
+
+    elements.append(Paragraph("Summary by Weight Category", styles["HeadingPurple"]))
+    elements.append(Spacer(1, 6))
+
+    summary_table = Table(summary_rows, colWidths=[180, 90, 80, 120], repeatRows=1)
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4a148c")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.whitesmoke),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
+        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+        ("PADDING", (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 14))
+
+    elements.append(Paragraph("Package Breakdown", styles["HeadingPurple"]))
+    elements.append(Spacer(1, 6))
+
+    detail_header = [["Date", "Tracking #", "House AWB", "Description", "Weight", "Category", "Rate"]]
+    detail_table = Table(detail_header + detail_rows, colWidths=[58, 92, 82, 140, 50, 110, 45], repeatRows=1)
+    detail_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4a148c")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#faf5ff")]),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (4, 1), (6, -1), "RIGHT"),
+        ("PADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(detail_table)
+
+    doc.build(elements)
     buffer.seek(0)
 
     filename = f"warehouse_charges_{date_from or 'start'}_to_{date_to or 'end'}.pdf"

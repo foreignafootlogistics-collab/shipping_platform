@@ -112,6 +112,7 @@
   </div>
 </div>
 {# ==== Summary just under the heading ==== #}
+<div id="vpAjaxRegion">
 <div class="alert mb-3 py-2 px-3 d-flex justify-content-between align-items-center"
      style="background-color:#4a148c; color:white; border:none; border-radius:0.5rem;">
   <div>
@@ -591,6 +592,7 @@
     Showing {{ showing_from }}–{{ showing_to }} of {{ total_count }}
   </small>
 {% endif %}
+</div>  <!-- END vpAjaxRegion -->
 
 <!-- ========================= -->
 <!-- Attach Invoice Modal (Shared) -->
@@ -1790,6 +1792,8 @@ document.addEventListener('DOMContentLoaded', function () {
   // ✅ Force header classes immediately
   table.columns.adjust().draw(false);
 });
+
+
 /* ==========================
    PACKAGE ATTACHMENTS (ADMIN) - NEW MODAL
    ========================== */
@@ -2237,6 +2241,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
 #shipmentTable thead th.sorting_desc::after,
 #packagesTable thead th.sorting_desc::after { opacity: 1; }
+
+#packagesTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #212529 !important;
+  color: #fff !important;
+}
+
+#packagesTable tbody tr.row-selected {
+  background-color: #f3e8ff !important;
+}
+
+#packagesTable tbody tr:hover {
+  background-color: #faf5ff;
+}
 </style>
 
 <script>

@@ -1728,8 +1728,9 @@ document.addEventListener('DOMContentLoaded', function () {
         targets: [3], // House AWB column
         orderable: true,
         render: function (data, type, row) {
-          if (type === 'sort') {
-            // Extract number from FAFL0015660 → 15660
+          const text = $('<div>').html(data || '').text().trim();
+
+          if (type === 'sort' || type === 'type') {
             const num = parseInt((data || '').replace(/\D/g, ''), 10);
             return isNaN(num) ? 0 : num;
           }

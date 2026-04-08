@@ -4081,51 +4081,34 @@ def shipment_finance_invoice_preview_html(shipment_id):
     if blocked:
         return blocked
 
-    # ✅ correct: use association table
     packages = (
         Package.query
         .join(shipment_packages, shipment_packages.c.package_id == Package.id)
         .filter(shipment_packages.c.shipment_id == shipment_id)
+        .order_by(Package.id.desc())
         .all()
     )
 
+    if not packages:
+        return "<div class='text-muted'>No packages found for this shipment.</div>"
+
     total_packages = len(packages)
-
-    # totals
     total_weight_lbs = sum(float(p.weight or 0) for p in packages)
-    total_weight_kg  = total_weight_lbs * 0.45359237  # accurate lbs -> kg
+    total_weight_kg = total_weight_lbs * 0.45359237
 
-    # base freight
+    # ✅ Finance invoice rule:
+    # $3 USD per kg + fixed 5000 JMD service charge
     base_rate_usd_per_kg = 3.0
     base_freight_usd = total_weight_kg * base_rate_usd_per_kg
 
-    # count by brackets (lbs)
-    def w(p): 
-        return float(p.weight or 0)
-
-    c_0_10     = sum(1 for p in packages if 0 < w(p) <= 10)
-    c_10_25    = sum(1 for p in packages if 10 < w(p) <= 25)
-    c_25_50    = sum(1 for p in packages if 25 < w(p) <= 50)
-    c_50_100   = sum(1 for p in packages if 50 < w(p) <= 100)
-    c_100_plus = sum(1 for p in packages if w(p) > 100)
-
-    # ✅ service total USD (this was missing)
-    service_usd_total = (
-        (1.60 * c_0_10) +
-        (2.15 * c_10_25) +
-        (4.65 * c_25_50) +
-        (7.00 * c_50_100) +
-        (9.00 * c_100_plus)
-    )
-
     usd_to_jmd = float(current_app.config.get("USD_TO_JMD", 165) or 165)
-    service_jmd_total = service_usd_total * usd_to_jmd
+    service_charge_jmd = 5000.0
 
-    # fixed additional service in JMD
-    service_charge_jmd = float(current_app.config.get("SHIPMENT_SERVICE_JMD", 5000) or 5000)
+    # ✅ no shipment service bands anymore
+    service_usd_total = 0.0
+    service_jmd_total = 0.0
 
-    # totals
-    total_usd = base_freight_usd + service_usd_total
+    total_usd = base_freight_usd
     total_jmd = (total_usd * usd_to_jmd) + service_charge_jmd
 
     return render_template(
@@ -4141,18 +4124,19 @@ def shipment_finance_invoice_preview_html(shipment_id):
         base_rate_usd_per_kg=base_rate_usd_per_kg,
         base_freight_usd=base_freight_usd,
 
-        c_0_10=c_0_10,
-        c_10_25=c_10_25,
-        c_25_50=c_25_50,
-        c_50_100=c_50_100,
-        c_100_plus=c_100_plus,
+        # ✅ force all old band counters to zero
+        c_0_10=0,
+        c_10_25=0,
+        c_25_50=0,
+        c_50_100=0,
+        c_100_plus=0,
 
-        service_usd_total=service_usd_total,
-        service_jmd_total=service_jmd_total,
+        service_usd_total=0.0,
+        service_jmd_total=0.0,
 
         service_charge_jmd=service_charge_jmd,
-        extra_usd=service_usd_total,   # optional if you still use it elsewhere
-        extra_jmd=service_jmd_total,   # optional
+        extra_usd=0.0,
+        extra_jmd=0.0,
 
         total_usd=total_usd,
         total_jmd=total_jmd,
@@ -4195,34 +4179,22 @@ def shipment_finance_invoice_preview_json(shipment_id):
     if not pkgs:
         return jsonify({"ok": False, "error": "No packages found for this shipment selection."}), 404
 
-    # --- SAME math as HTML version ---
     total_weight_lbs = sum(float(p.weight or 0) for p in pkgs)
-    total_weight_kg  = total_weight_lbs * 0.45359237
+    total_weight_kg = total_weight_lbs * 0.45359237
 
+    # ✅ Finance invoice rule:
+    # $3 USD per kg + fixed 5000 JMD service charge
     base_rate_usd_per_kg = 3.0
     base_freight_usd = total_weight_kg * base_rate_usd_per_kg
 
-    def w(p): return float(p.weight or 0)
-
-    c_0_10     = sum(1 for p in pkgs if 0 < w(p) <= 10)
-    c_10_25    = sum(1 for p in pkgs if 10 < w(p) <= 25)
-    c_25_50    = sum(1 for p in pkgs if 25 < w(p) <= 50)
-    c_50_100   = sum(1 for p in pkgs if 50 < w(p) <= 100)
-    c_100_plus = sum(1 for p in pkgs if w(p) > 100)
-
-    service_usd_total = (
-        (1.60 * c_0_10) +
-        (2.15 * c_10_25) +
-        (4.65 * c_25_50) +
-        (7.00 * c_50_100) +
-        (9.00 * c_100_plus)
-    )
-
     usd_to_jmd = float(current_app.config.get("USD_TO_JMD", 165) or 165)
-    service_jmd_total = service_usd_total * usd_to_jmd
-    service_charge_jmd = float(current_app.config.get("SHIPMENT_SERVICE_JMD", 5000) or 5000)
+    service_charge_jmd = 5000.0
 
-    total_usd = base_freight_usd + service_usd_total
+    # ✅ no service bands anymore
+    service_usd_total = 0.0
+    service_jmd_total = 0.0
+
+    total_usd = base_freight_usd
     total_jmd = (total_usd * usd_to_jmd) + service_charge_jmd
 
     return jsonify({
@@ -4233,24 +4205,30 @@ def shipment_finance_invoice_preview_json(shipment_id):
         "total_lbs": round(total_weight_lbs, 2),
         "total_kg": round(total_weight_kg, 2),
 
-        "base_rate_usd_per_kg": base_rate_usd_per_kg,
-        "base_freight_usd": round(base_freight_usd, 2),
+        # keep both names so existing JS won’t break
+        "base_rate_usd_per_kg": round(base_rate_usd_per_kg, 2),
+        "rate_usd_per_kg": round(base_rate_usd_per_kg, 2),
 
-        "c_0_10": c_0_10,
-        "c_10_25": c_10_25,
-        "c_25_50": c_25_50,
-        "c_50_100": c_50_100,
-        "c_100_plus": c_100_plus,
+        "freight_usd": round(base_freight_usd, 2),
 
-        "service_usd_total": round(service_usd_total, 2),
-        "service_jmd_total": round(service_jmd_total, 2),
+        # ✅ no band rows anymore
+        "service_bands": [],
+
+        "service_usd_total": 0.0,
+        "service_jmd_total": 0.0,
+
+        # keep both names so existing JS/card labels still work
         "service_charge_jmd": round(service_charge_jmd, 2),
+        "extra_service_jmd": round(service_charge_jmd, 2),
 
+        # subtotals for the existing JS cards
+        "subtotal_usd": round(total_usd, 2),
+        "subtotal_jmd": round(total_usd * usd_to_jmd, 2),
+
+        "usd_to_jmd": round(usd_to_jmd, 2),
         "total_usd": round(total_usd, 2),
         "total_jmd": round(total_jmd, 2),
-        "usd_to_jmd": usd_to_jmd,
     }), 200
-
 
 @logistics_bp.route("/shipmentlog/calc-charges", methods=["GET"])
 @admin_required

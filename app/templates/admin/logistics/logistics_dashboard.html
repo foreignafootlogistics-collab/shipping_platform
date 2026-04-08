@@ -2994,40 +2994,20 @@ Not emailed yet"></i>
     `;
 
       /* ===== Service Bands ===== */
-      let serviceUsdSum = 0;
-      let serviceJmdSum = 0;
-
-      (data.service_bands || []).forEach(b => {
-
-        const count = Number(b.count || 0);
-        const rateUsd = Number(b.rate_usd || 0);
-        const lineUsd = Number(b.line_usd || 0);
-        const lineJmd = lineUsd * usd_to_jmd;
-
-        serviceUsdSum += lineUsd;
-        serviceJmdSum += lineJmd;
-
-        rowsHtml += `
-        <tr>
-          <td>${b.band}</td>
-          <td class="text-end">${count}</td>
-          <td class="text-end">$${fmt2(rateUsd)}</td>
-          <td class="text-end">$${fmt2(lineUsd)}</td>
-          <td class="text-end">${fmt2(lineJmd)}</td>
-        </tr>
-      `;
-      });
+      const serviceChargeJmd = Number(data.service_charge_jmd || 0);
 
       rowsHtml += `
-      <tr class="table-light fw-bold">
-        <td colspan="3" class="text-end">Service Total</td>
-        <td class="text-end">$${fmt2(serviceUsdSum)}</td>
-        <td class="text-end">${fmt2(serviceJmdSum)}</td>
-      </tr>
-    `;
+        <tr>
+          <td><strong>Extra Service Charge</strong></td>
+          <td class="text-end">1</td>
+          <td class="text-end">—</td>
+          <td class="text-end">—</td>
+          <td class="text-end">${fmt2(serviceChargeJmd)}</td>
+        </tr>
+      `;
 
-      const tableUsdTotal = freightUsd + serviceUsdSum;
-      const tableJmdTotal = freightJmd + serviceJmdSum;
+      const tableUsdTotal = freightUsd;
+      const tableJmdTotal = freightJmd + serviceChargeJmd;
 
       /* ===== Full HTML ===== */
       const html = `

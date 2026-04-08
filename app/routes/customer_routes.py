@@ -4,6 +4,7 @@ import math
 from math import ceil
 from datetime import datetime, date, timezone, timedelta
 import base64
+import secrets
 
 
 from flask import (
@@ -37,7 +38,7 @@ from app.utils.email_utils import pick_admin_recipient
 from app.calculator_data import categories
 from app import mail
 from app.utils.files import allowed_file
-from app.extensions import db
+from app.extensions import db, csrf
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.calculator_data import get_freight
 from app.services.package_view import fetch_packages_normalized
@@ -167,6 +168,17 @@ def generate_prealert_number() -> int:
     max_num = db.session.scalar(sa.select(func.max(Prealert.prealert_number)))
     return int(max_num or 100000) + 1
 
+def get_api_user():
+    auth_header = (request.headers.get("Authorization") or "").strip()
+
+    if not auth_header.startswith("Bearer "):
+        return None
+
+    token = auth_header.replace("Bearer ", "", 1).strip()
+    if not token:
+        return None
+
+    return User.query.filter_by(api_token=token).first()
 
 # -----------------------------
 # Auth
@@ -956,7 +968,7 @@ def transactions_all():
             amount_paid = amount if tx_status == "completed" else 0.0
             amount_owed = 0.0 if tx_status == "completed" else amount
 
-                # ---------------------------
+        # ---------------------------
         # decide which modal / pdf / full page to open
         # ---------------------------
         if inv:
@@ -2397,3 +2409,1493 @@ def terms():
 @customer_bp.route('/privacy')
 def privacy():
     return render_template('customer/privacy.html', current_year=datetime.now().year)
+
+
+@customer_bp.route("/api/dashboard", methods=["GET"])
+def api_customer_dashboard():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    settings = db.session.get(Settings, 1)
+
+    us_street = getattr(settings, "us_street", None) or "3200 NW 112th Avenue"
+    us_city = getattr(settings, "us_city", None) or "Doral"
+    us_state = getattr(settings, "us_state", None) or "Florida"
+    us_zip = getattr(settings, "us_zip", None) or "33172"
+
+    reg = (getattr(user, "registration_number", "") or "").strip()
+    reg = reg.replace("FAFL#", "").replace("FAFL ", "FAFL").replace(" ", "")
+
+    overseas_packages = db.session.scalar(
+        sa.select(func.count()).select_from(Package).where(
+            Package.user_id == user.id,
+            Package.status == "Overseas"
+        )
+    ) or 0
+
+    ready_to_pickup = db.session.scalar(
+        sa.select(func.count()).select_from(Package).where(
+            Package.user_id == user.id,
+            Package.status == "Ready for Pick Up"
+        )
+    ) or 0
+
+    status_norm = func.lower(func.trim(Package.status))
+
+    total_shipped = db.session.scalar(
+        sa.select(func.count()).select_from(Package).where(
+            Package.user_id == user.id,
+            status_norm.notin_(('cancelled', 'canceled', 'deleted', 'draft'))
+        )
+    ) or 0
+
+    ready_packages = (
+        Package.query
+        .filter_by(user_id=user.id, status="Ready for Pick Up")
+        .order_by(Package.received_date.desc().nullslast())
+        .limit(5)
+        .all()
+    )
+
+    return jsonify({
+        "user": {
+            "full_name": user.full_name,
+            "registration": user.registration_number,
+            "email": user.email,
+            "mobile": user.mobile
+        },
+        "addresses": {
+            "overseas": {
+                "recipient": user.full_name or "",
+                "street": us_street,
+                "suite": f"KCDA-{reg}" if reg else "KCDA",
+                "city": us_city,
+                "state": us_state,
+                "zip": us_zip
+            },
+            "home": (getattr(user, "address", "") or "").strip()
+        },
+        "stats": {
+            "overseas": overseas_packages,
+            "ready": ready_to_pickup,
+            "shipped": total_shipped,
+            "wallet": float(user.wallet_balance or 0)
+        },
+        "ready_packages": [
+            {
+                "id": pkg.id,
+                "house_awb": pkg.house_awb or "",
+                "status": pkg.status or "",
+                "description": pkg.description or "",
+                "tracking_number": pkg.tracking_number or "",
+                "weight": int(math.ceil(float(pkg.weight or 0))) if pkg.weight is not None else 0,
+                "received_date": (
+                    pkg.received_date.strftime("%Y-%m-%d")
+                    if getattr(pkg, "received_date", None)
+                    else ""
+                ),
+                "amount_due": float(pkg.amount_due or 0)
+            }
+            for pkg in ready_packages
+        ]
+    })
+
+@customer_bp.route("/api/packages", methods=["GET"])
+def api_customer_packages():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    q = (
+        db.session.query(
+            Package,
+            User.full_name,
+            User.registration_number
+        )
+        .join(User, Package.user_id == User.id)
+        .filter(Package.user_id == user.id)
+        .order_by(
+            func.date(func.coalesce(Package.date_received, Package.created_at)).desc(),
+            Package.id.desc()
+        )
+    )
+
+    packages = fetch_packages_normalized(
+        base_query=q,
+        include_user=True,
+        include_attachments=True,
+    )
+
+    return jsonify({
+        "packages": [
+            {
+                "id": pkg.get("id"),
+                "house_awb": pkg.get("house_awb") or "",
+                "status": pkg.get("status") or "",
+                "description": pkg.get("description") or "",
+                "tracking_number": pkg.get("tracking_number") or "",
+                "weight": pkg.get("weight") or 0,
+                "date_received": (
+                    pkg.get("date_received").strftime("%Y-%m-%d")
+                    if hasattr(pkg.get("date_received"), "strftime") and pkg.get("date_received")
+                    else (pkg.get("date_received") or "")
+                ),
+                "amount_due": float(pkg.get("amount_due") or 0),
+                "declared_value": float(pkg.get("declared_value") or 0),
+            }
+            for pkg in packages
+        ]
+    })
+
+@customer_bp.route("/api/package/<int:pkg_id>", methods=["GET"])
+def api_customer_package_detail(pkg_id):
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    pkg = Package.query.filter_by(id=pkg_id, user_id=user.id).first()
+    if not pkg:
+        return jsonify({"error": "Package not found"}), 404
+
+    attachments = []
+    try:
+        for a in getattr(pkg, "attachments", []) or []:
+            attachments.append({
+                "id": a.id,
+                "original_name": getattr(a, "original_name", "") or "",
+                "file_url": getattr(a, "file_url", "") or getattr(a, "file_name", "") or "",
+            })
+    except Exception:
+        attachments = []
+
+    return jsonify({
+        "id": pkg.id,
+        "house_awb": pkg.house_awb or "",
+        "status": pkg.status or "",
+        "description": pkg.description or "",
+        "tracking_number": pkg.tracking_number or "",
+        "weight": float(pkg.weight or 0),
+        "date_received": (
+            pkg.received_date.strftime("%Y-%m-%d")
+            if getattr(pkg, "received_date", None)
+            else ""
+        ),
+        "declared_value": float(getattr(pkg, "declared_value", 0) or 0),
+        "amount_due": float(pkg.amount_due or 0),
+        "invoice_file": getattr(pkg, "invoice_file", "") or "",
+        "attachments": attachments,
+    })
+
+@customer_bp.route("/api/prealerts", methods=["GET"])
+def api_customer_prealerts():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    prealerts = (
+        Prealert.query
+        .filter_by(customer_id=user.id)
+        .order_by(Prealert.created_at.desc())
+        .all()
+    )
+
+    return jsonify({
+        "prealerts": [
+            {
+                "id": p.id,
+                "prealert_number": p.prealert_number,
+                "vendor_name": p.vendor_name or "",
+                "courier_name": p.courier_name or "",
+                "tracking_number": p.tracking_number or "",
+                "purchase_date": (
+                    p.purchase_date.strftime("%Y-%m-%d")
+                    if getattr(p, "purchase_date", None)
+                    else ""
+                ),
+                "package_contents": p.package_contents or "",
+                "item_value_usd": float(getattr(p, "item_value_usd", 0) or 0),
+                "created_at": (
+                    p.created_at.strftime("%Y-%m-%d")
+                    if getattr(p, "created_at", None)
+                    else ""
+                ),
+            }
+            for p in prealerts
+        ]
+    })
+
+@customer_bp.route("/api/prealerts", methods=["POST"])
+def api_customer_prealerts_create():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    # Accept either JSON or multipart/form-data
+    if request.content_type and "multipart/form-data" in request.content_type:
+        data = request.form
+        invoice_file = request.files.get("invoice")
+    else:
+        data = request.get_json(silent=True) or {}
+        invoice_file = None
+
+    vendor_name = (data.get("vendor_name") or "").strip()
+    courier_name = (data.get("courier_name") or "").strip()
+    tracking_number = normalize_tracking((data.get("tracking_number") or "").strip())
+    package_contents = (data.get("package_contents") or "").strip()
+
+    purchase_date_raw = (data.get("purchase_date") or "").strip()
+    item_value_raw = data.get("item_value_usd")
+
+    if not vendor_name:
+        return jsonify({"error": "Vendor name is required"}), 400
+    if not tracking_number:
+        return jsonify({"error": "Tracking number is required"}), 400
+    if not package_contents:
+        return jsonify({"error": "Package contents are required"}), 400
+
+    purchase_date = None
+    if purchase_date_raw:
+        try:
+            purchase_date = datetime.strptime(purchase_date_raw, "%Y-%m-%d").date()
+        except Exception:
+            return jsonify({"error": "Purchase date must be YYYY-MM-DD"}), 400
+
+    try:
+        item_value_usd = float(item_value_raw or 0)
+    except Exception:
+        return jsonify({"error": "Item value must be numeric"}), 400
+
+    invoice_url = None
+    invoice_public_id = None
+    invoice_resource_type = None
+    invoice_original_name = None
+
+    if invoice_file and getattr(invoice_file, "filename", ""):
+        original = (invoice_file.filename or "").strip()
+
+        if not allowed_file(original):
+            return jsonify({"error": "Invalid invoice file type. Allowed: pdf, jpg, jpeg, png."}), 400
+
+        from app.utils.cloudinary_storage import upload_prealert_invoice
+
+        invoice_original_name = original
+        invoice_url, invoice_public_id, invoice_resource_type = upload_prealert_invoice(invoice_file)
+
+    prealert_number = generate_prealert_number()
+
+    pa = Prealert(
+        prealert_number=prealert_number,
+        customer_id=user.id,
+        vendor_name=vendor_name,
+        courier_name=courier_name,
+        tracking_number=tracking_number,
+        purchase_date=purchase_date,
+        package_contents=package_contents,
+        item_value_usd=item_value_usd,
+        invoice_filename=invoice_url,
+        invoice_original_name=invoice_original_name,
+        invoice_public_id=invoice_public_id,
+        invoice_resource_type=invoice_resource_type,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    db.session.add(pa)
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": f"Pre-alert PA-{prealert_number} submitted successfully",
+        "prealert": {
+            "id": pa.id,
+            "prealert_number": pa.prealert_number,
+            "vendor_name": pa.vendor_name or "",
+            "courier_name": pa.courier_name or "",
+            "tracking_number": pa.tracking_number or "",
+            "purchase_date": pa.purchase_date.strftime("%Y-%m-%d") if pa.purchase_date else "",
+            "package_contents": pa.package_contents or "",
+            "item_value_usd": float(pa.item_value_usd or 0),
+            "invoice_filename": pa.invoice_filename or "",
+            "invoice_original_name": pa.invoice_original_name or "",
+        }
+    }), 201
+
+@customer_bp.route("/api/transactions", methods=["GET"])
+def api_customer_transactions():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    invoices = (
+        Invoice.query
+        .filter(Invoice.user_id == user.id)
+        .order_by(Invoice.date_submitted.desc().nullslast(), Invoice.id.desc())
+        .all()
+    )
+
+    payments = (
+        Payment.query
+        .filter(Payment.user_id == user.id)
+        .order_by(Payment.created_at.desc(), Payment.id.desc())
+        .all()
+    )
+
+    deliveries = (
+        ScheduledDelivery.query
+        .filter(ScheduledDelivery.user_id == user.id)
+        .order_by(ScheduledDelivery.created_at.desc(), ScheduledDelivery.id.desc())
+        .all()
+    )
+
+    def _dt(x):
+        return x or datetime.utcnow()
+
+    def _num(x):
+        try:
+            return float(x or 0)
+        except Exception:
+            return 0.0
+
+    def normalize_method(m):
+        m = (m or "").strip().lower()
+
+        if m == "cash":
+            return "Cash"
+        if m in ("card", "credit", "debit"):
+            return "Card"
+        if m in ("bank", "bank transfer", "transfer", "bank_transfer"):
+            return "Bank Transfer"
+        if m in ("wallet", "wallet_credit"):
+            return "Wallet"
+        if m == "refund":
+            return "Refund"
+
+        return m.title() if m else ""
+
+    def transaction_label(tx_type):
+        labels = {
+            "invoice_payment": "Invoice Payment",
+            "delivery_payment": "Delivery Payment",
+            "package_refund": "Package Refund",
+            "delivery_refund": "Delivery Refund",
+        }
+        return labels.get(tx_type, "Transaction")
+
+    rows = []
+
+    # Invoice rows
+    for inv in invoices:
+        inv_total = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
+
+        payments_list = [
+            p for p in (getattr(inv, "payments", None) or [])
+            if getattr(p, "transaction_type", "invoice_payment") == "invoice_payment"
+            and getattr(p, "status", "completed") == "completed"
+        ]
+
+        paid_sum = sum(_num(getattr(p, "amount_jmd", 0)) for p in payments_list)
+
+        latest_payment = None
+        if payments_list:
+            latest_payment = sorted(
+                payments_list,
+                key=lambda x: (
+                    getattr(x, "created_at", None) or datetime.utcnow(),
+                    getattr(x, "id", 0)
+                ),
+                reverse=True
+            )[0]
+
+        owed = max(inv_total - paid_sum, 0.0)
+
+        if owed <= 0 and inv_total > 0:
+            inv_status = "paid"
+        elif paid_sum > 0:
+            inv_status = "partial"
+        else:
+            inv_status = "pending"
+
+        inv_date = _dt(
+            getattr(inv, "date_issued", None)
+            or getattr(inv, "date_submitted", None)
+            or getattr(inv, "created_at", None)
+        )
+
+        if inv_status in ("paid", "partial"):
+            method_label = normalize_method(getattr(latest_payment, "method", "")) if latest_payment else ""
+            method_label = method_label or "—"
+        else:
+            method_label = "Awaiting Payment"
+
+        rows.append({
+            "type": "invoice",
+            "reference_main": inv.invoice_number or f"INV-{inv.id}",
+            "reference_sub": "",
+            "date": inv_date.strftime("%Y-%m-%d %H:%M:%S") if inv_date else "",
+            "status": inv_status,
+            "method": method_label,
+            "amount_due": inv_total,
+            "amount_paid": paid_sum,
+            "amount_owed": owed,
+            "invoice_id": inv.id,
+            "pdf_url": url_for("customer.invoice_pdf", invoice_id=inv.id, _external=True),
+        })
+
+    # Payment / refund rows
+    for p in payments:
+        tx_type = (getattr(p, "transaction_type", "") or "").strip()
+        tx_status = (getattr(p, "status", "completed") or "completed").strip().lower()
+
+        amount = _num(getattr(p, "amount_jmd", 0))
+        created = _dt(getattr(p, "created_at", None))
+        method_label = normalize_method(getattr(p, "method", "")) or "—"
+
+        reference_main = f"TX-{p.id}"
+        reference_sub = transaction_label(tx_type)
+
+        inv = None
+
+        if tx_type == "invoice_payment":
+            inv = Invoice.query.filter_by(
+                id=p.invoice_id,
+                user_id=user.id
+            ).first()
+
+            if inv:
+                reference_sub = f"{transaction_label(tx_type)} • {inv.invoice_number or f'INV-{inv.id}'}"
+
+        elif tx_type == "delivery_payment" and getattr(p, "scheduled_delivery_id", None):
+            reference_sub = f"{transaction_label(tx_type)} • Delivery #{p.scheduled_delivery_id}"
+
+        elif tx_type == "package_refund" and getattr(p, "claim_id", None):
+            reference_sub = f"{transaction_label(tx_type)} • Claim #{p.claim_id}"
+
+        elif tx_type == "delivery_refund" and getattr(p, "scheduled_delivery_id", None):
+            reference_sub = f"{transaction_label(tx_type)} • Delivery #{p.scheduled_delivery_id}"
+
+        if tx_type in ("package_refund", "delivery_refund"):
+            amount_due = 0.0
+            amount_paid = amount
+            amount_owed = 0.0
+        else:
+            amount_due = amount
+            amount_paid = amount if tx_status == "completed" else 0.0
+            amount_owed = 0.0 if tx_status == "completed" else amount
+
+        rows.append({
+            "type": tx_type or "transaction",
+            "reference_main": reference_main,
+            "reference_sub": reference_sub,
+            "date": created.strftime("%Y-%m-%d %H:%M:%S") if created else "",
+            "status": tx_status,
+            "method": method_label,
+            "amount_due": amount_due,
+            "amount_paid": amount_paid,
+            "amount_owed": amount_owed,
+            "payment_id": p.id,
+            "pdf_url": (
+                url_for("customer.invoice_pdf", invoice_id=inv.id, _external=True)
+                if inv
+                else (
+                    url_for("customer.receipt_pdf_inline", payment_id=p.id, _external=True)
+                    if tx_type not in ("package_refund", "delivery_refund")
+                    else ""
+                )
+            ),
+        })
+
+    # Delivery invoice rows
+    for d in deliveries:
+        delivery_fee = _num(getattr(d, "delivery_fee", 0))
+        fee_status = (getattr(d, "fee_status", "") or "").strip().lower()
+        delivery_status = (getattr(d, "status", "") or "").strip()
+
+        created_dt = _dt(getattr(d, "created_at", None))
+        scheduled_dt = getattr(d, "scheduled_date", None)
+
+        if fee_status in ("paid", "waived"):
+            amount_paid = delivery_fee
+            amount_owed = 0.0
+        else:
+            amount_paid = 0.0
+            amount_owed = delivery_fee
+
+        if fee_status == "waived":
+            status_value = "paid"
+            method_label = "Waived"
+        elif fee_status == "paid":
+            status_value = "paid"
+            method_label = "Paid"
+        else:
+            status_value = "pending"
+            method_label = "Awaiting Payment"
+
+        reference_main = getattr(d, "invoice_number", None) or f"DEL-{d.id}"
+        reference_sub = "Delivery Invoice"
+        if scheduled_dt:
+            reference_sub = f"Delivery Invoice • {scheduled_dt.strftime('%Y-%m-%d')}"
+
+        rows.append({
+            "type": "delivery_invoice",
+            "reference_main": reference_main,
+            "reference_sub": reference_sub,
+            "date": created_dt.strftime("%Y-%m-%d %H:%M:%S") if created_dt else "",
+            "status": status_value,
+            "method": method_label,
+            "amount_due": delivery_fee,
+            "amount_paid": amount_paid,
+            "amount_owed": amount_owed,
+            "delivery_id": d.id,
+            "pdf_url": "",
+            "fee_status": getattr(d, "fee_status", "") or "",
+            "delivery_status": delivery_status,
+        })        
+
+    rows.sort(key=lambda r: r["date"], reverse=True)
+
+    total_shipments = len(invoices)
+    billing_records = len(rows)
+    total_owed = sum((r.get("amount_owed") or 0) for r in rows)
+    pending_count = sum(1 for r in rows if (r.get("amount_owed") or 0) > 0)
+
+    return jsonify({
+        "summary": {
+            "total_shipments": total_shipments,
+            "total_owed": total_owed,
+            "billing_records": billing_records,
+            "pending_count": pending_count,
+        },
+        "rows": rows,
+    })
+
+@customer_bp.route("/api/deliveries", methods=["GET"])
+def api_customer_deliveries():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    deliveries = (
+        ScheduledDelivery.query
+        .filter_by(user_id=user.id)
+        .order_by(ScheduledDelivery.created_at.desc())
+        .all()
+    )
+
+    rows = []
+
+    for d in deliveries:
+        rows.append({
+            "id": d.id,
+            "invoice_number": d.invoice_number or f"DEL-{d.id}",
+            "date": d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "",
+            "time": d.scheduled_time or "",
+            "location": d.location or "",
+            "receiver": d.person_receiving or "",
+            "delivery_fee": float(d.delivery_fee or 0),
+        })
+
+    return jsonify({
+        "delivery_fee": 1000.0,
+        "enabled": True,
+        "rows": rows,
+    })
+
+@customer_bp.route("/api/deliveries/<int:delivery_id>/invoice", methods=["GET"])
+def api_customer_delivery_invoice(delivery_id):
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    d = ScheduledDelivery.query.filter_by(
+        id=delivery_id,
+        user_id=user.id
+    ).first()
+
+    if not d:
+        return jsonify({"error": "Delivery not found"}), 404
+
+    created_at = getattr(d, "created_at", None)
+    created_display = created_at.strftime("%Y-%m-%d %H:%M") if created_at else ""
+
+    return jsonify({
+        "invoice_number": d.invoice_number or f"DEL-{d.id}",
+        "created_at": created_display,
+        "customer": {
+            "name": user.full_name or "",
+            "registration": user.registration_number or "",
+            "email": user.email or "",
+        },
+        "fee_status": getattr(d, "fee_status", "") or "",
+        "delivery_status": getattr(d, "status", "") or "",
+        "details": {
+            "scheduled_date": d.scheduled_date.strftime("%Y-%m-%d") if getattr(d, "scheduled_date", None) else "",
+            "scheduled_time": getattr(d, "scheduled_time", "") or "",
+            "location": getattr(d, "location", "") or "",
+            "direction": getattr(d, "direction", "") or "",
+            "mobile_number": getattr(d, "mobile_number", "") or "",
+            "person_receiving": getattr(d, "person_receiving", "") or "",
+        },
+        "charges": {
+            "description": "Delivery Request Fee",
+            "amount": float(getattr(d, "delivery_fee", 0) or 0),
+            "total_due": float(getattr(d, "delivery_fee", 0) or 0),
+        }
+    })
+
+@customer_bp.route("/api/deliveries/create", methods=["POST"])
+def api_customer_create_delivery():
+    data = request.get_json(silent=True) or {}
+
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    schedule_date = (data.get("schedule_date") or data.get("date") or "").strip()
+    location = (data.get("location") or "").strip()
+    area_zone = (data.get("area_zone") or "").strip()
+
+    # Fixed delivery window from app
+    time_from_in = (data.get("time_from") or "09:00").strip()
+    time_to_in = (data.get("time_to") or "17:00").strip()
+    schedule_time_single = (data.get("scheduled_time") or data.get("time") or "").strip()
+
+    # Selected packages from Flutter
+    raw_package_ids = data.get("package_ids") or []
+    package_ids = []
+    for x in raw_package_ids:
+        try:
+            package_ids.append(int(x))
+        except Exception:
+            pass
+    package_ids = list(dict.fromkeys(package_ids))  # dedupe, preserve order
+
+    t_from = "09:00"
+    t_to = "17:00"
+    scheduled_time_str = "09:00 - 17:00"
+
+    current_app.logger.info(
+        "[api_customer_create_delivery] keys=%s date=%s location=%s area_zone=%s package_ids=%s",
+        list(data.keys()), schedule_date, location, area_zone, package_ids
+    )
+
+    if (not schedule_date) or (not location) or (not area_zone):
+        return jsonify({
+            "success": False,
+            "message": "Missing required fields: schedule_date, location, area_zone.",
+            "received_keys": list(data.keys()),
+        }), 400
+
+    if not package_ids:
+        return jsonify({
+            "success": False,
+            "message": "Please select at least one eligible package."
+        }), 400
+
+    d = None
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            d = datetime.strptime(schedule_date, fmt).date()
+            break
+        except Exception:
+            pass
+
+    if not d:
+        return jsonify({
+            "success": False,
+            "message": f"Invalid date format: {schedule_date}"
+        }), 400
+
+    def _parse_time_to_24h_str(s: str):
+        s = (s or "").strip()
+        if not s:
+            return None
+        for fmt in ("%H:%M", "%I:%M %p"):
+            try:
+                t_obj = datetime.strptime(s, fmt).time()
+                return t_obj.strftime("%H:%M")
+            except Exception:
+                continue
+        return None
+
+    t_from = _parse_time_to_24h_str(time_from_in)
+    t_to = _parse_time_to_24h_str(time_to_in)
+
+    if not (t_from and t_to) and schedule_time_single:
+        t_single = _parse_time_to_24h_str(schedule_time_single)
+        if not t_single:
+            return jsonify({
+                "success": False,
+                "message": f"Invalid time format: {schedule_time_single}"
+            }), 400
+
+        t_from = None
+        t_to = None
+        scheduled_time_str = t_single
+    else:
+        if not t_from or not t_to:
+            return jsonify({
+                "success": False,
+                "message": "Invalid delivery time."
+            }), 400
+
+        try:
+            tf_dt = datetime.strptime(t_from, "%H:%M")
+            tt_dt = datetime.strptime(t_to, "%H:%M")
+            if tt_dt <= tf_dt:
+                return jsonify({
+                    "success": False,
+                    "message": "Time To must be after Time From."
+                }), 400
+        except Exception:
+            pass
+
+        scheduled_time_str = f"{t_from} - {t_to}"
+
+    # -----------------------------
+    # Validate selected packages
+    # Must belong to user and be Ready for Pick Up
+    # -----------------------------
+    selected_packages = (
+        Package.query
+        .filter(
+            Package.id.in_(package_ids),
+            Package.user_id == user.id,
+            Package.status == "Ready for Pick Up"
+        )
+        .order_by(Package.id.asc())
+        .all()
+    )
+
+    if len(selected_packages) != len(package_ids):
+        return jsonify({
+            "success": False,
+            "message": "One or more selected packages are invalid or not eligible for delivery. Only packages marked Ready for Pick Up can be selected."
+        }), 400
+
+    # -----------------------------
+    # Delivery rules
+    # -----------------------------
+    allowed_zones = {"kgn_core", "kgn_outside", "pm_core", "pm_outside"}
+    if area_zone not in allowed_zones:
+        return jsonify({
+            "success": False,
+            "message": "Invalid delivery area selected."
+        }), 400
+
+    dow = d.weekday()
+    is_tue = (dow == 1)
+    is_wed = (dow == 2)
+    is_thu = (dow == 3)
+    is_fri = (dow == 4)
+    is_sat = (dow == 5)
+
+    fee_amt = Decimal("1000.00")
+    fee_status = "Unpaid"
+
+    if is_sat:
+        if area_zone.endswith("_outside"):
+            fee_amt = Decimal("1500.00")
+        else:
+            fee_amt = Decimal("1000.00")
+        fee_status = "Unpaid"
+
+    elif is_tue or is_thu:
+        if area_zone != "kgn_core":
+            return jsonify({
+                "success": False,
+                "message": "On Tue/Thu we only deliver FREE within Kingston Core. Outside areas are Saturday only."
+            }), 400
+        fee_amt = Decimal("0.00")
+        fee_status = "Waived"
+
+    elif is_wed or is_fri:
+        if area_zone != "pm_core":
+            return jsonify({
+                "success": False,
+                "message": "On Wed/Fri we only deliver FREE within Portmore/Spanish Town Core. Outside areas are Saturday only."
+            }), 400
+        fee_amt = Decimal("0.00")
+        fee_status = "Waived"
+
+    else:
+        return jsonify({
+            "success": False,
+            "message": "Delivery is available Tue/Thu (Kingston), Wed/Fri (Portmore/Spanish Town), or Saturday."
+        }), 400
+
+    try:
+        new_delivery = ScheduledDelivery(
+            user_id=user.id,
+            scheduled_date=d,
+            area_zone=area_zone,
+            scheduled_time_from=t_from,
+            scheduled_time_to=t_to,
+            scheduled_time=scheduled_time_str,
+            location=location,
+            direction=(data.get("direction") or data.get("directions") or "").strip(),
+            mobile_number=(data.get("mobile_number") or data.get("mobile") or "").strip(),
+            person_receiving=(data.get("person_receiving") or "").strip(),
+            delivery_fee=fee_amt,
+            fee_currency=DELIVERY_FEE_CURRENCY,
+            fee_status=fee_status,
+            status="Scheduled",
+        )
+
+        db.session.add(new_delivery)
+        db.session.commit()
+
+        year = datetime.utcnow().year
+        new_delivery.invoice_number = f"DEL-{year}-{new_delivery.id:06d}"
+
+        # ----------------------------------------------------
+        # Best-effort package linking
+        # Works if ScheduledDelivery has a `packages` relationship
+        # ----------------------------------------------------
+        if hasattr(new_delivery, "packages"):
+            try:
+                new_delivery.packages = selected_packages
+            except Exception:
+                current_app.logger.warning(
+                    "[api_customer_create_delivery] Could not assign packages relationship on ScheduledDelivery."
+                )
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Scheduled successfully",
+            "delivery": {
+                "id": new_delivery.id,
+                "invoice_number": new_delivery.invoice_number,
+                "scheduled_date": new_delivery.scheduled_date.isoformat(),
+                "scheduled_time": new_delivery.scheduled_time or "",
+                "scheduled_time_from": new_delivery.scheduled_time_from or "",
+                "scheduled_time_to": new_delivery.scheduled_time_to or "",
+                "location": new_delivery.location or "",
+                "area_zone": new_delivery.area_zone or "",
+                "person_receiving": new_delivery.person_receiving or "",
+                "delivery_fee": str(new_delivery.delivery_fee or fee_amt),
+                "fee_currency": new_delivery.fee_currency or DELIVERY_FEE_CURRENCY,
+                "fee_status": new_delivery.fee_status or fee_status,
+                "status": new_delivery.status or "Scheduled",
+                "package_ids": [p.id for p in selected_packages],
+                "packages": [
+                    {
+                        "id": p.id,
+                        "house_awb": p.house_awb or "",
+                        "tracking_number": p.tracking_number or "",
+                        "description": p.description or "",
+                        "amount_due": float(p.amount_due or 0),
+                    }
+                    for p in selected_packages
+                ],
+            }
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("api_customer_create_delivery failed")
+        return jsonify({
+            "success": False,
+            "message": f"{type(e).__name__}: {str(e)}"
+        }), 500
+
+
+@customer_bp.route("/api/deliveries/eligible-packages", methods=["GET"])
+def api_delivery_eligible_packages():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    pkgs = (
+        Package.query
+        .filter_by(user_id=user.id, status="Ready for Pick Up")
+        .order_by(Package.id.desc())
+        .all()
+    )
+
+    return jsonify({
+        "packages": [
+            {
+                "id": p.id,
+                "house_awb": p.house_awb or "",
+                "description": p.description or "",
+                "tracking_number": p.tracking_number or "",
+                "amount_due": float(p.amount_due or 0),
+            }
+            for p in pkgs
+        ]
+    })
+
+@customer_bp.route("/api/login", methods=["POST"])
+@csrf.exempt
+def api_customer_login():
+    data = request.get_json(silent=True) or {}
+
+    identifier = (data.get("email") or data.get("registration") or "").strip()
+    password_plain = (data.get("password") or "").strip()
+
+    if not identifier or not password_plain:
+        return jsonify({"error": "Email/registration and password are required"}), 400
+
+    user = User.query.filter(
+        or_(
+            func.lower(User.email) == identifier.lower(),
+            func.lower(User.registration_number) == identifier.lower(),
+        )
+    ).first()
+
+    if not user or not user.password:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    stored_password = user.password
+
+    if isinstance(stored_password, memoryview):
+        stored_password = stored_password.tobytes()
+
+    if isinstance(stored_password, str):
+        stored_password = stored_password.encode("utf-8")
+
+    try:
+        ok = bcrypt.checkpw(password_plain.encode("utf-8"), stored_password)
+    except Exception:
+        ok = False
+
+    if not ok:
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    if not user.is_enabled:
+        return jsonify({"error": "This account is disabled"}), 403
+
+    token = secrets.token_urlsafe(48)
+    user.api_token = token
+    user.last_login = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "token": token,
+        "user": {
+            "id": user.id,
+            "full_name": user.full_name or "",
+            "email": user.email or "",
+            "registration": user.registration_number or "",
+            "mobile": user.mobile or "",
+        }
+    }), 200
+
+@customer_bp.route("/api/package/<int:pkg_id>/docs", methods=["POST"])
+@csrf.exempt
+def api_package_upload_docs(pkg_id):
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    pkg = Package.query.filter_by(id=pkg_id, user_id=user.id).first()
+    if not pkg:
+        return jsonify({"error": "Package not found"}), 404
+
+    dv = request.form.get("declared_value")
+    if dv:
+        try:
+            dvf = float(dv)
+            pkg.declared_value = dvf
+            pkg.value = dvf
+        except ValueError:
+            return jsonify({"error": "Declared value must be a number"}), 400
+
+    files = [
+        request.files.get("invoice_file"),
+        request.files.get("invoice_file_1"),
+        request.files.get("invoice_file_2"),
+        request.files.get("invoice_file_3"),
+    ]
+
+    saved_any = False
+    seen = set()
+
+    for f in files:
+        if not (f and f.filename):
+            continue
+
+        original = f.filename.strip()
+        key = original.lower()
+
+        if key in seen:
+            continue
+        seen.add(key)
+
+        if not allowed_file(original):
+            continue
+
+        try:
+            from app.utils.cloudinary_storage import upload_package_attachment
+            url, public_id, rtype = upload_package_attachment(f)
+        except Exception:
+            current_app.logger.exception("[API PACKAGE DOC UPLOAD] cloud upload failed")
+            return jsonify({"error": "Upload failed. Please try again."}), 500
+
+        if not url:
+            return jsonify({"error": "Upload failed."}), 500
+
+        db.session.add(PackageAttachment(
+            package_id=pkg.id,
+            file_name=url,
+            file_url=url,
+            original_name=original,
+            cloud_public_id=public_id,
+            cloud_resource_type=rtype,
+        ))
+        saved_any = True
+
+        if not getattr(pkg, "invoice_file", None):
+            pkg.invoice_file = url
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Updated package documents successfully.",
+        "saved_any": saved_any,
+    }), 200
+
+@customer_bp.route("/api/account/profile", methods=["GET"])
+def api_account_profile():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    return jsonify({
+        "full_name": user.full_name or "",
+        "email": user.email or "",
+        "mobile": user.mobile or "",
+        "trn": getattr(user, "trn", "") or "",
+        "registration": user.registration_number or "",
+    }), 200
+
+@customer_bp.route("/api/account/profile", methods=["POST"])
+@csrf.exempt
+def api_account_profile_update():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+
+    full_name = (data.get("full_name") or "").strip()
+    mobile = (data.get("mobile") or "").strip()
+    trn = (data.get("trn") or "").strip()
+
+    if not full_name:
+        return jsonify({"error": "Full name is required"}), 400
+
+    user.full_name = full_name
+    user.mobile = mobile
+
+    if hasattr(user, "trn"):
+        user.trn = trn
+
+    if hasattr(user, "updated_at"):
+        user.updated_at = datetime.utcnow()
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Profile updated successfully",
+        "user": {
+            "full_name": user.full_name or "",
+            "email": user.email or "",
+            "mobile": user.mobile or "",
+            "trn": getattr(user, "trn", "") or "",
+            "registration": user.registration_number or "",
+        }
+    }), 200
+
+
+@customer_bp.route("/api/account/address", methods=["GET"])
+def api_account_address():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    return jsonify({
+        "address": (getattr(user, "address", "") or "").strip(),
+        "registration": user.registration_number or "",
+        "full_name": user.full_name or "",
+    }), 200
+
+@customer_bp.route("/api/account/address", methods=["POST"])
+@csrf.exempt
+def api_account_address_update():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    address = (data.get("address") or "").strip()
+
+    if not address:
+        return jsonify({"error": "Delivery address is required"}), 400
+
+    user.address = address
+
+    if hasattr(user, "updated_at"):
+        user.updated_at = datetime.utcnow()
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Delivery address updated successfully",
+        "address": user.address or "",
+    }), 200
+
+
+@customer_bp.route("/api/account/security/password", methods=["POST"])
+@csrf.exempt
+def api_account_change_password():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+
+    current_password = (data.get("current_password") or "").strip()
+    new_password = (data.get("new_password") or "").strip()
+    confirm_password = (data.get("confirm_password") or "").strip()
+
+    if not current_password:
+        return jsonify({"error": "Current password is required"}), 400
+
+    if not new_password:
+        return jsonify({"error": "New password is required"}), 400
+
+    if len(new_password) < 8:
+        return jsonify({"error": "New password must be at least 8 characters"}), 400
+
+    if new_password != confirm_password:
+        return jsonify({"error": "Passwords do not match"}), 400
+
+    stored_password = user.password
+
+    if isinstance(stored_password, memoryview):
+        stored_password = stored_password.tobytes()
+
+    if isinstance(stored_password, str):
+        stored_password = stored_password.encode("utf-8")
+
+    try:
+        ok = bcrypt.checkpw(current_password.encode("utf-8"), stored_password)
+    except Exception:
+        ok = False
+
+    if not ok:
+        return jsonify({"error": "Current password is incorrect"}), 400
+
+    user.password = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt())
+
+    if hasattr(user, "updated_at"):
+        user.updated_at = datetime.utcnow()
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Password updated successfully"
+    }), 200
+
+@customer_bp.route("/api/account/referral", methods=["GET"])
+def api_account_referral():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    referral_code = ensure_user_referral_code(user)
+
+    return jsonify({
+        "full_name": user.full_name or "",
+        "email": user.email or "",
+        "referral_code": referral_code or "",
+    }), 200
+
+@customer_bp.route("/api/account/referral/send", methods=["POST"])
+@csrf.exempt
+def api_account_referral_send():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    friend_email = (data.get("friend_email") or "").strip()
+
+    if not friend_email:
+        return jsonify({"error": "Friend email is required"}), 400
+
+    if not EMAIL_REGEX.match(friend_email):
+        return jsonify({"error": "Please enter a valid email address"}), 400
+
+    referral_code = ensure_user_referral_code(user)
+    full_name = user.full_name or user.email or "FAFL Customer"
+
+    if not referral_code:
+        return jsonify({"error": "Referral code is not available"}), 500
+
+    ok = send_referral_email(friend_email, referral_code, full_name)
+
+    if not ok:
+        return jsonify({"error": "Failed to send referral email"}), 500
+
+    return jsonify({
+        "success": True,
+        "message": f"Referral email sent to {friend_email}",
+    }), 200
+
+
+@customer_bp.route("/api/notifications", methods=["GET"])
+def api_customer_notifications():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    notes = (
+        Notification.query
+        .filter(
+            sa.or_(
+                Notification.user_id == user.id,
+                Notification.is_broadcast.is_(True)
+            )
+        )
+        .order_by(Notification.created_at.desc())
+        .all()
+    )
+
+    return jsonify({
+        "notifications": [
+            {
+                "id": n.id,
+                "title": getattr(n, "title", "") or "Notification",
+                "message": getattr(n, "message", "") or getattr(n, "body", "") or "",
+                "is_read": bool(getattr(n, "is_read", False)),
+                "created_at": (
+                    n.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                    if getattr(n, "created_at", None)
+                    else ""
+                ),
+                "is_broadcast": bool(getattr(n, "is_broadcast", False)),
+            }
+            for n in notes
+        ]
+    }), 200
+
+@customer_bp.route("/api/notifications/<int:nid>/read", methods=["POST"])
+@csrf.exempt
+def api_customer_notification_mark_read(nid):
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    n = Notification.query.get_or_404(nid)
+
+    if n.user_id != user.id and not n.is_broadcast:
+        return jsonify({"error": "Not authorized"}), 403
+
+    n.is_read = True
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Notification marked as read",
+    }), 200
+
+@customer_bp.route("/api/messages", methods=["GET"])
+def api_customer_messages():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    messages_list = (
+        DBMessage.query
+        .filter(
+            sa.or_(
+                DBMessage.sender_id == user.id,
+                DBMessage.recipient_id == user.id
+            )
+        )
+        .order_by(DBMessage.created_at.desc())
+        .all()
+    )
+
+    rows = []
+    for m in messages_list:
+        other_id = m.recipient_id if m.sender_id == user.id else m.sender_id
+        other = User.query.get(other_id)
+
+        rows.append({
+            "id": m.id,
+            "subject": (m.subject or "").strip() or "Message",
+            "body": m.body or "",
+            "is_read": bool(m.is_read),
+            "created_at": (
+                m.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                if getattr(m, "created_at", None)
+                else ""
+            ),
+            "direction": "sent" if m.sender_id == user.id else "received",
+            "other_name": (other.full_name if other else "Administrator") or "Administrator",
+        })
+
+    return jsonify({"messages": rows}), 200
+
+@customer_bp.route("/api/messages/send", methods=["POST"])
+@csrf.exempt
+def api_customer_send_message():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    subject = (data.get("subject") or "").strip() or "Message"
+    body = (data.get("body") or "").strip()
+
+    if not body:
+        return jsonify({"error": "Message body is required"}), 400
+
+    admin = (
+        (User.query.filter(User.is_superadmin.is_(True)).order_by(User.id.asc()).first()
+         if hasattr(User, "is_superadmin") else None)
+        or (User.query.filter(User.role == "admin").order_by(User.id.asc()).first()
+            if hasattr(User, "role") else None)
+        or User.query.order_by(User.id.asc()).first()
+    )
+
+    if not admin:
+        return jsonify({"error": "No admin available to receive message"}), 500
+
+    msg = DBMessage(
+        sender_id=user.id,
+        recipient_id=admin.id,
+        subject=subject,
+        body=body,
+        is_read=False,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    db.session.add(msg)
+    db.session.commit()
+
+    try:
+        if admin.email:
+            preview = (body[:120] + "…") if len(body) > 120 else body
+            send_new_message_email(
+                user_email=admin.email,
+                user_name=admin.full_name or "Admin",
+                message_subject=subject,
+                message_body=preview,
+                recipient_user_id=admin.id
+            )
+    except Exception:
+        current_app.logger.exception("Failed to send message email notification")
+
+    return jsonify({
+        "success": True,
+        "message": "Message sent successfully",
+    }), 200
+
+
+@customer_bp.route("/api/messages/<int:msg_id>/read", methods=["POST"])
+@csrf.exempt
+def api_customer_mark_message_read(msg_id):
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    msg = DBMessage.query.get_or_404(msg_id)
+
+    if msg.sender_id != user.id and msg.recipient_id != user.id:
+        return jsonify({"error": "Not authorized"}), 403
+
+    if msg.recipient_id == user.id and not msg.is_read:
+        msg.is_read = True
+        db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Message marked as read",
+    }), 200
+
+@customer_bp.route("/api/calculator", methods=["POST"])
+@csrf.exempt
+def api_customer_calculator():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+
+    try:
+        weight = float(data.get("weight") or 0)
+    except Exception:
+        return jsonify({"error": "Weight must be numeric"}), 400
+
+    try:
+        value_usd = float(data.get("value_usd") or 0)
+    except Exception:
+        return jsonify({"error": "Item value must be numeric"}), 400
+
+    category = (data.get("category") or "").strip()
+
+    if weight <= 0:
+        return jsonify({"error": "Weight must be greater than 0"}), 400
+
+    if value_usd < 0:
+        return jsonify({"error": "Item value cannot be negative"}), 400
+
+    try:
+        result = calculate_charges(category, value_usd, weight)
+        return jsonify({
+            "success": True,
+            "result": result,
+        }), 200
+    except Exception as e:
+        current_app.logger.exception("Calculator failed")
+        return jsonify({
+            "error": f"Calculator failed: {type(e).__name__}: {str(e)}"
+        }), 500
+
+
+@customer_bp.route("/api/calculator/categories", methods=["GET"])
+@csrf.exempt
+def api_calculator_categories():
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    return jsonify({
+        "categories": list(CATEGORIES.keys())
+    }), 200

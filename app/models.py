@@ -57,6 +57,7 @@ class User(db.Model, UserMixin):
     is_admin = db.Column(db.Boolean, default=False)
     last_login = db.Column(db.DateTime, nullable=True)
     is_enabled = db.Column(db.Boolean, default=True)
+    api_token = db.Column(db.String(128), unique=True, index=True, nullable=True)
 
 
     # Relationships

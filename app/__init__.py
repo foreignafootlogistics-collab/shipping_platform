@@ -178,6 +178,9 @@ def create_app():
                 "https://www.faflcourier.com",
                 "https://app.faflcourier.com",
             ]
+        },
+        r"/customer/api/*": {
+            "origins": "*"
         }
     })
     

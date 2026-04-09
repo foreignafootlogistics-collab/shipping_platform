@@ -1990,6 +1990,17 @@ def admin_upload_package_attachments(package_id):
    
     pkg = Package.query.get_or_404(package_id)
 
+    # ✅ ADD THIS BLOCK HERE
+    item_value_raw = (request.form.get("item_value") or "").strip()
+    if item_value_raw != "":
+        try:
+            item_value = float(item_value_raw)
+            pkg.value = item_value
+            if hasattr(pkg, "declared_value"):
+                pkg.declared_value = item_value
+        except Exception:
+            return jsonify(success=False, error="Invalid item value."), 400
+
     files = request.files.getlist("attachments")
     if not files:
         return jsonify(success=False, error="No files uploaded."), 400

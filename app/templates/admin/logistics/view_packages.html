@@ -616,8 +616,14 @@
           Package ID: <span class="fw-semibold" id="attachPkgLabel">—</span>
         </div>
 
-        <div class="mb-2 small text-muted">
-          Item Value (USD): <span class="fw-semibold" id="attachPkgValue">0.00</span>
+        <div class="mb-3">
+          <label for="attachPkgValue" class="form-label fw-semibold mb-1">Item Value (USD)</label>
+          <input type="number"
+                 step="0.01"
+                 min="0"
+                 id="attachPkgValue"
+                 class="form-control"
+                 value="0.00">
         </div>
 
         <div class="mb-3">

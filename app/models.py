@@ -688,6 +688,34 @@ class Message(db.Model):
     recipient = db.relationship("User", foreign_keys=[recipient_id], backref="received_messages")
 
 
+class MessageAttachment(db.Model):
+    __tablename__ = "message_attachments"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    message_id = db.Column(
+        db.Integer,
+        db.ForeignKey("messages.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    file_url = db.Column(db.Text, nullable=False)
+    original_name = db.Column(db.String(255))
+
+    cloud_public_id = db.Column(db.String(255), nullable=True)
+    cloud_resource_type = db.Column(db.String(20), nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    message = db.relationship(
+        "Message",
+        backref=db.backref("attachments", lazy="select", cascade="all, delete-orphan")
+    )
 
 class Discount(db.Model):
     __tablename__ = "discounts"

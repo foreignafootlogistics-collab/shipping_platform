@@ -659,6 +659,8 @@ def messages():
             db.session.add(msg)
             db.session.flush()
 
+            email_attachments = []
+
             for f in files:
                 if not f or not f.filename:
                     continue
@@ -669,6 +671,9 @@ def messages():
 
                 try:
                     f.stream.seek(0)
+                    file_bytes = f.read()
+                    f.stream.seek(0)
+
                     url, public_id, rtype = upload_package_attachment(f)
                 except Exception:
                     current_app.logger.exception("[ADMIN MESSAGE ATTACHMENT] upload failed")
@@ -684,6 +689,13 @@ def messages():
                     cloud_public_id=public_id,
                     cloud_resource_type=rtype,
                 ))
+
+                import mimetypes
+                email_attachments.append({
+                    "filename": original,
+                    "content": file_bytes,
+                    "mimetype": mimetypes.guess_type(original)[0] or "application/octet-stream",
+                })
 
             if u.email:
                 send_bulk_message_email(

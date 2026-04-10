@@ -366,10 +366,7 @@ def send_email_smtp(
                     smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
                     smtp.send_message(msg)
 
-            print(f"✅ Email sent to {to_email}")
-
-            if recipient_user_id:
-                log_email_to_messages(recipient_user_id, subject, (plain_body or "").strip())
+            print(f"✅ Email sent to {to_email}")            
 
             return True
 
@@ -479,10 +476,7 @@ def send_email(
             from_name="Foreign A Foot Logistics Limited",
             reply_to=(reply_to or EMAIL_FROM or EMAIL_ADDRESS or "support@faflcourier.com"),
             category="customer-portal",
-        )
-
-        if ok and recipient_user_id:
-            log_email_to_messages(recipient_user_id, subject, (plain_body or "").strip())
+        )        
 
         return ok
 
@@ -597,7 +591,7 @@ If you didn’t request a password reset, simply ignore this email.
 # ==========================================================
 #  BULK MESSAGE EMAIL (BODY ONLY)
 # ==========================================================
-def send_bulk_message_email(to_email, full_name, subject, message_body, recipient_user_id=None):
+def send_bulk_message_email(to_email, full_name, subject, message_body, recipient_user_id=None, attachments=None):
     """
     Bulk message email (BODY ONLY).
     NOTE: send_email() wraps this with FAFL header + footer automatically.
@@ -640,7 +634,8 @@ Foreign A Foot Logistics Team
         subject=email_subject,
         plain_body=plain_body,
         html_body=html_body,
-        recipient_user_id=recipient_user_id,
+        attachments=attachments,   # ✅ ADD THIS
+        recipient_user_id=None,
         reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )
 

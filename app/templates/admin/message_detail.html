@@ -100,25 +100,35 @@
       <div class="card-body">
         <div style="white-space: pre-wrap; line-height:1.65;">
           {{ m.body or "" }}
+        </div>
 
-          {% if m.attachments %}
-  <div class="mt-3 px-3 pb-3">
+        {% if m.attachments %}
+          <div class="mt-3">
             <div class="fw-semibold small mb-2">Attachments</div>
-            {% for a in m.attachments %}
-              <a href="{{ url_for('admin.view_message_attachment', attachment_id=a.id) }}"
-                 target="_blank"
-                 class="btn btn-sm btn-outline-secondary me-2 mb-2">
-                <i class="bi bi-paperclip"></i> {{ a.original_name or 'Attachment' }}
-              </a>
 
-              <a href="{{ url_for('admin.download_message_attachment', attachment_id=a.id) }}"
-                 class="btn btn-sm btn-outline-dark me-2 mb-2">
-                <i class="bi bi-download"></i> Download
-              </a>
-            {% endfor %}
+            <div class="d-flex flex-column gap-2">
+              {% for a in m.attachments %}
+                <div class="d-inline-flex align-items-center gap-2 border rounded px-2 py-1 bg-light"
+                     style="width: fit-content; max-width: 100%;">
+
+                  <i class="bi bi-paperclip small text-muted"></i>
+
+                  <a href="{{ url_for('admin.view_message_attachment', attachment_id=a.id) }}"
+                     target="_blank"
+                     class="small text-decoration-none text-truncate"
+                     style="max-width: 220px;">
+                    {{ a.original_name or 'Attachment' }}
+                  </a>
+
+                  <a href="{{ url_for('admin.download_message_attachment', attachment_id=a.id) }}"
+                     class="btn btn-sm btn-outline-secondary py-0 px-2">
+                    <i class="bi bi-download small"></i>
+                  </a>
+                </div>
+              {% endfor %}
+            </div>
           </div>
         {% endif %}
-        </div>
       </div>
 
       <hr class="m-0">

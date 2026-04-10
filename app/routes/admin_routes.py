@@ -691,7 +691,8 @@ def messages():
                     full_name=u.full_name,
                     subject=subject,
                     message_body=body,
-                    recipient_user_id=u.id,
+                    recipient_user_id=None,
+                    attachments=email_attachments,
                 )
 
             sent_count += 1

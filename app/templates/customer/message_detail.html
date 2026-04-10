@@ -93,35 +93,39 @@
         <div class="card-body">
           <div class="message-body" style="white-space: pre-wrap; line-height:1.65;">
             {{ msg.body or "" }}
-
-            {% if msg.attachments %}
-              <div class="mt-3">
-                <h6 class="fw-bold">Attachments</h6>
-
-                <div class="d-flex flex-wrap gap-2">
-                  {% for att in msg.attachments %}
-                    <div class="border rounded px-2 py-1 d-flex align-items-center gap-2">
-
-                      <i class="bi bi-paperclip"></i>
-
-                      <a href="{{ url_for('customer.view_message_attachment', attachment_id=att.id) }}"
-                         target="_blank"
-                         class="text-decoration-none">
-                        {{ att.original_name or "Attachment" }}
-                      </a>
-
-                      <a href="{{ url_for('customer.download_message_attachment', attachment_id=att.id) }}"
-                         class="btn btn-sm btn-outline-secondary">
-                        <i class="bi bi-download"></i>
-                      </a>
-
-                    </div>
-                  {% endfor %}
-                </div>
-              </div>
-            {% endif %}
           </div>
+
+
+          {% if msg.attachments %}
+            <div class="mt-3">
+              <h6 class="fw-bold">Attachments</h6>
+
+              <div class="d-flex flex-column gap-2">
+                {% for att in msg.attachments %}
+                  <div class="d-inline-flex align-items-center gap-2 border rounded px-2 py-1 bg-light"
+                       style="width: fit-content; max-width: 100%;">
+
+                    <i class="bi bi-paperclip small text-muted"></i>
+
+                    <a href="{{ url_for('customer.view_message_attachment', attachment_id=att.id) }}"
+                       target="_blank"
+                       class="small text-decoration-none text-truncate"
+                       style="max-width: 220px;">
+                      {{ att.original_name or "Attachment" }}
+                    </a>
+
+                    <a href="{{ url_for('customer.download_message_attachment', attachment_id=att.id) }}"
+                       class="btn btn-sm btn-outline-secondary py-0 px-2">
+                      <i class="bi bi-download small"></i>
+                    </a>
+
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
         </div>
+        
 
         <!-- Reply (NO THREADS) -->
         <div class="card-footer bg-white">
@@ -224,5 +228,12 @@
 <style>
   .card { border-radius: 12px; }
   .message-body { font-size: 0.98rem; color:#111827; }
+
+
+  .attachment-chip {
+    width: fit-content;
+    max-width: 100%;
+  }
+
 </style>
 {% endblock %}

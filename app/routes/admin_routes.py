@@ -51,7 +51,9 @@ import sqlalchemy as sa
 from sqlalchemy import func, extract, asc
 from app.extensions import db
 from app.models import (
-    User, Wallet, Message, ScheduledDelivery, WalletTransaction, Package, Invoice, Notification, Payment, RateBracket, Discount, shipment_packages, Prealert, ShipmentLog    
+    User, Wallet, Message, MessageAttachment, ScheduledDelivery,
+    WalletTransaction, Package, Invoice, Notification, Payment,
+    RateBracket, Discount, shipment_packages, Prealert, ShipmentLog
 )
 from app.routes.admin_auth_routes import admin_required
 
@@ -63,12 +65,19 @@ admin_bp = Blueprint(
 )
 
 ALLOWED_EXTENSIONS = {"xlsx", "csv"}
+MESSAGE_ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "webp"}
 
 def allowed_file(filename: str) -> bool:
     if not filename or "." not in filename:
         return False
     ext = filename.rsplit(".", 1)[1].lower()
     return ext in ALLOWED_EXTENSIONS
+
+def allowed_message_attachment(filename: str) -> bool:
+    if not filename or "." not in filename:
+        return False
+    ext = filename.rsplit(".", 1)[1].lower()
+    return ext in MESSAGE_ALLOWED_EXTENSIONS
 
 def format_datetime(value, format='%Y-%m-%d %H:%M:%S'):
     if not value:
@@ -180,6 +189,17 @@ def _static_image_data_uri(filename: str):
         return f"data:{mime};base64,{data}"
     except Exception:
         return None
+
+def _is_duplicate_message(sender_id, recipient_id, subject, body, seconds=45):
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=seconds)
+
+    return Message.query.filter(
+        Message.sender_id == sender_id,
+        Message.recipient_id == recipient_id,
+        func.lower(func.trim(Message.subject)) == (subject or "").strip().lower(),
+        func.lower(func.trim(Message.body)) == (body or "").strip().lower(),
+        Message.created_at >= cutoff
+    ).first()
 
 @admin_bp.route("/__routes")
 @admin_required()
@@ -591,7 +611,6 @@ def edit_rate(rate_id):
 def messages():
     form = BulkMessageForm()
 
-    # recipients for bulk send
     customers = (
         User.query
         .filter(User.role == "customer")
@@ -613,21 +632,59 @@ def messages():
             flash("Message can't be empty.", "warning")
             return redirect(url_for("admin.messages"))
 
+        files = request.files.getlist("attachments")
         recipients = User.query.filter(User.id.in_(ids)).all()
         now = datetime.now(timezone.utc)
 
+        sent_count = 0
+        dup_count = 0
+
+        from app.utils.cloudinary_storage import upload_package_attachment
+
         for u in recipients:
-            db.session.add(Message(
+            dup = _is_duplicate_message(current_user.id, u.id, subject, body)
+            if dup:
+                dup_count += 1
+                continue
+
+            msg = Message(
                 sender_id=current_user.id,
                 recipient_id=u.id,
                 subject=subject,
                 body=body,
-                thread_key=None,  # ✅ ALWAYS None (no threads)
+                thread_key=None,
                 is_read=False,
                 created_at=now,
-            ))
+            )
+            db.session.add(msg)
+            db.session.flush()
 
-            # email notify
+            for f in files:
+                if not f or not f.filename:
+                    continue
+
+                original = (f.filename or "").strip()
+                if not allowed_message_attachment(original):
+                    continue
+
+                try:
+                    f.stream.seek(0)
+                    url, public_id, rtype = upload_package_attachment(f)
+                except Exception:
+                    current_app.logger.exception("[ADMIN MESSAGE ATTACHMENT] upload failed")
+                    continue
+
+                if not url:
+                    continue
+
+                db.session.add(MessageAttachment(
+                    message_id=msg.id,
+                    file_url=url,
+                    original_name=original,
+                    cloud_public_id=public_id,
+                    cloud_resource_type=rtype,
+                ))
+
             if u.email:
                 send_bulk_message_email(
                     to_email=u.email,
@@ -637,12 +694,21 @@ def messages():
                     recipient_user_id=u.id,
                 )
 
+            sent_count += 1
+
         db.session.commit()
-        flash(f"Message + Email sent to {len(recipients)} customer(s).", "success")
+
+        if dup_count and sent_count:
+            flash(f"Sent to {sent_count} customer(s). Skipped {dup_count} duplicate message(s).", "success")
+        elif dup_count and not sent_count:
+            flash("All selected messages were blocked as duplicates.", "warning")
+        else:
+            flash(f"Message + Email sent to {sent_count} customer(s).", "success")
+
         return redirect(url_for("admin.messages", box="sent"))
 
-    # ---- Mailbox controls (Gmail-like) ----
-    box = (request.args.get("box") or "inbox").lower()   # inbox | sent | all
+    # ---- Mailbox controls ----
+    box = (request.args.get("box") or "inbox").lower()
     q = (request.args.get("q") or "").strip()
     unread_only = request.args.get("unread") == "1"
     include_archived = request.args.get("archived") == "1"
@@ -653,7 +719,6 @@ def messages():
 
     base = Message.query
 
-    # mailbox filter (this is the BIG Gmail feel)
     if box == "sent":
         base = base.filter(Message.sender_id == current_user.id)
     elif box == "all":
@@ -661,33 +726,27 @@ def messages():
             Message.sender_id == current_user.id,
             Message.recipient_id == current_user.id
         ))
-    else:  # inbox default
+    else:
         base = base.filter(Message.recipient_id == current_user.id)
 
-    # hide deleted for THIS admin
     base = base.filter(sa.and_(
         sa.or_(Message.sender_id != current_user.id, Message.deleted_by_sender.is_(False)),
         sa.or_(Message.recipient_id != current_user.id, Message.deleted_by_recipient.is_(False)),
     ))
 
-    # hide archived unless explicitly included
     if not include_archived:
         base = base.filter(sa.and_(
             sa.or_(Message.sender_id != current_user.id, Message.archived_by_sender.is_(False)),
             sa.or_(Message.recipient_id != current_user.id, Message.archived_by_recipient.is_(False)),
         ))
 
-    # unread only makes sense for inbox; if they click it in other boxes, it’ll just return none
     if unread_only:
         base = base.filter(
             Message.recipient_id == current_user.id,
             Message.is_read.is_(False)
         )
 
-    # Search: subject/body + other user's name/email
     if q:
-        # join "other user" safely depending on mailbox
-        # We'll just filter message content first (fast/simple)
         base = base.filter(sa.or_(
             Message.subject.ilike(f"%{q}%"),
             Message.body.ilike(f"%{q}%"),
@@ -698,7 +757,6 @@ def messages():
     pagination = base.paginate(page=page, per_page=per_page, error_out=False)
     messages_list = pagination.items
 
-    # for display: figure out "other user" + label from/to like Gmail
     rows = []
     for m in messages_list:
         is_sent = (m.sender_id == current_user.id)
@@ -721,7 +779,6 @@ def messages():
         include_archived=include_archived,
         per_page=per_page,
     )
-
 
 @admin_bp.route("/messages/<int:message_id>", methods=["GET"])
 @admin_required
@@ -769,23 +826,56 @@ def message_reply(message_id):
         return redirect(url_for("admin.message_detail", message_id=message_id))
 
     subject = (request.form.get("subject") or "").strip() or f"Re: {original.subject}"
-
-    # reply goes to the other party
     recipient_id = original.sender_id if original.sender_id != current_user.id else original.recipient_id
+
+    dup = _is_duplicate_message(current_user.id, recipient_id, subject, body)
+    if dup:
+        flash("Duplicate reply prevented.", "warning")
+        return redirect(url_for("admin.message_detail", message_id=message_id))
 
     msg = Message(
         sender_id=current_user.id,
         recipient_id=recipient_id,
         subject=subject,
         body=body,
-        thread_key=None,  # ✅ ALWAYS None
+        thread_key=None,
         is_read=False,
         created_at=datetime.now(timezone.utc),
     )
     db.session.add(msg)
+    db.session.flush()
+
+    files = request.files.getlist("attachments")
+    from app.utils.cloudinary_storage import upload_package_attachment
+
+    for f in files:
+        if not f or not f.filename:
+            continue
+
+        original_name = (f.filename or "").strip()
+        if not allowed_message_attachment(original_name):
+            continue
+
+        try:
+            f.stream.seek(0)
+            url, public_id, rtype = upload_package_attachment(f)
+        except Exception:
+            current_app.logger.exception("[ADMIN MESSAGE REPLY ATTACHMENT] upload failed")
+            continue
+
+        if not url:
+            continue
+
+        db.session.add(MessageAttachment(
+            message_id=msg.id,
+            file_url=url,
+            original_name=original_name,
+            cloud_public_id=public_id,
+            cloud_resource_type=rtype,
+        ))
+
     db.session.commit()
 
-    # Email notification to customer
     other = User.query.get(recipient_id)
     if other and other.email:
         preview = (body[:120] + "…") if len(body) > 120 else body
@@ -929,6 +1019,29 @@ def message_forward(message_id):
 
     return redirect(url_for("admin.message_detail", message_id=message_id))
 
+
+@admin_bp.route("/messages/attachments/<int:attachment_id>")
+@admin_required
+def view_message_attachment(attachment_id):
+    a = MessageAttachment.query.get_or_404(attachment_id)
+    m = a.message
+
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        abort(403)
+
+    return redirect(a.file_url)
+
+
+@admin_bp.route("/messages/attachments/<int:attachment_id>/download")
+@admin_required
+def download_message_attachment(attachment_id):
+    a = MessageAttachment.query.get_or_404(attachment_id)
+    m = a.message
+
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        abort(403)
+
+    return redirect(a.file_url)
 
 # -------------------------
 # BULK ACTION HELPERS

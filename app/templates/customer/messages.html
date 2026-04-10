@@ -160,7 +160,7 @@
         </div>
 
         <div class="card-body">
-          <form method="POST" action="{{ url_for('customer.view_messages', box=box, q=q, per_page=per_page) }}">
+          <form method="POST" action="{{ url_for('customer.view_messages', box=box, q=q, per_page=per_page) }}" enctype="multipart/form-data">
             {{ form.hidden_tag() }}
 
             <div class="mb-3">
@@ -177,6 +177,11 @@
               {% for e in form.body.errors %}
                 <div class="text-danger small">{{ e }}</div>
               {% endfor %}
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Attachments</label>
+              <input type="file" name="attachments" multiple class="form-control" accept=".pdf,.png,.jpg,.jpeg,.webp">
             </div>
 
             <button class="btn" type="submit" style="background:#4A148C; color:#fff;">

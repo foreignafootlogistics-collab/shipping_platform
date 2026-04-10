@@ -56,6 +56,7 @@ from app.models import (
     AuthorizedPickup, ScheduledDelivery,
     Notification,
     Message as DBMessage,  # 👈 avoid name clash with Flask-Mail
+    MessageAttachment,
     Wallet, WalletTransaction, Payment, Settings,
     Prealert, PackageAttachment,
 )
@@ -1567,6 +1568,17 @@ def invoice_pdf(invoice_id):
 # Messaging
 # -----------------------------
 
+def _is_duplicate_customer_message(sender_id, recipient_id, subject, body, seconds=45):
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=seconds)
+
+    return DBMessage.query.filter(
+        DBMessage.sender_id == sender_id,
+        DBMessage.recipient_id == recipient_id,
+        func.lower(func.trim(DBMessage.subject)) == (subject or "").strip().lower(),
+        func.lower(func.trim(DBMessage.body)) == (body or "").strip().lower(),
+        DBMessage.created_at >= cutoff
+    ).first()
+
 @customer_bp.route("/messages", methods=["GET", "POST"])
 @login_required
 def view_messages():
@@ -1581,7 +1593,7 @@ def view_messages():
         or User.query.order_by(User.id.asc()).first()
     )
 
-    # ---- Send new message to admin ----
+    # ---- Send new message to admin ----        
     if request.method == "POST" and form.validate_on_submit():
         if not admin:
             flash("No admin user found to receive messages.", "danger")
@@ -1594,18 +1606,53 @@ def view_messages():
             flash("Message can't be empty.", "warning")
             return redirect(url_for("customer.view_messages"))
 
+        dup = _is_duplicate_customer_message(current_user.id, admin.id, subject, body)
+        if dup:
+            flash("Duplicate message prevented.", "warning")
+            return redirect(url_for("customer.view_messages"))
+
         msg = DBMessage(
             sender_id=current_user.id,
             recipient_id=admin.id,
             subject=subject,
             body=body,
             is_read=False,
-            created_at=datetime.now(timezone.utc),  # ✅ timezone-aware UTC
+            created_at=datetime.now(timezone.utc),
         )
         db.session.add(msg)
+        db.session.flush()
+
+        files = request.files.getlist("attachments")
+        from app.utils.cloudinary_storage import upload_package_attachment
+
+        for f in files:
+            if not f or not f.filename:
+                continue
+
+            original_name = (f.filename or "").strip()
+            if not allowed_file(original_name):
+                continue
+
+            try:
+                f.stream.seek(0)
+                url, public_id, rtype = upload_package_attachment(f)
+            except Exception:
+                current_app.logger.exception("[CUSTOMER MESSAGE ATTACHMENT] upload failed")
+                continue
+
+            if not url:
+                continue
+
+            db.session.add(MessageAttachment(
+                message_id=msg.id,
+                file_url=url,
+                original_name=original_name,
+                cloud_public_id=public_id,
+                cloud_resource_type=rtype,
+            ))
+
         db.session.commit()
 
-        # Email notify admin (notification only)
         if admin.email:
             preview = (body[:120] + "…") if len(body) > 120 else body
             send_new_message_email(
@@ -1613,10 +1660,10 @@ def view_messages():
                 user_name=admin.full_name or "Admin",
                 message_subject=subject,
                 message_body=preview,
-                recipient_user_id=admin.id
+                recipient_user_id=admin.id,
             )
 
-        flash("Message sent!", "success")
+        flash("Message sent successfully.", "success")
         return redirect(url_for("customer.view_messages", box="sent"))
 
     # ---- Gmail-style mailbox controls ----
@@ -1705,9 +1752,8 @@ def customer_message_detail(msg_id):
 def customer_message_reply(msg_id):
     original = DBMessage.query.get_or_404(msg_id)
 
-    # ✅ Authorization
     if original.sender_id != current_user.id and original.recipient_id != current_user.id:
-        flash("Not authorized.", "danger")
+        flash("You do not have access to that message.", "danger")
         return redirect(url_for("customer.view_messages"))
 
     body = (request.form.get("body") or "").strip()
@@ -1715,11 +1761,13 @@ def customer_message_reply(msg_id):
         flash("Message can't be empty.", "warning")
         return redirect(url_for("customer.customer_message_detail", msg_id=msg_id))
 
-    subject = (request.form.get("subject") or "").strip() or f"Re: {original.subject or 'Message'}"
-
-    # reply goes to the other person
+    subject = (request.form.get("subject") or "").strip() or f"Re: {original.subject}"
     recipient_id = original.sender_id if original.sender_id != current_user.id else original.recipient_id
-    recipient = User.query.get(recipient_id)
+
+    dup = _is_duplicate_customer_message(current_user.id, recipient_id, subject, body)
+    if dup:
+        flash("Duplicate reply prevented.", "warning")
+        return redirect(url_for("customer.customer_message_detail", msg_id=msg_id))
 
     msg = DBMessage(
         sender_id=current_user.id,
@@ -1727,25 +1775,68 @@ def customer_message_reply(msg_id):
         subject=subject,
         body=body,
         is_read=False,
-        created_at=datetime.now(timezone.utc),  # ✅ timezone-aware UTC
+        created_at=datetime.now(timezone.utc),
     )
     db.session.add(msg)
-    db.session.commit()
+    db.session.flush()
 
-    # ✅ Email notify admin (or other recipient)
-    if recipient and recipient.email:
-        preview = (body[:120] + "…") if len(body) > 120 else body
-        send_new_message_email(
-            user_email=recipient.email,
-            user_name=recipient.full_name or "User",
-            message_subject=subject,
-            message_body=preview,
-            recipient_user_id=recipient.id
-        )
+    files = request.files.getlist("attachments")
+    from app.utils.cloudinary_storage import upload_package_attachment
+
+    for f in files:
+        if not f or not f.filename:
+            continue
+
+        original_name = (f.filename or "").strip()
+        if not allowed_file(original_name):
+            continue
+
+        try:
+            f.stream.seek(0)
+            url, public_id, rtype = upload_package_attachment(f)
+        except Exception:
+            current_app.logger.exception("[CUSTOMER MESSAGE REPLY ATTACHMENT] upload failed")
+            continue
+
+        if not url:
+            continue
+
+        db.session.add(MessageAttachment(
+            message_id=msg.id,
+            file_url=url,
+            original_name=original_name,
+            cloud_public_id=public_id,
+            cloud_resource_type=rtype,
+        ))
+
+    db.session.commit()
 
     flash("Reply sent.", "success")
     return redirect(url_for("customer.customer_message_detail", msg_id=msg.id))
 
+
+@customer_bp.route("/messages/attachments/<int:attachment_id>")
+@login_required
+def view_message_attachment(attachment_id):
+    a = MessageAttachment.query.get_or_404(attachment_id)
+    m = a.message
+
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        abort(403)
+
+    return redirect(a.file_url)
+
+
+@customer_bp.route("/messages/attachments/<int:attachment_id>/download")
+@login_required
+def download_message_attachment(attachment_id):
+    a = MessageAttachment.query.get_or_404(attachment_id)
+    m = a.message
+
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        abort(403)
+
+    return redirect(a.file_url)
 
 
 # -----------------------------

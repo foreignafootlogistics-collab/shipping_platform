@@ -292,7 +292,7 @@
           <i class="bi bi-megaphone me-2"></i> Send Bulk Message
         </div>
         <div class="card-body">
-          <form method="POST" action="{{ url_for('admin.messages') }}">
+          <form method="POST" action="{{ url_for('admin.messages') }}" enctype="multipart/form-data">
             {{ form.hidden_tag() }}
 
             <div class="mb-3">
@@ -339,6 +339,11 @@
               </div>
 
               {% for e in form.user_ids.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Attachments</label>
+              <input type="file" name="attachments" multiple class="form-control" accept=".pdf,.png,.jpg,.jpeg,.webp">
+              <div class="form-text">Allowed: PDF, PNG, JPG, JPEG, WEBP</div>
             </div>
 
             <div class="d-flex gap-2">

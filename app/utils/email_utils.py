@@ -184,6 +184,7 @@ def send_email_smtp(
     attachments: list[tuple[bytes, str, str]] | None = None,
     recipient_user_id: int | None = None,
     reply_to: str | None = None,
+    bcc: str | None = None,   # ✅ ADD THIS
 ) -> bool:
     """
     Original SMTP sender (kept for fallback).
@@ -294,6 +295,19 @@ def send_email_smtp(
     msg["From"] = EMAIL_FROM or EMAIL_ADDRESS
     msg["To"] = to_email
     msg["Subject"] = subject
+    # ✅ BCC support (internal copy)
+    all_recipients = [to_email]
+
+    if bcc:
+        if isinstance(bcc, str):
+            bcc_list = [x.strip() for x in bcc.split(",") if x.strip()]
+        else:
+            bcc_list = list(bcc)
+
+        all_recipients.extend(bcc_list)
+    else:
+        bcc_list = []
+
     if reply_to:
         msg["Reply-To"] = reply_to
 
@@ -357,14 +371,14 @@ def send_email_smtp(
                 with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=timeout, context=context) as smtp:
                     smtp.ehlo()
                     smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-                    smtp.send_message(msg)
+                    smtp.send_message(msg, to_addrs=all_recipients)
             else:
                 with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=timeout) as smtp:
                     smtp.ehlo()
                     smtp.starttls(context=context)
                     smtp.ehlo()
                     smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-                    smtp.send_message(msg)
+                    smtp.send_message(msg, to_addrs=all_recipients)
 
             print(f"✅ Email sent to {to_email}")            
 
@@ -406,6 +420,7 @@ def send_email(
     recipient_user_id: int | None = None,
     reply_to: str | None = None,
     force_new_connection: bool = False,  # kept for compat
+    bcc: str | None = None,
 ) -> bool:
     use_api = (os.getenv("USE_SENDGRID_API", "0").strip().lower() in ("1", "true", "yes", "on"))
     has_attachments = bool(attachments)
@@ -476,6 +491,7 @@ def send_email(
             from_name="Foreign A Foot Logistics Limited",
             reply_to=(reply_to or EMAIL_FROM or EMAIL_ADDRESS or "support@faflcourier.com"),
             category="customer-portal",
+            bcc=bcc,
         )        
 
         return ok
@@ -489,6 +505,7 @@ def send_email(
         attachments=attachments,
         recipient_user_id=recipient_user_id,
         reply_to=reply_to,
+        bcc=bcc,
     )
 
 
@@ -510,9 +527,9 @@ You can now log in at {DASHBOARD_URL} using your email and password.
 📦 Your U.S. Shipping Address:
 Air Standard
 {full_name}
-3200 NW 112th Ave
-KCDA-{reg_number} A
-Doral, Florida 33172
+559 NE 42nd St
+{reg_number} A
+Oakland Park, Florida, 33334
 
 Thank you for choosing us!
 
@@ -526,9 +543,9 @@ Thank you for choosing us!
 <p style="margin:0 0 10px 0;"><b>U.S. Shipping Address:</b><br>
 Air Standard<br>
 {full_name}<br>
-3200 NW 112th Ave<br>
-KCDA-{reg_number} A<br>
-Doral, Florida 33172</p>
+559 NE 42nd St<br>
+{reg_number} A<br>
+Oakland Park, Florida, 33334</p>
 
 <p style="margin:14px 0 0 0;">
   <a href="{DASHBOARD_URL}" style="background:#4A148C;color:#fff;padding:10px 18px;text-decoration:none;border-radius:6px;display:inline-block;">
@@ -544,6 +561,7 @@ Doral, Florida 33172</p>
         html_body=html_body,
         recipient_user_id=recipient_user_id,
         reply_to=EMAIL_FROM or EMAIL_ADDRESS,
+        bcc="foreignafootlogistics@gmail.com",
     )
 
 
@@ -1619,6 +1637,7 @@ def send_email_sendgrid_api(
     from_name: str = "Foreign A Foot Logistics Limited",
     reply_to: str = "support@faflcourier.com",
     category: str = "customer-portal",
+    bcc: str | None = None,
 ):
     """
     Send email using SendGrid Web API (bulk-friendly).
@@ -1658,6 +1677,7 @@ def send_email_sendgrid_api(
         "personalizations": [
             {
                 "to": [{"email": to_email}],
+                "bcc": [{"email": x.strip()} for x in (bcc.split(",") if bcc else []) if x.strip()],
                 "subject": (subject or "").strip(),
                 "custom_args": {"app": "fafl", "category": category},
             }

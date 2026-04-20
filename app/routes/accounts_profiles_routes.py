@@ -1743,7 +1743,7 @@ def update_wallet(id):
     flash(f"Wallet updated by {amount:+.2f}. New balance: {user.wallet_balance:.2f}", "success")
     return redirect(_back_to_view_user_url(id))
 
-@accounts_profiles.route("/view_user/<int:id>/messages/bulk-delete", methods=["POST"])
+@accounts_bp.route("/view_user/<int:id>/messages/bulk-delete", methods=["POST"])
 @admin_required
 def bulk_delete_user_messages(id):
     user = User.query.get_or_404(id)

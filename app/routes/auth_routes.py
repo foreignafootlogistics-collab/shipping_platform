@@ -129,12 +129,12 @@ def register():
                 referrer_code = None
 
         # --- Generate a unique referral code for this new user ---
-        new_ref_code = User.generate_referral_code(full_name)
+        new_ref_code = User.generate_referral_code()
         for _ in range(10):
             if not User.query.filter_by(referral_code=new_ref_code).first():
                 break
-            new_ref_code = User.generate_referral_code(full_name)
-
+            new_ref_code = User.generate_referral_code()
+        
         # --- Create the user record ---
         user = User(
             full_name=full_name,
@@ -143,7 +143,7 @@ def register():
             mobile=mobile,
             password=hashed_pw,
             registration_number=registration_number,
-            date_registered=now_dt,
+            date_registered=now_dt.strftime("%Y-%m-%d"),
             created_at=now_dt,
             role=role,
             wallet_balance=0,

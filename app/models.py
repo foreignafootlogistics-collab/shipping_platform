@@ -2,6 +2,7 @@
 import hashlib
 import random
 import string
+import secrets
 from datetime import datetime, timezone
 from flask_login import UserMixin
 from app.extensions import db
@@ -90,18 +91,15 @@ class User(db.Model, UserMixin):
         return f"<User {self.email}>"
 
     @staticmethod
-    def generate_referral_code(full_name: str) -> str:
+    def generate_referral_code(length: int = 8) -> str:
         """
-        Creates a referral code in the format:
-        FAFL-FIRSTNAME-1234
+        Generate a random referral code like:
+        9H253R75
         """
-        if not full_name:
-            base = "USER"
-        else:
-            base = full_name.split()[0].upper()  # first name only
+        import secrets
 
-        rand = str(random.randint(1000, 9999))
-        return f"FAFL-{base}-{rand}"
+        chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        return "".join(secrets.choice(chars) for _ in range(length))
 
 class Wallet(db.Model):
     __tablename__ = 'wallets'

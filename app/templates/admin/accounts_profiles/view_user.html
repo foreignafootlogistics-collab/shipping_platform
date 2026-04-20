@@ -987,6 +987,13 @@
                     title="Send message">
               <i class="bi bi-envelope"></i> Send
             </button>
+
+            <button type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    id="bulkDeleteMessagesBtn"
+                    disabled>
+             <i class="bi bi-trash"></i> Delete
+           </button>
           </div>
         </div>
 
@@ -994,6 +1001,9 @@
           <table id="messagesTable" class="table table-striped table-bordered">
             <thead class="table-dark">
               <tr>
+                <th class="text-center" style="width:38px;">
+                 <input type="checkbox" id="msgSelectAll">
+                </th>
                 <th>Subject</th>
                 <th>Message</th>
                 <th>Date Sent</th>
@@ -1002,17 +1012,29 @@
             <tbody>
               {% for msg in messages %}
               <tr>
+                <td class="text-center">
+                  <input type="checkbox" class="msg-check" value="{{ msg.id }}">
+                </td>
                 <td>{{ msg.subject or '' }}</td>
                 <td>{{ msg.body or '' }}</td>
                 <td>{{ msg.created_at or '' }}</td>
               </tr>
               {% else %}
               <tr>
-                <td colspan="3" class="text-center text-muted py-4">No messages found.</td>
+                <td colspan="4" class="text-center text-muted py-4">No messages found.</td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
+          <form id="bulkDeleteMessagesForm"
+                method="POST"
+                action="{{ url_for('accounts_profiles.bulk_delete_user_messages', id=user_id) }}"
+                class="d-none">
+
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div id="bulkDeleteMessagesInputs"></div>
+
+          </form>
         </div>
 
         <!-- Pagination footer -->
@@ -2365,6 +2387,70 @@
   </div> 
 
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const selectAll = document.getElementById("msgSelectAll");
+  const deleteBtn = document.getElementById("bulkDeleteMessagesBtn");
+  const form = document.getElementById("bulkDeleteMessagesForm");
+  const inputsHost = document.getElementById("bulkDeleteMessagesInputs");
+
+  function getChecks() {
+    return Array.from(document.querySelectorAll(".msg-check"));
+  }
+
+  function getSelected() {
+    return getChecks().filter(cb => cb.checked);
+  }
+
+  function updateState() {
+    const selected = getSelected();
+    if (deleteBtn) deleteBtn.disabled = selected.length === 0;
+
+    if (selectAll) {
+      const all = getChecks();
+      selectAll.checked = all.length > 0 && all.every(cb => cb.checked);
+      selectAll.indeterminate = all.some(cb => cb.checked) && !selectAll.checked;
+    }
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener("change", function () {
+      getChecks().forEach(cb => cb.checked = selectAll.checked);
+      updateState();
+    });
+  }
+
+  document.addEventListener("change", function (e) {
+    if (e.target.classList.contains("msg-check")) {
+      updateState();
+    }
+  });
+
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", function () {
+      const selected = getSelected();
+      if (!selected.length) return;
+
+      if (!confirm(`Delete ${selected.length} message(s)?`)) return;
+
+      inputsHost.innerHTML = "";
+
+      selected.forEach(cb => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "message_ids";
+        input.value = cb.value;
+        inputsHost.appendChild(input);
+      });
+
+      form.submit();
+    });
+  }
+
+  updateState();
+});
+</script>
 {% endblock %}
 
 {% block styles %}

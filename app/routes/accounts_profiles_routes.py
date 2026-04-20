@@ -1742,3 +1742,44 @@ def update_wallet(id):
 
     flash(f"Wallet updated by {amount:+.2f}. New balance: {user.wallet_balance:.2f}", "success")
     return redirect(_back_to_view_user_url(id))
+
+@accounts_profiles.route("/view_user/<int:id>/messages/bulk-delete", methods=["POST"])
+@admin_required
+def bulk_delete_user_messages(id):
+    user = User.query.get_or_404(id)
+
+    raw_ids = request.form.getlist("message_ids")
+    message_ids = [int(x) for x in raw_ids if str(x).isdigit()]
+
+    if not message_ids:
+        flash("No messages selected.", "warning")
+        return redirect(url_for("accounts_profiles.view_user", id=id, tab="messages"))
+
+    try:
+        msgs = (
+            Message.query
+            .filter(Message.id.in_(message_ids))
+            .all()
+        )
+
+        deleted_count = 0
+
+        for msg in msgs:
+            # safety: only delete messages that belong to this customer
+            if msg.sender_id == user.id or msg.recipient_id == user.id:
+                db.session.delete(msg)
+                deleted_count += 1
+
+        db.session.commit()
+
+        if deleted_count:
+            flash(f"{deleted_count} message(s) deleted successfully.", "success")
+        else:
+            flash("No matching messages were deleted.", "warning")
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error bulk deleting messages: {e}")
+        flash("An error occurred while deleting messages.", "danger")
+
+    return redirect(url_for("accounts_profiles.view_user", id=id, tab="messages"))

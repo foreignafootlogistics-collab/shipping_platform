@@ -8,26 +8,26 @@
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Merriweather&display=swap" rel="stylesheet" />
 
-  <!-- Shared CSS file -->
+  <!-- Shared CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/register.css') }}">
 </head>
 <body>
 
 <div class="main-container">
 
-  <!-- Left: Image -->
+  <!-- LEFT IMAGE -->
   <div class="image-side">
     <img src="{{ url_for('static', filename='shipping_box.png') }}" alt="Shipping Box" />
   </div>
 
-  <!-- Right: Registration Form -->
+  <!-- RIGHT FORM -->
   <div class="form-side">
     <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="logo" />
     <p class="slogan">Delivering the world to you!</p>
 
     <h2>Register</h2>
 
-    <!-- Flash messages -->
+    <!-- FLASH MESSAGES -->
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
@@ -36,11 +36,11 @@
       {% endif %}
     {% endwith %}
 
-    <!-- WTForms validation errors -->
+    <!-- WTForms ERRORS -->
     {% if form.errors %}
       <div class="alert alert-danger">
         <ul style="margin: 0; padding-left: 18px;">
-          {% for field_name, errors in form.errors.items() %}
+          {% for field, errors in form.errors.items() %}
             {% for error in errors %}
               <li>{{ error }}</li>
             {% endfor %}
@@ -52,34 +52,44 @@
     <form method="POST" action="{{ url_for('auth.register') }}">
       {{ form.hidden_tag() }}
 
+      <!-- FULL NAME -->
       <label for="full_name">Full Name</label>
       {{ form.full_name(class="form-control", id="full_name", placeholder="Your Full Name") }}
 
+      <!-- EMAIL -->
       <label for="email">Email Address</label>
       {{ form.email(class="form-control", id="email", placeholder="you@example.com") }}
 
+      <!-- MOBILE -->
       <label for="mobile">Phone Number</label>
-      {{ form.mobile(class="form-control", id="mobile", placeholder="+1 234 567 890") }}
+      {{ form.mobile(class="form-control", id="mobile", placeholder="+1 876 000 0000") }}
 
+      <!-- TRN -->
       <label for="trn">TRN</label>
       {{ form.trn(class="form-control", id="trn", placeholder="Tax Registration Number") }}
 
+      <!-- PASSWORD -->
       <label for="register-password">Password</label>
       {{ form.password(class="form-control", id="register-password", placeholder="Create Password") }}
 
+      <!-- CONFIRM PASSWORD -->
+      <label for="confirm-password">Confirm Password</label>
+      {{ form.confirm(class="form-control", id="confirm-password", placeholder="Confirm Password") }}
+
+      <!-- REFERRAL -->
       <label for="referrer_code">Referral Code (Optional)</label>
       {{ form.referrer_code(class="form-control", id="referrer_code", placeholder="Enter referral code if any") }}
 
-      <label class="show-password" for="toggle-register-password">
+      <!-- SHOW PASSWORD -->
+      <label class="show-password">
         <input
           type="checkbox"
-          id="toggle-register-password"
-          onclick="togglePassword('register-password')"
+          onclick="togglePassword('register-password'); togglePassword('confirm-password');"
         />
         Show Password
       </label>
 
-      <!-- Terms & Privacy Policy Checkbox -->
+      <!-- TERMS -->
       <div class="form-check my-3">
         <input
           class="form-check-input"
@@ -96,12 +106,15 @@
         </label>
       </div>
 
+      <!-- SUBMIT -->
       <button type="submit">Register</button>
     </form>
 
+    <!-- LOGIN LINK -->
     <div class="links">
       <a href="{{ url_for('auth.login') }}">Already have an account? Login</a>
     </div>
+
   </div>
 </div>
 

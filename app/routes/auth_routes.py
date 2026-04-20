@@ -17,20 +17,19 @@ from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.forms import RegisterForm, LoginForm  # Import your FlaskForm classes
+from app.forms import RegisterForm, LoginForm
 from app.utils import email_utils
 from app.utils import next_registration_number
 from app.utils import apply_referral_bonus, update_wallet
 from app.models import User, Message as DBMessage
 
 
-
 auth_bp = Blueprint("auth", __name__, template_folder="../templates")
+
 
 # -------------------------------------------------
 # In-app system messaging helpers
 # -------------------------------------------------
-
 def _system_sender_user():
     """
     Pick a sender for system messages.
@@ -60,6 +59,7 @@ def _log_in_app_message(recipient_id: int, subject: str, body: str):
     )
     db.session.add(msg)
 
+
 # ------------------------
 # Register
 # ------------------------
@@ -71,11 +71,18 @@ def register():
     referrer_code = None
     if request.method == "GET":
         referrer_code = (request.args.get("ref") or "").strip() or None
+        if referrer_code and hasattr(form, "referrer_code"):
+            form.referrer_code.data = referrer_code
 
-    if referrer_code and hasattr(form, "referrer_code"):
-        form.referrer_code.data = referrer_code
+    is_valid_submit = form.validate_on_submit()
 
-    if form.validate_on_submit():
+    # Debug failed POST submissions
+    if request.method == "POST" and not is_valid_submit:
+        print("POST /register hit")
+        print("request.form =", request.form)
+        print("form.errors =", form.errors)
+
+    if is_valid_submit:
         # --- Check if user agreed to Terms & Privacy Policy ---
         terms_checked = request.form.get("termsCheck")
         if not terms_checked:
@@ -85,11 +92,11 @@ def register():
             )
             return render_template("auth/register.html", form=form)
 
-        full_name = form.full_name.data.strip()
-        email = form.email.data.strip()
-        trn = form.trn.data.strip()
-        mobile = form.mobile.data.strip()
-        password = form.password.data.strip()
+        full_name = (form.full_name.data or "").strip()
+        email = (form.email.data or "").strip().lower()
+        trn = (form.trn.data or "").strip()
+        mobile = (form.mobile.data or "").strip()
+        password = (form.password.data or "").strip()
 
         # Override referral code from form if provided
         if hasattr(form, "referrer_code") and form.referrer_code.data:
@@ -102,13 +109,13 @@ def register():
         now_dt = datetime.utcnow()
         role = "customer"
 
-        # --- Duplicate checks (email, TRN) via SQLAlchemy ---
+        # --- Duplicate checks ---
         if User.query.filter_by(email=email).first():
-            flash("Email already exists", "danger")
+            flash("Email already exists.", "danger")
             return render_template("auth/register.html", form=form)
 
         if User.query.filter_by(trn=trn).first():
-            flash("TRN already exists", "danger")
+            flash("TRN already exists.", "danger")
             return render_template("auth/register.html", form=form)
 
         # --- Resolve referrer (if any) ---
@@ -119,7 +126,7 @@ def register():
                 referrer_id = ref_user.id
             else:
                 flash("Invalid referral code provided.", "warning")
-                referrer_code = None  # treat as invalid
+                referrer_code = None
 
         # --- Generate a unique referral code for this new user ---
         new_ref_code = User.generate_referral_code(full_name)
@@ -128,14 +135,13 @@ def register():
                 break
             new_ref_code = User.generate_referral_code(full_name)
 
-
-        # --- Create the user record via SQLAlchemy ---
+        # --- Create the user record ---
         user = User(
             full_name=full_name,
             email=email,
             trn=trn,
             mobile=mobile,
-            password=hashed_pw,  # bytes
+            password=hashed_pw,
             registration_number=registration_number,
             date_registered=now_dt,
             created_at=now_dt,
@@ -148,15 +154,21 @@ def register():
         try:
             db.session.add(user)
             db.session.commit()
-        except IntegrityError:
+        except IntegrityError as e:
             db.session.rollback()
+            print(f"IntegrityError during registration: {e}")
             flash("An unexpected database error occurred.", "danger")
+            return render_template("auth/register.html", form=form)
+        except Exception as e:
+            db.session.rollback()
+            print(f"Unexpected registration error: {e}")
+            flash("An unexpected error occurred while creating your account.", "danger")
             return render_template("auth/register.html", form=form)
 
         user_id = user.id
 
         # -------------------------
-        # Log welcome message in-app ✅ (shows in Customer Messages + Admin View User)
+        # Log welcome message in-app
         # -------------------------
         welcome_subject = "Welcome to FAFL Courier"
         welcome_body = (
@@ -170,10 +182,11 @@ def register():
         try:
             _log_in_app_message(user.id, welcome_subject, welcome_body)
             db.session.commit()
-        except Exception:
+        except Exception as e:
             db.session.rollback()
+            print(f"Error logging welcome message: {e}")
 
-        # Apply referral bonus logic (if valid code + referrer)
+        # Apply referral bonus logic
         if referrer_code and referrer_id:
             try:
                 apply_referral_bonus(user_id, referrer_code)
@@ -183,7 +196,9 @@ def register():
         # Send welcome email
         try:
             email_utils.send_welcome_email(
-                email=email, full_name=full_name, reg_number=registration_number
+                email=email,
+                full_name=full_name,
+                reg_number=registration_number,
             )
         except Exception as e:
             print(f"Error sending welcome email: {e}")
@@ -195,8 +210,9 @@ def register():
         try:
             user.last_login = datetime.utcnow()
             db.session.commit()
-        except Exception:
+        except Exception as e:
             db.session.rollback()
+            print(f"Error updating last_login: {e}")
 
         flash("Registration successful! Welcome aboard.", "success")
         return redirect(url_for("customer.customer_dashboard"))

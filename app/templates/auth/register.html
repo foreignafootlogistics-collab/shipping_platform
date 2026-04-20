@@ -7,7 +7,7 @@
 
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Merriweather&display=swap" rel="stylesheet" />
-  
+
   <!-- Shared CSS file -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/register.css') }}">
 </head>
@@ -36,42 +36,68 @@
       {% endif %}
     {% endwith %}
 
+    <!-- WTForms validation errors -->
+    {% if form.errors %}
+      <div class="alert alert-danger">
+        <ul style="margin: 0; padding-left: 18px;">
+          {% for field_name, errors in form.errors.items() %}
+            {% for error in errors %}
+              <li>{{ error }}</li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
     <form method="POST" action="{{ url_for('auth.register') }}">
-  {{ form.hidden_tag() }}
+      {{ form.hidden_tag() }}
 
-  <label for="full_name">Full Name</label>
-  {{ form.full_name(class="form-control", id="full_name", placeholder="Your Full Name") }}
+      <label for="full_name">Full Name</label>
+      {{ form.full_name(class="form-control", id="full_name", placeholder="Your Full Name") }}
 
-  <label for="email">Email Address</label>
-  {{ form.email(class="form-control", id="email", placeholder="you@example.com") }}
+      <label for="email">Email Address</label>
+      {{ form.email(class="form-control", id="email", placeholder="you@example.com") }}
 
-  <label for="mobile">Phone Number</label>
-  {{ form.mobile(class="form-control", id="mobile", placeholder="+1 234 567 890") }}
+      <label for="mobile">Phone Number</label>
+      {{ form.mobile(class="form-control", id="mobile", placeholder="+1 234 567 890") }}
 
-  <label for="trn">TRN</label>
-  {{ form.trn(class="form-control", id="trn", placeholder="Tax Registration Number") }}
+      <label for="trn">TRN</label>
+      {{ form.trn(class="form-control", id="trn", placeholder="Tax Registration Number") }}
 
-  <label for="password">Password</label>
-  {{ form.password(class="form-control", id="register-password", placeholder="Create Password") }}
+      <label for="register-password">Password</label>
+      {{ form.password(class="form-control", id="register-password", placeholder="Create Password") }}
 
-  <label for="referrer_code">Referral Code (Optional)</label>
-  {{ form.referrer_code(class="form-control", id="referrer_code", placeholder="Enter referral code if any") }}
+      <label for="referrer_code">Referral Code (Optional)</label>
+      {{ form.referrer_code(class="form-control", id="referrer_code", placeholder="Enter referral code if any") }}
 
-  <label class="show-password" for="toggle-register-password">
-    <input type="checkbox" id="toggle-register-password" onclick="togglePassword('register-password')" />
-    Show Password
-  </label>
-  <!-- Terms & Privacy Policy Checkbox -->
-  <div class="form-check my-3">
-    <input class="form-check-input" type="checkbox" id="termsCheck" name="termsCheck" required>
-    <label class="form-check-label" for="termsCheck">
-      I agree to the 
-      <a href="{{ url_for('customer.terms') }}" target="_blank">Terms & Conditions</a> and 
-      <a href="{{ url_for('customer.privacy') }}" target="_blank">Privacy Policy</a>
-    </label>
-  </div>
-  <button type="submit">Register</button>
-</form>
+      <label class="show-password" for="toggle-register-password">
+        <input
+          type="checkbox"
+          id="toggle-register-password"
+          onclick="togglePassword('register-password')"
+        />
+        Show Password
+      </label>
+
+      <!-- Terms & Privacy Policy Checkbox -->
+      <div class="form-check my-3">
+        <input
+          class="form-check-input"
+          type="checkbox"
+          id="termsCheck"
+          name="termsCheck"
+          required
+        >
+        <label class="form-check-label" for="termsCheck">
+          I agree to the
+          <a href="{{ url_for('customer.terms') }}" target="_blank">Terms & Conditions</a>
+          and
+          <a href="{{ url_for('customer.privacy') }}" target="_blank">Privacy Policy</a>
+        </label>
+      </div>
+
+      <button type="submit">Register</button>
+    </form>
 
     <div class="links">
       <a href="{{ url_for('auth.login') }}">Already have an account? Login</a>
@@ -82,6 +108,7 @@
 <script>
   function togglePassword(id) {
     const input = document.getElementById(id);
+    if (!input) return;
     input.type = input.type === 'password' ? 'text' : 'password';
   }
 </script>

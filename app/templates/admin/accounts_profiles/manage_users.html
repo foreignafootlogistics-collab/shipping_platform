@@ -243,7 +243,7 @@
               <td>{{ user.registration_number }}</td>
               <td>{{ user.email }}</td>
               <td>{{ user.mobile }}</td>
-              <td>{{ user.date_registered or 'N/A' }}</td>
+              <td>{{ user.date_registered[:10] if user.date_registered else 'N/A' }}</td>
               <td>
                 {% if user.unpaid_count > 0 %}
                   <span class="badge bg-danger">{{ user.unpaid_count }}</span>

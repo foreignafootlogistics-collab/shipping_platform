@@ -171,17 +171,29 @@ def checkout():
             Package.user_id == user.id,
             Package.id.in_(package_ids)
         )
+        .order_by(Package.created_at.asc())
         .all()
     )
 
     print("POS CHECKOUT DB PACKAGE COUNT:", len(packages))
     for p in packages:
-        print("POS CHECKOUT PKG:", p.id, p.status, p.is_locked, p.user_id)
+        print(
+            "POS CHECKOUT PKG:",
+            p.id,
+            p.status,
+            p.is_locked,
+            p.user_id,
+            "invoice_id=",
+            p.invoice_id
+        )
 
     if not packages:
         print("POS CHECKOUT FAIL: no valid packages found")
         return jsonify({"ok": False, "error": "No valid packages found."}), 400
 
+    # -----------------------------
+    # Validate selected packages
+    # -----------------------------
     invalid = []
     total = Decimal("0.00")
 
@@ -204,48 +216,144 @@ def checkout():
         return jsonify({"ok": False, "error": " ".join(invalid)}), 400
 
     try:
-        invoice = Invoice(
-            user_id=user.id,
-            invoice_number=f"POS-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            amount=float(total),
-            amount_due=0,
-            grand_total=float(total),
-            status="paid",
-            date_issued=datetime.now(timezone.utc),
-            date_paid=datetime.now(timezone.utc),
-            description=notes or "POS checkout"
-        )
-        db.session.add(invoice)
-        db.session.flush()
+        now_utc = datetime.now(timezone.utc)
 
-        payment = Payment(
-            user_id=user.id,
-            invoice_id=invoice.id,
-            method=payment_method,
-            amount_jmd=float(total),
-            transaction_type="invoice_payment",
-            status="completed",
-            notes=notes or "POS payment",
-            source="admin"
-        )
-        db.session.add(payment)
+        # --------------------------------------------
+        # Split into:
+        # 1) already invoiced packages
+        # 2) packages with no invoice yet
+        # --------------------------------------------
+        existing_invoice_groups = {}
+        uninvoiced_packages = []
 
         for p in packages:
-            p.status = "Delivered"
-            p.is_locked = True
-            
+            if p.invoice_id:
+                existing_invoice_groups.setdefault(p.invoice_id, []).append(p)
+            else:
+                uninvoiced_packages.append(p)
+
+        created_invoice_ids = []
+        created_payment_ids = []
+
+        # --------------------------------------------
+        # A. Pay EXISTING invoices
+        # --------------------------------------------
+        for invoice_id, pkg_list in existing_invoice_groups.items():
+            invoice = Invoice.query.get(invoice_id)
+            if not invoice:
+                db.session.rollback()
+                return jsonify({
+                    "ok": False,
+                    "error": f"Invoice {invoice_id} not found for selected package(s)."
+                }), 400
+
+            group_total = Decimal("0.00")
+            for p in pkg_list:
+                group_total += _package_charge_amount(p)
+
+            print("POS EXISTING INVOICE:", invoice.id, invoice.invoice_number, "GROUP TOTAL:", group_total)
+
+            payment = Payment(
+                user_id=user.id,
+                invoice_id=invoice.id,
+                method=payment_method.title(),
+                amount_jmd=float(group_total),
+                transaction_type="invoice_payment",
+                status="completed",
+                notes=notes or "POS payment",
+                source="admin"
+            )
+            db.session.add(payment)
+            db.session.flush()
+            created_payment_ids.append(payment.id)
+
+            # Reduce balance on the existing invoice
+            current_due = Decimal(str(invoice.amount_due or 0))
+            new_due = current_due - group_total
+            if new_due < Decimal("0.00"):
+                new_due = Decimal("0.00")
+
+            invoice.amount_due = float(new_due)
+
+            if new_due == Decimal("0.00"):
+                invoice.status = "paid"
+                invoice.date_paid = now_utc
+            else:
+                invoice.status = "unpaid"
+
+            # Mark selected packages as delivered/locked
+            for p in pkg_list:
+                p.status = "Delivered"
+                p.is_locked = True
+
+        # --------------------------------------------
+        # B. Create POS invoice ONLY for uninvoiced packages
+        # --------------------------------------------
+        if uninvoiced_packages:
+            new_invoice_total = Decimal("0.00")
+            new_invoice_weight = Decimal("0.00")
+
+            for p in uninvoiced_packages:
+                new_invoice_total += _package_charge_amount(p)
+                try:
+                    new_invoice_weight += Decimal(str(p.weight or 0))
+                except Exception:
+                    pass
+
+            pos_invoice = Invoice(
+                user_id=user.id,
+                invoice_number=f"POS-{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
+                description=notes or f"POS checkout for {len(uninvoiced_packages)} package(s)",
+                total_weight=float(new_invoice_weight),
+                amount=float(new_invoice_total),
+                amount_due=0.0,
+                grand_total=float(new_invoice_total),
+                date_issued=now_utc,
+                date_paid=now_utc,
+                created_at=now_utc,
+                status="paid"
+            )
+            db.session.add(pos_invoice)
+            db.session.flush()
+            created_invoice_ids.append(pos_invoice.id)
+
+            pos_payment = Payment(
+                user_id=user.id,
+                invoice_id=pos_invoice.id,
+                method=payment_method.title(),
+                amount_jmd=float(new_invoice_total),
+                transaction_type="invoice_payment",
+                status="completed",
+                notes=notes or "POS payment",
+                source="admin"
+            )
+            db.session.add(pos_payment)
+            db.session.flush()
+            created_payment_ids.append(pos_payment.id)
+
+            for p in uninvoiced_packages:
+                p.invoice_id = pos_invoice.id
+                p.status = "Delivered"
+                p.is_locked = True
+
         db.session.commit()
-        print("POS CHECKOUT SUCCESS:", invoice.id, payment.id)
+
+        print("POS CHECKOUT SUCCESS")
+        print("CREATED INVOICE IDS:", created_invoice_ids)
+        print("CREATED PAYMENT IDS:", created_payment_ids)
 
         return jsonify({
             "ok": True,
             "message": "Checkout completed successfully.",
-            "invoice_id": invoice.id,
-            "payment_id": payment.id,
+            "invoice_ids": created_invoice_ids,
+            "payment_ids": created_payment_ids,
             "total": str(total),
         })
 
     except Exception as e:
         db.session.rollback()
         print("POS CHECKOUT EXCEPTION:", str(e))
-        return jsonify({"ok": False, "error": f"Checkout failed: {str(e)}"}), 500
+        return jsonify({
+            "ok": False,
+            "error": f"Checkout failed: {str(e)}"
+        }), 500

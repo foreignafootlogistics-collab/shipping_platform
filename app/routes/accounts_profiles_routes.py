@@ -1748,6 +1748,7 @@ def update_wallet(id):
 def bulk_delete_user_messages(id):
     user = User.query.get_or_404(id)
 
+    print("FORM DATA:", request.form)
     raw_ids = request.form.getlist("message_ids")
     print("RAW IDS:", raw_ids)
 

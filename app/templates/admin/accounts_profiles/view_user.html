@@ -2391,8 +2391,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const deleteBtn = document.getElementById("bulkDeleteMessagesBtn");
   const form = document.getElementById("bulkDeleteMessagesForm");
 
-  if (!deleteBtn || !form) return;
-
   function getChecks() {
     return Array.from(document.querySelectorAll(".msg-check"));
   }
@@ -2403,7 +2401,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function updateState() {
     const selected = getSelected();
-    deleteBtn.disabled = selected.length === 0;
+
+    if (deleteBtn) deleteBtn.disabled = selected.length === 0;
 
     if (selectAll) {
       const all = getChecks();
@@ -2414,7 +2413,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
   if (selectAll) {
     selectAll.addEventListener("change", function () {
-      getChecks().forEach(cb => cb.checked = selectAll.checked);
+      getChecks().forEach(cb => {
+        cb.checked = selectAll.checked;
+      });
       updateState();
     });
   }
@@ -2425,29 +2426,32 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  deleteBtn.addEventListener("click", function () {
-    const selected = getSelected();
-    if (!selected.length) {
-      alert("Select at least one message.");
-      return;
-    }
+  if (deleteBtn && form) {
+    deleteBtn.addEventListener("click", function (e) {
+      e.preventDefault();
 
-    if (!confirm(`Delete ${selected.length} message(s)?`)) return;
+      const selected = getSelected();
+      if (!selected.length) {
+        alert("Select at least one message.");
+        return;
+      }
 
-    form.querySelectorAll('input[name="message_ids"]').forEach(el => el.remove());
+      if (!confirm(`Delete ${selected.length} message(s)?`)) return;
 
-    selected.forEach(cb => {
-      if (!cb.value) return;
+      form.querySelectorAll('input[name="message_ids"]').forEach(el => el.remove());
 
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = "message_ids";
-      input.value = cb.value;
-      form.appendChild(input);
+      selected.forEach(cb => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "message_ids";
+        input.value = cb.value;
+        form.appendChild(input);
+      });
+
+      console.log("Submitting message IDs:", selected.map(cb => cb.value));
+      form.submit();
     });
-
-    form.submit();
-  });
+  }
 
   updateState();
 });

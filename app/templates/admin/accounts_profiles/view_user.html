@@ -1030,10 +1030,7 @@
                 method="POST"
                 action="{{ url_for('accounts_profiles.bulk_delete_user_messages', id=user_id) }}"
                 class="d-none">
-
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div id="bulkDeleteMessagesInputs"></div>
-
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">          
           </form>
         </div>
 
@@ -2393,7 +2390,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const selectAll = document.getElementById("msgSelectAll");
   const deleteBtn = document.getElementById("bulkDeleteMessagesBtn");
   const form = document.getElementById("bulkDeleteMessagesForm");
-  const inputsHost = document.getElementById("bulkDeleteMessagesInputs");
+  
 
   function getChecks() {
     return Array.from(document.querySelectorAll(".msg-check"));
@@ -2434,14 +2431,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
       if (!confirm(`Delete ${selected.length} message(s)?`)) return;
 
-      inputsHost.innerHTML = "";
+      form.querySelectorAll('input[name="message_ids"]').forEach(el => el.remove());
 
       selected.forEach(cb => {
         const input = document.createElement("input");
         input.type = "hidden";
         input.name = "message_ids";
         input.value = cb.value;
-        inputsHost.appendChild(input);
+        form.appendChild(input);
       });
 
       form.submit();

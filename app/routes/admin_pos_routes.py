@@ -233,8 +233,7 @@ def checkout():
         for p in packages:
             p.status = "Delivered"
             p.is_locked = True
-            p.invoice_id = invoice.id
-
+            
         db.session.commit()
         print("POS CHECKOUT SUCCESS:", invoice.id, payment.id)
 

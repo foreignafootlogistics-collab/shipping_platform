@@ -1749,7 +1749,10 @@ def bulk_delete_user_messages(id):
     user = User.query.get_or_404(id)
 
     raw_ids = request.form.getlist("message_ids")
+    print("RAW IDS:", raw_ids)
+
     message_ids = [int(x) for x in raw_ids if str(x).isdigit()]
+    print("PARSED IDS:", message_ids)
 
     if not message_ids:
         flash("No messages selected.", "warning")
@@ -1761,10 +1764,13 @@ def bulk_delete_user_messages(id):
             .filter(Message.id.in_(message_ids))
             .all()
         )
+        print("FOUND MSG IDS:", [m.id for m in msgs])
 
         deleted_count = 0
 
         for msg in msgs:
+            print("CHECKING MSG:", msg.id, "sender:", msg.sender_id, "recipient:", msg.recipient_id)
+
             # safety: only delete messages that belong to this customer
             if msg.sender_id == user.id or msg.recipient_id == user.id:
                 db.session.delete(msg)

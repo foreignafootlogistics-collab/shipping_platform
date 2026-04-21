@@ -144,28 +144,36 @@ customerSearch.addEventListener("input", function () {
   }
 
   searchTimer = setTimeout(async () => {
-    const resp = await fetch(`/admin/pos/search-customers?q=${encodeURIComponent(q)}`);
-    const rows = await resp.json();
+    try {
+      const resp = await fetch(`/admin/pos/search-customers?q=${encodeURIComponent(q)}`, {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin"
+      });
 
-    customerResults.innerHTML = "";
+      const rows = await resp.json();
+      customerResults.innerHTML = "";
 
-    if (!rows.length) {
-      customerResults.innerHTML = `<div class="list-group-item text-muted">No customers found</div>`;
-      return;
+      if (!rows.length) {
+        customerResults.innerHTML = `<div class="list-group-item text-muted">No customers found</div>`;
+        return;
+      }
+
+      rows.forEach(row => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "list-group-item list-group-item-action";
+        btn.innerHTML = `
+          <div class="fw-semibold">${row.name || "Customer"}</div>
+          <div class="small text-muted">${row.email || ""}</div>
+          <div class="small text-muted">${row.registration_number || ""}</div>
+        `;
+        btn.addEventListener("click", () => chooseCustomer(row));
+        customerResults.appendChild(btn);
+      });
+    } catch (err) {
+      console.error("POS customer search failed:", err);
+      customerResults.innerHTML = `<div class="list-group-item text-danger">Search failed</div>`;
     }
-
-    rows.forEach(row => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "list-group-item list-group-item-action";
-      btn.innerHTML = `
-        <div class="fw-semibold">${row.name}</div>
-        <div class="small text-muted">${row.email}</div>
-        <div class="small text-muted">${row.registration_number}</div>
-      `;
-      btn.addEventListener("click", () => chooseCustomer(row));
-      customerResults.appendChild(btn);
-    });
   }, 300);
 });
 
@@ -190,39 +198,51 @@ async function loadPackages(userId) {
     </tr>
   `;
 
-  const resp = await fetch(`/admin/pos/customer/${userId}/packages`);
-  const data = await resp.json();
+  try {
+    const resp = await fetch(`/admin/pos/customer/${userId}/packages`, {
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      credentials: "same-origin"
+    });
 
-  loadedPackages = data.packages || [];
+    const data = await resp.json();
+    loadedPackages = data.packages || [];
 
-  if (!loadedPackages.length) {
+    if (!loadedPackages.length) {
+      packagesTableBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">No eligible packages found</td>
+        </tr>
+      `;
+      updateSummary();
+      return;
+    }
+
+    packagesTableBody.innerHTML = loadedPackages.map(pkg => `
+      <tr>
+        <td>
+          <input type="checkbox" class="pkg-check" value="${pkg.id}">
+        </td>
+        <td>${pkg.tracking_number || ""}</td>
+        <td>${pkg.house_awb || ""}</td>
+        <td>${pkg.description || ""}</td>
+        <td>${pkg.status || ""}</td>
+        <td class="text-end">${formatMoney(pkg.amount_due)}</td>
+      </tr>
+    `).join("");
+
+    document.querySelectorAll(".pkg-check").forEach(cb => {
+      cb.addEventListener("change", updateSummary);
+    });
+
+    updateSummary();
+  } catch (err) {
+    console.error("POS package load failed:", err);
     packagesTableBody.innerHTML = `
       <tr>
-        <td colspan="6" class="text-center text-muted py-4">No eligible packages found</td>
+        <td colspan="6" class="text-center text-danger py-4">Failed to load packages</td>
       </tr>
     `;
-    updateSummary();
-    return;
   }
-
-  packagesTableBody.innerHTML = loadedPackages.map(pkg => `
-    <tr>
-      <td>
-        <input type="checkbox" class="pkg-check" value="${pkg.id}">
-      </td>
-      <td>${pkg.tracking_number || ""}</td>
-      <td>${pkg.house_awb || ""}</td>
-      <td>${pkg.description || ""}</td>
-      <td>${pkg.status || ""}</td>
-      <td class="text-end">${formatMoney(pkg.amount_due)}</td>
-    </tr>
-  `).join("");
-
-  document.querySelectorAll(".pkg-check").forEach(cb => {
-    cb.addEventListener("change", updateSummary);
-  });
-
-  updateSummary();
 }
 
 selectAllPackages.addEventListener("change", function () {
@@ -254,7 +274,6 @@ checkoutBtn.addEventListener("click", async function () {
   if (!selectedCustomer) return;
 
   const package_ids = getSelectedPackageIds();
-
   if (!package_ids.length) return;
 
   checkoutBtn.disabled = true;
@@ -265,11 +284,11 @@ checkoutBtn.addEventListener("click", async function () {
     const resp = await fetch("/admin/pos/checkout", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
         "X-Requested-With": "XMLHttpRequest",
-        "X-CSRFToken": getCSRFToken()
+        "X-CSRFToken": (typeof getCSRFToken === "function" ? getCSRFToken() : "")
       },
-      credentials: "same-origin",      
+      credentials: "same-origin",
       body: JSON.stringify({
         user_id: selectedCustomer.id,
         package_ids,
@@ -297,6 +316,7 @@ checkoutBtn.addEventListener("click", async function () {
     await loadPackages(selectedCustomer.id);
     selectAllPackages.checked = false;
   } catch (err) {
+    console.error("POS checkout failed:", err);
     checkoutMessage.innerHTML = `<div class="alert alert-danger">Something went wrong.</div>`;
   }
 

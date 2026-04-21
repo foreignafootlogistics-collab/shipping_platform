@@ -135,23 +135,32 @@ def customer_packages(user_id):
         "packages": rows,
         "total": str(total)
     })
+
 @admin_pos_bp.route("/checkout", methods=["POST"])
 @admin_required
 def checkout():
     data = request.get_json(silent=True) or {}
+    print("POS CHECKOUT RAW DATA:", data)
 
     user_id = data.get("user_id")
     package_ids = data.get("package_ids") or []
     payment_method = (data.get("payment_method") or "").strip().lower()
     notes = (data.get("notes") or "").strip()
 
+    print("POS CHECKOUT USER ID:", user_id)
+    print("POS CHECKOUT PACKAGE IDS:", package_ids)
+    print("POS CHECKOUT PAYMENT METHOD:", payment_method)
+
     if not user_id:
+        print("POS CHECKOUT FAIL: missing user_id")
         return jsonify({"ok": False, "error": "Customer is required."}), 400
 
     if not package_ids:
+        print("POS CHECKOUT FAIL: no package_ids")
         return jsonify({"ok": False, "error": "Select at least one package."}), 400
 
     if payment_method not in {"cash", "card", "transfer"}:
+        print("POS CHECKOUT FAIL: invalid payment_method")
         return jsonify({"ok": False, "error": "Invalid payment method."}), 400
 
     user = User.query.get_or_404(user_id)
@@ -165,14 +174,19 @@ def checkout():
         .all()
     )
 
+    print("POS CHECKOUT DB PACKAGE COUNT:", len(packages))
+    for p in packages:
+        print("POS CHECKOUT PKG:", p.id, p.status, p.is_locked, p.user_id)
+
     if not packages:
+        print("POS CHECKOUT FAIL: no valid packages found")
         return jsonify({"ok": False, "error": "No valid packages found."}), 400
 
     invalid = []
     total = Decimal("0.00")
 
     for p in packages:
-        if p.status not in ["Ready for Pick Up", "Received at Local Port"]:
+        if p.status != "Ready for Pick Up":
             invalid.append(f"Package {p.id} is not ready for checkout.")
             continue
 
@@ -182,53 +196,47 @@ def checkout():
 
         total += _package_charge_amount(p)
 
+    print("POS CHECKOUT INVALID:", invalid)
+    print("POS CHECKOUT TOTAL:", total)
+
     if invalid:
+        print("POS CHECKOUT FAIL: invalid packages")
         return jsonify({"ok": False, "error": " ".join(invalid)}), 400
 
     try:
-        # Create invoice
         invoice = Invoice(
             user_id=user.id,
-            amount=total,
-            amount_due=Decimal("0.00"),
+            invoice_number=f"POS-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            amount=float(total),
+            amount_due=0,
+            grand_total=float(total),
             status="paid",
             date_issued=datetime.now(timezone.utc),
             date_paid=datetime.now(timezone.utc),
-            notes=notes or "POS checkout"
+            description=notes or "POS checkout"
         )
         db.session.add(invoice)
         db.session.flush()
 
-        # Create payment
         payment = Payment(
             user_id=user.id,
-            amount=total,
-            payment_method=payment_method,
-            created_at=datetime.now(timezone.utc)
+            invoice_id=invoice.id,
+            method=payment_method,
+            amount_jmd=float(total),
+            transaction_type="invoice_payment",
+            status="completed",
+            notes=notes or "POS payment",
+            source="admin"
         )
-
-        # Optional fields if your model has them
-        if hasattr(payment, "invoice_id"):
-            payment.invoice_id = invoice.id
-        if hasattr(payment, "notes"):
-            payment.notes = notes or "POS payment"
-        if hasattr(payment, "recorded_by"):
-            payment.recorded_by = current_user.id
-        if hasattr(payment, "received_by"):
-            payment.received_by = current_user.id
-
         db.session.add(payment)
-        db.session.flush()
 
-        # Update packages
         for p in packages:
             p.status = "Delivered"
             p.is_locked = True
-
-            if hasattr(p, "invoice_id"):
-                p.invoice_id = invoice.id
+            p.invoice_id = invoice.id
 
         db.session.commit()
+        print("POS CHECKOUT SUCCESS:", invoice.id, payment.id)
 
         return jsonify({
             "ok": True,
@@ -240,4 +248,5 @@ def checkout():
 
     except Exception as e:
         db.session.rollback()
+        print("POS CHECKOUT EXCEPTION:", str(e))
         return jsonify({"ok": False, "error": f"Checkout failed: {str(e)}"}), 500

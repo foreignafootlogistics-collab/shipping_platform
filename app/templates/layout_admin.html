@@ -229,6 +229,17 @@
           </div>
         </div>
 
+        {# ---- POS ---- #}
+        {% set is_pos = request.blueprint == 'admin_pos' or request.path.startswith('/admin/pos') %}
+        <div class="accordion-item border-0">
+          <h2 class="accordion-header">
+            <a href="{{ url_for('admin_pos.index') }}"
+               class="nav-link text-white {% if is_pos %}active{% endif %}">
+              <i class="bi bi-credit-card me-2"></i> POS
+            </a>
+          </h2>
+        </div>
+
         {# ---- Finance (accordion) ---- #}
         {% set is_finance = request.blueprint == 'finance' or request.path.startswith('/finance') %}
         <div class="accordion-item border-0">

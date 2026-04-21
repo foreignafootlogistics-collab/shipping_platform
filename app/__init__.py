@@ -448,6 +448,8 @@ def create_app():
     from app.routes.customer_claims import customer_claims_bp
     from app.routes.customer_package_search import customer_search_bp
     from app.routes.admin_package_search import admin_search_bp
+    from app.routes.admin_pos_routes import admin_pos_bp
+
 
     app.register_blueprint(customer_bp, url_prefix='/customer')
     app.register_blueprint(admin_bp, url_prefix='/admin')
@@ -470,6 +472,7 @@ def create_app():
     app.register_blueprint(customer_claims_bp)
     app.register_blueprint(customer_search_bp)
     app.register_blueprint(admin_search_bp)
+    app.register_blueprint(admin_pos_bp)
 
     app.jinja_env.filters["to_jamaica"] = to_jamaica
 

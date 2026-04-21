@@ -80,16 +80,33 @@ def search_customers():
 def customer_packages(user_id):
     user = User.query.get_or_404(user_id)
 
+    all_user_packages = (
+        Package.query
+        .filter(Package.user_id == user.id)
+        .order_by(Package.created_at.asc())
+        .all()
+    )
+
     packages = (
         Package.query
         .filter(
             Package.user_id == user.id,
-            Package.status.in_(["Ready for Pick Up", "Received at Local Port"]),
+            Package.status == "Ready for Pick Up",
             Package.is_locked.is_(False)
         )
         .order_by(Package.created_at.asc())
         .all()
     )
+
+    print("ALL USER PACKAGES:", len(all_user_packages))
+    for p in all_user_packages:
+        print("ALL PKG:", p.id, p.status, p.is_locked, p.user_id)
+
+    print("POS PACKAGE LOAD USER:", user_id)
+    print("POS PACKAGE COUNT:", len(packages))
+
+    for p in packages:
+        print("PKG:", p.id, p.status, p.is_locked, p.user_id)
 
     rows = []
     total = Decimal("0.00")
@@ -102,7 +119,7 @@ def customer_packages(user_id):
             "id": p.id,
             "tracking_number": p.tracking_number or "",
             "house_awb": p.house_awb or "",
-            "description": p.description or getattr(p, "category", "") or "",
+            "description": p.description or p.category or "",
             "weight": str(p.weight or ""),
             "status": p.status or "",
             "amount_due": str(charge),
@@ -111,15 +128,13 @@ def customer_packages(user_id):
     return jsonify({
         "customer": {
             "id": user.id,
-            "name": f"{(user.first_name or '').strip()} {(user.last_name or '').strip()}".strip() or user.email,
+            "name": (user.full_name or "").strip() or user.email or "Customer",
             "email": user.email or "",
-            "registration_number": getattr(user, "registration_number", "") or "",
+            "registration_number": user.registration_number or "",
         },
         "packages": rows,
         "total": str(total)
     })
-
-
 @admin_pos_bp.route("/checkout", methods=["POST"])
 @admin_required
 def checkout():

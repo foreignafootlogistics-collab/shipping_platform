@@ -1252,16 +1252,24 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
         )
 
         rows_html.append(f"""
-<tr>
-  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee;">{shipper}</td>
-  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee;">{awb}</td>
-  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee;">{track}</td>
-  <td style="padding:8px; border:1px solid #eee; text-align:center;">{w_up}</td>
-  <td style="padding:8px 10px; font-size:13px; border:1px solid #eee; color:#16a34a; font-weight:700;">
-    Ready for Pickup/Delivery
-  </td>
-</tr>
-""")
+        <tr>
+          <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+            {shipper}
+          </td>
+          <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+            {awb}
+          </td>
+          <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+            {track}
+          </td>
+          <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; text-align:center; white-space:nowrap;">
+            {w_up}
+          </td>
+          <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; color:#16a34a; font-weight:700; word-break:break-word; overflow-wrap:anywhere;">
+            Ready for Pickup/Delivery
+          </td>
+        </tr>
+        """)
 
     plain_body = (
         f"Hi {full_name},\n\n"
@@ -1281,42 +1289,50 @@ def compose_ready_pickup_email(full_name: str, packages: Iterable[dict]):
     )
 
     html_body = f"""
-<h2 style="color:#4a148c; margin:0 0 12px 0;">Great news—your package(s) are ready!</h2>
+    <h2 style="color:#4a148c; margin:0 0 12px 0;">Great news—your package(s) are ready!</h2>
 
-<p style="margin:0 0 10px 0;">We’ve prepared the following item(s) for pickup or delivery:</p>
+    <p style="margin:0 0 10px 0;">We’ve prepared the following item(s) for pickup or delivery:</p>
 
-<div style="display:block; width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; margin:12px 0;">
-  <table cellpadding="0" cellspacing="0"
-         style="width:100%; border-collapse:collapse; min-width:720px; table-layout:fixed;">
-    <thead>
-      <tr style="background:#f3ecff; color:#4a148c;">
-        <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:left;">Shipper</th>
-        <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:left;">Airway Bill</th>
-        <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:left;">Tracking #</th>
-        <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:center;">Weight (lbs)</th>
-        <th style="padding:8px 10px; font-size:13px; border:1px solid #eee; text-align:left;">Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      {''.join(rows_html) if rows_html else '<tr><td colspan="5" style="padding:8px 10px; font-size:13px; border:1px solid #eee;">No package details</td></tr>'}
-    </tbody>
-  </table>
-</div>
+    <table cellpadding="0" cellspacing="0" width="100%"
+           style="border-collapse:collapse; width:100%; table-layout:fixed; background:#ffffff;">
+      <thead>
+        <tr style="background:#f3ecff; color:#4a148c;">
+          <th width="24%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+            Shipper
+          </th>
+          <th width="20%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+            Airway Bill
+          </th>
+          <th width="28%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+            Tracking #
+          </th>
+          <th width="12%" style="padding:6px 6px; font-size:11.5px; text-align:center; border:1px solid #eee; white-space:nowrap;">
+            Wt
+          </th>
+          <th width="16%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+            Status
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {''.join(rows_html) if rows_html else '<tr><td colspan="5" style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; color:#6b7280;">No package details</td></tr>'}
+      </tbody>
+    </table>
 
-<div style="margin-top:14px;">
-  <p style="margin:0 0 6px 0;"><strong>Pickup Location:</strong> Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</p>
-  <p style="margin:0 0 6px 0;"><strong>Hours:</strong> Mon–Sat, 9:00 AM – 6:00 PM</p>
-  <p style="margin:0;"><strong>Contact:</strong> (876) 560-7764 · foreignafootlogistics@gmail.com</p>
-</div>
+    <div style="margin-top:14px;">
+      <p style="margin:0 0 6px 0;"><strong>Pickup Location:</strong> Unit 7, Lot C22, Cedar Manor Gregory Park P.O. St. Catherine</p>
+      <p style="margin:0 0 6px 0;"><strong>Hours:</strong> Mon–Sat, 9:00 AM – 6:00 PM</p>
+      <p style="margin:0;"><strong>Contact:</strong> (876) 560-7764 · foreignafootlogistics@gmail.com</p>
+    </div>
 
-<div style="margin-top:18px; text-align:center;">
-  <a href="{DELIVERY_URL}"
-     style="display:inline-block; background:#4a148c; color:#ffffff; padding:12px 20px;
-            text-decoration:none; border-radius:6px; font-weight:700;">
-    🚚 Schedule Delivery
-  </a>
-</div>
-""".strip()
+    <div style="margin-top:18px; text-align:center;">
+      <a href="{DELIVERY_URL}"
+         style="display:inline-block; background:#4a148c; color:#ffffff; padding:12px 20px;
+                text-decoration:none; border-radius:6px; font-weight:700;">
+        🚚 Schedule Delivery
+      </a>
+    </div>
+    """.strip()
 
     return subject, plain_body, html_body
 

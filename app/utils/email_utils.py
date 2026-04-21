@@ -1673,15 +1673,20 @@ def send_email_sendgrid_api(
 
     list_unsub = f"<mailto:{reply_to}?subject=Unsubscribe>"
 
+    personalization = {
+        "to": [{"email": to_email}],
+        "subject": (subject or "").strip(),
+        "custom_args": {"app": "fafl", "category": category},
+    }
+
+    # Only include BCC when it is actually provided
+    if bcc:
+        bcc_list = [{"email": x.strip()} for x in bcc.split(",") if x.strip()]
+        if bcc_list:
+            personalization["bcc"] = bcc_list
+
     payload = {
-        "personalizations": [
-            {
-                "to": [{"email": to_email}],
-                "bcc": [{"email": x.strip()} for x in (bcc.split(",") if bcc else []) if x.strip()],
-                "subject": (subject or "").strip(),
-                "custom_args": {"app": "fafl", "category": category},
-            }
-        ],
+        "personalizations": [personalization],
         "from": {"email": resolved_from_email, "name": from_name},
         "reply_to": {"email": reply_to, "name": "FAFL Support"},
         "headers": {"List-Unsubscribe": list_unsub},
@@ -1710,7 +1715,6 @@ def send_email_sendgrid_api(
             print(f"✅ SendGrid API sent to {to_email}")
             return True
 
-        # IMPORTANT: if auth fails, DO NOT keep retrying in your bulk script
         if r.status_code in (401, 403):
             print(f"❌ SendGrid AUTH error {r.status_code}: {r.text}")
             return False
@@ -1723,5 +1727,3 @@ def send_email_sendgrid_api(
         print(f"❌ SendGrid API exception for {to_email}: {e}")
         print(traceback.format_exc())
         return False
-
-

@@ -52,14 +52,13 @@ def search_customers():
         User.query
         .filter(
             or_(
-                User.first_name.ilike(f"%{q}%"),
-                User.last_name.ilike(f"%{q}%"),
+                User.full_name.ilike(f"%{q}%"),
                 User.email.ilike(f"%{q}%"),
+                User.mobile.ilike(f"%{q}%"),
                 User.registration_number.ilike(f"%{q}%"),
-                User.phone.ilike(f"%{q}%")
             )
         )
-        .order_by(User.first_name.asc(), User.last_name.asc())
+        .order_by(User.full_name.asc(), User.email.asc())
         .limit(20)
         .all()
     )
@@ -68,14 +67,13 @@ def search_customers():
     for u in users:
         rows.append({
             "id": u.id,
-            "name": f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip() or u.email,
+            "name": (u.full_name or "").strip() or u.email or "Customer",
             "email": u.email or "",
-            "registration_number": getattr(u, "registration_number", "") or "",
-            "phone": getattr(u, "phone", "") or "",
+            "registration_number": u.registration_number or "",
+            "phone": u.mobile or "",
         })
 
     return jsonify(rows)
-
 
 @admin_pos_bp.route("/customer/<int:user_id>/packages", methods=["GET"])
 @admin_required

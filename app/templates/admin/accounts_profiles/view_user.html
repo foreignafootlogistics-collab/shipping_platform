@@ -2431,6 +2431,9 @@ document.addEventListener("DOMContentLoaded", function () {
       e.preventDefault();
 
       const selected = getSelected();
+
+      console.log("Selected checkboxes:", selected.map(cb => cb.value));
+
       if (!selected.length) {
         alert("Select at least one message.");
         return;
@@ -2448,7 +2451,11 @@ document.addEventListener("DOMContentLoaded", function () {
         form.appendChild(input);
       });
 
-      console.log("Submitting message IDs:", selected.map(cb => cb.value));
+      console.log(
+        "Hidden inputs before submit:",
+        Array.from(form.querySelectorAll('input[name="message_ids"]')).map(i => i.value)
+      );
+
       form.submit();
     });
   }

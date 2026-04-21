@@ -266,7 +266,10 @@ checkoutBtn.addEventListener("click", async function () {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": getCSRFToken()
       },
+      credentials: "same-origin",      
       body: JSON.stringify({
         user_id: selectedCustomer.id,
         package_ids,

@@ -2390,7 +2390,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const selectAll = document.getElementById("msgSelectAll");
   const deleteBtn = document.getElementById("bulkDeleteMessagesBtn");
   const form = document.getElementById("bulkDeleteMessagesForm");
-  
+
+  if (!deleteBtn || !form) return;
 
   function getChecks() {
     return Array.from(document.querySelectorAll(".msg-check"));
@@ -2402,7 +2403,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function updateState() {
     const selected = getSelected();
-    if (deleteBtn) deleteBtn.disabled = selected.length === 0;
+    deleteBtn.disabled = selected.length === 0;
 
     if (selectAll) {
       const all = getChecks();
@@ -2424,26 +2425,29 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  if (deleteBtn) {
-    deleteBtn.addEventListener("click", function () {
-      const selected = getSelected();
-      if (!selected.length) return;
+  deleteBtn.addEventListener("click", function () {
+    const selected = getSelected();
+    if (!selected.length) {
+      alert("Select at least one message.");
+      return;
+    }
 
-      if (!confirm(`Delete ${selected.length} message(s)?`)) return;
+    if (!confirm(`Delete ${selected.length} message(s)?`)) return;
 
-      form.querySelectorAll('input[name="message_ids"]').forEach(el => el.remove());
+    form.querySelectorAll('input[name="message_ids"]').forEach(el => el.remove());
 
-      selected.forEach(cb => {
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = "message_ids";
-        input.value = cb.value;
-        form.appendChild(input);
-      });
+    selected.forEach(cb => {
+      if (!cb.value) return;
 
-      form.submit();
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "message_ids";
+      input.value = cb.value;
+      form.appendChild(input);
     });
-  }
+
+    form.submit();
+  });
 
   updateState();
 });
@@ -3854,5 +3858,7 @@ document.addEventListener("DOMContentLoaded", function () {
     pkgSelect.addEventListener("change", fillClaimPackageFields);
   }
 });
+
+
 </script>
 {% endblock %}

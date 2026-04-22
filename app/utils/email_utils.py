@@ -510,8 +510,6 @@ def send_email(
 
 
 def send_tax_exemption_email(user_email, full_name, recipient_user_id=None):
-    from flask import url_for
-
     certificate_url = f"{DASHBOARD_URL}/customer/tax-certificate"
 
     subject = "Save Money on Amazon (Tax Exemption Available)"
@@ -523,16 +521,15 @@ You can now shop on Amazon without paying U.S. sales tax when shipping to our wa
 
 Steps:
 1. Download your tax certificate
-2. Go to the Amazon Tax Exemption page
-3. Select Florida and click Save and Continue
-4. Select Other as the exemption type and click Save and Continue
-5. Upload the certificate
-6. Agree to the terms and submit
+2. Log in to your Amazon account
+3. In the Amazon search bar, search for Amazon Tax Exemption Program
+4. Open Tax Exemption Wizard
+5. Select Florida and click Save and Continue
+6. Select Other as the exemption type and click Save and Continue
+7. Upload the certificate
+8. Agree to the terms and submit
 
 Amazon will review your submission within about 24 hours.
-
-Start here:
-https://tax-exemption.amazon.com/wizard/exemptionStates
 
 Download your certificate:
 {certificate_url}
@@ -547,25 +544,24 @@ Download your certificate:
 You can use our tax exemption certificate for Amazon purchases shipped to our warehouse.
 </p>
 
-<ol style="margin:0 0 14px 18px;">
+<p style="margin:0 0 12px 0;">
+Follow these steps:
+</p>
+
+<ol style="margin:0 0 14px 18px; line-height:1.7;">
   <li>Download your tax certificate</li>
-  <li>Click the button below to start</li>
+  <li>Log in to your Amazon account</li>
+  <li>In the Amazon search bar, search for <strong>Amazon Tax Exemption Program</strong></li>
+  <li>Open <strong>Tax Exemption Wizard</strong></li>
   <li>Select <strong>Florida</strong> and click <strong>Save and Continue</strong></li>
-  <li>Select <strong>Other</strong> as the exemption type</li>
+  <li>Select <strong>Other</strong> as the exemption type and click <strong>Save and Continue</strong></li>
   <li>Upload the certificate</li>
   <li>Agree to the terms and submit</li>
 </ol>
 
 <p style="margin:14px 0;">
-  <a href="https://tax-exemption.amazon.com/wizard/exemptionStates" 
-     style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
-    Start Amazon Tax Exemption
-  </a>
-</p>
-
-<p style="margin:14px 0;">
   <a href="{certificate_url}" 
-     style="color:#4A148C;text-decoration:none;">
+     style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
     Download Tax Certificate
   </a>
 </p>
@@ -583,7 +579,6 @@ Amazon usually reviews submissions within about <strong>24 hours</strong>.
         recipient_user_id=recipient_user_id,
         reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )
-
 # ==========================================================
 #  WELCOME EMAIL (BODY ONLY)
 # ==========================================================

@@ -523,19 +523,19 @@ You can now shop on Amazon without paying U.S. sales tax when shipping to our wa
 
 Steps:
 1. Download your tax certificate
-2. Open the Amazon Tax Exemption Program page
-3. Click Tax Exemption Wizard
-4. Select Florida and click Save and Continue
-5. Select Other as the exemption type and click Save and Continue
-6. Choose the downloaded certificate file
-7. Agree to the terms and click Upload
-8. Amazon will confirm the upload was successful and review may take up to 24 hours
+2. Go to the Amazon Tax Exemption page
+3. Select Florida and click Save and Continue
+4. Select Other as the exemption type and click Save and Continue
+5. Upload the certificate
+6. Agree to the terms and submit
 
-Download your certificate here:
+Amazon will review your submission within about 24 hours.
+
+Start here:
+https://tax-exemption.amazon.com/wizard/exemptionStates
+
+Download your certificate:
 {certificate_url}
-
-Amazon link:
-https://www.amazon.com/gp/help/customer/display.html?nodeId=G2UQTL5CHRCZA7BL
 
 — Foreign A Foot Logistics
 """.strip()
@@ -549,27 +549,29 @@ You can use our tax exemption certificate for Amazon purchases shipped to our wa
 
 <ol style="margin:0 0 14px 18px;">
   <li>Download your tax certificate</li>
-  <li>Open the Amazon Tax Exemption Program page</li>
-  <li>Click <strong>Tax Exemption Wizard</strong></li>
+  <li>Click the button below to start</li>
   <li>Select <strong>Florida</strong> and click <strong>Save and Continue</strong></li>
-  <li>Select <strong>Other</strong> as the exemption type and click <strong>Save and Continue</strong></li>
-  <li>Choose the downloaded certificate file</li>
-  <li>Agree to the terms and click <strong>Upload</strong></li>
-  <li>Amazon will confirm the upload was successful. Review may take up to <strong>24 hours</strong></li>
+  <li>Select <strong>Other</strong> as the exemption type</li>
+  <li>Upload the certificate</li>
+  <li>Agree to the terms and submit</li>
 </ol>
 
 <p style="margin:14px 0;">
-  <a href="{certificate_url}" 
+  <a href="https://tax-exemption.amazon.com/wizard/exemptionStates" 
      style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
+    Start Amazon Tax Exemption
+  </a>
+</p>
+
+<p style="margin:14px 0;">
+  <a href="{certificate_url}" 
+     style="color:#4A148C;text-decoration:none;">
     Download Tax Certificate
   </a>
 </p>
 
-<p style="margin:0;">
-  <a href="https://www.amazon.com/gp/help/customer/display.html?nodeId=G2UQTL5CHRCZA7BL"
-     style="color:#4A148C;text-decoration:none;">
-    Open Amazon Tax Exemption Program
-  </a>
+<p style="margin-top:10px;">
+Amazon usually reviews submissions within about <strong>24 hours</strong>.
 </p>
 """.strip()
 

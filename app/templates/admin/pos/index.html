@@ -246,12 +246,44 @@ function updateSummary() {
 
 function findPackageByScan(scanValue) {
   const normalized = normalizeScanValue(scanValue);
+  if (!normalized) return null;
 
-  return loadedPackages.find(pkg => {
+  // 1. exact match first
+  let exactMatches = loadedPackages.filter(pkg => {
     const tracking = normalizeScanValue(pkg.tracking_number);
     const houseAwb = normalizeScanValue(pkg.house_awb);
-    return normalized && (normalized === tracking || normalized === houseAwb);
+    return normalized === tracking || normalized === houseAwb;
   });
+
+  if (exactMatches.length === 1) return exactMatches[0];
+  if (exactMatches.length > 1) return null;
+
+  // 2. ends-with match next
+  let endsWithMatches = loadedPackages.filter(pkg => {
+    const tracking = normalizeScanValue(pkg.tracking_number);
+    const houseAwb = normalizeScanValue(pkg.house_awb);
+    return (
+      (tracking && tracking.endsWith(normalized)) ||
+      (houseAwb && houseAwb.endsWith(normalized))
+    );
+  });
+
+  if (endsWithMatches.length === 1) return endsWithMatches[0];
+  if (endsWithMatches.length > 1) return null;
+
+  // 3. contains match only if unique
+  let containsMatches = loadedPackages.filter(pkg => {
+    const tracking = normalizeScanValue(pkg.tracking_number);
+    const houseAwb = normalizeScanValue(pkg.house_awb);
+    return (
+      (tracking && tracking.includes(normalized)) ||
+      (houseAwb && houseAwb.includes(normalized))
+    );
+  });
+
+  if (containsMatches.length === 1) return containsMatches[0];
+
+  return null;
 }
 
 function checkPackageById(packageId) {

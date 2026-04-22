@@ -62,6 +62,20 @@
             margin: 2px 0;
         }
 
+        .print-btn-wrap {
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .print-btn {
+            border: 1px solid #000;
+            background: #fff;
+            padding: 6px 10px;
+            font-family: monospace;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
         @media print {
             html, body {
                 width: 80mm;
@@ -72,11 +86,19 @@
             body {
                 padding: 6px;
             }
+
+            .print-btn-wrap {
+                display: none !important;
+            }
         }
     </style>
 </head>
 
 <body>
+
+    <div class="print-btn-wrap">
+        <button class="print-btn" onclick="window.print()">Print Receipt</button>
+    </div>
 
     <div class="center">
         <strong>Foreign A Foot Logistics</strong><br>

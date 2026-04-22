@@ -364,7 +364,7 @@ printReceiptBtn.addEventListener("click", function () {
   if (!lastCheckoutInvoiceIds.length) return;
 
   const invoiceId = lastCheckoutInvoiceIds[0];
-  window.open(`/admin/pos/invoice/${invoiceId}/receipt`, "_blank");
+  window.open(`/admin/pos/invoice/${invoiceId}/receipt?print=1`, "_blank");
 });
 
 emailReceiptBtn.addEventListener("click", async function () {

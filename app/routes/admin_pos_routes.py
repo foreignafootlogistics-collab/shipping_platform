@@ -308,7 +308,7 @@ def checkout():
 @admin_required
 def invoice_receipt(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
-    return redirect(url_for("admin.proforma_invoice_modal", invoice_id=inv.id))
+    return render_template("admin/pos/receipt_print.html", invoice=inv)
 
 
 @admin_pos_bp.route("/invoice/<int:invoice_id>/email-receipt", methods=["POST"])

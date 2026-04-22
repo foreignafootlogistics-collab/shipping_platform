@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Receipt {{ invoice.invoice_number }}</title>
+
+    <style>
+        body {
+            font-family: monospace;
+            width: 280px; /* works for 80mm printers */
+            margin: 0 auto;
+            padding: 10px;
+            font-size: 12px;
+            color: #000;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .line {
+            border-top: 1px dashed #000;
+            margin: 8px 0;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .small {
+            font-size: 11px;
+        }
+
+        @media print {
+            body {
+                width: 280px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="center">
+        <strong>Foreign A Foot Logistics</strong><br>
+        <span class="small">Portmore, Jamaica</span><br>
+        <span class="small">876-560-7764</span>
+    </div>
+
+    <div class="line"></div>
+
+    <div class="small">
+        Invoice: {{ invoice.invoice_number }}<br>
+        Date: {{ (invoice.date_paid or invoice.created_at).strftime('%Y-%m-%d %H:%M') if invoice.created_at else '' }}<br>
+        Customer: {{ invoice.user.full_name if invoice.user else '' }}
+    </div>
+
+    <div class="line"></div>
+
+    <div class="row small">
+        <strong>Tracking</strong>
+        <strong>JMD</strong>
+    </div>
+
+    {% for p in invoice.packages %}
+    <div class="row small">
+        <span>{{ p.tracking_number or "—" }}</span>
+        <span>{{ "%.0f"|format(p.grand_total or p.amount_due or 0) }}</span>
+    </div>
+    {% endfor %}
+
+    <div class="line"></div>
+
+    <div class="row">
+        <strong>Total</strong>
+        <strong>{{ "%.0f"|format(invoice.grand_total or 0) }}</strong>
+    </div>
+
+    <div class="row small">
+        <span>Paid</span>
+        <span>{{ "%.0f"|format(invoice.amount or invoice.grand_total or 0) }}</span>
+    </div>
+
+    <div class="row small">
+        <span>Balance</span>
+        <span>{{ "%.0f"|format(invoice.amount_due or 0) }}</span>
+    </div>
+
+    <div class="line"></div>
+
+    <div class="center small">
+        Thank you!<br>
+        Goods received ✔
+    </div>
+
+    <script>
+        window.onload = function () {
+            window.print();
+        };
+    </script>
+
+</body>
+</html>

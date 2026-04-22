@@ -1,13 +1,15 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from flask import Blueprint, render_template, request, jsonify, flash, redirect, url_for
-from flask_login import current_user
+from flask import Blueprint, render_template, request, jsonify, url_for, redirect
 from sqlalchemy import or_
 
 from app.extensions import db
 from app.models import User, Package, Invoice, Payment
 from app.routes.admin_auth_routes import admin_required
+
+# use your real helper import here if different
+from app.utils.email_utils import send_email
 
 admin_pos_bp = Blueprint("admin_pos", __name__, url_prefix="/admin/pos")
 
@@ -22,10 +24,6 @@ def _to_decimal(value, default="0.00"):
 
 
 def _package_charge_amount(pkg):
-    """
-    Prefer grand_total if present, otherwise amount_due.
-    Adjust this if your system uses a different final field.
-    """
     total = getattr(pkg, "grand_total", None)
     if total not in (None, "", 0, "0"):
         return _to_decimal(total)
@@ -99,6 +97,10 @@ def customer_packages(user_id):
         charge = _package_charge_amount(p)
         total += charge
 
+        invoice_number = ""
+        if p.invoice_id and p.invoice:
+            invoice_number = p.invoice.invoice_number or ""
+
         rows.append({
             "id": p.id,
             "tracking_number": p.tracking_number or "",
@@ -107,6 +109,8 @@ def customer_packages(user_id):
             "weight": str(p.weight or ""),
             "status": p.status or "",
             "amount_due": str(charge),
+            "invoice_id": p.invoice_id,
+            "invoice_number": invoice_number,
         })
 
     return jsonify({
@@ -184,12 +188,10 @@ def checkout():
             else:
                 uninvoiced_packages.append(p)
 
-        created_invoice_ids = []
+        checkout_invoice_ids = []
         created_payment_ids = []
 
-        # -------------------------
-        # A. Pay EXISTING invoices
-        # -------------------------
+        # A. Pay existing invoices
         for invoice_id, pkg_list in existing_invoice_groups.items():
             invoice = Invoice.query.get(invoice_id)
             if not invoice:
@@ -214,6 +216,8 @@ def checkout():
                 source="admin"
             )
             db.session.add(payment)
+            db.session.flush()
+            created_payment_ids.append(payment.id)
 
             current_due = Decimal(str(invoice.amount_due or 0))
             new_due = current_due - group_total
@@ -228,13 +232,13 @@ def checkout():
             else:
                 invoice.status = "unpaid"
 
+            checkout_invoice_ids.append(invoice.id)
+
             for p in pkg_list:
                 p.status = "Delivered"
                 p.is_locked = True
 
-        # -------------------------
-        # B. POS invoice for new packages
-        # -------------------------
+        # B. Create POS invoice only for uninvoiced packages
         if uninvoiced_packages:
             new_total = Decimal("0.00")
             new_weight = Decimal("0.00")
@@ -261,7 +265,8 @@ def checkout():
             )
             db.session.add(pos_invoice)
             db.session.flush()
-            created_invoice_ids.append(pos_invoice.id)
+
+            checkout_invoice_ids.append(pos_invoice.id)
 
             pos_payment = Payment(
                 user_id=user.id,
@@ -287,7 +292,7 @@ def checkout():
         return jsonify({
             "ok": True,
             "message": "Checkout completed successfully.",
-            "invoice_ids": created_invoice_ids,
+            "invoice_ids": checkout_invoice_ids,
             "payment_ids": created_payment_ids,
             "total": str(total),
         })
@@ -297,4 +302,63 @@ def checkout():
         return jsonify({
             "ok": False,
             "error": f"Checkout failed: {str(e)}"
+        }), 500
+
+
+@admin_pos_bp.route("/invoice/<int:invoice_id>/receipt", methods=["GET"])
+@admin_required
+def invoice_receipt(invoice_id):
+    inv = Invoice.query.get_or_404(invoice_id)
+    return redirect(url_for("admin.proforma_invoice_modal", invoice_id=inv.id))
+
+
+@admin_pos_bp.route("/invoice/<int:invoice_id>/email-receipt", methods=["POST"])
+@admin_required
+def email_receipt(invoice_id):
+    inv = Invoice.query.get_or_404(invoice_id)
+    user = inv.user
+
+    if not user or not user.email:
+        return jsonify({
+            "ok": False,
+            "error": "Customer does not have an email address."
+        }), 400
+
+    try:
+        customer_name = ((user.full_name or "").strip() or user.email or "Customer")
+
+        subject = f"Receipt for Invoice {inv.invoice_number}"
+
+        body = f"""
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+          <p>Dear {customer_name},</p>
+
+          <p>Your payment has been received.</p>
+
+          <p>
+            <strong>Invoice Number:</strong> {inv.invoice_number}<br>
+            <strong>Total:</strong> JMD {float(inv.grand_total or inv.amount or 0):,.2f}<br>
+            <strong>Balance:</strong> JMD {float(inv.amount_due or 0):,.2f}<br>
+            <strong>Status:</strong> {(inv.status or "").title()}
+          </p>
+
+          <p>Thank you for shipping with Foreign A Foot Logistics Limited.</p>
+        </div>
+        """
+
+        send_email(
+            to=user.email,
+            subject=subject,
+            body=body
+        )
+
+        return jsonify({
+            "ok": True,
+            "message": f"Receipt emailed to {user.email}."
+        })
+
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": f"Failed to email receipt: {str(e)}"
         }), 500

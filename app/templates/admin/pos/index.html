@@ -54,13 +54,14 @@
                   <th>Tracking</th>
                   <th>House AWB</th>
                   <th>Description</th>
+                  <th>Invoice</th>
                   <th>Status</th>
                   <th class="text-end">Amount</th>
                 </tr>
               </thead>
               <tbody id="packagesTableBody">
                 <tr>
-                  <td colspan="6" class="text-center text-muted py-4">
+                  <td colspan="7" class="text-center text-muted py-4">
                     Select a customer to load packages
                   </td>
                 </tr>
@@ -106,6 +107,17 @@
           </button>
 
           <div id="checkoutMessage" class="mt-3"></div>
+
+          <div id="checkoutActions" class="mt-3 d-none">
+            <div class="d-grid gap-2">
+              <button id="printReceiptBtn" type="button" class="btn btn-outline-dark">
+                <i class="bi bi-printer me-1"></i>Print Receipt
+              </button>
+              <button id="emailReceiptBtn" type="button" class="btn btn-outline-primary">
+                <i class="bi bi-envelope me-1"></i>Email Receipt
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -130,7 +142,11 @@ const selectedCount = document.getElementById("selectedCount");
 const selectedTotal = document.getElementById("selectedTotal");
 const checkoutBtn = document.getElementById("checkoutBtn");
 const checkoutMessage = document.getElementById("checkoutMessage");
+const checkoutActions = document.getElementById("checkoutActions");
+const printReceiptBtn = document.getElementById("printReceiptBtn");
+const emailReceiptBtn = document.getElementById("emailReceiptBtn");
 
+let lastCheckoutInvoiceIds = [];
 let searchTimer = null;
 
 customerSearch.addEventListener("input", function () {
@@ -188,13 +204,17 @@ async function chooseCustomer(customer) {
   customerResults.innerHTML = "";
   customerSearch.value = customer.name || "";
 
+  checkoutActions.classList.add("d-none");
+  lastCheckoutInvoiceIds = [];
+  checkoutMessage.innerHTML = "";
+
   await loadPackages(customer.id);
 }
 
 async function loadPackages(userId) {
   packagesTableBody.innerHTML = `
     <tr>
-      <td colspan="6" class="text-center text-muted py-4">Loading packages...</td>
+      <td colspan="7" class="text-center text-muted py-4">Loading packages...</td>
     </tr>
   `;
 
@@ -210,7 +230,7 @@ async function loadPackages(userId) {
     if (!loadedPackages.length) {
       packagesTableBody.innerHTML = `
         <tr>
-          <td colspan="6" class="text-center text-muted py-4">No eligible packages found</td>
+          <td colspan="7" class="text-center text-muted py-4">No eligible packages found</td>
         </tr>
       `;
       updateSummary();
@@ -225,6 +245,11 @@ async function loadPackages(userId) {
         <td>${pkg.tracking_number || ""}</td>
         <td>${pkg.house_awb || ""}</td>
         <td>${pkg.description || ""}</td>
+        <td>
+          ${pkg.invoice_number
+            ? `<span class="badge bg-info text-dark">${pkg.invoice_number}</span>`
+            : `<span class="text-muted">—</span>`}
+        </td>
         <td>${pkg.status || ""}</td>
         <td class="text-end">${formatMoney(pkg.amount_due)}</td>
       </tr>
@@ -239,7 +264,7 @@ async function loadPackages(userId) {
     console.error("POS package load failed:", err);
     packagesTableBody.innerHTML = `
       <tr>
-        <td colspan="6" class="text-center text-danger py-4">Failed to load packages</td>
+        <td colspan="7" class="text-center text-danger py-4">Failed to load packages</td>
       </tr>
     `;
   }
@@ -279,6 +304,8 @@ checkoutBtn.addEventListener("click", async function () {
   checkoutBtn.disabled = true;
   checkoutBtn.textContent = "Processing...";
   checkoutMessage.innerHTML = "";
+  checkoutActions.classList.add("d-none");
+  lastCheckoutInvoiceIds = [];
 
   try {
     const resp = await fetch("/admin/pos/checkout", {
@@ -303,8 +330,12 @@ checkoutBtn.addEventListener("click", async function () {
       checkoutMessage.innerHTML = `<div class="alert alert-danger">${data.error || "Checkout failed."}</div>`;
       checkoutBtn.disabled = false;
       checkoutBtn.textContent = "Complete Checkout";
+      checkoutActions.classList.add("d-none");
+      lastCheckoutInvoiceIds = [];
       return;
     }
+
+    lastCheckoutInvoiceIds = data.invoice_ids || [];
 
     checkoutMessage.innerHTML = `
       <div class="alert alert-success">
@@ -313,15 +344,62 @@ checkoutBtn.addEventListener("click", async function () {
       </div>
     `;
 
+    checkoutActions.classList.toggle("d-none", !lastCheckoutInvoiceIds.length);
+
     await loadPackages(selectedCustomer.id);
     selectAllPackages.checked = false;
+    updateSummary();
   } catch (err) {
     console.error("POS checkout failed:", err);
     checkoutMessage.innerHTML = `<div class="alert alert-danger">Something went wrong.</div>`;
+    checkoutActions.classList.add("d-none");
+    lastCheckoutInvoiceIds = [];
   }
 
   checkoutBtn.disabled = false;
   checkoutBtn.textContent = "Complete Checkout";
+});
+
+printReceiptBtn.addEventListener("click", function () {
+  if (!lastCheckoutInvoiceIds.length) return;
+
+  const invoiceId = lastCheckoutInvoiceIds[0];
+  window.open(`/admin/pos/invoice/${invoiceId}/receipt`, "_blank");
+});
+
+emailReceiptBtn.addEventListener("click", async function () {
+  if (!lastCheckoutInvoiceIds.length) return;
+
+  const invoiceId = lastCheckoutInvoiceIds[0];
+  const originalText = emailReceiptBtn.innerHTML;
+
+  emailReceiptBtn.disabled = true;
+  emailReceiptBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Sending...`;
+
+  try {
+    const resp = await fetch(`/admin/pos/invoice/${invoiceId}/email-receipt`, {
+      method: "POST",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": (typeof getCSRFToken === "function" ? getCSRFToken() : "")
+      },
+      credentials: "same-origin"
+    });
+
+    const data = await resp.json();
+
+    if (!resp.ok || !data.ok) {
+      alert(data.error || "Failed to email receipt.");
+      return;
+    }
+
+    alert(data.message || "Receipt emailed successfully.");
+  } catch (err) {
+    alert("Something went wrong while emailing the receipt.");
+  } finally {
+    emailReceiptBtn.disabled = false;
+    emailReceiptBtn.innerHTML = originalText;
+  }
 });
 
 function formatMoney(value) {

@@ -522,16 +522,20 @@ Hi {full_name},
 You can now shop on Amazon without paying U.S. sales tax when shipping to our warehouse.
 
 Steps:
-1. Download your tax exemption certificate
-2. Go to Amazon Tax Exemption Program
-3. Upload the certificate
-4. Wait for approval
+1. Download your tax certificate
+2. Open the Amazon Tax Exemption Program page
+3. Click Tax Exemption Wizard
+4. Select Florida and click Save and Continue
+5. Select Other as the exemption type and click Save and Continue
+6. Choose the downloaded certificate file
+7. Agree to the terms and click Upload
+8. Amazon will confirm the upload was successful and review may take up to 24 hours
 
 Download your certificate here:
 {certificate_url}
 
 Amazon link:
-https://www.amazon.com/gp/help/customer/display.html?nodeId=202074690
+https://www.amazon.com/gp/help/customer/display.html?nodeId=G2UQTL5CHRCZA7BL
 
 — Foreign A Foot Logistics
 """.strip()
@@ -540,14 +544,18 @@ https://www.amazon.com/gp/help/customer/display.html?nodeId=202074690
 <h2 style="margin:0 0 10px 0;">Save Money on Amazon 💰</h2>
 
 <p style="margin:0 0 12px 0;">
-You can now shop on Amazon without paying U.S. sales tax when shipping to our warehouse.
+You can use our tax exemption certificate for Amazon purchases shipped to our warehouse.
 </p>
 
 <ol style="margin:0 0 14px 18px;">
-  <li>Download your tax exemption certificate</li>
-  <li>Go to Amazon Tax Exemption Program</li>
-  <li>Upload the certificate</li>
-  <li>Wait for approval</li>
+  <li>Download your tax certificate</li>
+  <li>Open the Amazon Tax Exemption Program page</li>
+  <li>Click <strong>Tax Exemption Wizard</strong></li>
+  <li>Select <strong>Florida</strong> and click <strong>Save and Continue</strong></li>
+  <li>Select <strong>Other</strong> as the exemption type and click <strong>Save and Continue</strong></li>
+  <li>Choose the downloaded certificate file</li>
+  <li>Agree to the terms and click <strong>Upload</strong></li>
+  <li>Amazon will confirm the upload was successful. Review may take up to <strong>24 hours</strong></li>
 </ol>
 
 <p style="margin:14px 0;">
@@ -558,9 +566,9 @@ You can now shop on Amazon without paying U.S. sales tax when shipping to our wa
 </p>
 
 <p style="margin:0;">
-  <a href="https://www.amazon.com/gp/help/customer/display.html?nodeId=202074690"
+  <a href="https://www.amazon.com/gp/help/customer/display.html?nodeId=G2UQTL5CHRCZA7BL"
      style="color:#4A148C;text-decoration:none;">
-    Go to Amazon Tax Exemption Program
+    Open Amazon Tax Exemption Program
   </a>
 </p>
 """.strip()

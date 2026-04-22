@@ -244,61 +244,6 @@ function updateSummary() {
   checkoutBtn.disabled = !selectedCustomer || ids.length === 0;
 }
 
-function findPackageByScan(scanValue) {
-  const normalized = normalizeScanValue(scanValue);
-  if (!normalized) return null;
-
-  // 1. exact match
-  let exactMatches = loadedPackages.filter(pkg => {
-    const tracking = normalizeScanValue(pkg.tracking_number);
-    const houseAwb = normalizeScanValue(pkg.house_awb);
-    return normalized === tracking || normalized === houseAwb;
-  });
-
-  if (exactMatches.length >= 1) {
-    return exactMatches[0]; // exact always safe
-  }
-
-  // 2. ends-with match
-  let endsWithMatches = loadedPackages.filter(pkg => {
-    const tracking = normalizeScanValue(pkg.tracking_number);
-    const houseAwb = normalizeScanValue(pkg.house_awb);
-    return (
-      (tracking && tracking.endsWith(normalized)) ||
-      (houseAwb && houseAwb.endsWith(normalized))
-    );
-  });
-
-  if (endsWithMatches.length === 1) {
-    return endsWithMatches[0];
-  }
-
-  if (endsWithMatches.length > 1) {
-    // pick most recent (last in list)
-    return endsWithMatches[endsWithMatches.length - 1];
-  }
-
-  // 3. contains match
-  let containsMatches = loadedPackages.filter(pkg => {
-    const tracking = normalizeScanValue(pkg.tracking_number);
-    const houseAwb = normalizeScanValue(pkg.house_awb);
-    return (
-      (tracking && tracking.includes(normalized)) ||
-      (houseAwb && houseAwb.includes(normalized))
-    );
-  });
-
-  if (containsMatches.length === 1) {
-    return containsMatches[0];
-  }
-
-  if (containsMatches.length > 1) {
-    return containsMatches[containsMatches.length - 1];
-  }
-
-  return null;
-}
-
 function checkPackageById(packageId) {
   const cb = document.querySelector(`.pkg-check[value="${packageId}"]`);
   if (!cb) return false;
@@ -316,6 +261,64 @@ function checkPackageById(packageId) {
   }
 
   return true;
+}
+
+/**
+ * Returns:
+ * { status: "found", pkg }
+ * { status: "multiple", matches }
+ * { status: "none" }
+ */
+function findPackageByScan(scanValue) {
+  const normalized = normalizeScanValue(scanValue);
+  if (!normalized) return { status: "none" };
+
+  const exactMatches = loadedPackages.filter(pkg => {
+    const tracking = normalizeScanValue(pkg.tracking_number);
+    const houseAwb = normalizeScanValue(pkg.house_awb);
+    return normalized === tracking || normalized === houseAwb;
+  });
+
+  if (exactMatches.length === 1) {
+    return { status: "found", pkg: exactMatches[0] };
+  }
+  if (exactMatches.length > 1) {
+    return { status: "multiple", matches: exactMatches };
+  }
+
+  const endsWithMatches = loadedPackages.filter(pkg => {
+    const tracking = normalizeScanValue(pkg.tracking_number);
+    const houseAwb = normalizeScanValue(pkg.house_awb);
+    return (
+      (tracking && tracking.endsWith(normalized)) ||
+      (houseAwb && houseAwb.endsWith(normalized))
+    );
+  });
+
+  if (endsWithMatches.length === 1) {
+    return { status: "found", pkg: endsWithMatches[0] };
+  }
+  if (endsWithMatches.length > 1) {
+    return { status: "multiple", matches: endsWithMatches };
+  }
+
+  const containsMatches = loadedPackages.filter(pkg => {
+    const tracking = normalizeScanValue(pkg.tracking_number);
+    const houseAwb = normalizeScanValue(pkg.house_awb);
+    return (
+      (tracking && tracking.includes(normalized)) ||
+      (houseAwb && houseAwb.includes(normalized))
+    );
+  });
+
+  if (containsMatches.length === 1) {
+    return { status: "found", pkg: containsMatches[0] };
+  }
+  if (containsMatches.length > 1) {
+    return { status: "multiple", matches: containsMatches };
+  }
+
+  return { status: "none" };
 }
 
 async function lookupPackageGlobally(scanValue) {
@@ -469,10 +472,20 @@ if (barcodeScanInput) {
 
     const raw = barcodeScanInput.value;
     const normalized = normalizeScanValue(raw);
-
     if (!normalized) return;
 
-    let pkg = selectedCustomer ? findPackageByScan(normalized) : null;
+    let scanResult = selectedCustomer ? findPackageByScan(normalized) : { status: "none" };
+
+    if (scanResult.status === "multiple") {
+      barcodeScanInput.classList.add("is-invalid");
+      setScanFeedback("Multiple matches found. Type more characters.", "error");
+      beep("error");
+      setTimeout(() => barcodeScanInput.classList.remove("is-invalid"), 1200);
+      barcodeScanInput.select();
+      return;
+    }
+
+    let pkg = scanResult.status === "found" ? scanResult.pkg : null;
 
     if (!pkg) {
       const lookup = await lookupPackageGlobally(normalized);
@@ -487,7 +500,31 @@ if (barcodeScanInput) {
       }
 
       await chooseCustomer(lookup.data.customer, false);
-      pkg = findPackageByScan(normalized) || { id: lookup.data.package.id };
+
+      scanResult = findPackageByScan(normalized);
+      if (scanResult.status === "multiple") {
+        barcodeScanInput.classList.add("is-invalid");
+        setScanFeedback("Multiple matches found. Type more characters.", "error");
+        beep("error");
+        setTimeout(() => barcodeScanInput.classList.remove("is-invalid"), 1200);
+        barcodeScanInput.select();
+        return;
+      }
+
+      pkg = scanResult.status === "found" ? scanResult.pkg : null;
+
+      if (!pkg && lookup.data.package?.id) {
+        pkg = { id: lookup.data.package.id, tracking_number: lookup.data.package.tracking_number, house_awb: lookup.data.package.house_awb };
+      }
+    }
+
+    if (!pkg) {
+      barcodeScanInput.classList.add("is-invalid");
+      setScanFeedback("Package not found.", "error");
+      beep("error");
+      setTimeout(() => barcodeScanInput.classList.remove("is-invalid"), 1200);
+      barcodeScanInput.select();
+      return;
     }
 
     const ok = checkPackageById(pkg.id);

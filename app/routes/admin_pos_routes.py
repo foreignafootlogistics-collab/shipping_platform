@@ -1,8 +1,9 @@
+import re
 from datetime import datetime, timezone
 from decimal import Decimal
 
 from flask import Blueprint, render_template, request, jsonify, url_for, redirect
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 
 from app.extensions import db
 from app.models import User, Package, Invoice, Payment
@@ -11,7 +12,6 @@ from app.routes.admin_auth_routes import admin_required
 from app.utils.email_utils import send_email, EMAIL_FROM, EMAIL_ADDRESS
 
 admin_pos_bp = Blueprint("admin_pos", __name__, url_prefix="/admin/pos")
-
 
 def _to_decimal(value, default="0.00"):
     try:
@@ -29,6 +29,38 @@ def _package_charge_amount(pkg):
 
     amount_due = getattr(pkg, "amount_due", None)
     return _to_decimal(amount_due)
+
+
+def _normalize_scan_value(value):
+    return re.sub(r"\s+", "", str(value or "").strip()).upper()
+
+
+def _find_ready_package_by_scan(scan_value):
+    normalized = _normalize_scan_value(scan_value)
+    if not normalized:
+        return None, "Empty scan value."
+
+    packages = (
+        Package.query
+        .filter(
+            Package.status == "Ready for Pick Up",
+            Package.is_locked.is_(False),
+            or_(
+                func.upper(func.replace(Package.tracking_number, " ", "")) == normalized,
+                func.upper(func.replace(Package.house_awb, " ", "")) == normalized,
+            )
+        )
+        .order_by(Package.created_at.asc())
+        .all()
+    )
+
+    if not packages:
+        return None, "No ready package matched that tracking number / House AWB."
+
+    if len(packages) > 1:
+        return None, "Multiple packages matched this scan. Please select the customer manually."
+
+    return packages[0], None
 
 
 @admin_pos_bp.route("/", methods=["GET"])
@@ -124,6 +156,82 @@ def customer_packages(user_id):
     })
 
 
+@admin_pos_bp.route("/scan-lookup", methods=["GET"])
+@admin_required
+def scan_lookup():
+    q = request.args.get("q") or ""
+    package, error = _find_ready_package_by_scan(q)
+
+    if error:
+        return jsonify({"ok": False, "error": error}), 404
+
+    user = package.user
+    if not user:
+        return jsonify({"ok": False, "error": "Matched package has no customer attached."}), 400
+
+    return jsonify({
+        "ok": True,
+        "customer": {
+            "id": user.id,
+            "name": (user.full_name or "").strip() or user.email or "Customer",
+            "email": user.email or "",
+            "registration_number": user.registration_number or "",
+        },
+        "package": {
+            "id": package.id,
+            "tracking_number": package.tracking_number or "",
+            "house_awb": package.house_awb or "",
+        }
+    })
+
+
+@admin_pos_bp.route("/scan-deliver", methods=["POST"])
+@admin_required
+def scan_deliver():
+    data = request.get_json(silent=True) or {}
+    scan_value = data.get("scan_value") or ""
+
+    package, error = _find_ready_package_by_scan(scan_value)
+    if error:
+        return jsonify({"ok": False, "error": error}), 404
+
+    invoice = package.invoice
+    charge = _package_charge_amount(package)
+
+    if invoice:
+        if float(invoice.amount_due or 0) > 0:
+            return jsonify({
+                "ok": False,
+                "error": f"Invoice {invoice.invoice_number} still has a balance. Take payment before delivery."
+            }), 400
+    else:
+        if float(charge) > 0:
+            return jsonify({
+                "ok": False,
+                "error": "This package is not attached to a paid invoice yet."
+            }), 400
+
+    package.status = "Delivered"
+    package.is_locked = True
+    db.session.commit()
+
+    user = package.user
+
+    return jsonify({
+        "ok": True,
+        "message": f"Package {package.tracking_number or package.house_awb or package.id} marked Delivered.",
+        "customer": {
+            "id": user.id if user else None,
+            "name": ((user.full_name or "").strip() if user else "") or (user.email if user else "") or "Customer",
+        },
+        "package": {
+            "id": package.id,
+            "tracking_number": package.tracking_number or "",
+            "house_awb": package.house_awb or "",
+        }
+    })
+
+
 @admin_pos_bp.route("/checkout", methods=["POST"])
 @admin_required
 def checkout():
@@ -190,7 +298,6 @@ def checkout():
         checkout_invoice_ids = []
         created_payment_ids = []
 
-        # A. Pay existing invoices
         for invoice_id, pkg_list in existing_invoice_groups.items():
             invoice = Invoice.query.get(invoice_id)
             if not invoice:
@@ -237,7 +344,6 @@ def checkout():
                 p.status = "Delivered"
                 p.is_locked = True
 
-        # B. Create POS invoice only for uninvoiced packages
         if uninvoiced_packages:
             new_total = Decimal("0.00")
             new_weight = Decimal("0.00")

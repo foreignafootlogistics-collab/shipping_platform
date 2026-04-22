@@ -35,6 +35,21 @@
               <div id="selectedCustomerReg" class="small text-muted"></div>
             </div>
           </div>
+
+          <hr>
+
+          <h6 class="mb-2">Quick Deliver Scan</h6>
+          <input
+            type="text"
+            id="deliverScanInput"
+            class="form-control"
+            placeholder="Scan paid package to mark Delivered"
+            autocomplete="off"
+          >
+          <button id="deliverScanBtn" type="button" class="btn btn-outline-success w-100 mt-2">
+            <i class="bi bi-check2-circle me-1"></i>Mark Delivered
+          </button>
+          <div id="deliverScanMessage" class="mt-2"></div>
         </div>
       </div>
     </div>
@@ -43,6 +58,19 @@
       <div class="card shadow-sm border-0">
         <div class="card-body">
           <h5 class="mb-3">2. Select Packages</h5>
+
+          <div class="mb-3">
+            <label class="form-label">Scan or Enter Barcode</label>
+            <input
+              type="text"
+              id="barcodeScanInput"
+              class="form-control"
+              placeholder="Scan or type tracking # / House AWB and press Enter"
+              autocomplete="off"
+            >
+            <div class="form-text">Works even without selecting a customer first.</div>
+            <div id="scanFeedback" class="small mt-2"></div>
+          </div>
 
           <div class="table-responsive">
             <table class="table table-sm align-middle">
@@ -62,7 +90,7 @@
               <tbody id="packagesTableBody">
                 <tr>
                   <td colspan="7" class="text-center text-muted py-4">
-                    Select a customer to load packages
+                    Scan a package or select a customer to load packages
                   </td>
                 </tr>
               </tbody>
@@ -127,6 +155,9 @@
 <script>
 let selectedCustomer = null;
 let loadedPackages = [];
+let lastCheckoutInvoiceIds = [];
+let searchTimer = null;
+let audioCtx = null;
 
 const customerSearch = document.getElementById("customerSearch");
 const customerResults = document.getElementById("customerResults");
@@ -145,55 +176,114 @@ const checkoutMessage = document.getElementById("checkoutMessage");
 const checkoutActions = document.getElementById("checkoutActions");
 const printReceiptBtn = document.getElementById("printReceiptBtn");
 const emailReceiptBtn = document.getElementById("emailReceiptBtn");
+const barcodeScanInput = document.getElementById("barcodeScanInput");
+const scanFeedback = document.getElementById("scanFeedback");
+const deliverScanInput = document.getElementById("deliverScanInput");
+const deliverScanBtn = document.getElementById("deliverScanBtn");
+const deliverScanMessage = document.getElementById("deliverScanMessage");
 
-let lastCheckoutInvoiceIds = [];
-let searchTimer = null;
+function beep(type = "ok") {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!audioCtx) audioCtx = new Ctx();
 
-customerSearch.addEventListener("input", function () {
-  const q = this.value.trim();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
 
-  clearTimeout(searchTimer);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
 
-  if (!q) {
-    customerResults.innerHTML = "";
-    return;
+    osc.type = "square";
+    osc.frequency.value = type === "ok" ? 880 : 220;
+    gain.gain.value = 0.03;
+
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.08);
+  } catch (e) {}
+}
+
+function setScanFeedback(message = "", type = "") {
+  if (!scanFeedback) return;
+
+  scanFeedback.className = "small mt-2";
+  scanFeedback.textContent = message;
+
+  if (type === "success") scanFeedback.classList.add("text-success");
+  if (type === "error") scanFeedback.classList.add("text-danger");
+  if (type === "info") scanFeedback.classList.add("text-muted");
+}
+
+function normalizeScanValue(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .toUpperCase();
+}
+
+function formatMoney(value) {
+  const n = Number(value || 0);
+  return `$${n.toFixed(2)}`;
+}
+
+function getSelectedPackageIds() {
+  return [...document.querySelectorAll(".pkg-check:checked")].map(cb => Number(cb.value));
+}
+
+function updateSummary() {
+  const ids = getSelectedPackageIds();
+
+  let total = 0;
+  ids.forEach(id => {
+    const pkg = loadedPackages.find(p => Number(p.id) === Number(id));
+    if (pkg) total += Number(pkg.amount_due || 0);
+  });
+
+  selectedCount.textContent = ids.length;
+  selectedTotal.textContent = formatMoney(total);
+  checkoutBtn.disabled = !selectedCustomer || ids.length === 0;
+}
+
+function findPackageByScan(scanValue) {
+  const normalized = normalizeScanValue(scanValue);
+
+  return loadedPackages.find(pkg => {
+    const tracking = normalizeScanValue(pkg.tracking_number);
+    const houseAwb = normalizeScanValue(pkg.house_awb);
+    return normalized && (normalized === tracking || normalized === houseAwb);
+  });
+}
+
+function checkPackageById(packageId) {
+  const cb = document.querySelector(`.pkg-check[value="${packageId}"]`);
+  if (!cb) return false;
+
+  if (cb.checked) return true;
+
+  cb.checked = true;
+  updateSummary();
+
+  const row = cb.closest("tr");
+  if (row) {
+    row.classList.add("table-success");
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    setTimeout(() => row.classList.remove("table-success"), 800);
   }
 
-  searchTimer = setTimeout(async () => {
-    try {
-      const resp = await fetch(`/admin/pos/search-customers?q=${encodeURIComponent(q)}`, {
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-        credentials: "same-origin"
-      });
+  return true;
+}
 
-      const rows = await resp.json();
-      customerResults.innerHTML = "";
+async function lookupPackageGlobally(scanValue) {
+  const resp = await fetch(`/admin/pos/scan-lookup?q=${encodeURIComponent(scanValue)}`, {
+    headers: { "X-Requested-With": "XMLHttpRequest" },
+    credentials: "same-origin"
+  });
 
-      if (!rows.length) {
-        customerResults.innerHTML = `<div class="list-group-item text-muted">No customers found</div>`;
-        return;
-      }
+  const data = await resp.json();
+  return { ok: resp.ok && data.ok, data };
+}
 
-      rows.forEach(row => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "list-group-item list-group-item-action";
-        btn.innerHTML = `
-          <div class="fw-semibold">${row.name || "Customer"}</div>
-          <div class="small text-muted">${row.email || ""}</div>
-          <div class="small text-muted">${row.registration_number || ""}</div>
-        `;
-        btn.addEventListener("click", () => chooseCustomer(row));
-        customerResults.appendChild(btn);
-      });
-    } catch (err) {
-      console.error("POS customer search failed:", err);
-      customerResults.innerHTML = `<div class="list-group-item text-danger">Search failed</div>`;
-    }
-  }, 300);
-});
-
-async function chooseCustomer(customer) {
+async function chooseCustomer(customer, focusScanner = true) {
   selectedCustomer = customer;
 
   selectedCustomerBox.classList.remove("d-none");
@@ -209,6 +299,11 @@ async function chooseCustomer(customer) {
   checkoutMessage.innerHTML = "";
 
   await loadPackages(customer.id);
+
+  if (focusScanner && barcodeScanInput) {
+    barcodeScanInput.value = "";
+    barcodeScanInput.focus();
+  }
 }
 
 async function loadPackages(userId) {
@@ -270,6 +365,50 @@ async function loadPackages(userId) {
   }
 }
 
+customerSearch.addEventListener("input", function () {
+  const q = this.value.trim();
+
+  clearTimeout(searchTimer);
+
+  if (!q) {
+    customerResults.innerHTML = "";
+    return;
+  }
+
+  searchTimer = setTimeout(async () => {
+    try {
+      const resp = await fetch(`/admin/pos/search-customers?q=${encodeURIComponent(q)}`, {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin"
+      });
+
+      const rows = await resp.json();
+      customerResults.innerHTML = "";
+
+      if (!rows.length) {
+        customerResults.innerHTML = `<div class="list-group-item text-muted">No customers found</div>`;
+        return;
+      }
+
+      rows.forEach(row => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "list-group-item list-group-item-action";
+        btn.innerHTML = `
+          <div class="fw-semibold">${row.name || "Customer"}</div>
+          <div class="small text-muted">${row.email || ""}</div>
+          <div class="small text-muted">${row.registration_number || ""}</div>
+        `;
+        btn.addEventListener("click", () => chooseCustomer(row));
+        customerResults.appendChild(btn);
+      });
+    } catch (err) {
+      console.error("POS customer search failed:", err);
+      customerResults.innerHTML = `<div class="list-group-item text-danger">Search failed</div>`;
+    }
+  }, 300);
+});
+
 selectAllPackages.addEventListener("change", function () {
   document.querySelectorAll(".pkg-check").forEach(cb => {
     cb.checked = this.checked;
@@ -277,22 +416,55 @@ selectAllPackages.addEventListener("change", function () {
   updateSummary();
 });
 
-function getSelectedPackageIds() {
-  return [...document.querySelectorAll(".pkg-check:checked")].map(cb => Number(cb.value));
-}
+if (barcodeScanInput) {
+  barcodeScanInput.addEventListener("keydown", async function (e) {
+    if (e.key !== "Enter") return;
 
-function updateSummary() {
-  const ids = getSelectedPackageIds();
+    e.preventDefault();
 
-  let total = 0;
-  ids.forEach(id => {
-    const pkg = loadedPackages.find(p => Number(p.id) === Number(id));
-    if (pkg) total += Number(pkg.amount_due || 0);
+    const raw = barcodeScanInput.value;
+    const normalized = normalizeScanValue(raw);
+
+    if (!normalized) return;
+
+    let pkg = selectedCustomer ? findPackageByScan(normalized) : null;
+
+    if (!pkg) {
+      const lookup = await lookupPackageGlobally(normalized);
+
+      if (!lookup.ok) {
+        barcodeScanInput.classList.add("is-invalid");
+        setScanFeedback(lookup.data?.error || "Package not found.", "error");
+        beep("error");
+        setTimeout(() => barcodeScanInput.classList.remove("is-invalid"), 1200);
+        barcodeScanInput.select();
+        return;
+      }
+
+      await chooseCustomer(lookup.data.customer, false);
+      pkg = findPackageByScan(normalized) || { id: lookup.data.package.id };
+    }
+
+    const ok = checkPackageById(pkg.id);
+
+    if (ok) {
+      barcodeScanInput.classList.remove("is-invalid");
+      barcodeScanInput.classList.add("is-valid");
+      setScanFeedback(`Selected package ${pkg.tracking_number || pkg.house_awb || ""}`, "success");
+      beep("ok");
+      setTimeout(() => barcodeScanInput.classList.remove("is-valid"), 800);
+    }
+
+    const allIds = loadedPackages.map(p => p.id);
+    const selectedIds = getSelectedPackageIds();
+
+    if (selectedIds.length === allIds.length && allIds.length > 0) {
+      checkoutBtn.focus();
+    }
+
+    barcodeScanInput.value = "";
+    barcodeScanInput.focus();
   });
-
-  selectedCount.textContent = ids.length;
-  selectedTotal.textContent = formatMoney(total);
-  checkoutBtn.disabled = !selectedCustomer || ids.length === 0;
 }
 
 checkoutBtn.addEventListener("click", async function () {
@@ -349,6 +521,7 @@ checkoutBtn.addEventListener("click", async function () {
     await loadPackages(selectedCustomer.id);
     selectAllPackages.checked = false;
     updateSummary();
+    if (barcodeScanInput) barcodeScanInput.focus();
   } catch (err) {
     console.error("POS checkout failed:", err);
     checkoutMessage.innerHTML = `<div class="alert alert-danger">Something went wrong.</div>`;
@@ -362,7 +535,6 @@ checkoutBtn.addEventListener("click", async function () {
 
 printReceiptBtn.addEventListener("click", function () {
   if (!lastCheckoutInvoiceIds.length) return;
-
   const invoiceId = lastCheckoutInvoiceIds[0];
   window.open(`/admin/pos/invoice/${invoiceId}/receipt?print=1`, "_blank");
 });
@@ -402,9 +574,84 @@ emailReceiptBtn.addEventListener("click", async function () {
   }
 });
 
-function formatMoney(value) {
-  const n = Number(value || 0);
-  return `$${n.toFixed(2)}`;
+async function handleDeliverScan() {
+  const raw = deliverScanInput.value;
+  const normalized = normalizeScanValue(raw);
+
+  if (!normalized) return;
+
+  deliverScanBtn.disabled = true;
+  deliverScanMessage.innerHTML = "";
+
+  try {
+    const resp = await fetch("/admin/pos/scan-deliver", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": (typeof getCSRFToken === "function" ? getCSRFToken() : "")
+      },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        scan_value: normalized
+      })
+    });
+
+    const data = await resp.json();
+
+    if (!resp.ok || !data.ok) {
+      deliverScanInput.classList.add("is-invalid");
+      deliverScanMessage.innerHTML = `<div class="alert alert-danger py-2 mb-0">${data.error || "Could not mark delivered."}</div>`;
+      beep("error");
+      setTimeout(() => deliverScanInput.classList.remove("is-invalid"), 1200);
+      deliverScanInput.select();
+      return;
+    }
+
+    deliverScanInput.classList.remove("is-invalid");
+    deliverScanInput.classList.add("is-valid");
+    deliverScanMessage.innerHTML = `<div class="alert alert-success py-2 mb-0">${data.message}</div>`;
+    beep("ok");
+
+    if (selectedCustomer && data.customer && Number(selectedCustomer.id) === Number(data.customer.id)) {
+      await loadPackages(selectedCustomer.id);
+    }
+
+    deliverScanInput.value = "";
+    deliverScanInput.focus();
+    setTimeout(() => deliverScanInput.classList.remove("is-valid"), 800);
+  } catch (err) {
+    deliverScanMessage.innerHTML = `<div class="alert alert-danger py-2 mb-0">Something went wrong.</div>`;
+    beep("error");
+  } finally {
+    deliverScanBtn.disabled = false;
+  }
+}
+
+if (deliverScanBtn) {
+  deliverScanBtn.addEventListener("click", handleDeliverScan);
+}
+
+if (deliverScanInput) {
+  deliverScanInput.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    handleDeliverScan();
+  });
 }
 </script>
+
+<style>
+#barcodeScanInput.is-valid,
+#deliverScanInput.is-valid {
+  border-color: #198754;
+  box-shadow: 0 0 0 0.2rem rgba(25, 135, 84, 0.15);
+}
+
+#barcodeScanInput.is-invalid,
+#deliverScanInput.is-invalid {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15);
+}
+</style>
 {% endblock %}

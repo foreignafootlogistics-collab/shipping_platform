@@ -203,6 +203,16 @@ def register():
         except Exception as e:
             print(f"Error sending welcome email: {e}")
 
+        # Send tax exemption email
+        try:
+            email_utils.send_tax_exemption_email(
+                user_email=email,
+                full_name=full_name,
+                recipient_user_id=user_id
+            )
+        except Exception as e:
+            print(f"Error sending tax exemption email: {e}")
+
         # Auto-login using Flask-Login
         login_user(user)
         session["role"] = role

@@ -509,6 +509,70 @@ def send_email(
     )
 
 
+def send_tax_exemption_email(user_email, full_name, recipient_user_id=None):
+    from flask import url_for
+
+    certificate_url = f"{DASHBOARD_URL}/customer/tax-certificate"
+
+    subject = "Save Money on Amazon (Tax Exemption Available)"
+
+    plain_body = f"""
+Hi {full_name},
+
+You can now shop on Amazon without paying U.S. sales tax when shipping to our warehouse.
+
+Steps:
+1. Download your tax exemption certificate
+2. Go to Amazon Tax Exemption Program
+3. Upload the certificate
+4. Wait for approval
+
+Download your certificate here:
+{certificate_url}
+
+Amazon link:
+https://www.amazon.com/gp/help/customer/display.html?nodeId=202074690
+
+— Foreign A Foot Logistics
+""".strip()
+
+    html_body = f"""
+<h2 style="margin:0 0 10px 0;">Save Money on Amazon 💰</h2>
+
+<p style="margin:0 0 12px 0;">
+You can now shop on Amazon without paying U.S. sales tax when shipping to our warehouse.
+</p>
+
+<ol style="margin:0 0 14px 18px;">
+  <li>Download your tax exemption certificate</li>
+  <li>Go to Amazon Tax Exemption Program</li>
+  <li>Upload the certificate</li>
+  <li>Wait for approval</li>
+</ol>
+
+<p style="margin:14px 0;">
+  <a href="{certificate_url}" 
+     style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
+    Download Tax Certificate
+  </a>
+</p>
+
+<p style="margin:0;">
+  <a href="https://www.amazon.com/gp/help/customer/display.html?nodeId=202074690"
+     style="color:#4A148C;text-decoration:none;">
+    Go to Amazon Tax Exemption Program
+  </a>
+</p>
+""".strip()
+
+    return send_email(
+        to_email=user_email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        recipient_user_id=recipient_user_id,
+        reply_to=EMAIL_FROM or EMAIL_ADDRESS,
+    )
 
 # ==========================================================
 #  WELCOME EMAIL (BODY ONLY)

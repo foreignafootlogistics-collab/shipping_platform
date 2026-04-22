@@ -40,11 +40,15 @@ def _find_ready_package_by_scan(scan_value):
     if not normalized:
         return None, "Empty scan value."
 
-    packages = (
-        Package.query
+    base_query = Package.query.filter(
+        Package.status == "Ready for Pick Up",
+        Package.is_locked.is_(False),
+    )
+
+    # 1. exact match first
+    exact_matches = (
+        base_query
         .filter(
-            Package.status == "Ready for Pick Up",
-            Package.is_locked.is_(False),
             or_(
                 func.upper(func.replace(Package.tracking_number, " ", "")) == normalized,
                 func.upper(func.replace(Package.house_awb, " ", "")) == normalized,
@@ -54,13 +58,48 @@ def _find_ready_package_by_scan(scan_value):
         .all()
     )
 
-    if not packages:
-        return None, "No ready package matched that tracking number / House AWB."
+    if len(exact_matches) == 1:
+        return exact_matches[0], None
+    if len(exact_matches) > 1:
+        return None, "Multiple ready packages matched exactly. Type more characters."
 
-    if len(packages) > 1:
-        return None, "Multiple packages matched this scan. Please select the customer manually."
+    # 2. ends-with match
+    ends_with_matches = (
+        base_query
+        .filter(
+            or_(
+                func.upper(func.replace(Package.tracking_number, " ", "")).like(f"%{normalized}"),
+                func.upper(func.replace(Package.house_awb, " ", "")).like(f"%{normalized}"),
+            )
+        )
+        .order_by(Package.created_at.asc())
+        .all()
+    )
 
-    return packages[0], None
+    if len(ends_with_matches) == 1:
+        return ends_with_matches[0], None
+    if len(ends_with_matches) > 1:
+        return None, "Multiple ready packages matched. Type more characters."
+
+    # 3. contains match only if unique
+    contains_matches = (
+        base_query
+        .filter(
+            or_(
+                func.upper(func.replace(Package.tracking_number, " ", "")).like(f"%{normalized}%"),
+                func.upper(func.replace(Package.house_awb, " ", "")).like(f"%{normalized}%"),
+            )
+        )
+        .order_by(Package.created_at.asc())
+        .all()
+    )
+
+    if len(contains_matches) == 1:
+        return contains_matches[0], None
+    if len(contains_matches) > 1:
+        return None, "Multiple ready packages matched. Type more characters."
+
+    return None, "No ready package matched that tracking number / House AWB."
 
 
 @admin_pos_bp.route("/", methods=["GET"])

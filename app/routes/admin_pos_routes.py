@@ -329,28 +329,48 @@ def email_receipt(invoice_id):
 
         subject = f"Receipt for Invoice {inv.invoice_number}"
 
-        body = f"""
-        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-          <p>Dear {customer_name},</p>
+        plain_body = f"""
+Hi {customer_name},
 
-          <p>Your payment has been received.</p>
+Your payment has been received.
 
-          <p>
-            <strong>Invoice Number:</strong> {inv.invoice_number}<br>
-            <strong>Total:</strong> JMD {float(inv.grand_total or inv.amount or 0):,.2f}<br>
-            <strong>Balance:</strong> JMD {float(inv.amount_due or 0):,.2f}<br>
-            <strong>Status:</strong> {(inv.status or "").title()}
-          </p>
+Invoice Number: {inv.invoice_number}
+Total: JMD {float(inv.grand_total or inv.amount or 0):,.2f}
+Balance: JMD {float(inv.amount_due or 0):,.2f}
+Status: {(inv.status or "").title()}
 
-          <p>Thank you for shipping with Foreign A Foot Logistics Limited.</p>
-        </div>
-        """
+Thank you for shipping with Foreign A Foot Logistics Limited.
+""".strip()
 
-        send_email(
-            to=user.email,
+        html_body = f"""
+<p>Hi {customer_name},</p>
+
+<p>Your payment has been received.</p>
+
+<p>
+<b>Invoice Number:</b> {inv.invoice_number}<br>
+<b>Total:</b> JMD {float(inv.grand_total or inv.amount or 0):,.2f}<br>
+<b>Balance:</b> JMD {float(inv.amount_due or 0):,.2f}<br>
+<b>Status:</b> {(inv.status or "").title()}
+</p>
+
+<p>Thank you for shipping with Foreign A Foot Logistics Limited.</p>
+""".strip()
+
+        ok = send_email(
+            to_email=user.email,
             subject=subject,
-            body=body
+            plain_body=plain_body,
+            html_body=html_body,
+            recipient_user_id=user.id,
+            reply_to=EMAIL_FROM or EMAIL_ADDRESS,
         )
+
+        if not ok:
+            return jsonify({
+                "ok": False,
+                "error": "Email failed to send (SMTP issue)."
+            }), 500
 
         return jsonify({
             "ok": True,

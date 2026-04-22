@@ -8,8 +8,7 @@ from app.extensions import db
 from app.models import User, Package, Invoice, Payment
 from app.routes.admin_auth_routes import admin_required
 
-# use your real helper import here if different
-from app.utils.email_utils import send_email
+from app.utils.email_utils import send_email, EMAIL_FROM, EMAIL_ADDRESS
 
 admin_pos_bp = Blueprint("admin_pos", __name__, url_prefix="/admin/pos")
 
@@ -363,13 +362,12 @@ Thank you for shipping with Foreign A Foot Logistics Limited.
             plain_body=plain_body,
             html_body=html_body,
             recipient_user_id=user.id,
-            reply_to=EMAIL_FROM or EMAIL_ADDRESS,
         )
 
         if not ok:
             return jsonify({
                 "ok": False,
-                "error": "Email failed to send (SMTP issue)."
+                "error": "Email failed to send."
             }), 500
 
         return jsonify({

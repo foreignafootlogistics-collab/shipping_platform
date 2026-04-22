@@ -2405,6 +2405,15 @@ def delivery_invoice_view(delivery_id):
         settings=settings
     )
 
+@customer_bp.route("/tax-certificate")
+@login_required
+def tax_certificate():
+    try:
+        return redirect(url_for("static", filename="docs/amazon_tax_exemption_certificate.pdf"))
+    except Exception:
+        flash("Tax certificate is not available right now.", "warning")
+        return redirect(url_for("customer.dashboard"))
+
 # -----------------------------
 # Referrals
 # -----------------------------

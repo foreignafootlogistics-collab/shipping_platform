@@ -358,7 +358,7 @@ def checkout():
                 transaction_type="invoice_payment",
                 status="completed",
                 notes=notes or "POS payment",
-                source="admin"
+                source="pos"
             )
             db.session.add(payment)
             db.session.flush()
@@ -420,7 +420,7 @@ def checkout():
                 transaction_type="invoice_payment",
                 status="completed",
                 notes=notes or "POS payment",
-                source="admin"
+                source="pos"
             )
             db.session.add(pos_payment)
             db.session.flush()
@@ -543,7 +543,7 @@ def daily_sales():
             Payment.created_at < end,
             Payment.status == "completed",
             Payment.transaction_type == "invoice_payment",
-            Payment.source == "admin"   # POS only
+            Payment.source == "pos"   # POS only
         )
         .order_by(Payment.created_at.desc())
         .all()

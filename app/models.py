@@ -885,6 +885,29 @@ class Payment(db.Model):
         return f"<Payment id={self.id} type={self.transaction_type} user_id={self.user_id} amount_jmd={self.amount_jmd} status={self.status}>"
 
 
+class POSCloseout(db.Model):
+    __tablename__ = "pos_closeouts"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    business_date = db.Column(db.Date, nullable=False, unique=True, index=True)
+
+    expected_cash = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    expected_card = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    expected_transfer = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    expected_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
+    actual_cash = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    cash_difference = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
+    notes = db.Column(db.Text, nullable=True)
+
+    closed_by_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    closed_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    closed_by = db.relationship("User", foreign_keys=[closed_by_admin_id], lazy="joined")
+
+
 class CalculatorLog(db.Model):
     __tablename__ = 'calculator_logs'
 

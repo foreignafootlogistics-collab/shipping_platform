@@ -3,34 +3,141 @@
 
 {% block content %}
 
-<h4 class="mb-4">POS Daily Sales</h4>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="mb-1">POS Daily Sales</h4>
+    <div class="text-muted">Business Date: {{ business_date.strftime('%Y-%m-%d') }}</div>
+  </div>
+
+  <form method="GET" class="d-flex gap-2">
+    <input type="date" name="date" class="form-control" value="{{ business_date.strftime('%Y-%m-%d') }}">
+    <button class="btn btn-outline-primary">Filter</button>
+  </form>
+</div>
 
 <div class="row mb-4">
   <div class="col-md-3">
     <div class="card p-3 text-center">
       <div class="fw-bold">Cash</div>
-      <div class="fs-5">JMD {{ summary.cash }}</div>
+      <div class="fs-5">JMD {{ "%.2f"|format(summary.cash) }}</div>
     </div>
   </div>
 
   <div class="col-md-3">
     <div class="card p-3 text-center">
       <div class="fw-bold">Card</div>
-      <div class="fs-5">JMD {{ summary.card }}</div>
+      <div class="fs-5">JMD {{ "%.2f"|format(summary.card) }}</div>
     </div>
   </div>
 
   <div class="col-md-3">
     <div class="card p-3 text-center">
       <div class="fw-bold">Transfer</div>
-      <div class="fs-5">JMD {{ summary.transfer }}</div>
+      <div class="fs-5">JMD {{ "%.2f"|format(summary.transfer) }}</div>
     </div>
   </div>
 
   <div class="col-md-3">
     <div class="card p-3 text-center bg-dark text-white">
       <div class="fw-bold">Total</div>
-      <div class="fs-5">JMD {{ summary.total }}</div>
+      <div class="fs-5">JMD {{ "%.2f"|format(summary.total) }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-5">
+    <div class="card p-3">
+      <h6 class="mb-3">Close Register</h6>
+
+      {% if closeout %}
+        <div class="alert alert-success">
+          <strong>Register Closed</strong><br>
+          Closed at: {{ closeout.closed_at.strftime('%Y-%m-%d %H:%M') if closeout.closed_at else '' }}<br>
+          Closed by: {{ closeout.closed_by.full_name if closeout.closed_by else 'Admin' }}
+        </div>
+
+        <table class="table table-sm">
+          <tr>
+            <th>Expected Cash</th>
+            <td class="text-end">JMD {{ "%.2f"|format(closeout.expected_cash) }}</td>
+          </tr>
+          <tr>
+            <th>Actual Cash</th>
+            <td class="text-end">JMD {{ "%.2f"|format(closeout.actual_cash) }}</td>
+          </tr>
+          <tr>
+            <th>Difference</th>
+            <td class="text-end {% if closeout.cash_difference < 0 %}text-danger{% elif closeout.cash_difference > 0 %}text-success{% endif %}">
+              JMD {{ "%.2f"|format(closeout.cash_difference) }}
+            </td>
+          </tr>
+        </table>
+
+        {% if closeout.notes %}
+          <div class="small text-muted">
+            <strong>Notes:</strong><br>
+            {{ closeout.notes }}
+          </div>
+        {% endif %}
+
+      {% else %}
+        <form method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-3">
+            <label class="form-label">Expected Cash</label>
+            <input type="text" class="form-control" value="JMD {{ '%.2f'|format(summary.cash) }}" disabled>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Actual Cash Counted</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              name="actual_cash"
+              class="form-control"
+              placeholder="Enter cash counted"
+              required
+            >
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea name="notes" class="form-control" rows="3" placeholder="Optional notes"></textarea>
+          </div>
+
+          <button type="submit" class="btn btn-primary w-100">
+            Close Register
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card p-3">
+      <h6 class="mb-3">Closeout Summary</h6>
+
+      <table class="table table-sm table-bordered mb-0">
+        <tr>
+          <th>Expected Cash</th>
+          <td class="text-end">JMD {{ "%.2f"|format(summary.cash) }}</td>
+        </tr>
+        <tr>
+          <th>Expected Card</th>
+          <td class="text-end">JMD {{ "%.2f"|format(summary.card) }}</td>
+        </tr>
+        <tr>
+          <th>Expected Transfer</th>
+          <td class="text-end">JMD {{ "%.2f"|format(summary.transfer) }}</td>
+        </tr>
+        <tr class="table-dark">
+          <th>Expected Total</th>
+          <td class="text-end">JMD {{ "%.2f"|format(summary.total) }}</td>
+        </tr>
+      </table>
     </div>
   </div>
 </div>
@@ -38,30 +145,37 @@
 <div class="card p-3">
   <h6 class="mb-3">Transactions</h6>
 
-  <table class="table table-sm table-bordered">
-    <thead>
-      <tr>
-        <th>Time</th>
-        <th>Customer</th>
-        <th>Invoice</th>
-        <th>Method</th>
-        <th class="text-end">Amount (JMD)</th>
-      </tr>
-    </thead>
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Customer</th>
+          <th>Invoice</th>
+          <th>Method</th>
+          <th class="text-end">Amount (JMD)</th>
+        </tr>
+      </thead>
 
-    <tbody>
-      {% for row in rows %}
-      <tr>
-        <td>{{ row.time.strftime('%H:%M') }}</td>
-        <td>{{ row.customer }}</td>
-        <td>{{ row.invoice }}</td>
-        <td>{{ row.method }}</td>
-        <td class="text-end">{{ row.amount }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.time.strftime('%H:%M') }}</td>
+          <td>{{ row.customer }}</td>
+          <td>{{ row.invoice }}</td>
+          <td>{{ row.method }}</td>
+          <td class="text-end">{{ "%.2f"|format(row.amount) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-4">
+            No POS transactions found for this date.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 
 {% endblock %}

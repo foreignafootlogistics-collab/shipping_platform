@@ -6,7 +6,8 @@ from flask import Blueprint, render_template, request, jsonify, url_for, redirec
 from sqlalchemy import or_, func
 
 from app.extensions import db
-from app.models import User, Package, Invoice, Payment
+from flask_login import current_user
+from app.models import User, Package, Invoice, Payment, POSCloseout
 from app.routes.admin_auth_routes import admin_required
 
 from app.utils.email_utils import send_email, EMAIL_FROM, EMAIL_ADDRESS
@@ -526,24 +527,35 @@ Thank you for shipping with Foreign A Foot Logistics Limited.
             "error": f"Failed to email receipt: {str(e)}"
         }), 500
 
-@admin_pos_bp.route("/daily-sales", methods=["GET"])
+@admin_pos_bp.route("/daily-sales", methods=["GET", "POST"])
 @admin_required
 def daily_sales():
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, date
+    from zoneinfo import ZoneInfo
 
-    # today range
-    now = datetime.utcnow()
-    start = datetime(now.year, now.month, now.day)
-    end = start + timedelta(days=1)
+    jamaica_tz = ZoneInfo("America/Jamaica")
+
+    selected_date_str = request.args.get("date")
+    if selected_date_str:
+        business_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
+    else:
+        business_date = datetime.now(jamaica_tz).date()
+
+    start_local = datetime.combine(business_date, datetime.min.time(), tzinfo=jamaica_tz)
+    end_local = start_local + timedelta(days=1)
+
+    # Your DB timestamps are stored naive UTC, so convert local day to UTC naive range
+    start_utc = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = end_local.astimezone(timezone.utc).replace(tzinfo=None)
 
     payments = (
         Payment.query
         .filter(
-            Payment.created_at >= start,
-            Payment.created_at < end,
+            Payment.created_at >= start_utc,
+            Payment.created_at < end_utc,
             Payment.status == "completed",
             Payment.transaction_type == "invoice_payment",
-            Payment.source == "pos"   # POS only
+            Payment.source == "pos"
         )
         .order_by(Payment.created_at.desc())
         .all()
@@ -560,14 +572,13 @@ def daily_sales():
 
     for p in payments:
         amount = Decimal(str(p.amount_jmd or 0))
-
-        method = (p.method or "").lower()
+        method = (p.method or "").strip().lower()
 
         if method == "cash":
             summary["cash"] += amount
         elif method == "card":
             summary["card"] += amount
-        elif method == "transfer":
+        elif method in {"transfer", "bank", "bank transfer"}:
             summary["transfer"] += amount
 
         summary["total"] += amount
@@ -580,8 +591,37 @@ def daily_sales():
             "amount": amount
         })
 
+    closeout = POSCloseout.query.filter_by(business_date=business_date).first()
+
+    if request.method == "POST":
+        actual_cash = Decimal(str(request.form.get("actual_cash") or "0"))
+        notes = (request.form.get("notes") or "").strip()
+
+        cash_difference = actual_cash - summary["cash"]
+
+        if not closeout:
+            closeout = POSCloseout(business_date=business_date)
+            db.session.add(closeout)
+
+        closeout.expected_cash = summary["cash"]
+        closeout.expected_card = summary["card"]
+        closeout.expected_transfer = summary["transfer"]
+        closeout.expected_total = summary["total"]
+        closeout.actual_cash = actual_cash
+        closeout.cash_difference = cash_difference
+        closeout.notes = notes
+        closeout.closed_by_admin_id = current_user.id
+        closeout.closed_at = datetime.now(timezone.utc)
+
+        db.session.commit()
+        flash("POS register closed successfully.", "success")
+
+        return redirect(url_for("admin_pos.daily_sales", date=business_date.strftime("%Y-%m-%d")))
+
     return render_template(
         "admin/pos/daily_sales.html",
         summary=summary,
-        rows=rows
+        rows=rows,
+        business_date=business_date,
+        closeout=closeout
     )

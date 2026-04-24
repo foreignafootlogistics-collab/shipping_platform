@@ -512,12 +512,14 @@ def send_email(
 def send_tax_exemption_email(user_email, full_name, recipient_user_id=None):
     certificate_url = f"{DASHBOARD_URL}/customer/tax-certificate"
 
-    subject = "Save Money on Amazon (Tax Exemption Available)"
+    subject = "💰 Save Money on Amazon – No Sales Tax When You Ship With Us"
 
     plain_body = f"""
 Hi {full_name},
 
 You can now shop on Amazon without paying U.S. sales tax when shipping to our warehouse.
+
+This only takes a few minutes to set up and can help you save money on eligible Amazon purchases.
 
 Steps:
 1. Download your tax certificate
@@ -534,7 +536,7 @@ Amazon will review your submission within about 24 hours.
 Download your certificate:
 {certificate_url}
 
-— Foreign A Foot Logistics
+— Foreign A Foot Logistics Limited
 """.strip()
 
     html_body = f"""
@@ -542,6 +544,10 @@ Download your certificate:
 
 <p style="margin:0 0 12px 0;">
 You can use our tax exemption certificate for Amazon purchases shipped to our warehouse.
+</p>
+
+<p style="margin:0 0 12px 0;">
+<strong>This only takes a few minutes to set up and can help you save money on eligible Amazon purchases.</strong>
 </p>
 
 <p style="margin:0 0 12px 0;">
@@ -579,6 +585,7 @@ Amazon usually reviews submissions within about <strong>24 hours</strong>.
         recipient_user_id=recipient_user_id,
         reply_to=EMAIL_FROM or EMAIL_ADDRESS,
     )
+
 # ==========================================================
 #  WELCOME EMAIL (BODY ONLY)
 # ==========================================================

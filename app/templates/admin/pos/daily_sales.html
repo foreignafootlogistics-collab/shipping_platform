@@ -41,6 +41,7 @@
     <div class="card p-3 text-center bg-dark text-white">
       <div class="fw-bold">Total</div>
       <div class="fs-5">JMD {{ "%.2f"|format(summary.total) }}</div>
+      <div class="small mt-1">{{ rows|length }} transaction(s)</div>
     </div>
   </div>
 </div>
@@ -74,6 +75,19 @@
           </tr>
         </table>
 
+        {% if closeout.cash_difference != 0 %}
+        <div class="alert mt-3 {% if closeout.cash_difference < 0 %}alert-danger{% else %}alert-warning{% endif %}">
+          <strong>⚠ Cash Mismatch</strong><br>
+          Difference: JMD {{ "%.2f"|format(closeout.cash_difference) }}
+
+          {% if closeout.cash_difference < 0 %}
+            <div>Less cash than expected. Please review transactions and cash drawer.</div>
+          {% else %}
+            <div>More cash than expected. Please review transactions and notes.</div>
+          {% endif %}
+        </div>
+        {% endif %}
+
         {% if closeout.notes %}
           <div class="small text-muted">
             <strong>Notes:</strong><br>
@@ -82,6 +96,13 @@
         {% endif %}
 
       {% else %}
+
+        {% if summary.total == 0 %}
+          <div class="alert alert-warning">
+            No POS transactions for this date. Cannot close register.
+          </div>
+        {% endif %}
+
         <form method="POST">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -100,16 +121,23 @@
               class="form-control"
               placeholder="Enter cash counted"
               required
+              {% if summary.total == 0 %}disabled{% endif %}
             >
           </div>
 
           <div class="mb-3">
             <label class="form-label">Notes</label>
-            <textarea name="notes" class="form-control" rows="3" placeholder="Optional notes"></textarea>
+            <textarea
+              name="notes"
+              class="form-control"
+              rows="3"
+              placeholder="Optional notes"
+              {% if summary.total == 0 %}disabled{% endif %}
+            ></textarea>
           </div>
 
-          <button type="submit" class="btn btn-primary w-100">
-            Close Register
+          <button type="submit" class="btn btn-danger w-100" {% if summary.total == 0 %}disabled{% endif %}>
+            🔒 Close & Lock Register
           </button>
         </form>
       {% endif %}

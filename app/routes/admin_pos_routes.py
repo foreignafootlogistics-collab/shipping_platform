@@ -525,3 +525,63 @@ Thank you for shipping with Foreign A Foot Logistics Limited.
             "ok": False,
             "error": f"Failed to email receipt: {str(e)}"
         }), 500
+
+@admin_pos_bp.route("/daily-sales", methods=["GET"])
+@admin_required
+def daily_sales():
+    from datetime import datetime, timedelta
+
+    # today range
+    now = datetime.utcnow()
+    start = datetime(now.year, now.month, now.day)
+    end = start + timedelta(days=1)
+
+    payments = (
+        Payment.query
+        .filter(
+            Payment.created_at >= start,
+            Payment.created_at < end,
+            Payment.status == "completed",
+            Payment.transaction_type == "invoice_payment",
+            Payment.source == "admin"   # POS only
+        )
+        .order_by(Payment.created_at.desc())
+        .all()
+    )
+
+    summary = {
+        "cash": Decimal("0.00"),
+        "card": Decimal("0.00"),
+        "transfer": Decimal("0.00"),
+        "total": Decimal("0.00")
+    }
+
+    rows = []
+
+    for p in payments:
+        amount = Decimal(str(p.amount_jmd or 0))
+
+        method = (p.method or "").lower()
+
+        if method == "cash":
+            summary["cash"] += amount
+        elif method == "card":
+            summary["card"] += amount
+        elif method == "transfer":
+            summary["transfer"] += amount
+
+        summary["total"] += amount
+
+        rows.append({
+            "time": p.created_at,
+            "customer": p.user.full_name if p.user else "",
+            "invoice": p.invoice.invoice_number if p.invoice else "",
+            "method": p.method,
+            "amount": amount
+        })
+
+    return render_template(
+        "admin/pos/daily_sales.html",
+        summary=summary,
+        rows=rows
+    )

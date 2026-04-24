@@ -1,0 +1,67 @@
+{% extends "admin/layout_admin.html" %}
+{% block title %}POS Daily Sales{% endblock %}
+
+{% block content %}
+
+<h4 class="mb-4">POS Daily Sales</h4>
+
+<div class="row mb-4">
+  <div class="col-md-3">
+    <div class="card p-3 text-center">
+      <div class="fw-bold">Cash</div>
+      <div class="fs-5">JMD {{ summary.cash }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card p-3 text-center">
+      <div class="fw-bold">Card</div>
+      <div class="fs-5">JMD {{ summary.card }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card p-3 text-center">
+      <div class="fw-bold">Transfer</div>
+      <div class="fs-5">JMD {{ summary.transfer }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-3">
+    <div class="card p-3 text-center bg-dark text-white">
+      <div class="fw-bold">Total</div>
+      <div class="fs-5">JMD {{ summary.total }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="card p-3">
+  <h6 class="mb-3">Transactions</h6>
+
+  <table class="table table-sm table-bordered">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Customer</th>
+        <th>Invoice</th>
+        <th>Method</th>
+        <th class="text-end">Amount (JMD)</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.time.strftime('%H:%M') }}</td>
+        <td>{{ row.customer }}</td>
+        <td>{{ row.invoice }}</td>
+        <td>{{ row.method }}</td>
+        <td class="text-end">{{ row.amount }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</div>
+
+{% endblock %}

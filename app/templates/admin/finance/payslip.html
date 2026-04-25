@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Payslip</title>
+
+  <style>
+    body {
+      font-family: Arial;
+      padding: 30px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .box {
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>Foreign A Foot Logistics</h2>
+<p>Payslip</p>
+
+<hr>
+
+<div class="box">
+  <strong>Employee:</strong> {{ item.user.full_name }}<br>
+  <strong>Period:</strong> {{ run.period_start }} → {{ run.period_end }}
+</div>
+
+<div class="box">
+  <strong>Gross Pay:</strong> JMD {{ "%.2f"|format(item.gross_pay) }}<br>
+  <strong>Deductions:</strong> JMD {{ "%.2f"|format(item.deductions) }}<br>
+  <strong>Net Pay:</strong> JMD {{ "%.2f"|format(item.net_pay) }}
+</div>
+
+<br>
+
+<button onclick="window.print()">Print Payslip</button>
+
+</body>
+</html>

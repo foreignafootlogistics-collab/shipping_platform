@@ -1,0 +1,50 @@
+{% extends "layout_admin.html" %}
+{% block title %}Payroll Detail{% endblock %}
+
+{% block content %}
+
+<h4 class="mb-3">
+  Payroll: {{ run.period_start }} → {{ run.period_end }}
+</h4>
+
+<div class="card p-3">
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th>Employee</th>
+        <th class="text-end">Gross</th>
+        <th class="text-end">Deductions</th>
+        <th class="text-end">Net</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ item.user.full_name }}</td>
+
+        <td class="text-end">
+          JMD {{ "%.2f"|format(item.gross_pay or 0) }}
+        </td>
+
+        <td class="text-end">
+          JMD {{ "%.2f"|format(item.deductions or 0) }}
+        </td>
+
+        <td class="text-end">
+          JMD {{ "%.2f"|format(item.net_pay or 0) }}
+        </td>
+
+        <td>
+          <a href="{{ url_for('finance.view_payslip', item_id=item.id) }}" class="btn btn-sm btn-outline-primary">
+            View Payslip
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

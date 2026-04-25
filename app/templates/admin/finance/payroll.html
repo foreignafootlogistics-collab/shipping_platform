@@ -79,7 +79,11 @@
     <tbody>
       {% for r in runs %}
       <tr>
-        <td>{{ r.period_start }} → {{ r.period_end }}</td>
+        <td>
+          <a href="{{ url_for('finance.payroll_detail', run_id=r.id) }}">
+            {{ r.period_start }} → {{ r.period_end }}
+          </a>
+        </td>
         <td class="text-end">JMD {{ "%.2f"|format(r.total_gross or 0) }}</td>
         <td class="text-end">JMD {{ "%.2f"|format(r.total_net or 0) }}</td>
         <td>{{ r.status|title }}</td>

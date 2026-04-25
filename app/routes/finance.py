@@ -1575,3 +1575,32 @@ def add_payroll_employee():
         "admin/finance/add_payroll_employee.html",
         users=users
     )
+
+@finance_bp.route("/payroll/<int:run_id>")
+@admin_required(roles=["finance"])
+def payroll_detail(run_id):
+    run = PayrollRun.query.get_or_404(run_id)
+
+    items = (
+        PayrollItem.query
+        .filter_by(payroll_run_id=run.id)
+        .all()
+    )
+
+    return render_template(
+        "admin/finance/payroll_detail.html",
+        run=run,
+        items=items
+    )
+
+@finance_bp.route("/payroll/payslip/<int:item_id>")
+@admin_required(roles=["finance"])
+def view_payslip(item_id):
+    item = PayrollItem.query.get_or_404(item_id)
+    run = PayrollRun.query.get(item.payroll_run_id)
+
+    return render_template(
+        "admin/finance/payslip.html",
+        item=item,
+        run=run
+    )

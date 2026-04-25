@@ -1514,12 +1514,32 @@ def create_payroll():
 def add_payroll_employee():
     if request.method == "POST":
         user_id = request.form.get("user_id")
-        pay_type = request.form.get("pay_type") or "salary"
-        base_salary = request.form.get("base_salary") or 0
-        hourly_rate = request.form.get("hourly_rate") or 0
+        pay_type = (request.form.get("pay_type") or "salary").strip().lower()
 
         if not user_id:
             flash("Please select an employee.", "danger")
+            return redirect(url_for("finance.add_payroll_employee"))
+
+        try:
+            base_salary = float(request.form.get("base_salary") or 0)
+        except Exception:
+            base_salary = 0
+
+        try:
+            hourly_rate = float(request.form.get("hourly_rate") or 0)
+        except Exception:
+            hourly_rate = 0
+
+        if pay_type not in {"salary", "hourly"}:
+            flash("Invalid pay type.", "danger")
+            return redirect(url_for("finance.add_payroll_employee"))
+
+        if pay_type == "salary" and base_salary <= 0:
+            flash("Salary must be greater than 0.", "danger")
+            return redirect(url_for("finance.add_payroll_employee"))
+
+        if pay_type == "hourly" and hourly_rate <= 0:
+            flash("Hourly rate must be greater than 0.", "danger")
             return redirect(url_for("finance.add_payroll_employee"))
 
         existing = EmployeePayroll.query.filter_by(user_id=int(user_id)).first()
@@ -1530,8 +1550,8 @@ def add_payroll_employee():
         emp = EmployeePayroll(
             user_id=int(user_id),
             pay_type=pay_type,
-            base_salary=base_salary,
-            hourly_rate=hourly_rate,
+            base_salary=base_salary if pay_type == "salary" else 0,
+            hourly_rate=hourly_rate if pay_type == "hourly" else 0,
             is_active=True
         )
 
@@ -1541,8 +1561,11 @@ def add_payroll_employee():
         flash("Employee added to payroll.", "success")
         return redirect(url_for("finance.payroll_dashboard"))
 
+    existing_ids = [x[0] for x in db.session.query(EmployeePayroll.user_id).all()]
+
     users = (
         User.query
+        .filter(~User.id.in_(existing_ids) if existing_ids else True)
         .filter(User.role.in_(["admin", "finance", "operations", "accounts_manager"]))
         .order_by(User.full_name.asc())
         .all()

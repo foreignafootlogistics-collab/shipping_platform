@@ -625,3 +625,18 @@ def daily_sales():
         business_date=business_date,
         closeout=closeout
     )
+
+@admin_pos_bp.route("/closeouts", methods=["GET"])
+@admin_required
+def closeouts():
+    closeouts = (
+        POSCloseout.query
+        .order_by(POSCloseout.business_date.desc())
+        .limit(100)
+        .all()
+    )
+
+    return render_template(
+        "admin/pos/closeouts.html",
+        closeouts=closeouts
+    )

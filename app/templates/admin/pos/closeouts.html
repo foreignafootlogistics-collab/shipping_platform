@@ -1,0 +1,66 @@
+{% extends "layout_admin.html" %}
+{% block title %}POS Closeout History{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="mb-1">POS Closeout History</h4>
+    <div class="text-muted">Review daily register closeouts and cash differences</div>
+  </div>
+
+  <a href="{{ url_for('admin_pos.daily_sales') }}" class="btn btn-outline-primary">
+    <i class="bi bi-cash-stack me-1"></i> Daily Sales
+  </a>
+</div>
+
+<div class="card p-3">
+  <div class="table-responsive">
+    <table class="table table-sm table-bordered align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th class="text-end">Expected Cash</th>
+          <th class="text-end">Actual Cash</th>
+          <th class="text-end">Difference</th>
+          <th class="text-end">Expected Total</th>
+          <th>Closed By</th>
+          <th>Closed At</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for c in closeouts %}
+        <tr>
+          <td>
+            <a href="{{ url_for('admin_pos.daily_sales', date=c.business_date.strftime('%Y-%m-%d')) }}">
+              {{ c.business_date.strftime('%Y-%m-%d') }}
+            </a>
+          </td>
+
+          <td class="text-end">JMD {{ "%.2f"|format(c.expected_cash) }}</td>
+          <td class="text-end">JMD {{ "%.2f"|format(c.actual_cash) }}</td>
+
+          <td class="text-end {% if c.cash_difference < 0 %}text-danger fw-bold{% elif c.cash_difference > 0 %}text-success fw-bold{% endif %}">
+            JMD {{ "%.2f"|format(c.cash_difference) }}
+          </td>
+
+          <td class="text-end">JMD {{ "%.2f"|format(c.expected_total) }}</td>
+          <td>{{ c.closed_by.full_name if c.closed_by else "Admin" }}</td>
+          <td>{{ c.closed_at.strftime('%Y-%m-%d %H:%M') if c.closed_at else "" }}</td>
+          <td>{{ c.notes or "—" }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-4">
+            No register closeouts found.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

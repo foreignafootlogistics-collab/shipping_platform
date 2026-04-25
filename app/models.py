@@ -48,7 +48,8 @@ class User(db.Model, UserMixin):
     date_registered = db.Column(db.String)
     address = db.Column(db.String)
     wallet_balance = db.Column(db.Float, default=0.0)
-   
+    employee_code = db.Column(db.String(20), unique=True, index=True)
+
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_at_dt = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -59,7 +60,7 @@ class User(db.Model, UserMixin):
     last_login = db.Column(db.DateTime, nullable=True)
     is_enabled = db.Column(db.Boolean, default=True)
     api_token = db.Column(db.String(128), unique=True, index=True, nullable=True)
-
+    
 
     # Relationships
     wallet = db.relationship('Wallet', back_populates='user', uselist=False)

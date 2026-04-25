@@ -273,6 +273,10 @@ def register_admin():
         )
 
         db.session.add(u)
+        db.session.flush()
+
+        u.employee_code = f"FAFL-{str(u.id).zfill(4)}"
+
         db.session.commit()
 
         flash(

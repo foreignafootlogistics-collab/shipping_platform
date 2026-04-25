@@ -22,7 +22,7 @@ from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import USD_TO_JMD
 
 from app.extensions import db
-from app.models import Invoice, Expense, User, ExpenseAuditLog, Package, Payment
+from app.models import Invoice, Expense, User, ExpenseAuditLog, Package, Payment, EmployeePayroll, PayrollRun, PayrollItem
 import cloudinary
 import cloudinary.uploader
 
@@ -1449,3 +1449,84 @@ def monthly_profit_loss():
         current_manual_expenses=current_manual_expenses,
         current_refund_expenses=current_refund_expenses,
     )
+
+
+@finance_bp.route("/payroll", methods=["GET"])
+@admin_required(roles=["finance"])
+def payroll_dashboard():
+    employees = EmployeePayroll.query.filter_by(is_active=True).all()
+    runs = PayrollRun.query.order_by(PayrollRun.created_at.desc()).limit(20).all()
+
+    return render_template(
+        "admin/finance/payroll.html",
+        employees=employees,
+        runs=runs
+    )
+
+@finance_bp.route("/payroll/create", methods=["POST"])
+@admin_required(roles=["finance"])
+def create_payroll():
+    start = request.form.get("start")
+    end = request.form.get("end")
+
+    if not start or not end:
+        flash("Start and end date required", "danger")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    run = PayrollRun(
+        period_start=datetime.fromisoformat(start).date(),
+        period_end=datetime.fromisoformat(end).date()
+    )
+    db.session.add(run)
+    db.session.flush()
+
+    employees = EmployeePayroll.query.filter_by(is_active=True).all()
+
+    total = 0
+
+    for emp in employees:
+        if emp.pay_type == "salary":
+            gross = float(emp.base_salary or 0)
+        else:
+            gross = 0  # hourly later
+
+        item = PayrollItem(
+            payroll_run_id=run.id,
+            user_id=emp.user_id,
+            gross_pay=gross,
+            deductions=0,
+            net_pay=gross
+        )
+
+        total += gross
+        db.session.add(item)
+
+    run.total_gross = total
+    run.total_net = total
+
+    db.session.commit()
+
+    flash("Payroll created successfully", "success")
+    return redirect(url_for("finance.payroll_dashboard"))
+
+@finance_bp.route("/payroll/add-user/<int:user_id>")
+@admin_required(roles=["finance"])
+def add_user_to_payroll(user_id):
+    user = User.query.get_or_404(user_id)
+
+    existing = EmployeePayroll.query.filter_by(user_id=user.id).first()
+    if existing:
+        flash("User already in payroll", "warning")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    emp = EmployeePayroll(
+        user_id=user.id,
+        pay_type="salary",
+        base_salary=50000  # change as needed
+    )
+
+    db.session.add(emp)
+    db.session.commit()
+
+    flash("User added to payroll", "success")
+    return redirect(url_for("finance.payroll_dashboard"))

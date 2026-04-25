@@ -297,6 +297,12 @@
                     <span><i class="bi bi-cash-stack me-2"></i> Monthly Expenses</span>
                   </a>
                 </li>
+                <li class="nav-item">
+                  <a class="nav-link {{ 'active' if request.endpoint in ['finance.payroll_dashboard', 'finance.create_payroll', 'finance.add_user_to_payroll'] else '' }}"
+                     href="{{ url_for('finance.payroll_dashboard') }}">
+                    <i class="bi bi-person-badge me-2"></i> Payroll
+                  </a>
+                </li>
 
                 <li class="nav-item">
                   <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_profit_loss' else '' }}"

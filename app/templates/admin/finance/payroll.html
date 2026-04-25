@@ -1,0 +1,50 @@
+{% extends "layout_admin.html" %}
+{% block title %}Payroll{% endblock %}
+
+{% block content %}
+
+<h4 class="mb-4">Payroll</h4>
+
+<div class="card p-3 mb-4">
+  <h6>Create Payroll Run</h6>
+
+  <form method="POST" action="{{ url_for('finance.create_payroll') }}">
+    <div class="row">
+      <div class="col-md-4">
+        <input type="date" name="start" class="form-control" required>
+      </div>
+      <div class="col-md-4">
+        <input type="date" name="end" class="form-control" required>
+      </div>
+      <div class="col-md-4">
+        <button class="btn btn-primary w-100">Create Payroll</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card p-3">
+  <h6>Recent Payroll Runs</h6>
+
+  <table class="table table-sm table-bordered">
+    <thead>
+      <tr>
+        <th>Period</th>
+        <th>Total Gross</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td>{{ r.period_start }} → {{ r.period_end }}</td>
+        <td>JMD {{ "%.2f"|format(r.total_gross) }}</td>
+        <td>{{ r.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

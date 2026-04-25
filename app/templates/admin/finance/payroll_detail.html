@@ -3,43 +3,102 @@
 
 {% block content %}
 
-<h4 class="mb-3">
-  Payroll: {{ run.period_start }} → {{ run.period_end }}
-</h4>
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="mb-1">Payroll: {{ run.period_start }} → {{ run.period_end }}</h4>
+    <div class="text-muted">
+      Status:
+      {% if run.status == "paid" %}
+        <span class="badge bg-success">Paid</span>
+      {% else %}
+        <span class="badge bg-warning text-dark">Draft</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('finance.payroll_dashboard') }}" class="btn btn-outline-secondary">
+      Back
+    </a>
+
+    {% if run.status != "paid" %}
+    <form method="POST" action="{{ url_for('finance.mark_payroll_paid', run_id=run.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-success" onclick="return confirm('Mark this payroll as paid?')">
+        Mark Payroll Paid
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row mb-4">
+  <div class="col-md-4">
+    <div class="card p-3 text-center">
+      <strong>Total Gross</strong>
+      <div class="fs-5">JMD {{ "%.2f"|format(run.total_gross or 0) }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card p-3 text-center">
+      <strong>Total Net</strong>
+      <div class="fs-5">JMD {{ "%.2f"|format(run.total_net or 0) }}</div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card p-3 text-center">
+      <strong>Employees</strong>
+      <div class="fs-5">{{ items|length }}</div>
+    </div>
+  </div>
+</div>
 
 <div class="card p-3">
-  <table class="table table-bordered">
+  <table class="table table-bordered align-middle">
     <thead>
       <tr>
         <th>Employee</th>
         <th class="text-end">Gross</th>
         <th class="text-end">Deductions</th>
         <th class="text-end">Net</th>
-        <th>Actions</th>
+        <th style="width: 260px;">Actions</th>
       </tr>
     </thead>
 
     <tbody>
       {% for item in items %}
       <tr>
-        <td>{{ item.user.full_name }}</td>
+        <td>{{ item.user.full_name if item.user else "" }}</td>
 
-        <td class="text-end">
-          JMD {{ "%.2f"|format(item.gross_pay or 0) }}
-        </td>
-
-        <td class="text-end">
-          JMD {{ "%.2f"|format(item.deductions or 0) }}
-        </td>
-
-        <td class="text-end">
-          JMD {{ "%.2f"|format(item.net_pay or 0) }}
-        </td>
+        <td class="text-end">JMD {{ "%.2f"|format(item.gross_pay or 0) }}</td>
+        <td class="text-end">JMD {{ "%.2f"|format(item.deductions or 0) }}</td>
+        <td class="text-end fw-bold">JMD {{ "%.2f"|format(item.net_pay or 0) }}</td>
 
         <td>
-          <a href="{{ url_for('finance.view_payslip', item_id=item.id) }}" class="btn btn-sm btn-outline-primary">
-            View Payslip
-          </a>
+          <div class="d-flex gap-1 flex-wrap">
+            <a href="{{ url_for('finance.view_payslip', item_id=item.id) }}" class="btn btn-sm btn-outline-primary">
+              View
+            </a>
+
+            <a href="{{ url_for('finance.payslip_pdf', item_id=item.id) }}" class="btn btn-sm btn-outline-dark">
+              PDF
+            </a>
+
+            <form method="POST" action="{{ url_for('finance.email_payslip', item_id=item.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-outline-success">
+                Email
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" class="text-center text-muted py-4">
+          No payroll items found.
         </td>
       </tr>
       {% endfor %}

@@ -1173,6 +1173,10 @@ class PayrollRun(db.Model):
     status = db.Column(db.String(20), default="draft")  # draft / paid
 
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    paid_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    paid_by_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
+    paid_by = db.relationship("User", foreign_keys=[paid_by_admin_id])
 
 
 class PayrollItem(db.Model):

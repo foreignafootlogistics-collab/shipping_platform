@@ -4,6 +4,8 @@ import base64
 from pathlib import Path
 from werkzeug.utils import secure_filename
 from flask import current_app, abort
+from flask import send_file
+from io import BytesIO
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, abort, current_app, make_response
 from datetime import datetime, date, timedelta, timezone
@@ -27,6 +29,7 @@ import cloudinary
 import cloudinary.uploader
 
 from app.utils.invoice_totals import fetch_invoice_totals_pg, mark_invoice_packages_delivered
+from app.utils.email_utils import send_email, EMAIL_FROM, EMAIL_ADDRESS
 
 
 finance_bp = Blueprint('finance', __name__, url_prefix='/finance')
@@ -1604,3 +1607,111 @@ def view_payslip(item_id):
         item=item,
         run=run
     )
+
+@finance_bp.route("/payroll/<int:run_id>/mark-paid", methods=["POST"])
+@admin_required(roles=["finance"])
+def mark_payroll_paid(run_id):
+    run = PayrollRun.query.get_or_404(run_id)
+
+    if run.status == "paid":
+        flash("Payroll is already marked as paid.", "warning")
+        return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+    run.status = "paid"
+    run.paid_at = datetime.now(timezone.utc)
+    run.paid_by_admin_id = current_user.id
+
+    db.session.commit()
+
+    flash("Payroll marked as paid.", "success")
+    return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+
+@finance_bp.route("/payroll/payslip/<int:item_id>/pdf")
+@admin_required(roles=["finance"])
+def payslip_pdf(item_id):
+    item = PayrollItem.query.get_or_404(item_id)
+    run = PayrollRun.query.get_or_404(item.payroll_run_id)
+
+    html = render_template(
+        "admin/finance/payslip.html",
+        item=item,
+        run=run,
+        pdf_mode=True
+    )
+
+    pdf = HTML(string=html, base_url=request.url_root).write_pdf()
+
+    filename = f"payslip_{item.user.full_name if item.user else item.id}_{run.period_start}_{run.period_end}.pdf"
+    filename = secure_filename(filename)
+
+    return send_file(
+        BytesIO(pdf),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename
+    )
+
+
+@finance_bp.route("/payroll/payslip/<int:item_id>/email", methods=["POST"])
+@admin_required(roles=["finance"])
+def email_payslip(item_id):
+    item = PayrollItem.query.get_or_404(item_id)
+    run = PayrollRun.query.get_or_404(item.payroll_run_id)
+
+    user = item.user
+    if not user or not user.email:
+        flash("Employee does not have an email address.", "danger")
+        return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+    html = render_template(
+        "admin/finance/payslip.html",
+        item=item,
+        run=run,
+        pdf_mode=True
+    )
+
+    pdf = HTML(string=html, base_url=request.url_root).write_pdf()
+
+    employee_name = user.full_name or user.email
+    subject = f"Payslip for {run.period_start} to {run.period_end}"
+
+    plain_body = f"""
+Hi {employee_name},
+
+Please find attached your payslip for the period {run.period_start} to {run.period_end}.
+
+Net Pay: JMD {float(item.net_pay or 0):,.2f}
+
+Thank you,
+Foreign A Foot Logistics Limited
+""".strip()
+
+    html_body = f"""
+<p>Hi {employee_name},</p>
+
+<p>Please find attached your payslip for the period <strong>{run.period_start}</strong> to <strong>{run.period_end}</strong>.</p>
+
+<p><strong>Net Pay:</strong> JMD {float(item.net_pay or 0):,.2f}</p>
+
+<p>Thank you,<br>Foreign A Foot Logistics Limited</p>
+""".strip()
+
+    filename = f"payslip_{employee_name}_{run.period_start}_{run.period_end}.pdf"
+    filename = secure_filename(filename)
+
+    ok = send_email(
+        to_email=user.email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        attachments=[(pdf, filename, "application/pdf")],
+        recipient_user_id=user.id,
+    )
+
+    if ok:
+        flash(f"Payslip emailed to {user.email}.", "success")
+    else:
+        flash("Failed to email payslip.", "danger")
+
+    return redirect(url_for("finance.payroll_detail", run_id=run.id))

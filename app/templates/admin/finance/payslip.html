@@ -210,9 +210,11 @@
 
 <body>
 
+{% if not pdf_mode %}
 <div class="toolbar">
   <button class="btn" onclick="window.print()">Print Payslip</button>
 </div>
+{% endif %}
 
 <div class="payslip">
 

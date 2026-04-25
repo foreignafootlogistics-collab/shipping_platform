@@ -1715,3 +1715,41 @@ Foreign A Foot Logistics Limited
         flash("Failed to email payslip.", "danger")
 
     return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+@finance_bp.route("/payroll/item/<int:item_id>/update", methods=["POST"])
+@admin_required(roles=["finance"])
+def update_payroll_item(item_id):
+    item = PayrollItem.query.get_or_404(item_id)
+    run = PayrollRun.query.get_or_404(item.payroll_run_id)
+
+    if run.status == "paid":
+        flash("Cannot edit payroll after it has been marked paid.", "warning")
+        return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+    try:
+        gross = float(request.form.get("gross_pay") or 0)
+        deductions = float(request.form.get("deductions") or 0)
+    except Exception:
+        flash("Invalid payroll amounts.", "danger")
+        return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+    if gross < 0 or deductions < 0:
+        flash("Amounts cannot be negative.", "danger")
+        return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+    if deductions > gross:
+        flash("Deductions cannot be greater than gross pay.", "danger")
+        return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+    item.gross_pay = gross
+    item.deductions = deductions
+    item.net_pay = gross - deductions
+
+    items = PayrollItem.query.filter_by(payroll_run_id=run.id).all()
+    run.total_gross = sum(float(i.gross_pay or 0) for i in items)
+    run.total_net = sum(float(i.net_pay or 0) for i in items)
+
+    db.session.commit()
+
+    flash("Payroll item updated successfully.", "success")
+    return redirect(url_for("finance.payroll_detail", run_id=run.id))

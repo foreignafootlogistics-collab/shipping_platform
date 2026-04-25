@@ -7,170 +7,293 @@
     @page { size: A4; margin: 18mm; }
 
     body {
-      font-family: Arial;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #111827;
       background: #f3f4f6;
       margin: 0;
       padding: 24px;
       font-size: 14px;
     }
 
-    .toolbar { text-align: right; margin-bottom: 10px; }
+    .toolbar {
+      max-width: 850px;
+      margin: 0 auto 14px auto;
+      text-align: right;
+    }
 
     .btn {
+      border: 1px solid #4A148C;
       background: #4A148C;
       color: #fff;
-      padding: 8px 12px;
-      border: none;
+      padding: 8px 14px;
       border-radius: 6px;
       cursor: pointer;
     }
 
     .payslip {
-      background: #fff;
       max-width: 850px;
-      margin: auto;
-      border: 1px solid #ddd;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #d1d5db;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
 
     .header {
       display: flex;
       justify-content: space-between;
-      padding: 20px;
+      padding: 24px;
       border-bottom: 4px solid #4A148C;
     }
 
-    .section { padding: 20px; }
+    .company {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+    }
+
+    .logo { width: 72px; }
+
+    .title-box { text-align: right; }
+
+    .title-box h1 {
+      margin: 0;
+      color: #4A148C;
+      font-size: 30px;
+    }
+
+    .section {
+      padding: 18px 24px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .info-box {
+      border: 1px solid #d1d5db;
+      padding: 12px;
+      border-radius: 8px;
+      background: #fafafa;
+    }
+
+    .label { font-size: 12px; color: #6b7280; }
+    .value { font-weight: bold; }
 
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
-    }
-
-    th, td {
-      border: 1px solid #ddd;
-      padding: 10px;
+      margin-top: 8px;
     }
 
     th {
       background: #111827;
       color: #fff;
+      padding: 10px;
+      text-align: left;
+    }
+
+    td {
+      border: 1px solid #d1d5db;
+      padding: 10px;
     }
 
     .text-end { text-align: right; }
 
     .summary {
-      display: flex;
-      gap: 10px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
     }
 
-    .card {
-      flex: 1;
-      padding: 10px;
-      border: 1px solid #ddd;
+    .summary-card {
+      border: 1px solid #d1d5db;
+      padding: 14px;
+      border-radius: 8px;
       text-align: center;
+      background: #fafafa;
     }
 
-    .net {
+    .summary-card.net {
       background: #4A148C;
-      color: #fff;
+      color: white;
+    }
+
+    .amount {
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .footer {
+      padding: 18px 24px;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
     }
 
     @media print {
+      body { background: white; padding: 0; }
       .toolbar { display: none; }
-      body { background: #fff; }
+      .payslip { border: none; box-shadow: none; }
     }
   </style>
 </head>
 
 <body>
 
-{% if not pdf_mode %}
 <div class="toolbar">
-  <button class="btn" onclick="window.print()">Print</button>
+  <button class="btn" onclick="window.print()">Print Payslip</button>
 </div>
-{% endif %}
 
 <div class="payslip">
 
   <div class="header">
-    <div>
-      <h2>Foreign A Foot Logistics</h2>
-      <div>{{ item.user.full_name }}</div>
+    <div class="company">
+      <img src="{{ url_for('static', filename='logo.png') }}" class="logo">
+      <div>
+        <h2>Foreign A Foot Logistics Limited</h2>
+        <p>
+          Cedar Grove, Portmore<br>
+          foreignafootlogistics@gmail.com<br>
+          876-560-7764
+        </p>
+      </div>
     </div>
 
-    <div>
-      <strong>Period:</strong><br>
-      {{ run.period_start }} → {{ run.period_end }}
+    <div class="title-box">
+      <h1>PAYSLIP</h1>
+      <p>
+        Period:<br>
+        <strong>{{ run.period_start }} → {{ run.period_end }}</strong>
+      </p>
     </div>
   </div>
 
   <div class="section">
-
-    <h3>Earnings</h3>
-    <table>
-      <tr><th>Description</th><th class="text-end">Amount</th></tr>
-
-      <tr>
-        <td>Base Salary</td>
-        <td class="text-end">{{ "%.2f"|format(item.gross_pay or 0) }}</td>
-      </tr>
-
-      <tr>
-        <td>Allowance</td>
-        <td class="text-end">{{ "%.2f"|format(item.allowance or 0) }}</td>
-      </tr>
-
-      <tr>
-        <td>Overtime</td>
-        <td class="text-end">{{ "%.2f"|format(item.overtime or 0) }}</td>
-      </tr>
-
-      <tr>
-        <td>Bonus</td>
-        <td class="text-end">{{ "%.2f"|format(item.bonus or 0) }}</td>
-      </tr>
-
-    </table>
-
-    <h3 class="mt-4">Deductions</h3>
-    <table>
-      <tr><th>Description</th><th class="text-end">Amount</th></tr>
-
-      <tr>
-        <td>NIS</td>
-        <td class="text-end">{{ "%.2f"|format(item.nis or 0) }}</td>
-      </tr>
-
-      <tr>
-        <td>Tax</td>
-        <td class="text-end">{{ "%.2f"|format(item.tax or 0) }}</td>
-      </tr>
-
-      <tr>
-        <td>Other</td>
-        <td class="text-end">{{ "%.2f"|format(item.other_deductions or 0) }}</td>
-      </tr>
-
-    </table>
-
-    <div class="summary mt-4">
-      <div class="card">
-        <div>Gross</div>
-        <strong>{{ "%.2f"|format(item.gross_pay or 0) }}</strong>
+    <div class="grid">
+      <div class="info-box">
+        <div class="label">Employee</div>
+        <div class="value">{{ item.user.full_name }}</div>
       </div>
 
-      <div class="card">
-        <div>Deductions</div>
-        <strong>{{ "%.2f"|format(item.deductions or 0) }}</strong>
+      <div class="info-box">
+        <div class="label">Email</div>
+        <div class="value">{{ item.user.email }}</div>
       </div>
 
-      <div class="card net">
-        <div>Net Pay</div>
-        <strong>{{ "%.2f"|format(item.net_pay or 0) }}</strong>
+      <div class="info-box">
+        <div class="label">Payroll ID</div>
+        <div class="value">PAY-{{ "%05d"|format(item.id) }}</div>
+      </div>
+
+      <div class="info-box">
+        <div class="label">Status</div>
+        <div class="value">{{ run.status }}</div>
       </div>
     </div>
+  </div>
 
+  <!-- Earnings -->
+  <div class="section">
+    <h3>Earnings</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th class="text-end">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        {% set base = (item.gross_pay or 0) - (item.allowance or 0) - (item.overtime or 0) - (item.bonus or 0) %}
+
+        <tr>
+          <td>Basic Salary</td>
+          <td class="text-end">{{ "%.2f"|format(base) }}</td>
+        </tr>
+
+        <tr>
+          <td>Allowance</td>
+          <td class="text-end">{{ "%.2f"|format(item.allowance or 0) }}</td>
+        </tr>
+
+        <tr>
+          <td>Overtime</td>
+          <td class="text-end">{{ "%.2f"|format(item.overtime or 0) }}</td>
+        </tr>
+
+        <tr>
+          <td>Bonus</td>
+          <td class="text-end">{{ "%.2f"|format(item.bonus or 0) }}</td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Deductions -->
+  <div class="section">
+    <h3>Deductions</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th class="text-end">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <tr>
+          <td>NIS</td>
+          <td class="text-end">{{ "%.2f"|format(item.nis or 0) }}</td>
+        </tr>
+
+        <tr>
+          <td>Tax</td>
+          <td class="text-end">{{ "%.2f"|format(item.tax or 0) }}</td>
+        </tr>
+
+        <tr>
+          <td>Other</td>
+          <td class="text-end">{{ "%.2f"|format(item.other_deductions or 0) }}</td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Summary -->
+  <div class="section">
+    <div class="summary">
+
+      <div class="summary-card">
+        <div class="label">Gross</div>
+        <div class="amount">JMD {{ "%.2f"|format(item.gross_pay or 0) }}</div>
+      </div>
+
+      <div class="summary-card">
+        <div class="label">Deductions</div>
+        <div class="amount">JMD {{ "%.2f"|format(item.deductions or 0) }}</div>
+      </div>
+
+      <div class="summary-card net">
+        <div class="label">Net Pay</div>
+        <div class="amount">JMD {{ "%.2f"|format(item.net_pay or 0) }}</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="footer">
+    <div>
+      Generated by Foreign A Foot Logistics payroll system.
+    </div>
+    <div>
+      ___________________<br>
+      Authorized Signature
+    </div>
   </div>
 
 </div>

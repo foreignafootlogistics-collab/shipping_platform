@@ -1142,3 +1142,50 @@ def generate_search_case_id(prefix: str = "SRC") -> str:
     seq = next_counter_value("search_case_seq")
     date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
     return f"{prefix}-{date_part}-{seq:06d}"
+
+
+class EmployeePayroll(db.Model):
+    __tablename__ = "employee_payroll"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+
+    pay_type = db.Column(db.String(20), nullable=False)  # salary / hourly
+    base_salary = db.Column(db.Numeric(12, 2), default=0)
+    hourly_rate = db.Column(db.Numeric(12, 2), default=0)
+
+    is_active = db.Column(db.Boolean, default=True)
+
+    user = db.relationship("User", lazy="joined")
+
+
+class PayrollRun(db.Model):
+    __tablename__ = "payroll_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    period_start = db.Column(db.Date, nullable=False)
+    period_end = db.Column(db.Date, nullable=False)
+
+    total_gross = db.Column(db.Numeric(12, 2), default=0)
+    total_net = db.Column(db.Numeric(12, 2), default=0)
+
+    status = db.Column(db.String(20), default="draft")  # draft / paid
+
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class PayrollItem(db.Model):
+    __tablename__ = "payroll_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    payroll_run_id = db.Column(db.Integer, db.ForeignKey("payroll_runs.id"))
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+
+    gross_pay = db.Column(db.Numeric(12, 2), default=0)
+    deductions = db.Column(db.Numeric(12, 2), default=0)
+    net_pay = db.Column(db.Numeric(12, 2), default=0)
+
+    payroll_run = db.relationship("PayrollRun", backref="items")
+    user = db.relationship("User")

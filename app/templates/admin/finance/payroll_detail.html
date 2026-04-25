@@ -21,6 +21,10 @@
       Back
     </a>
 
+    <a href="{{ url_for('finance.export_payroll', run_id=run.id) }}" class="btn btn-outline-dark">
+      Export CSV
+    </a>
+
     {% if run.status != "paid" %}
     <form method="POST" action="{{ url_for('finance.mark_payroll_paid', run_id=run.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -63,7 +67,7 @@
         <th class="text-end">Gross</th>
         <th class="text-end">Deductions</th>
         <th class="text-end">Net</th>
-        <th style="width: 330px;">Actions</th>
+        <th style="width: 360px;">Actions</th>
       </tr>
     </thead>
 
@@ -90,11 +94,13 @@
             </button>
             {% endif %}
 
-            <a href="{{ url_for('finance.view_payslip', item_id=item.id) }}" class="btn btn-sm btn-outline-primary">
+            <a href="{{ url_for('finance.view_payslip', item_id=item.id) }}"
+               class="btn btn-sm btn-outline-primary">
               View
             </a>
 
-            <a href="{{ url_for('finance.payslip_pdf', item_id=item.id) }}" class="btn btn-sm btn-outline-dark">
+            <a href="{{ url_for('finance.payslip_pdf', item_id=item.id) }}"
+               class="btn btn-sm btn-outline-dark">
               PDF
             </a>
 
@@ -104,6 +110,7 @@
                 Email
               </button>
             </form>
+
           </div>
         </td>
       </tr>
@@ -127,40 +134,77 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="modal-header">
-          <h5 class="modal-title">Edit Payroll - {{ item.user.full_name if item.user else "" }}</h5>
+          <h5 class="modal-title">
+            Edit Payroll - {{ item.user.full_name if item.user else "" }}
+          </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
 
         <div class="modal-body">
 
+          <!-- BASE SALARY -->
           <div class="mb-3">
-            <label class="form-label">Gross Pay</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              name="gross_pay"
-              value="{{ item.gross_pay or 0 }}"
-              class="form-control"
-              required
-            >
+            <label class="form-label">Base Salary</label>
+            <input type="number" step="0.01" min="0"
+                   name="gross_pay"
+                   value="{{ item.gross_pay or 0 }}"
+                   class="form-control" required>
+          </div>
+
+          <!-- ALLOWANCES -->
+          <div class="mb-3">
+            <label class="form-label">Allowance</label>
+            <input type="number" step="0.01" min="0"
+                   name="allowance"
+                   value="{{ item.allowance or 0 }}"
+                   class="form-control">
           </div>
 
           <div class="mb-3">
-            <label class="form-label">Deductions</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              name="deductions"
-              value="{{ item.deductions or 0 }}"
-              class="form-control"
-              required
-            >
+            <label class="form-label">Overtime</label>
+            <input type="number" step="0.01" min="0"
+                   name="overtime"
+                   value="{{ item.overtime or 0 }}"
+                   class="form-control">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Bonus</label>
+            <input type="number" step="0.01" min="0"
+                   name="bonus"
+                   value="{{ item.bonus or 0 }}"
+                   class="form-control">
+          </div>
+
+          <hr>
+
+          <!-- DEDUCTIONS -->
+          <div class="mb-3">
+            <label class="form-label">NIS</label>
+            <input type="number" step="0.01" min="0"
+                   name="nis"
+                   value="{{ item.nis or 0 }}"
+                   class="form-control">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Tax</label>
+            <input type="number" step="0.01" min="0"
+                   name="tax"
+                   value="{{ item.tax or 0 }}"
+                   class="form-control">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Other Deductions</label>
+            <input type="number" step="0.01" min="0"
+                   name="other_deductions"
+                   value="{{ item.other_deductions or 0 }}"
+                   class="form-control">
           </div>
 
           <div class="alert alert-info small mb-0">
-            Net Pay will automatically become Gross Pay minus Deductions.
+            Net Pay = (Salary + Allowance + Overtime + Bonus) − (NIS + Tax + Other)
           </div>
 
         </div>

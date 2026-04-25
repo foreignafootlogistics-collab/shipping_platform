@@ -1621,6 +1621,14 @@ def mark_payroll_paid(run_id):
     run.paid_at = datetime.now(timezone.utc)
     run.paid_by_admin_id = current_user.id
 
+    expense = Expense(
+        date=date.today(),
+        category="Payroll",
+        amount=float(run.total_net or 0),
+        description=f"Payroll paid for period {run.period_start} to {run.period_end}"
+    )
+    db.session.add(expense)
+
     db.session.commit()
 
     flash("Payroll marked as paid.", "success")
@@ -1716,6 +1724,39 @@ Foreign A Foot Logistics Limited
 
     return redirect(url_for("finance.payroll_detail", run_id=run.id))
 
+@finance_bp.route("/payroll/<int:run_id>/export")
+@admin_required(roles=["finance"])
+def export_payroll(run_id):
+    import csv
+    from io import StringIO
+
+    run = PayrollRun.query.get_or_404(run_id)
+    items = PayrollItem.query.filter_by(payroll_run_id=run.id).all()
+
+    output = StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(["Employee", "Gross", "Allowance", "Overtime", "Bonus", "NIS", "Tax", "Other Deductions", "Total Deductions", "Net Pay"])
+
+    for item in items:
+        writer.writerow([
+            item.user.full_name if item.user else "",
+            float(item.gross_pay or 0),
+            float(getattr(item, "allowance", 0) or 0),
+            float(getattr(item, "overtime", 0) or 0),
+            float(getattr(item, "bonus", 0) or 0),
+            float(getattr(item, "nis", 0) or 0),
+            float(getattr(item, "tax", 0) or 0),
+            float(getattr(item, "other_deductions", 0) or 0),
+            float(item.deductions or 0),
+            float(item.net_pay or 0),
+        ])
+
+    response = make_response(output.getvalue())
+    response.headers["Content-Disposition"] = f"attachment; filename=payroll_{run.period_start}_{run.period_end}.csv"
+    response.headers["Content-Type"] = "text/csv"
+    return response
+
 @finance_bp.route("/payroll/item/<int:item_id>/update", methods=["POST"])
 @admin_required(roles=["finance"])
 def update_payroll_item(item_id):
@@ -1726,25 +1767,40 @@ def update_payroll_item(item_id):
         flash("Cannot edit payroll after it has been marked paid.", "warning")
         return redirect(url_for("finance.payroll_detail", run_id=run.id))
 
-    try:
-        gross = float(request.form.get("gross_pay") or 0)
-        deductions = float(request.form.get("deductions") or 0)
-    except Exception:
-        flash("Invalid payroll amounts.", "danger")
+    def money(name):
+        try:
+            return float(request.form.get(name) or 0)
+        except Exception:
+            return 0
+
+    base_gross = money("gross_pay")
+    allowance = money("allowance")
+    overtime = money("overtime")
+    bonus = money("bonus")
+    nis = money("nis")
+    tax = money("tax")
+    other_deductions = money("other_deductions")
+
+    deductions = nis + tax + other_deductions
+    gross_total = base_gross + allowance + overtime + bonus
+    net_pay = gross_total - deductions
+
+    if net_pay < 0:
+        flash("Deductions cannot be greater than total earnings.", "danger")
         return redirect(url_for("finance.payroll_detail", run_id=run.id))
 
-    if gross < 0 or deductions < 0:
-        flash("Amounts cannot be negative.", "danger")
-        return redirect(url_for("finance.payroll_detail", run_id=run.id))
-
-    if deductions > gross:
-        flash("Deductions cannot be greater than gross pay.", "danger")
-        return redirect(url_for("finance.payroll_detail", run_id=run.id))
-
-    item.gross_pay = gross
+    # ✅ Update item
+    item.gross_pay = gross_total
+    item.allowance = allowance
+    item.overtime = overtime
+    item.bonus = bonus
+    item.nis = nis
+    item.tax = tax
+    item.other_deductions = other_deductions
     item.deductions = deductions
-    item.net_pay = gross - deductions
+    item.net_pay = net_pay
 
+    # ✅ Recalculate totals
     items = PayrollItem.query.filter_by(payroll_run_id=run.id).all()
     run.total_gross = sum(float(i.gross_pay or 0) for i in items)
     run.total_net = sum(float(i.net_pay or 0) for i in items)

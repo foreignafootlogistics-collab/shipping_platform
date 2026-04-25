@@ -1193,3 +1193,9 @@ class PayrollItem(db.Model):
 
     payroll_run = db.relationship("PayrollRun", backref="items")
     user = db.relationship("User")
+    allowance = db.Column(db.Numeric(12, 2), default=0)
+    overtime = db.Column(db.Numeric(12, 2), default=0)
+    bonus = db.Column(db.Numeric(12, 2), default=0)
+    nis = db.Column(db.Numeric(12, 2), default=0)
+    tax = db.Column(db.Numeric(12, 2), default=0)
+    other_deductions = db.Column(db.Numeric(12, 2), default=0)

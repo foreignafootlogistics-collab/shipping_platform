@@ -1509,24 +1509,46 @@ def create_payroll():
     flash("Payroll created successfully", "success")
     return redirect(url_for("finance.payroll_dashboard"))
 
-@finance_bp.route("/payroll/add-user/<int:user_id>")
+@finance_bp.route("/payroll/employees/add", methods=["GET", "POST"])
 @admin_required(roles=["finance"])
-def add_user_to_payroll(user_id):
-    user = User.query.get_or_404(user_id)
+def add_payroll_employee():
+    if request.method == "POST":
+        user_id = request.form.get("user_id")
+        pay_type = request.form.get("pay_type") or "salary"
+        base_salary = request.form.get("base_salary") or 0
+        hourly_rate = request.form.get("hourly_rate") or 0
 
-    existing = EmployeePayroll.query.filter_by(user_id=user.id).first()
-    if existing:
-        flash("User already in payroll", "warning")
+        if not user_id:
+            flash("Please select an employee.", "danger")
+            return redirect(url_for("finance.add_payroll_employee"))
+
+        existing = EmployeePayroll.query.filter_by(user_id=int(user_id)).first()
+        if existing:
+            flash("This user is already in payroll.", "warning")
+            return redirect(url_for("finance.payroll_dashboard"))
+
+        emp = EmployeePayroll(
+            user_id=int(user_id),
+            pay_type=pay_type,
+            base_salary=base_salary,
+            hourly_rate=hourly_rate,
+            is_active=True
+        )
+
+        db.session.add(emp)
+        db.session.commit()
+
+        flash("Employee added to payroll.", "success")
         return redirect(url_for("finance.payroll_dashboard"))
 
-    emp = EmployeePayroll(
-        user_id=user.id,
-        pay_type="salary",
-        base_salary=50000  # change as needed
+    users = (
+        User.query
+        .filter(User.role.in_(["admin", "finance", "operations", "accounts_manager"]))
+        .order_by(User.full_name.asc())
+        .all()
     )
 
-    db.session.add(emp)
-    db.session.commit()
-
-    flash("User added to payroll", "success")
-    return redirect(url_for("finance.payroll_dashboard"))
+    return render_template(
+        "admin/finance/add_payroll_employee.html",
+        users=users
+    )

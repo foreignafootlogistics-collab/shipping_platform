@@ -1932,3 +1932,63 @@ def bulk_calculate_payroll(run_id):
 
     flash("Payroll calculated for selected employees.", "success")
     return redirect(url_for("finance.payroll_detail", run_id=run_id))
+
+@finance_bp.route("/payroll/<int:run_id>/bulk-email", methods=["POST"])
+@admin_required(roles=["finance"])
+def bulk_email_payslips(run_id):
+    run = PayrollRun.query.get_or_404(run_id)
+
+    item_ids = request.form.getlist("item_ids")
+
+    if not item_ids:
+        flash("Select at least one employee.", "warning")
+        return redirect(url_for("finance.payroll_detail", run_id=run_id))
+
+    sent = 0
+    failed = 0
+
+    for item in PayrollItem.query.filter(PayrollItem.id.in_(item_ids)).all():
+        user = item.user
+
+        if not user or not user.email:
+            failed += 1
+            continue
+
+        html = render_template(
+            "admin/finance/payslip.html",
+            item=item,
+            run=run,
+            pdf_mode=True
+        )
+
+        pdf = HTML(string=html, base_url=request.url_root).write_pdf()
+
+        subject = f"Payslip for {run.period_start} to {run.period_end}"
+
+        plain_body = f"""
+Hi {user.full_name},
+
+Please find attached your payslip.
+
+Net Pay: JMD {float(item.net_pay or 0):,.2f}
+
+Foreign A Foot Logistics
+""".strip()
+
+        ok = send_email(
+            to_email=user.email,
+            subject=subject,
+            plain_body=plain_body,
+            html_body=html,
+            attachments=[(pdf, f"payslip_{item.id}.pdf", "application/pdf")],
+            recipient_user_id=user.id,
+        )
+
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+
+    flash(f"{sent} payslips sent, {failed} failed.", "success" if sent else "warning")
+
+    return redirect(url_for("finance.payroll_detail", run_id=run_id))

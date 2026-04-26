@@ -1199,4 +1199,6 @@ class PayrollItem(db.Model):
     bonus = db.Column(db.Numeric(12, 2), default=0)
     nis = db.Column(db.Numeric(12, 2), default=0)
     tax = db.Column(db.Numeric(12, 2), default=0)
+    nht = db.Column(db.Numeric(12, 2), default=0)
+    education_tax = db.Column(db.Numeric(12, 2), default=0)
     other_deductions = db.Column(db.Numeric(12, 2), default=0)

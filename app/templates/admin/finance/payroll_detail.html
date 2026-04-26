@@ -78,14 +78,7 @@
               formaction="{{ url_for('finance.bulk_email_payslips', run_id=run.id) }}"
               class="btn btn-sm btn-outline-success">
         Email Selected
-      </button>
-
-      <button type="submit"
-              form="bulkForm"
-              formaction="{{ url_for('finance.bulk_export_payslips', run_id=run.id) }}"
-              class="btn btn-sm btn-outline-dark">
-        Export Selected
-      </button>
+      </button>      
     </div>
   </div>
 </div>

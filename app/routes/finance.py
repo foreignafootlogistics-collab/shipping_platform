@@ -1476,14 +1476,31 @@ def create_payroll():
         flash("Start and end date required", "danger")
         return redirect(url_for("finance.payroll_dashboard"))
 
+    period_start = datetime.fromisoformat(start).date()
+    period_end = datetime.fromisoformat(end).date()
+
+    existing_run = PayrollRun.query.filter_by(
+        period_start=period_start,
+        period_end=period_end,
+        status="draft"
+    ).first()
+
+    if existing_run:
+        flash("A draft payroll already exists for this period. Open it instead of creating another one.", "warning")
+        return redirect(url_for("finance.payroll_detail", run_id=existing_run.id))
+
+    employees = EmployeePayroll.query.filter_by(is_active=True).all()
+
+    if not employees:
+        flash("No active payroll employees found. Add employees before creating payroll.", "warning")
+        return redirect(url_for("finance.payroll_dashboard"))
+
     run = PayrollRun(
-        period_start=datetime.fromisoformat(start).date(),
-        period_end=datetime.fromisoformat(end).date()
+        period_start=period_start,
+        period_end=period_end
     )
     db.session.add(run)
     db.session.flush()
-
-    employees = EmployeePayroll.query.filter_by(is_active=True).all()
 
     total = 0
 
@@ -1491,7 +1508,7 @@ def create_payroll():
         if emp.pay_type == "salary":
             gross = float(emp.base_salary or 0)
         else:
-            gross = 0  # hourly later
+            gross = 0
 
         item = PayrollItem(
             payroll_run_id=run.id,
@@ -1509,8 +1526,66 @@ def create_payroll():
 
     db.session.commit()
 
-    flash("Payroll created successfully", "success")
+    flash("Payroll created successfully.", "success")
+    return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+
+@finance_bp.route("/payroll/<int:run_id>/delete", methods=["POST"])
+@admin_required(roles=["finance"])
+def delete_payroll_run(run_id):
+    run = PayrollRun.query.get_or_404(run_id)
+
+    if run.status == "paid":
+        flash("Paid payroll runs cannot be deleted.", "danger")
+        return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+    PayrollItem.query.filter_by(payroll_run_id=run.id).delete()
+    db.session.delete(run)
+    db.session.commit()
+
+    flash("Draft payroll run deleted successfully.", "success")
     return redirect(url_for("finance.payroll_dashboard"))
+
+@finance_bp.route("/payroll/delete-selected", methods=["POST"])
+@admin_required(roles=["finance"])
+def delete_selected_payroll_runs():
+    raw_ids = request.form.getlist("run_ids")
+    run_ids = []
+
+    for x in raw_ids:
+        try:
+            run_ids.append(int(x))
+        except Exception:
+            pass
+
+    if not run_ids:
+        flash("Select at least one draft payroll run to delete.", "warning")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    runs = PayrollRun.query.filter(PayrollRun.id.in_(run_ids)).all()
+
+    deleted = 0
+    skipped = 0
+
+    for run in runs:
+        if run.status == "paid":
+            skipped += 1
+            continue
+
+        PayrollItem.query.filter_by(payroll_run_id=run.id).delete()
+        db.session.delete(run)
+        deleted += 1
+
+    db.session.commit()
+
+    if deleted:
+        flash(f"Deleted {deleted} draft payroll run(s).", "success")
+
+    if skipped:
+        flash(f"Skipped {skipped} paid payroll run(s). Paid payroll cannot be deleted.", "warning")
+
+    return redirect(url_for("finance.payroll_dashboard"))
+
 
 @finance_bp.route("/payroll/employees/add", methods=["GET", "POST"])
 @admin_required(roles=["finance"])
@@ -1809,3 +1884,51 @@ def update_payroll_item(item_id):
 
     flash("Payroll item updated successfully.", "success")
     return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+
+@finance_bp.route("/payroll/<int:run_id>/bulk-calc", methods=["POST"])
+@admin_required(roles=["finance"])
+def bulk_calculate_payroll(run_id):
+    run = PayrollRun.query.get_or_404(run_id)
+
+    item_ids = request.form.getlist("item_ids")
+
+    if not item_ids:
+        flash("Select at least one employee.", "warning")
+        return redirect(url_for("finance.payroll_detail", run_id=run_id))
+
+    for item in PayrollItem.query.filter(PayrollItem.id.in_(item_ids)).all():
+
+        gross = float(item.gross_pay or 0)
+
+        # 🇯🇲 JAMAICA CALCULATIONS
+
+        # NIS (3%)
+        nis = gross * 0.03
+
+        # NHT (2%)
+        nht = gross * 0.02
+
+        # Education Tax (2.25%)
+        education = gross * 0.0225
+
+        # Income Tax (25% AFTER threshold)
+        TAX_FREE = 150000  # monthly threshold approx
+
+        taxable_income = max(0, gross - TAX_FREE)
+
+        tax = taxable_income * 0.25
+
+        total_deductions = nis + nht + education + tax
+
+        # Save
+        item.nis = nis
+        item.tax = tax
+        item.other_deductions = education + nht
+        item.deductions = total_deductions
+        item.net_pay = gross - total_deductions
+
+    db.session.commit()
+
+    flash("Payroll calculated for selected employees.", "success")
+    return redirect(url_for("finance.payroll_detail", run_id=run_id))

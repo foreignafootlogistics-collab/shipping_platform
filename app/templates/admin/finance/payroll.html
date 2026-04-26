@@ -11,6 +11,7 @@
   </a>
 </div>
 
+<!-- CREATE PAYROLL -->
 <div class="card p-3 mb-4">
   <h6>Create Payroll Run</h6>
 
@@ -31,6 +32,7 @@
   </form>
 </div>
 
+<!-- EMPLOYEES -->
 <div class="card p-3 mb-4">
   <h6>Employees on Payroll</h6>
 
@@ -47,7 +49,10 @@
     <tbody>
       {% for emp in employees %}
       <tr>
-        <td>{{ emp.user.full_name or emp.user.email }}</td>
+        <td>
+          {{ emp.user.full_name or emp.user.email }}<br>
+          <small class="text-muted">{{ emp.user.employee_code }}</small>
+        </td>
         <td>{{ emp.pay_type|title }}</td>
         <td class="text-end">JMD {{ "%.2f"|format(emp.base_salary or 0) }}</td>
         <td class="text-end">JMD {{ "%.2f"|format(emp.hourly_rate or 0) }}</td>
@@ -63,40 +68,92 @@
   </table>
 </div>
 
+<!-- PAYROLL RUNS -->
 <div class="card p-3">
-  <h6>Recent Payroll Runs</h6>
 
-  <table class="table table-sm table-bordered">
-    <thead>
-      <tr>
-        <th>Period</th>
-        <th class="text-end">Total Gross</th>
-        <th class="text-end">Total Net</th>
-        <th>Status</th>
-      </tr>
-    </thead>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h6 class="mb-0">Recent Payroll Runs</h6>
 
-    <tbody>
-      {% for r in runs %}
-      <tr>
-        <td>
-          <a href="{{ url_for('finance.payroll_detail', run_id=r.id) }}">
-            {{ r.period_start }} → {{ r.period_end }}
-          </a>
-        </td>
-        <td class="text-end">JMD {{ "%.2f"|format(r.total_gross or 0) }}</td>
-        <td class="text-end">JMD {{ "%.2f"|format(r.total_net or 0) }}</td>
-        <td>{{ r.status|title }}</td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="4" class="text-center text-muted py-4">
-          No payroll runs created yet.
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+    <button
+      type="submit"
+      form="payrollBulkForm"
+      class="btn btn-sm btn-outline-danger"
+      onclick="return confirm('Delete selected draft payroll run(s)? This cannot be undone.');"
+    >
+      Delete Selected Drafts
+    </button>
+  </div>
+
+  <form method="POST" action="{{ url_for('finance.delete_selected_payroll_runs') }}" id="payrollBulkForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <table class="table table-sm table-bordered">
+      <thead>
+        <tr>
+          <th style="width:40px;">
+            <input type="checkbox" id="selectAllPayrollRuns">
+          </th>
+          <th>Period</th>
+          <th class="text-end">Total Gross</th>
+          <th class="text-end">Total Net</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for r in runs %}
+        <tr>
+
+          <td>
+            {% if r.status != "paid" %}
+              <input type="checkbox" name="run_ids" value="{{ r.id }}" class="payroll-run-check">
+            {% else %}
+              <i class="bi bi-lock text-muted"></i>
+            {% endif %}
+          </td>
+
+          <td>
+            <a href="{{ url_for('finance.payroll_detail', run_id=r.id) }}">
+              {{ r.period_start }} → {{ r.period_end }}
+            </a>
+          </td>
+
+          <td class="text-end">JMD {{ "%.2f"|format(r.total_gross or 0) }}</td>
+          <td class="text-end">JMD {{ "%.2f"|format(r.total_net or 0) }}</td>
+
+          <td>
+            {% if r.status == "paid" %}
+              <span class="badge bg-success">Paid</span>
+            {% else %}
+              <span class="badge bg-warning text-dark">Draft</span>
+            {% endif %}
+          </td>
+
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center text-muted py-4">
+            No payroll runs created yet.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+  </form>
 </div>
+
+<!-- SELECT ALL SCRIPT -->
+<script>
+const selectAll = document.getElementById("selectAllPayrollRuns");
+
+if (selectAll) {
+  selectAll.addEventListener("change", function () {
+    document.querySelectorAll(".payroll-run-check").forEach(cb => {
+      cb.checked = this.checked;
+    });
+  });
+}
+</script>
 
 {% endblock %}

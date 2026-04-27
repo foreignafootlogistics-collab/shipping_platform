@@ -1223,62 +1223,123 @@ def expense_audit_logs():
 
 
 # ---------------------- MONTHLY INCOME ---------------------- #
+# ---------------------- MONTHLY INCOME ---------------------- #
 @finance_bp.route('/monthly-income')
 @admin_required(roles=['finance'])
 def monthly_income():
-    # Current month bounds
     today = date.today()
-    month_start = date(today.year, today.month, 1)
-    month_end = date(today.year, today.month, monthrange(today.year, today.month)[1])
+    default_start = date(today.year, today.month, 1)
+    default_end = date(today.year, today.month, monthrange(today.year, today.month)[1])
 
-    amt_paid_expr = _invoice_paid_amount_expr()
-    paid_date_expr = _invoice_paid_date_expr()
+    start = (request.args.get("start") or default_start.isoformat()).strip()
+    end = (request.args.get("end") or default_end.isoformat()).strip()
+    q = (request.args.get("q") or "").strip()
+    method = (request.args.get("method") or "").strip()
+
+    try:
+        start_date = datetime.fromisoformat(start).date()
+    except Exception:
+        start_date = default_start
+        start = default_start.isoformat()
+
+    try:
+        end_date = datetime.fromisoformat(end).date()
+    except Exception:
+        end_date = default_end
+        end = default_end.isoformat()
+
     amt_due_expr = _invoice_due_amount_expr()
     issued_date_expr = _invoice_issued_date_expr()
     open_statuses = ['pending', 'issued', 'unpaid']
 
-    # Paid this month (table)
-    incomes_raw = (
+    payments_query = (
         db.session.query(
-            Invoice.id,
+            Payment.id.label("payment_id"),
+            Payment.created_at.label("date_paid"),
+            Payment.amount_jmd.label("amount"),
+            Payment.method,
+            Payment.reference,
+            Payment.notes,
+            Payment.status,
+            Payment.transaction_type,
+            Invoice.id.label("invoice_id"),
             Invoice.invoice_number,
-            User.full_name.label('customer_name'),
-            amt_paid_expr.label('amount'),
-            func.date(paid_date_expr).label('date_paid'),
+            User.full_name.label("customer_name"),
+            User.registration_number,
         )
-        .join(User, User.id == Invoice.user_id)
-        .filter(func.lower(Invoice.status) == 'paid')
-        .filter(func.date(paid_date_expr).between(month_start, month_end))
-        .order_by(func.date(paid_date_expr).desc())
-        .all()
+        .outerjoin(Invoice, Invoice.id == Payment.invoice_id)
+        .outerjoin(User, User.id == Payment.user_id)
+        .filter(func.date(Payment.created_at).between(start_date, end_date))
+        .filter(func.lower(func.coalesce(Payment.status, "completed")) == "completed")
     )
-    incomes = []
-    for r in incomes_raw:
-        inv_number = r.invoice_number or f"INV{r.id:05d}"
-        incomes.append({
-            'invoice_number': inv_number,
-            'customer_name': r.customer_name,
-            'amount': float(r.amount or 0),
-            'date_paid': r.date_paid,
-        })
-    total_income = sum(r['amount'] for r in incomes) if incomes else 0.0
 
-    # Paid chart (daily)
+    if q:
+        like = f"%{q.lower()}%"
+        payments_query = payments_query.filter(
+            or_(
+                func.lower(func.coalesce(User.full_name, "")).like(like),
+                func.lower(func.coalesce(User.registration_number, "")).like(like),
+                func.lower(func.coalesce(Invoice.invoice_number, "")).like(like),
+                func.lower(func.coalesce(Payment.reference, "")).like(like),
+                func.lower(func.coalesce(Payment.notes, "")).like(like),
+            )
+        )
+
+    if method:
+        payments_query = payments_query.filter(
+            func.lower(func.coalesce(Payment.method, "")) == method.lower()
+        )
+
+    payments_raw = payments_query.order_by(Payment.created_at.desc()).all()
+
+    incomes = []
+    for r in payments_raw:
+        incomes.append({
+            "payment_id": r.payment_id,
+            "invoice_id": r.invoice_id,
+            "invoice_number": r.invoice_number or "—",
+            "customer_name": r.customer_name or "—",
+            "registration_number": r.registration_number or "—",
+            "amount": float(r.amount or 0),
+            "date_paid": r.date_paid,
+            "method": r.method or "—",
+            "reference": r.reference or "—",
+            "notes": r.notes or "",
+            "status": r.status or "completed",
+            "transaction_type": r.transaction_type or "invoice_payment",
+        })
+
+    total_income = sum(r["amount"] for r in incomes)
+
+    methods = [
+        x[0] for x in (
+            db.session.query(Payment.method)
+            .filter(Payment.method.isnot(None))
+            .distinct()
+            .order_by(Payment.method.asc())
+            .all()
+        )
+        if x[0]
+    ]
+
     daily_paid_raw = (
         db.session.query(
-            func.extract('day', func.date(paid_date_expr)).label('day'),
-            func.coalesce(func.sum(amt_paid_expr), 0.0).label('total'),
+            func.date(Payment.created_at).label("d"),
+            func.coalesce(func.sum(Payment.amount_jmd), 0.0).label("total"),
         )
-        .filter(func.lower(Invoice.status) == 'paid')
-        .filter(func.date(paid_date_expr).between(month_start, month_end))
-        .group_by(func.extract('day', func.date(paid_date_expr)))
-        .order_by(func.extract('day', func.date(paid_date_expr)))
+        .filter(func.date(Payment.created_at).between(start_date, end_date))
+        .filter(func.lower(func.coalesce(Payment.status, "completed")) == "completed")
+        .group_by(func.date(Payment.created_at))
+        .order_by(func.date(Payment.created_at))
         .all()
     )
-    chart_labels = [f"{int(r.day):02d}" for r in daily_paid_raw]
+
+    chart_labels = [
+        r.d.isoformat() if isinstance(r.d, date) else str(r.d)
+        for r in daily_paid_raw
+    ]
     chart_values = [float(r.total or 0) for r in daily_paid_raw]
 
-    # Amount due issued this month (open statuses)
     due_rows_raw = (
         db.session.query(
             Invoice.id,
@@ -1289,38 +1350,40 @@ def monthly_income():
         )
         .join(User, User.id == Invoice.user_id)
         .filter(amt_due_expr > 0)
-        .filter(func.date(issued_date_expr).between(month_start, month_end))
+        .filter(func.date(issued_date_expr).between(start_date, end_date))
         .filter(func.lower(Invoice.status).in_(open_statuses))
         .order_by(func.date(issued_date_expr).desc())
         .all()
     )
+
     due_rows = []
     for r in due_rows_raw:
-        inv_number = r.invoice_number or f"INV{r.id:05d}"
         due_rows.append({
-            'invoice_number': inv_number,
+            'invoice_number': r.invoice_number or f"INV{r.id:05d}",
             'customer_name': r.customer_name,
             'amount_due': float(r.amount_due or 0),
             'date_issued': r.date_issued,
         })
-    total_amount_due = sum(r['amount_due'] for r in due_rows) if due_rows else 0.0
-    total_income = sum(r['amount'] for r in incomes) if incomes else 0.0
-    refund_expenses = _refund_expense_total(month_start, month_end)
 
-    # Issued chart (daily)
+    total_amount_due = sum(r['amount_due'] for r in due_rows)
+
     daily_due_raw = (
         db.session.query(
-            func.extract('day', func.date(issued_date_expr)).label('day'),
-            func.coalesce(func.sum(amt_due_expr), 0.0).label('total'),
+            func.date(issued_date_expr).label("d"),
+            func.coalesce(func.sum(amt_due_expr), 0.0).label("total"),
         )
         .filter(amt_due_expr > 0)
-        .filter(func.date(issued_date_expr).between(month_start, month_end))
+        .filter(func.date(issued_date_expr).between(start_date, end_date))
         .filter(func.lower(Invoice.status).in_(open_statuses))
-        .group_by(func.extract('day', func.date(issued_date_expr)))
-        .order_by(func.extract('day', func.date(issued_date_expr)))
+        .group_by(func.date(issued_date_expr))
+        .order_by(func.date(issued_date_expr))
         .all()
     )
-    due_labels = [f"{int(r.day):02d}" for r in daily_due_raw]
+
+    due_labels = [
+        r.d.isoformat() if isinstance(r.d, date) else str(r.d)
+        for r in daily_due_raw
+    ]
     due_values = [float(r.total or 0) for r in daily_due_raw]
 
     return render_template(
@@ -1333,9 +1396,12 @@ def monthly_income():
         total_amount_due=total_amount_due,
         due_labels=due_labels,
         due_values=due_values,
-        refund_expenses=refund_expenses,
+        start=start,
+        end=end,
+        q=q,
+        method_selected=method,
+        methods=methods,
     )
-
 
 # ---------------------- MONTHLY PROFIT/LOSS ---------------------- #
 

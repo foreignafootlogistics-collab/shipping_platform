@@ -91,6 +91,8 @@
                   <th>Customer</th>
                   <th>Reg #</th>
                   <th>Type</th>
+                  <th>Invoice Status</th>
+                  <th class="text-end">Balance Left</th>
                   <th>Method</th>
                   <th>Reference</th>
                   <th class="text-end">Amount</th>
@@ -116,7 +118,29 @@
                       {{ income.transaction_type.replace("_", " ").title() }}
                     </span>
                   </td>
-
+                  <td>
+                    {% set st = (income.invoice_status or "").lower() %}
+                    {% if st == "paid" %}
+                      <span class="badge bg-success">Paid</span>
+                    {% elif st == "partial" %}
+                      <span class="badge bg-primary">Partial</span>
+                    {% elif st == "pending" %}
+                      <span class="badge bg-warning text-dark">Pending</span>
+                    {% elif st == "unpaid" %}
+                      <span class="badge bg-danger">Unpaid</span>
+                    {% else %}
+                      <span class="badge bg-secondary">{{ income.invoice_status }}</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    {% if income.invoice_amount_due and income.invoice_amount_due > 0 %}
+                      <span class="fw-bold text-danger">
+                        ${{ "{:,.2f}".format(income.invoice_amount_due or 0) }}
+                      </span>
+                    {% else %}
+                      <span class="text-success fw-semibold">$0.00</span>
+                    {% endif %}
+                  </td>
                   <td>{{ income.method }}</td>
                   <td><code>{{ income.reference }}</code></td>
 
@@ -128,7 +152,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                  <td colspan="10" class="text-center text-muted py-4">
+                  <td colspan="12" class="text-center text-muted py-4">
                     No paid transactions found for this period.
                   </td>
                 </tr>
@@ -212,9 +236,11 @@
                       {% endif %}
                     </td>
 
-                    <td>
+                    <td>                      
                       {% set st = (row.status or "unpaid").lower() %}
-                      {% if st == "pending" %}
+                      {% if st == "partial" %}
+                        <span class="badge bg-primary">Partial</span>
+                      {% elif st == "pending" %}
                         <span class="badge bg-warning text-dark">Pending</span>
                       {% elif st == "issued" %}
                         <span class="badge bg-info text-dark">Issued</span>

@@ -1248,7 +1248,7 @@ def monthly_income():
 
     amt_due_expr = _invoice_due_amount_expr()
     issued_date_expr = _invoice_issued_date_expr()
-    open_statuses = ['pending', 'issued', 'unpaid']
+    open_statuses = ['pending', 'issued', 'unpaid', 'partial']
 
     payments_query = (
         db.session.query(
@@ -1262,6 +1262,8 @@ def monthly_income():
             Payment.transaction_type,
             Invoice.id.label("invoice_id"),
             Invoice.invoice_number,
+            Invoice.status.label("invoice_status"),
+            Invoice.amount_due.label("invoice_amount_due"),
             User.full_name.label("customer_name"),
             User.registration_number,
         )
@@ -1296,6 +1298,8 @@ def monthly_income():
             "payment_id": r.payment_id,
             "invoice_id": r.invoice_id,
             "invoice_number": r.invoice_number or "—",
+            "invoice_status": r.invoice_status or "—",
+            "invoice_amount_due": float(r.invoice_amount_due or 0),
             "customer_name": r.customer_name or "—",
             "registration_number": r.registration_number or "—",
             "amount": float(r.amount or 0),

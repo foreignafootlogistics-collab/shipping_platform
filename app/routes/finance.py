@@ -1852,30 +1852,35 @@ def update_payroll_item(item_id):
     allowance = money("allowance")
     overtime = money("overtime")
     bonus = money("bonus")
+
     nis = money("nis")
+    nht = money("nht")
+    education_tax = money("education_tax")
     tax = money("tax")
     other_deductions = money("other_deductions")
 
-    deductions = nis + tax + other_deductions
     gross_total = base_gross + allowance + overtime + bonus
+    deductions = nis + nht + education_tax + tax + other_deductions
     net_pay = gross_total - deductions
 
     if net_pay < 0:
         flash("Deductions cannot be greater than total earnings.", "danger")
         return redirect(url_for("finance.payroll_detail", run_id=run.id))
 
-    # ✅ Update item
-    item.gross_pay = gross_total
-    item.allowance = allowance
-    item.overtime = overtime
-    item.bonus = bonus
-    item.nis = nis
-    item.tax = tax
-    item.other_deductions = other_deductions
-    item.deductions = deductions
-    item.net_pay = net_pay
+    item.gross_pay = round(gross_total, 2)
+    item.allowance = round(allowance, 2)
+    item.overtime = round(overtime, 2)
+    item.bonus = round(bonus, 2)
 
-    # ✅ Recalculate totals
+    item.nis = round(nis, 2)
+    item.nht = round(nht, 2)
+    item.education_tax = round(education_tax, 2)
+    item.tax = round(tax, 2)
+    item.other_deductions = round(other_deductions, 2)
+
+    item.deductions = round(deductions, 2)
+    item.net_pay = round(net_pay, 2)
+
     items = PayrollItem.query.filter_by(payroll_run_id=run.id).all()
     run.total_gross = sum(float(i.gross_pay or 0) for i in items)
     run.total_net = sum(float(i.net_pay or 0) for i in items)
@@ -1892,50 +1897,48 @@ def bulk_calculate_payroll(run_id):
     run = PayrollRun.query.get_or_404(run_id)
 
     if run.status == "paid":
-        flash("Paid payroll cannot be recalculated or edited.", "warning")
+        flash("Cannot calculate payroll after it has been marked paid.", "warning")
         return redirect(url_for("finance.payroll_detail", run_id=run.id))
 
     item_ids = request.form.getlist("item_ids")
 
     if not item_ids:
         flash("Select at least one employee.", "warning")
-        return redirect(url_for("finance.payroll_detail", run_id=run_id))
+        return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
+    # 2026 effective tax-free amount from JIS: 1,876,614 annual
+    MONTHLY_TAX_FREE = 1876614 / 12
 
     for item in PayrollItem.query.filter(PayrollItem.id.in_(item_ids)).all():
-
         gross = float(item.gross_pay or 0)
 
-        # 🇯🇲 JAMAICA CALCULATIONS
-
-        # NIS (3%)
         nis = gross * 0.03
-
-        # NHT (2%)
         nht = gross * 0.02
+        education_tax = gross * 0.0225
 
-        # Education Tax (2.25%)
-        education = gross * 0.0225
-
-        # Income Tax (25% AFTER threshold)
-        TAX_FREE = 150000  # monthly threshold approx
-
-        taxable_income = max(0, gross - TAX_FREE)
-
+        taxable_income = max(0, gross - MONTHLY_TAX_FREE)
         tax = taxable_income * 0.25
 
-        total_deductions = nis + nht + education + tax
+        other_deductions = float(item.other_deductions or 0)
 
-        # Save
-        item.nis = nis
-        item.tax = tax
-        item.other_deductions = education + nht
-        item.deductions = total_deductions
-        item.net_pay = gross - total_deductions
+        total_deductions = nis + nht + education_tax + tax + other_deductions
+
+        item.nis = round(nis, 2)
+        item.nht = round(nht, 2)
+        item.education_tax = round(education_tax, 2)
+        item.tax = round(tax, 2)
+        item.deductions = round(total_deductions, 2)
+        item.net_pay = round(gross - total_deductions, 2)
+
+    items = PayrollItem.query.filter_by(payroll_run_id=run.id).all()
+    run.total_gross = sum(float(i.gross_pay or 0) for i in items)
+    run.total_net = sum(float(i.net_pay or 0) for i in items)
 
     db.session.commit()
 
-    flash("Payroll calculated for selected employees.", "success")
-    return redirect(url_for("finance.payroll_detail", run_id=run_id))
+    flash("Payroll calculated for selected employees. You can still edit deductions manually if needed.", "success")
+    return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
 
 @finance_bp.route("/payroll/<int:run_id>/bulk-email", methods=["POST"])
 @admin_required(roles=["finance"])

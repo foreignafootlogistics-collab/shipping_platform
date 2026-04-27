@@ -1246,7 +1246,12 @@ def monthly_income():
         end_date = default_end
         end = default_end.isoformat()
 
-    amt_due_expr = _invoice_due_amount_expr()
+    amt_due_expr = func.coalesce(
+        Invoice.amount_due,
+        Invoice.grand_total,
+        Invoice.amount,
+        0.0
+    )
     issued_date_expr = _invoice_issued_date_expr()
     open_statuses = ['pending', 'issued', 'unpaid', 'partial']
 

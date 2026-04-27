@@ -1900,7 +1900,7 @@ def bulk_calculate_payroll(run_id):
         flash("Cannot calculate payroll after it has been marked paid.", "warning")
         return redirect(url_for("finance.payroll_detail", run_id=run.id))
 
-    item_ids = request.form.getlist("item_ids")
+    item_ids = [int(x) for x in request.form.getlist("item_ids") if str(x).isdigit()]
 
     if not item_ids:
         flash("Select at least one employee.", "warning")

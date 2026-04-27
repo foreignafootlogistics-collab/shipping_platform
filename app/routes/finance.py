@@ -1342,9 +1342,12 @@ def monthly_income():
 
     due_rows_raw = (
         db.session.query(
-            Invoice.id,
+            Invoice.id.label("invoice_id"),
             Invoice.invoice_number,
+            Invoice.status,
+            Invoice.user_id,
             User.full_name.label('customer_name'),
+            User.email.label("customer_email"),
             amt_due_expr.label('amount_due'),
             func.date(issued_date_expr).label('date_issued'),
         )
@@ -1357,12 +1360,25 @@ def monthly_income():
     )
 
     due_rows = []
+    today_date = date.today()
+
     for r in due_rows_raw:
+        issued = r.date_issued
+        age_days = 0
+
+        if issued:
+            issued_date = issued if isinstance(issued, date) else issued.date()
+            age_days = (today_date - issued_date).days
+
         due_rows.append({
-            'invoice_number': r.invoice_number or f"INV{r.id:05d}",
-            'customer_name': r.customer_name,
-            'amount_due': float(r.amount_due or 0),
-            'date_issued': r.date_issued,
+            "invoice_id": r.invoice_id,
+            "invoice_number": r.invoice_number or f"INV{r.invoice_id:05d}",
+            "customer_name": r.customer_name,
+            "customer_email": r.customer_email,
+            "amount_due": float(r.amount_due or 0),
+            "date_issued": r.date_issued,
+            "status": r.status or "unpaid",
+            "age_days": age_days,
         })
 
     total_amount_due = sum(r['amount_due'] for r in due_rows)
@@ -1402,6 +1418,59 @@ def monthly_income():
         method_selected=method,
         methods=methods,
     )
+
+@finance_bp.route("/invoice/<int:invoice_id>/send-reminder", methods=["POST"])
+@admin_required(roles=["finance"])
+def send_invoice_reminder(invoice_id):
+    inv = Invoice.query.get_or_404(invoice_id)
+    user = User.query.get(inv.user_id)
+
+    if not user or not user.email:
+        flash("Customer does not have an email address.", "danger")
+        return redirect(url_for("finance.monthly_income"))
+
+    amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
+    invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
+
+    subject = f"Payment Reminder - Invoice {invoice_number}"
+
+    plain_body = f"""
+Hi {user.full_name or 'Customer'},
+
+This is a friendly reminder that invoice {invoice_number} has an outstanding balance of JMD {amount_due:,.2f}.
+
+Please make payment at your earliest convenience.
+
+Thank you,
+Foreign A Foot Logistics Limited
+""".strip()
+
+    html_body = f"""
+<p>Hi {user.full_name or 'Customer'},</p>
+
+<p>This is a friendly reminder that invoice <strong>{invoice_number}</strong> has an outstanding balance of:</p>
+
+<h3>JMD {amount_due:,.2f}</h3>
+
+<p>Please make payment at your earliest convenience.</p>
+
+<p>Thank you,<br>Foreign A Foot Logistics Limited</p>
+""".strip()
+
+    ok = send_email(
+        to_email=user.email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        recipient_user_id=user.id,
+    )
+
+    if ok:
+        flash(f"Reminder sent to {user.email}.", "success")
+    else:
+        flash("Failed to send reminder email.", "danger")
+
+    return redirect(request.referrer or url_for("finance.monthly_income"))
 
 # ---------------------- MONTHLY PROFIT/LOSS ---------------------- #
 

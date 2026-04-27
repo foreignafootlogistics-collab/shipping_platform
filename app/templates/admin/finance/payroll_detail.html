@@ -36,7 +36,6 @@
   </div>
 </div>
 
-<!-- SUMMARY -->
 <div class="row mb-4">
   <div class="col-md-4">
     <div class="card p-3 text-center">
@@ -60,30 +59,30 @@
   </div>
 </div>
 
-<!-- BULK ACTION BAR -->
 <div class="card p-3 mb-3">
   <div class="d-flex justify-content-between align-items-center">
     <h6 class="mb-0">Employees</h6>
 
     <div class="d-flex gap-2">
-
+      {% if run.status != "paid" %}
       <button type="submit"
-              form="bulkForm"              formaction="{{ url_for('finance.bulk_calculate_payroll', run_id=run.id) }}"
+              form="bulkForm"
+              formaction="{{ url_for('finance.bulk_calculate_payroll', run_id=run.id) }}"
               class="btn btn-sm btn-primary">
         Calculate Payroll
       </button>
+      {% endif %}
 
       <button type="submit"
               form="bulkForm"
               formaction="{{ url_for('finance.bulk_email_payslips', run_id=run.id) }}"
               class="btn btn-sm btn-outline-success">
         Email Selected
-      </button>      
+      </button>
     </div>
   </div>
 </div>
 
-<!-- TABLE -->
 <form method="POST" id="bulkForm">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -109,8 +108,22 @@
           </td>
 
           <td>
-            {{ item.user.full_name }}<br>
-            <small class="text-muted">{{ item.user.employee_code }}</small>
+            <a href="{{ url_for('finance.view_payslip', item_id=item.id) }}" class="fw-semibold text-decoration-none">
+              {{ item.user.full_name if item.user else "" }}
+            </a><br>
+
+            <small class="text-muted">{{ item.user.employee_code if item.user else "" }}</small>
+
+            {% if run.status != "paid" %}
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-warning ms-2"
+              data-bs-toggle="modal"
+              data-bs-target="#editPayrollModal{{ item.id }}"
+            >
+              Edit
+            </button>
+            {% endif %}
           </td>
 
           <td class="text-end">JMD {{ "%.2f"|format(item.gross_pay or 0) }}</td>
@@ -129,7 +142,104 @@
   </div>
 </form>
 
-<!-- SELECT ALL SCRIPT -->
+{% for item in items %}
+<div class="modal fade" id="editPayrollModal{{ item.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+
+      <form method="POST" action="{{ url_for('finance.update_payroll_item', item_id=item.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Payroll - {{ item.user.full_name if item.user else "" }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+
+          <div class="mb-3">
+            <label class="form-label">Basic Salary / Base Gross</label>
+            <input type="number" step="0.01" min="0" name="gross_pay"
+                   value="{{ (item.gross_pay or 0) - (item.allowance or 0) - (item.overtime or 0) - (item.bonus or 0) }}"
+                   class="form-control" required>
+          </div>
+
+          <div class="row">
+            <div class="col-md-4 mb-3">
+              <label class="form-label">Allowance</label>
+              <input type="number" step="0.01" min="0" name="allowance"
+                     value="{{ item.allowance or 0 }}" class="form-control">
+            </div>
+
+            <div class="col-md-4 mb-3">
+              <label class="form-label">Overtime</label>
+              <input type="number" step="0.01" min="0" name="overtime"
+                     value="{{ item.overtime or 0 }}" class="form-control">
+            </div>
+
+            <div class="col-md-4 mb-3">
+              <label class="form-label">Bonus</label>
+              <input type="number" step="0.01" min="0" name="bonus"
+                     value="{{ item.bonus or 0 }}" class="form-control">
+            </div>
+          </div>
+
+          <hr>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">NIS</label>
+              <input type="number" step="0.01" min="0" name="nis"
+                     value="{{ item.nis or 0 }}" class="form-control">
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Income Tax / PAYE</label>
+              <input type="number" step="0.01" min="0" name="tax"
+                     value="{{ item.tax or 0 }}" class="form-control">
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label">NHT</label>
+              <input type="number" step="0.01" min="0" name="nht"
+                     value="{{ item.nht or 0 }}" class="form-control">
+            </div>
+
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Education Tax</label>
+              <input type="number" step="0.01" min="0" name="education_tax"
+                     value="{{ item.education_tax or 0 }}" class="form-control">
+            </div>
+
+            <div class="col-md-12 mb-3">
+              <label class="form-label">Other Deductions</label>
+              <input type="number" step="0.01" min="0" name="other_deductions"
+                     value="{{ item.other_deductions or 0 }}" class="form-control">
+            </div>
+          </div>
+
+          <div class="alert alert-info small mb-0">
+            Net Pay will automatically become total earnings minus total deductions.
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+            Cancel
+          </button>
+          <button class="btn btn-primary">
+            Save Changes
+          </button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
+{% endfor %}
+
 <script>
 const selectAll = document.getElementById("selectAllEmployees");
 

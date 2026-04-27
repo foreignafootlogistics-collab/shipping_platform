@@ -1891,6 +1891,10 @@ def update_payroll_item(item_id):
 def bulk_calculate_payroll(run_id):
     run = PayrollRun.query.get_or_404(run_id)
 
+    if run.status == "paid":
+        flash("Paid payroll cannot be recalculated or edited.", "warning")
+        return redirect(url_for("finance.payroll_detail", run_id=run.id))
+
     item_ids = request.form.getlist("item_ids")
 
     if not item_ids:

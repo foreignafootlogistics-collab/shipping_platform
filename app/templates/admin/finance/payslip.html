@@ -82,6 +82,13 @@
     .label { font-size: 12px; color: #6b7280; }
     .value { font-weight: bold; }
 
+    /* 🔥 NEW SIDE-BY-SIDE TABLES */
+    .dual-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -149,6 +156,7 @@
 
 <div class="payslip">
 
+  <!-- HEADER -->
   <div class="header">
     <div class="company">
       <img src="{{ url_for('static', filename='logo.png') }}" class="logo">
@@ -171,12 +179,13 @@
     </div>
   </div>
 
+  <!-- INFO -->
   <div class="section">
     <div class="grid">
       <div class="info-box">
         <div class="label">Employee</div>
         <div class="value">{{ item.user.full_name }}</div>
-        <div style="font-size:12px; color:#6b7280; margin-top:4px;">
+        <div style="font-size:12px; color:#6b7280;">
           Employee ID: {{ item.user.employee_code or "—" }}
         </div>
       </div>
@@ -198,85 +207,93 @@
     </div>
   </div>
 
-  <!-- Earnings -->
+  <!-- 🔥 SIDE BY SIDE SECTION -->
   <div class="section">
-    <h3>Earnings</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Description</th>
-          <th class="text-end">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
+    <div class="dual-section">
 
-        {% set base = (item.gross_pay or 0) - (item.allowance or 0) - (item.overtime or 0) - (item.bonus or 0) %}
+      <!-- Earnings -->
+      <div>
+        <h3>Earnings</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th class="text-end">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
 
-        <tr>
-          <td>Basic Salary</td>
-          <td class="text-end">{{ "%.2f"|format(base) }}</td>
-        </tr>
+            {% set base = (item.gross_pay or 0) - (item.allowance or 0) - (item.overtime or 0) - (item.bonus or 0) %}
 
-        <tr>
-          <td>Allowance</td>
-          <td class="text-end">{{ "%.2f"|format(item.allowance or 0) }}</td>
-        </tr>
+            <tr>
+              <td>Basic Salary</td>
+              <td class="text-end">{{ "%.2f"|format(base) }}</td>
+            </tr>
 
-        <tr>
-          <td>Overtime</td>
-          <td class="text-end">{{ "%.2f"|format(item.overtime or 0) }}</td>
-        </tr>
+            <tr>
+              <td>Allowance</td>
+              <td class="text-end">{{ "%.2f"|format(item.allowance or 0) }}</td>
+            </tr>
 
-        <tr>
-          <td>Bonus</td>
-          <td class="text-end">{{ "%.2f"|format(item.bonus or 0) }}</td>
-        </tr>
+            <tr>
+              <td>Overtime</td>
+              <td class="text-end">{{ "%.2f"|format(item.overtime or 0) }}</td>
+            </tr>
 
-      </tbody>
-    </table>
+            <tr>
+              <td>Bonus</td>
+              <td class="text-end">{{ "%.2f"|format(item.bonus or 0) }}</td>
+            </tr>
+
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Deductions -->
+      <div>
+        <h3>Deductions</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th class="text-end">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+
+            <tr>
+              <td>Income Tax / PAYE</td>
+              <td class="text-end">{{ "%.2f"|format(item.tax or 0) }}</td>
+            </tr>
+
+            <tr>
+              <td>NIS</td>
+              <td class="text-end">{{ "%.2f"|format(item.nis or 0) }}</td>
+            </tr>
+
+            <tr>
+              <td>NHT</td>
+              <td class="text-end">{{ "%.2f"|format(item.nht or 0) }}</td>
+            </tr>
+
+            <tr>
+              <td>Education Tax</td>
+              <td class="text-end">{{ "%.2f"|format(item.education_tax or 0) }}</td>
+            </tr>
+
+            <tr>
+              <td>Other Deductions</td>
+              <td class="text-end">{{ "%.2f"|format(item.other_deductions or 0) }}</td>
+            </tr>
+
+          </tbody>
+        </table>
+      </div>
+
+    </div>
   </div>
 
-  <!-- Deductions -->
-  <div class="section">
-    <h3>Deductions</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Description</th>
-          <th class="text-end">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-
-        <tr>
-          <td>Income Tax / PAYE</td>
-          <td class="text-end">{{ "%.2f"|format(item.tax or 0) }}</td>
-        </tr>
-
-        <tr>
-          <td>NIS</td>
-          <td class="text-end">{{ "%.2f"|format(item.nis or 0) }}</td>
-        </tr>
-
-        <tr>
-          <td>NHT</td>
-          <td class="text-end">{{ "%.2f"|format(item.nht or 0) }}</td>
-        </tr>
-        <tr>
-          <td>Education</td>
-          <td class="text-end">{{ "%.2f"|format(item.education_tax or 0) }}</td>
-        </tr>
-
-        <tr>
-          <td>Other Deductions</td>
-          <td class="text-end">{{ "%.2f"|format(item.other_deductions or 0) }}</td>
-        </tr>
-
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Summary -->
+  <!-- SUMMARY -->
   <div class="section">
     <div class="summary">
 

@@ -17,19 +17,19 @@
   </div>
 
   <div class="d-flex gap-2">
-    <a href="{{ url_for('finance.payroll_dashboard') }}" class="btn btn-outline-secondary">
-      Back
+    <a href="{{ url_for('finance.payroll_dashboard') }}" class="btn btn-outline-secondary" title="Back">
+      <i class="bi bi-arrow-left"></i>
     </a>
 
-    <a href="{{ url_for('finance.export_payroll', run_id=run.id) }}" class="btn btn-outline-dark">
-      Export CSV
+    <a href="{{ url_for('finance.export_payroll', run_id=run.id) }}" class="btn btn-outline-dark" title="Export CSV">
+      <i class="bi bi-filetype-csv"></i>
     </a>
 
     {% if run.status != "paid" %}
     <form method="POST" action="{{ url_for('finance.mark_payroll_paid', run_id=run.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-success" onclick="return confirm('Mark this payroll as paid?')">
-        Mark Payroll Paid
+      <button class="btn btn-success" title="Mark Payroll Paid" onclick="return confirm('Mark this payroll as paid?')">
+        <i class="bi bi-check-circle"></i>
       </button>
     </form>
     {% endif %}
@@ -65,19 +65,28 @@
 
     <div class="d-flex gap-2">
       {% if run.status != "paid" %}
+      <button type="button"
+              id="editSelectedBtn"
+              class="btn btn-sm btn-outline-warning"
+              title="Edit selected employee">
+        <i class="bi bi-pencil-square"></i>
+      </button>
+
       <button type="submit"
               form="bulkForm"
               formaction="{{ url_for('finance.bulk_calculate_payroll', run_id=run.id) }}"
-              class="btn btn-sm btn-primary">
-        Calculate Payroll
+              class="btn btn-sm btn-primary"
+              title="Calculate payroll">
+        <i class="bi bi-calculator"></i>
       </button>
       {% endif %}
 
       <button type="submit"
               form="bulkForm"
               formaction="{{ url_for('finance.bulk_email_payslips', run_id=run.id) }}"
-              class="btn btn-sm btn-outline-success">
-        Email Selected
+              class="btn btn-sm btn-outline-success"
+              title="Email selected payslips">
+        <i class="bi bi-envelope"></i>
       </button>
     </div>
   </div>
@@ -91,7 +100,7 @@
       <thead>
         <tr>
           <th style="width:40px;">
-            <input type="checkbox" id="selectAllEmployees">
+            <input type="checkbox" id="selectAllEmployees" title="Select all">
           </th>
           <th>Employee</th>
           <th class="text-end">Gross</th>
@@ -104,26 +113,21 @@
         {% for item in items %}
         <tr>
           <td>
-            <input type="checkbox" name="item_ids" value="{{ item.id }}" class="emp-check">
+            <input type="checkbox"
+                   name="item_ids"
+                   value="{{ item.id }}"
+                   class="emp-check"
+                   data-modal-id="editPayrollModal{{ item.id }}">
           </td>
 
           <td>
-            <a href="{{ url_for('finance.view_payslip', item_id=item.id) }}" class="fw-semibold text-decoration-none">
+            <a href="{{ url_for('finance.view_payslip', item_id=item.id) }}"
+               class="fw-semibold text-decoration-none"
+               title="View payslip">
               {{ item.user.full_name if item.user else "" }}
             </a><br>
 
             <small class="text-muted">{{ item.user.employee_code if item.user else "" }}</small>
-
-            {% if run.status != "paid" %}
-            <button
-              type="button"
-              class="btn btn-sm btn-outline-warning ms-2"
-              data-bs-toggle="modal"
-              data-bs-target="#editPayrollModal{{ item.id }}"
-            >
-              Edit
-            </button>
-            {% endif %}
           </td>
 
           <td class="text-end">JMD {{ "%.2f"|format(item.gross_pay or 0) }}</td>
@@ -242,12 +246,40 @@
 
 <script>
 const selectAll = document.getElementById("selectAllEmployees");
+const editSelectedBtn = document.getElementById("editSelectedBtn");
 
 if (selectAll) {
   selectAll.addEventListener("change", function () {
     document.querySelectorAll(".emp-check").forEach(cb => {
       cb.checked = this.checked;
     });
+  });
+}
+
+if (editSelectedBtn) {
+  editSelectedBtn.addEventListener("click", function () {
+    const selected = Array.from(document.querySelectorAll(".emp-check:checked"));
+
+    if (selected.length === 0) {
+      alert("Select one employee to edit.");
+      return;
+    }
+
+    if (selected.length > 1) {
+      alert("Please select only one employee to edit.");
+      return;
+    }
+
+    const modalId = selected[0].dataset.modalId;
+    const modalEl = document.getElementById(modalId);
+
+    if (!modalEl) {
+      alert("Edit modal not found.");
+      return;
+    }
+
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
   });
 }
 </script>

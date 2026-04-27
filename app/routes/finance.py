@@ -1221,8 +1221,6 @@ def expense_audit_logs():
         action_selected=action,
     )
 
-
-# ---------------------- MONTHLY INCOME ---------------------- #
 # ---------------------- MONTHLY INCOME ---------------------- #
 @finance_bp.route('/monthly-income')
 @admin_required(roles=['finance'])
@@ -1340,21 +1338,37 @@ def monthly_income():
     ]
     chart_values = [float(r.total or 0) for r in daily_paid_raw]
 
-    due_rows_raw = (
+    due_rows_query = (
         db.session.query(
             Invoice.id.label("invoice_id"),
             Invoice.invoice_number,
             Invoice.status,
             Invoice.user_id,
-            User.full_name.label('customer_name'),
+            User.full_name.label("customer_name"),
             User.email.label("customer_email"),
-            amt_due_expr.label('amount_due'),
-            func.date(issued_date_expr).label('date_issued'),
+            User.registration_number.label("registration_number"),
+            amt_due_expr.label("amount_due"),
+            func.date(issued_date_expr).label("date_issued"),
         )
         .join(User, User.id == Invoice.user_id)
         .filter(amt_due_expr > 0)
         .filter(func.date(issued_date_expr).between(start_date, end_date))
         .filter(func.lower(Invoice.status).in_(open_statuses))
+    )
+
+    if q:
+        like = f"%{q.lower()}%"
+        due_rows_query = due_rows_query.filter(
+            or_(
+                func.lower(func.coalesce(User.full_name, "")).like(like),
+                func.lower(func.coalesce(User.registration_number, "")).like(like),
+                func.lower(func.coalesce(User.email, "")).like(like),
+                func.lower(func.coalesce(Invoice.invoice_number, "")).like(like),
+            )
+        )
+
+    due_rows_raw = (
+        due_rows_query
         .order_by(func.date(issued_date_expr).desc())
         .all()
     )
@@ -1375,22 +1389,39 @@ def monthly_income():
             "invoice_number": r.invoice_number or f"INV{r.invoice_id:05d}",
             "customer_name": r.customer_name,
             "customer_email": r.customer_email,
+            "registration_number": r.registration_number,
             "amount_due": float(r.amount_due or 0),
             "date_issued": r.date_issued,
             "status": r.status or "unpaid",
             "age_days": age_days,
         })
 
-    total_amount_due = sum(r['amount_due'] for r in due_rows)
+    total_amount_due = sum(r["amount_due"] for r in due_rows)
 
-    daily_due_raw = (
+    daily_due_query = (
         db.session.query(
             func.date(issued_date_expr).label("d"),
             func.coalesce(func.sum(amt_due_expr), 0.0).label("total"),
         )
+        .join(User, User.id == Invoice.user_id)
         .filter(amt_due_expr > 0)
         .filter(func.date(issued_date_expr).between(start_date, end_date))
         .filter(func.lower(Invoice.status).in_(open_statuses))
+    )
+
+    if q:
+        like = f"%{q.lower()}%"
+        daily_due_query = daily_due_query.filter(
+            or_(
+                func.lower(func.coalesce(User.full_name, "")).like(like),
+                func.lower(func.coalesce(User.registration_number, "")).like(like),
+                func.lower(func.coalesce(User.email, "")).like(like),
+                func.lower(func.coalesce(Invoice.invoice_number, "")).like(like),
+            )
+        )
+
+    daily_due_raw = (
+        daily_due_query
         .group_by(func.date(issued_date_expr))
         .order_by(func.date(issued_date_expr))
         .all()
@@ -1403,7 +1434,7 @@ def monthly_income():
     due_values = [float(r.total or 0) for r in daily_due_raw]
 
     return render_template(
-        'admin/finance/monthly_income.html',
+        "admin/finance/monthly_income.html",
         incomes=incomes,
         total_income=total_income,
         chart_labels=chart_labels,
@@ -1419,6 +1450,7 @@ def monthly_income():
         methods=methods,
     )
 
+
 @finance_bp.route("/invoice/<int:invoice_id>/send-reminder", methods=["POST"])
 @admin_required(roles=["finance"])
 def send_invoice_reminder(invoice_id):
@@ -1427,7 +1459,7 @@ def send_invoice_reminder(invoice_id):
 
     if not user or not user.email:
         flash("Customer does not have an email address.", "danger")
-        return redirect(url_for("finance.monthly_income"))
+        return redirect(request.referrer or url_for("finance.monthly_income"))
 
     amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
     invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
@@ -1471,6 +1503,89 @@ Foreign A Foot Logistics Limited
         flash("Failed to send reminder email.", "danger")
 
     return redirect(request.referrer or url_for("finance.monthly_income"))
+
+
+@finance_bp.route("/invoices/send-reminders-bulk", methods=["POST"])
+@admin_required(roles=["finance"])
+def send_invoice_reminders_bulk():
+    raw_ids = request.form.getlist("invoice_ids")
+    invoice_ids = []
+
+    for x in raw_ids:
+        try:
+            invoice_ids.append(int(x))
+        except Exception:
+            pass
+
+    if not invoice_ids:
+        flash("Select at least one invoice to send reminders.", "warning")
+        return redirect(request.referrer or url_for("finance.monthly_income"))
+
+    invoices = Invoice.query.filter(Invoice.id.in_(invoice_ids)).all()
+
+    sent = 0
+    failed = 0
+    skipped = 0
+
+    for inv in invoices:
+        user = User.query.get(inv.user_id)
+
+        if not user or not user.email:
+            skipped += 1
+            continue
+
+        amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
+        invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
+
+        subject = f"Payment Reminder - Invoice {invoice_number}"
+
+        plain_body = f"""
+Hi {user.full_name or 'Customer'},
+
+This is a friendly reminder that invoice {invoice_number} has an outstanding balance of JMD {amount_due:,.2f}.
+
+Please make payment at your earliest convenience.
+
+Thank you,
+Foreign A Foot Logistics Limited
+""".strip()
+
+        html_body = f"""
+<p>Hi {user.full_name or 'Customer'},</p>
+
+<p>This is a friendly reminder that invoice <strong>{invoice_number}</strong> has an outstanding balance of:</p>
+
+<h3>JMD {amount_due:,.2f}</h3>
+
+<p>Please make payment at your earliest convenience.</p>
+
+<p>Thank you,<br>Foreign A Foot Logistics Limited</p>
+""".strip()
+
+        ok = send_email(
+            to_email=user.email,
+            subject=subject,
+            plain_body=plain_body,
+            html_body=html_body,
+            recipient_user_id=user.id,
+        )
+
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+
+    if sent:
+        flash(f"Sent {sent} reminder email(s).", "success")
+
+    if failed:
+        flash(f"{failed} reminder email(s) failed.", "danger")
+
+    if skipped:
+        flash(f"Skipped {skipped} invoice(s) because customer email was missing.", "warning")
+
+    return redirect(request.referrer or url_for("finance.monthly_income"))
+
 
 # ---------------------- MONTHLY PROFIT/LOSS ---------------------- #
 

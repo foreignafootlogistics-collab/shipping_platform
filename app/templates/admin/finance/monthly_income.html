@@ -239,11 +239,7 @@
                     <td>                      
                       {% set st = (row.status or "unpaid").lower() %}
                       {% if st == "partial" %}
-                        <span class="badge bg-primary">Partial</span>
-                      {% elif st == "pending" %}
-                        <span class="badge bg-warning text-dark">Pending</span>
-                      {% elif st == "issued" %}
-                        <span class="badge bg-info text-dark">Issued</span>
+                        <span class="badge bg-primary">Partial Payment</span>
                       {% else %}
                         <span class="badge bg-danger">Unpaid</span>
                       {% endif %}

@@ -385,7 +385,7 @@ def finance_dashboard():
     amt_paid_expr = _invoice_paid_amount_expr()
     amt_due_expr = _invoice_due_amount_expr()
 
-    open_statuses = ['pending', 'issued', 'unpaid']
+    open_statuses = ['pending', 'issued', 'unpaid', 'partial']
 
     # ---- KPIs ----
 
@@ -634,19 +634,19 @@ def unpaid_invoices():
     q = (request.args.get('q') or '').strip()
 
     # ✅ include pending again
-    status = (request.args.get('status') or 'issued,unpaid,pending').strip().lower()
+    status = (request.args.get('status') or 'issued,unpaid,pending,partial').strip().lower()
     min_due_raw = (request.args.get('min_due') or '').strip()
     max_due_raw = (request.args.get('max_due') or '').strip()
 
     # ✅ status list from dropdown (now includes pending)
-    allowed = {'issued', 'unpaid', 'pending'}
+    allowed = {'issued', 'unpaid', 'pending', 'partial'}
     status_list = [s for s in (t.strip() for t in status.split(',')) if s in allowed]
     if not status_list:
-        status_list = ['issued', 'unpaid', 'pending']
+        status_list = ['issued', 'unpaid', 'pending', 'partial']
 
     # ✅ stable string so dropdown stays selected
-    if set(status_list) == {"issued", "unpaid", "pending"}:
-        status_selected = "issued,unpaid,pending"
+    if set(status_list) == {"issued", "unpaid", "pending", "partial"}:
+        status_selected = "issued,unpaid,pending,partial"
     elif set(status_list) == {"issued", "unpaid"}:
         status_selected = "issued,unpaid"
     else:
@@ -667,7 +667,12 @@ def unpaid_invoices():
         max_due = None
 
     issued_date_expr = _invoice_issued_date_expr()
-    amt_due_expr = _invoice_due_amount_expr()
+    amt_due_expr = func.coalesce(
+        Invoice.amount_due,
+        Invoice.grand_total,
+        Invoice.amount,
+        0.0
+    )
 
     query = (
         db.session.query(
@@ -745,6 +750,7 @@ def unpaid_invoices():
         status_selected=status_selected,
         min_due=min_due_raw,
         max_due=max_due_raw,
+        current_date=date.today(),
         status_counts=status_counts,
     )
 

@@ -1,5 +1,5 @@
 {% extends 'layout_admin.html' %}
-{% block title %}Receivables — Issued / Unpaid{% endblock %}
+{% block title %}Receivables — Unpaid{% endblock %}
 
 {% block content %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
@@ -7,11 +7,10 @@
 
 <div class="container mt-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h3 class="mb-0">Receivables <small class="text-muted">Issued / Unpaid</small></h3>
+    <h3 class="mb-0">Receivables <small class="text-muted">Unpaid / Partial</small></h3>
     <h5 class="text-warning mb-0">Total Due: ${{ '%.2f'|format((total_due or 0)|float) }}</h5>
   </div>
 
-  <!-- ✅ Filters (GET) -->
   <form class="card shadow-sm mb-3" method="get" action="{{ url_for('finance.unpaid_invoices') }}">
     <div class="card-body">
       <div class="row g-3 align-items-end">
@@ -26,7 +25,7 @@
         </div>
 
         <div class="col-md-3">
-          <label class="form-label mb-0 small">Customer (name or reg #)</label>
+          <label class="form-label mb-0 small">Customer / Reg #</label>
           <input type="text" name="q" value="{{ q }}" placeholder="Search…" class="form-control">
         </div>
 
@@ -43,11 +42,15 @@
         <div class="col-md-1">
           <label class="form-label mb-0 small">Status</label>
           <select name="status" class="form-select">
-            <option value="issued,unpaid,pending" {{ 'selected' if status_selected=='issued,unpaid,pending' }}>All Open</option>
-            <option value="issued,unpaid" {{ 'selected' if status_selected=='issued,unpaid' }}>Issued + Unpaid</option>
-            <option value="issued" {{ 'selected' if status_selected=='issued' }}>Issued</option>
-            <option value="unpaid" {{ 'selected' if status_selected=='unpaid' }}>Unpaid</option>
-            <option value="pending" {{ 'selected' if status_selected=='pending' }}>Pending</option>
+            <option value="issued,unpaid,pending,partial" {{ 'selected' if status_selected=='issued,unpaid,pending,partial' }}>
+              All Open
+            </option>
+            <option value="issued,unpaid,pending" {{ 'selected' if status_selected=='issued,unpaid,pending' }}>
+              Unpaid
+            </option>
+            <option value="partial" {{ 'selected' if status_selected=='partial' }}>
+              Partial
+            </option>
           </select>
         </div>
       </div>
@@ -56,27 +59,21 @@
         <button class="btn btn-primary" type="submit">Apply</button>
         <a class="btn btn-outline-secondary" href="{{ url_for('finance.unpaid_invoices') }}">Reset</a>
 
-        <div class="ms-auto d-flex align-items-center gap-2">
-          <span class="small text-muted">
-            issued: {{ status_counts.get('issued',0) }}
-            • unpaid: {{ status_counts.get('unpaid',0) }}
-            • pending: {{ status_counts.get('pending',0) }}
-          </span>
+        <div class="ms-auto small text-muted">
+          unpaid: {{ status_counts.get('unpaid',0) + status_counts.get('issued',0) + status_counts.get('pending',0) }}
+          • partial: {{ status_counts.get('partial',0) }}
         </div>
       </div>
     </div>
   </form>
 
-  <!-- ✅ Bulk actions (POST) -->
   <form method="POST"
         action="{{ url_for('finance.bulk_mark_invoices_paid', start=start, end=end, q=q, status=status_selected, min_due=min_due, max_due=max_due) }}"
         onsubmit="return confirm('Mark selected invoices as PAID?');">
 
-    {# ✅ Always include CSRF if you use Flask-WTF globally #}
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
-      <!-- ✅ Payment method dropdown -->
       <div style="min-width:180px;">
         <select name="payment_method" class="form-select form-select-sm">
           <option value="Cash">Cash</option>
@@ -86,6 +83,7 @@
           <option value="Bulk">Bulk (Admin Adjustment)</option>
         </select>
       </div>
+
       <button class="btn btn-success btn-sm" type="submit">
         ✅ Mark Selected Paid
       </button>
@@ -102,6 +100,7 @@
         <label class="small text-muted mb-0" for="dtPageSize">Show</label>
         <select id="dtPageSize" class="form-select form-select-sm" style="width:110px;">
           <option value="10">10</option>
+          <option value="15" selected>15</option>
           <option value="25">25</option>
           <option value="50">50</option>
           <option value="100">100</option>
@@ -125,6 +124,7 @@
             <th>Status</th>
             <th class="text-end">Amount Due</th>
             <th>Date Issued</th>
+            <th>Age</th>
             <th>Action</th>
           </tr>
         </thead>
@@ -152,21 +152,37 @@
 
               <td>
                 {% set s = (r['status'] or '')|lower %}
-                <span class="badge
-                  {% if s == 'issued' %}bg-info
-                  {% elif s == 'pending' %}bg-secondary
-                  {% elif s == 'unpaid' %}bg-warning
-                  {% else %}bg-light text-dark
-                  {% endif %}">
-                  {{ r['status']|capitalize }}
-                </span>
+                {% if s == 'partial' %}
+                  <span class="badge bg-primary">Partial Payment</span>
+                {% else %}
+                  <span class="badge bg-danger">Unpaid</span>
+                {% endif %}
               </td>
 
-              <td class="text-end">
+              <td class="text-end fw-semibold">
                 ${{ '%.2f'|format((r['amount_due'] or 0)|float) }}
               </td>
 
               <td>{{ r['date_issued'] }}</td>
+
+              <td>
+                {% if r['date_issued'] %}
+                  {% set age_days = (current_date - r['date_issued']).days if current_date is defined else none %}
+                  {% if age_days is not none %}
+                    {% if age_days <= 7 %}
+                      <span class="badge bg-success">{{ age_days }} days</span>
+                    {% elif age_days <= 14 %}
+                      <span class="badge bg-warning text-dark">{{ age_days }} days</span>
+                    {% else %}
+                      <span class="badge bg-danger">{{ age_days }} days</span>
+                    {% endif %}
+                  {% else %}
+                    —
+                  {% endif %}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
 
               <td>
                 <a href="{{ url_for('admin.view_invoice', invoice_id=r['invoice_id']) }}"
@@ -214,7 +230,7 @@
     const table = $('#unpaidTable').DataTable({
       stateSave: false,
       pageLength: 15,
-      lengthChange: false, // ✅ we control via our own dropdown
+      lengthChange: false,
       dom: 'Bfrtip',
       buttons: ['copyHtml5','excelHtml5','csvHtml5','print'],
       columnDefs: [
@@ -223,13 +239,11 @@
       ]
     });
 
-    // external page size dropdown
-    $('#dtPageSize').val('15'); // default to match pageLength
+    $('#dtPageSize').val('15');
     $('#dtPageSize').on('change', function(){
       table.page.len(parseInt(this.value || '15', 10)).draw();
     });
 
-    // header check all (current page)
     $('#checkAll').on('change', function(){
       const checked = this.checked;
       table.rows({ page: 'current' }).nodes().to$().find('input.row-check').prop('checked', checked);

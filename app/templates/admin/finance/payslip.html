@@ -140,6 +140,29 @@
       justify-content: space-between;
     }
 
+    .payslip {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      opacity: 0.06;
+      z-index: 0;
+    }
+
+    .watermark img {
+      width: 350px;
+    }
+
+    .payslip * {
+      position: relative;
+      z-index: 1;
+    }
+
     @media print {
       body { background: white; padding: 0; }
       .toolbar { display: none; }
@@ -155,6 +178,10 @@
 </div>
 
 <div class="payslip">
+
+  <div class="watermark">
+    <img src="{{ url_for('static', filename='logo.png') }}">
+  </div>
 
   <!-- HEADER -->
   <div class="header">

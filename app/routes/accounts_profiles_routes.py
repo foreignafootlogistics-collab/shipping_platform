@@ -335,11 +335,11 @@ def add_user():
     hashed = bcrypt.hashpw(raw_password.encode('utf-8'), bcrypt.gensalt())
 
     # ✅ generate unique referral code
-    referral_code = User.generate_referral_code(full_name)
+    referral_code = User.generate_referral_code()
     for _ in range(10):
         if not User.query.filter_by(referral_code=referral_code).first():
             break
-        referral_code = User.generate_referral_code(full_name)
+        referral_code = User.generate_referral_code()
 
     u = User(
         full_name=full_name,

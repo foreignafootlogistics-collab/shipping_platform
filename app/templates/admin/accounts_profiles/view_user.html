@@ -777,17 +777,24 @@
             </select>
           </div>
 
-          <div class="d-flex align-items-center gap-2">            
+          <div class="d-flex align-items-center gap-2">
 
-            <input type="date" name="start" class="form-control form-control-sm" style="width:145px;">
-            <input type="date" name="end" class="form-control form-control-sm" style="width:145px;">
+            <form method="GET"
+                  action="{{ url_for('finance.customer_statement_pdf', user_id=user.id) }}"
+                  target="_blank"
+                  class="d-flex align-items-center gap-2 mb-0">         
 
-            <button type="submit"
-                    class="btn btn-sm btn-outline-secondary"
-                    onclick="downloadStatement()"
-                    title="Download Customer Statement">
-              <i class="bi bi-file-earmark-pdf"></i> Statement
-            </button>
+              <input type="date" id="statementStart" name="start" 
+                     class="form-control form-control-sm" style="width:145px;">
+              <input type="date" id="statementEnd" name="end" 
+                     class="form-control form-control-sm" style="width:145px;">
+
+              <button type="submit"
+                      class="btn btn-sm btn-outline-secondary"                    
+                      title="Download Customer Statement">
+                <i class="bi bi-file-earmark-pdf"></i> Statement
+              </button>
+            </form>
 
             <form id="emailStatementForm"
                   method="POST"
@@ -3893,24 +3900,6 @@ document.addEventListener("DOMContentLoaded", function () {
     pkgSelect.addEventListener("change", fillClaimPackageFields);
   }
 });
-
-function statementUrl() {
-  const start = document.getElementById("statementStart")?.value || "";
-  const end = document.getElementById("statementEnd")?.value || "";
-
-  const baseUrl = "{{ url_for('finance.customer_statement_pdf', user_id=user.id) }}";
-  const params = new URLSearchParams();
-
-  if (start) params.set("start", start);
-  if (end) params.set("end", end);
-
-  const query = params.toString();
-  return query ? `${baseUrl}?${query}` : baseUrl;
-}
-
-function downloadStatement() {
-  window.open(statementUrl(), "_blank");
-}
 
 function prepareEmailStatement() {
   const start = document.getElementById("statementStart")?.value || "";

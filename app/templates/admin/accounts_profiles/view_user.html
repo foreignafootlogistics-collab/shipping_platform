@@ -777,43 +777,35 @@
             </select>
           </div>
 
-          <div class="d-flex align-items-center gap-2">
+          <div class="d-flex align-items-center gap-2">            
 
-            <form method="GET"
-                  action="{{ url_for('finance.customer_statement_pdf', user_id=user.id) }}"
-                  target="_blank"
-                  class="d-flex align-items-center gap-2 mb-0">
+            <input type="date" name="start" class="form-control form-control-sm" style="width:145px;">
+            <input type="date" name="end" class="form-control form-control-sm" style="width:145px;">
 
-              <input type="date" name="start" class="form-control form-control-sm" style="width:145px;">
-              <input type="date" name="end" class="form-control form-control-sm" style="width:145px;">
+            <button type="submit"
+                    class="btn btn-sm btn-outline-secondary"
+                    title="Download Customer Statement">
+              <i class="bi bi-file-earmark-pdf"></i> Statement
+            </button>
 
-              <button type="submit"
-                      class="btn btn-sm btn-outline-secondary"
-                      title="Download Customer Statement">
-                <i class="bi bi-file-earmark-pdf"></i> Statement
-              </button>
-            </form>
-
-            <form method="POST"
+            <form id="emailStatementForm"
+                  method="POST"
                   action="{{ url_for('finance.email_customer_statement_pdf', user_id=user.id) }}"
-                  class="d-flex align-items-center gap-2 mb-0">
-
+                  class="d-inline mb-0">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="date" name="start" class="form-control form-control-sm" style="width:145px;">
-              <input type="date" name="end" class="form-control form-control-sm" style="width:145px;">
+              <input type="hidden" name="start" id="emailStatementStart">
+              <input type="hidden" name="end" id="emailStatementEnd">
 
               <button type="submit"
                       class="btn btn-sm btn-outline-success"
-                      onclick="return confirm('Email customer statement to {{ user.email }}?');"
-                      title="Email Customer Statement">
-                <i class="bi bi-envelope"></i> Email Statement
+                      onclick="return prepareEmailStatement();">                      
+                <i class="bi bi-envelope"></i> Email
               </button>
             </form>
             <button type="button"
                     class="btn btn-sm btn-outline-purple"
                     data-bs-toggle="modal"
-                    data-bs-target="#paymentFilterModal"
-                    title="Filter payments">
+                    data-bs-target="#paymentFilterModal">                    
               <i class="bi bi-funnel"></i> Filter
             </button>
           </div>
@@ -3901,6 +3893,33 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 
+function statementUrl() {
+  const start = document.getElementById("statementStart")?.value || "";
+  const end = document.getElementById("statementEnd")?.value || "";
+
+  const baseUrl = "{{ url_for('finance.customer_statement_pdf', user_id=user.id) }}";
+  const params = new URLSearchParams();
+
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
+
+  const query = params.toString();
+  return query ? `${baseUrl}?${query}` : baseUrl;
+}
+
+function downloadStatement() {
+  window.open(statementUrl(), "_blank");
+}
+
+function prepareEmailStatement() {
+  const start = document.getElementById("statementStart")?.value || "";
+  const end = document.getElementById("statementEnd")?.value || "";
+
+  document.getElementById("emailStatementStart").value = start;
+  document.getElementById("emailStatementEnd").value = end;
+
+  return confirm("Email customer statement to {{ user.email }}?");
+}
 
 </script>
 {% endblock %}

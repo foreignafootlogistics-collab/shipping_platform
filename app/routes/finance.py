@@ -1616,62 +1616,102 @@ Foreign A Foot Logistics Limited
 
 
 # ---------------------- MONTHLY PROFIT/LOSS ---------------------- #
-
-
 @finance_bp.route('/monthly_profit_loss')
 @admin_required(roles=['finance'])
 def monthly_profit_loss():
     today = date.today()
     current_month_key = today.strftime('%Y-%m')
 
-    amt_paid_expr = _invoice_paid_amount_expr()
-    paid_date_expr = _invoice_paid_date_expr()
-
-    # Get all paid invoices with a paid date
-    paid_rows = (
-        db.session.query(
-            amt_paid_expr.label('amount'),
-            func.date(paid_date_expr).label('date_paid'),
-        )
-        .filter(func.lower(Invoice.status) == 'paid')
-        .all()
-    )
-
-    # Get all expenses
-    expense_rows = (
-        db.session.query(Expense.amount.label('amount'), Expense.date.label('date'))
-        .all()
-    )
-
-    # Build last 6 months keys (oldest -> newest)
+    # Build last 6 months keys, oldest -> newest
     month_keys = []
     y, m = today.year, today.month
+
     for i in range(5, -1, -1):
         yy, mm = y, m - i
+
         while mm <= 0:
             mm += 12
             yy -= 1
+
         month_keys.append(f"{yy:04d}-{mm:02d}")
 
-    # Aggregate by YYYY-MM
-    monthly_data = {k: {'income': 0.0, 'expenses': 0.0} for k in month_keys}
+    monthly_data = {
+        k: {
+            "income": 0.0,
+            "manual_expenses": 0.0,
+            "refund_expenses": 0.0,
+            "payroll_expenses": 0.0,
+            "total_expenses": 0.0,
+            "profit": 0.0,
+            "profit_margin": 0.0,
+        }
+        for k in month_keys
+    }
 
-    for r in paid_rows:
+    first_month = month_keys[0]
+    last_month = month_keys[-1]
+
+    start_date, _ = _month_bounds(first_month)
+    _, end_date = _month_bounds(last_month)
+
+    start_date = datetime.fromisoformat(start_date).date()
+    end_date = datetime.fromisoformat(end_date).date()
+
+    # -----------------------------
+    # Income = actual completed payments
+    # -----------------------------
+    payment_rows = (
+        db.session.query(
+            Payment.amount_jmd.label("amount"),
+            Payment.created_at.label("date_paid"),
+        )
+        .filter(func.date(Payment.created_at).between(start_date, end_date))
+        .filter(func.lower(func.coalesce(Payment.status, "completed")) == "completed")
+        .filter(
+            or_(
+                Payment.transaction_type.is_(None),
+                ~Payment.transaction_type.in_(["package_refund", "delivery_refund"]),
+            )
+        )
+        .all()
+    )
+
+    for r in payment_rows:
         if not r.date_paid:
             continue
-        d = r.date_paid if isinstance(r.date_paid, date) else r.date_paid.date()
-        key = d.strftime('%Y-%m')
+
+        d = r.date_paid.date() if isinstance(r.date_paid, datetime) else r.date_paid
+        key = d.strftime("%Y-%m")
+
         if key in monthly_data:
-            monthly_data[key]['income'] += float(r.amount or 0)
+            monthly_data[key]["income"] += float(r.amount or 0)
+
+    # -----------------------------
+    # Manual expenses
+    # -----------------------------
+    expense_rows = (
+        db.session.query(
+            Expense.amount.label("amount"),
+            Expense.date.label("date"),
+            Expense.category.label("category"),
+        )
+        .filter(func.date(Expense.date).between(start_date, end_date))
+        .all()
+    )
 
     for r in expense_rows:
         if not r.date:
             continue
-        d = r.date if isinstance(r.date, date) else r.date.date()
-        key = d.strftime('%Y-%m')
-        if key in monthly_data:
-            monthly_data[key]['expenses'] += float(r.amount or 0)
 
+        d = r.date if isinstance(r.date, date) else r.date.date()
+        key = d.strftime("%Y-%m")
+
+        if key in monthly_data:
+            monthly_data[key]["manual_expenses"] += float(r.amount or 0)
+
+    # -----------------------------
+    # Refund expenses
+    # -----------------------------
     refund_rows = (
         db.session.query(
             Payment.amount_jmd.label("amount"),
@@ -1679,58 +1719,112 @@ def monthly_profit_loss():
             Payment.transaction_type.label("transaction_type"),
         )
         .filter(Payment.transaction_type.in_(["package_refund", "delivery_refund"]))
-        .filter(Payment.status == "completed")
+        .filter(func.lower(func.coalesce(Payment.status, "completed")) == "completed")
+        .filter(func.date(Payment.created_at).between(start_date, end_date))
         .all()
     )
 
     for r in refund_rows:
         if not r.date:
             continue
-        d = r.date if isinstance(r.date, date) else r.date.date()
-        key = d.strftime('%Y-%m')
-        if key in monthly_data:
-            monthly_data[key]['expenses'] += float(r.amount or 0)
 
+        d = r.date.date() if isinstance(r.date, datetime) else r.date
+        key = d.strftime("%Y-%m")
+
+        if key in monthly_data:
+            monthly_data[key]["refund_expenses"] += float(r.amount or 0)
+
+    # -----------------------------
+    # Payroll expenses
+    # Uses PayrollRun paid date if available.
+    # Falls back to created_at.
+    # -----------------------------
+    payroll_date_expr = func.coalesce(PayrollRun.paid_at, PayrollRun.created_at)
+
+    payroll_rows = (
+        db.session.query(
+            PayrollRun.total_net.label("amount"),
+            payroll_date_expr.label("payroll_date"),
+        )
+        .filter(func.lower(func.coalesce(PayrollRun.status, "")) == "paid")
+        .filter(func.date(payroll_date_expr).between(start_date, end_date))
+        .all()
+    )
+
+    for r in payroll_rows:
+        if not r.payroll_date:
+            continue
+
+        d = r.payroll_date.date() if isinstance(r.payroll_date, datetime) else r.payroll_date
+        key = d.strftime("%Y-%m")
+
+        if key in monthly_data:
+            monthly_data[key]["payroll_expenses"] += float(r.amount or 0)
+
+    # -----------------------------
+    # Final calculations
+    # -----------------------------
     summary = []
+
     for key in month_keys:
-        income = monthly_data[key]['income']
-        expenses = monthly_data[key]['expenses']
+        income = monthly_data[key]["income"]
+        manual_expenses = monthly_data[key]["manual_expenses"]
+        refund_expenses = monthly_data[key]["refund_expenses"]
+        payroll_expenses = monthly_data[key]["payroll_expenses"]
+
+        total_expenses = manual_expenses + refund_expenses + payroll_expenses
+        profit = income - total_expenses
+        profit_margin = (profit / income * 100) if income > 0 else 0.0
+
+        monthly_data[key]["total_expenses"] = total_expenses
+        monthly_data[key]["profit"] = profit
+        monthly_data[key]["profit_margin"] = profit_margin
+
         summary.append({
-            'month': key,
-            'income': income,
-            'expenses': expenses,
-            'profit': income - expenses,
+            "month": key,
+            "income": income,
+            "manual_expenses": manual_expenses,
+            "refund_expenses": refund_expenses,
+            "payroll_expenses": payroll_expenses,
+            "expenses": total_expenses,
+            "profit": profit,
+            "profit_margin": profit_margin,
         })
 
-    # Current month totals (still correct)
-    current = monthly_data.get(current_month_key, {'income': 0.0, 'expenses': 0.0})
-    total_income = current['income']
-    total_expenses = current['expenses']
+    current = monthly_data.get(current_month_key, {
+        "income": 0.0,
+        "manual_expenses": 0.0,
+        "refund_expenses": 0.0,
+        "payroll_expenses": 0.0,
+        "total_expenses": 0.0,
+        "profit": 0.0,
+        "profit_margin": 0.0,
+    })
 
-    current_manual_expenses = 0.0
-    for r in expense_rows:
-        if not r.date:
-            continue
-        d = r.date if isinstance(r.date, date) else r.date.date()
-        if d.strftime('%Y-%m') == current_month_key:
-            current_manual_expenses += float(r.amount or 0)
+    total_income = current["income"]
+    current_manual_expenses = current["manual_expenses"]
+    current_refund_expenses = current["refund_expenses"]
+    current_payroll_expenses = current["payroll_expenses"]
+    total_expenses = current["total_expenses"]
+    net_profit = current["profit"]
+    profit_margin = current["profit_margin"]
 
-    current_refund_expenses = _refund_expense_total(
-        date(today.year, today.month, 1),
-        date(today.year, today.month, monthrange(today.year, today.month)[1])
-    )
-    net_profit = total_income - total_expenses
+    best_month = max(summary, key=lambda x: x["profit"], default=None)
+    worst_month = min(summary, key=lambda x: x["profit"], default=None)
 
     return render_template(
-        'admin/finance/monthly_profit_loss.html',
+        "admin/finance/monthly_profit_loss.html",
         total_income=total_income,
         total_expenses=total_expenses,
         net_profit=net_profit,
+        profit_margin=profit_margin,
         summary=summary,
         current_manual_expenses=current_manual_expenses,
         current_refund_expenses=current_refund_expenses,
+        current_payroll_expenses=current_payroll_expenses,
+        best_month=best_month,
+        worst_month=worst_month,
     )
-
 def _build_customer_statement_pdf(user_id, start="", end=""):
     user = User.query.get_or_404(user_id)
 

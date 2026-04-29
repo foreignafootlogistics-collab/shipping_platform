@@ -2450,3 +2450,158 @@ Foreign A Foot Logistics
 
     return redirect(url_for("finance.payroll_detail", run_id=run_id))
 
+@finance_bp.route("/monthly-income/daily-sales")
+@admin_required(roles=["finance"])
+def daily_sales_report():
+    today = date.today()
+    default_start = date(today.year, today.month, 1)
+    default_end = date(today.year, today.month, monthrange(today.year, today.month)[1])
+
+    start = (request.args.get("start") or default_start.isoformat()).strip()
+    end = (request.args.get("end") or default_end.isoformat()).strip()
+
+    try:
+        start_date = datetime.fromisoformat(start).date()
+    except Exception:
+        start_date = default_start
+        start = default_start.isoformat()
+
+    try:
+        end_date = datetime.fromisoformat(end).date()
+    except Exception:
+        end_date = default_end
+        end = default_end.isoformat()
+
+    rows_raw = (
+        db.session.query(
+            func.date(Payment.created_at).label("sale_date"),
+            func.coalesce(Payment.method, "Other").label("method"),
+            func.count(Payment.id).label("payment_count"),
+            func.coalesce(func.sum(Payment.amount_jmd), 0.0).label("total_sales"),
+        )
+        .filter(func.date(Payment.created_at).between(start_date, end_date))
+        .filter(func.lower(func.coalesce(Payment.status, "completed")) == "completed")
+        .group_by(func.date(Payment.created_at), func.coalesce(Payment.method, "Other"))
+        .order_by(func.date(Payment.created_at).desc())
+        .all()
+    )
+
+    by_day = {}
+
+    for r in rows_raw:
+        d = r.sale_date
+        method = (r.method or "Other").strip()
+        amount = float(r.total_sales or 0)
+        count = int(r.payment_count or 0)
+
+        if d not in by_day:
+            by_day[d] = {
+                "sale_date": d,
+                "payment_count": 0,
+                "cash": 0.0,
+                "card": 0.0,
+                "bank_transfer": 0.0,
+                "wallet": 0.0,
+                "other": 0.0,
+                "total_sales": 0.0,
+            }
+
+        method_l = method.lower()
+
+        if method_l == "cash":
+            by_day[d]["cash"] += amount
+        elif method_l == "card":
+            by_day[d]["card"] += amount
+        elif method_l in ["bank transfer", "bank", "transfer"]:
+            by_day[d]["bank_transfer"] += amount
+        elif method_l == "wallet":
+            by_day[d]["wallet"] += amount
+        else:
+            by_day[d]["other"] += amount
+
+        by_day[d]["payment_count"] += count
+        by_day[d]["total_sales"] += amount
+
+    rows = list(by_day.values())
+    rows.sort(key=lambda x: x["sale_date"], reverse=True)
+
+    total_sales = sum(r["total_sales"] for r in rows)
+    total_cash = sum(r["cash"] for r in rows)
+    total_card = sum(r["card"] for r in rows)
+    total_bank = sum(r["bank_transfer"] for r in rows)
+    total_wallet = sum(r["wallet"] for r in rows)
+    total_other = sum(r["other"] for r in rows)
+    total_payments = sum(r["payment_count"] for r in rows)
+
+    return render_template(
+        "admin/finance/daily_sales_report.html",
+        rows=rows,
+        total_sales=total_sales,
+        total_cash=total_cash,
+        total_card=total_card,
+        total_bank=total_bank,
+        total_wallet=total_wallet,
+        total_other=total_other,
+        total_payments=total_payments,
+        start=start,
+        end=end,
+    )
+
+@finance_bp.route("/monthly-income/daily-sales/<sale_date>")
+@admin_required(roles=["finance"])
+def daily_sales_detail(sale_date):
+    try:
+        selected_date = datetime.fromisoformat(sale_date).date()
+    except Exception:
+        flash("Invalid sales date.", "danger")
+        return redirect(url_for("finance.daily_sales_report"))
+
+    rows_raw = (
+        db.session.query(
+            Payment.id.label("payment_id"),
+            Payment.created_at.label("created_at"),
+            Payment.amount_jmd.label("amount"),
+            Payment.method,
+            Payment.reference,
+            Payment.notes,
+            Payment.transaction_type,
+            Invoice.id.label("invoice_id"),
+            Invoice.invoice_number,
+            User.full_name.label("customer_name"),
+            User.registration_number.label("registration_number"),
+        )
+        .outerjoin(Invoice, Invoice.id == Payment.invoice_id)
+        .outerjoin(User, User.id == Payment.user_id)
+        .filter(func.date(Payment.created_at) == selected_date)
+        .filter(func.lower(func.coalesce(Payment.status, "completed")) == "completed")
+        .order_by(Payment.created_at.asc())
+        .all()
+    )
+
+    rows = []
+    total_sales = 0.0
+
+    for r in rows_raw:
+        amount = float(r.amount or 0)
+        total_sales += amount
+
+        rows.append({
+            "payment_id": r.payment_id,
+            "created_at": r.created_at,
+            "amount": amount,
+            "method": r.method or "Other",
+            "reference": r.reference or "—",
+            "notes": r.notes or "",
+            "transaction_type": r.transaction_type or "invoice_payment",
+            "invoice_id": r.invoice_id,
+            "invoice_number": r.invoice_number or "—",
+            "customer_name": r.customer_name or "—",
+            "registration_number": r.registration_number or "—",
+        })
+
+    return render_template(
+        "admin/finance/daily_sales_detail.html",
+        rows=rows,
+        selected_date=selected_date,
+        total_sales=total_sales,
+    )

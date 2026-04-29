@@ -196,6 +196,13 @@
               </button>
 
               <button type="button"
+                      class="btn btn-sm btn-outline-danger"
+                      onclick="emailAllOverdue()">
+                <i class="bi bi-lightning"></i>
+                Email Overdue 7+ Days (<span id="overdueCount">0</span>)
+              </button>
+
+              <button type="button"
                       class="btn btn-sm btn-success"
                       onclick="sendBulkWhatsApp()">
                 <i class="bi bi-whatsapp"></i> WhatsApp Selected
@@ -229,7 +236,8 @@
                              data-customer="{{ row.customer_name or 'Customer' }}"
                              data-mobile="{{ row.customer_mobile or '' }}"
                              data-invoice="{{ row.invoice_number }}"
-                            data-amount="{{ row.amount_due or 0 }}">
+                            data-amount="{{ row.amount_due or 0 }}"
+                            data-age="{{ row.age_days or 0 }}">
                     </td>
 
                     <td>
@@ -424,5 +432,46 @@ function sendBulkWhatsApp() {
   });
 }
 
+function updateOverdueCount() {
+  const overdue = Array.from(document.querySelectorAll('.receivable-check'))
+    .filter(cb => parseInt(cb.dataset.age || "0", 10) >= 7);
+
+  const el = document.getElementById("overdueCount");
+  if (el) el.textContent = overdue.length;
+}
+
+function emailAllOverdue() {
+  const checkboxes = document.querySelectorAll('.receivable-check');
+
+  if (!checkboxes.length) {
+    alert("No receivables found.");
+    return;
+  }
+
+  let selected = 0;
+
+  checkboxes.forEach(cb => {
+    const age = parseInt(cb.dataset.age || "0", 10);
+
+    if (age >= 7) {
+      cb.checked = true;
+      selected += 1;
+    } else {
+      cb.checked = false;
+    }
+  });
+
+  if (!selected) {
+    alert("No invoices are overdue 7+ days.");
+    return;
+  }
+
+  if (confirm(`Send grouped reminder emails for ${selected} overdue invoice(s)?`)) {
+    const form = checkboxes[0].closest("form");
+    form.submit();
+  }
+}
+
+document.addEventListener("DOMContentLoaded", updateOverdueCount);
 </script>
 {% endblock %}

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Customer Statement</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      color: #222;
+    }
+
+    .header {
+      border-bottom: 3px solid #4a148c;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+
+    .brand {
+      color: #4a148c;
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    .muted {
+      color: #666;
+    }
+
+    .summary {
+      display: table;
+      width: 100%;
+      margin: 15px 0;
+    }
+
+    .summary-box {
+      display: table-cell;
+      width: 33.33%;
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .summary-box strong {
+      display: block;
+      font-size: 15px;
+      margin-top: 5px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+
+    th {
+      background: #4a148c;
+      color: white;
+      padding: 8px;
+      text-align: left;
+      font-size: 11px;
+    }
+
+    td {
+      border-bottom: 1px solid #ddd;
+      padding: 7px;
+    }
+
+    .text-end {
+      text-align: right;
+    }
+
+    .balance-due {
+      color: #b00020;
+      font-weight: bold;
+    }
+
+    .paid {
+      color: #198754;
+      font-weight: bold;
+    }
+
+    .footer {
+      margin-top: 25px;
+      font-size: 11px;
+      color: #666;
+      border-top: 1px solid #ddd;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">Foreign A Foot Logistics</div>
+    <div class="muted">Customer Statement</div>
+    <div class="muted">Generated: {{ generated_at.strftime("%Y-%m-%d %I:%M %p") }}</div>
+  </div>
+
+  <h3>{{ user.full_name }}</h3>
+  <p>
+    <strong>Registration #:</strong> {{ user.registration_number or "—" }}<br>
+    <strong>Email:</strong> {{ user.email or "—" }}<br>
+    <strong>Period:</strong>
+    {% if start or end %}
+      {{ start or "Beginning" }} to {{ end or "Today" }}
+    {% else %}
+      All time
+    {% endif %}
+  </p>
+
+  <div class="summary">
+    <div class="summary-box">
+      Total Invoiced
+      <strong>JMD {{ "{:,.2f}".format(total_invoiced or 0) }}</strong>
+    </div>
+
+    <div class="summary-box">
+      Total Paid
+      <strong class="paid">JMD {{ "{:,.2f}".format(total_paid or 0) }}</strong>
+    </div>
+
+    <div class="summary-box">
+      Balance Due
+      <strong class="balance-due">JMD {{ "{:,.2f}".format(balance or 0) }}</strong>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Type</th>
+        <th>Reference</th>
+        <th class="text-end">Invoice / Debit</th>
+        <th class="text-end">Payment / Credit</th>
+        <th class="text-end">Balance</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>
+          {% if row.date %}
+            {{ row.date.strftime("%Y-%m-%d") }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>{{ row.type }}</td>
+        <td>{{ row.reference }}</td>
+        <td class="text-end">
+          {% if row.debit %}
+            JMD {{ "{:,.2f}".format(row.debit) }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td class="text-end">
+          {% if row.credit %}
+            JMD {{ "{:,.2f}".format(row.credit) }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td class="text-end">
+          JMD {{ "{:,.2f}".format(row.balance or 0) }}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" style="text-align:center; padding:20px;">
+          No statement activity found.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    This statement shows invoices and payments recorded in the Foreign A Foot Logistics system.
+    Please contact us if any transaction appears incorrect.
+  </div>
+
+</body>
+</html>

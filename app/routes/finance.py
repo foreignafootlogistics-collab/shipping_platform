@@ -1731,6 +1731,109 @@ def monthly_profit_loss():
         current_refund_expenses=current_refund_expenses,
     )
 
+@finance_bp.route("/customer/<int:user_id>/statement.pdf")
+@admin_required(roles=["finance"])
+def customer_statement_pdf(user_id):
+    user = User.query.get_or_404(user_id)
+
+    start = (request.args.get("start") or "").strip()
+    end = (request.args.get("end") or "").strip()
+
+    start_date = None
+    end_date = None
+
+    try:
+        if start:
+            start_date = datetime.fromisoformat(start).date()
+    except Exception:
+        start_date = None
+
+    try:
+        if end:
+            end_date = datetime.fromisoformat(end).date()
+    except Exception:
+        end_date = None
+
+    invoice_date_expr = _invoice_issued_date_expr()
+
+    invoice_q = (
+        db.session.query(Invoice)
+        .filter(Invoice.user_id == user.id)
+    )
+
+    payment_q = (
+        db.session.query(Payment)
+        .filter(Payment.user_id == user.id)
+        .filter(Payment.status == "completed")
+    )
+
+    if start_date:
+        invoice_q = invoice_q.filter(func.date(invoice_date_expr) >= start_date)
+        payment_q = payment_q.filter(func.date(Payment.created_at) >= start_date)
+
+    if end_date:
+        invoice_q = invoice_q.filter(func.date(invoice_date_expr) <= end_date)
+        payment_q = payment_q.filter(func.date(Payment.created_at) <= end_date)
+
+    invoices = invoice_q.all()
+    payments = payment_q.all()
+
+    rows = []
+
+    for inv in invoices:
+        inv_date = inv.date_issued or inv.date_submitted or inv.created_at
+        invoice_total = float(inv.grand_total or inv.amount or inv.amount_due or 0)
+        rows.append({
+            "date": inv_date,
+            "type": "Invoice",
+            "reference": inv.invoice_number or f"INV{inv.id:05d}",
+            "debit": invoice_total,
+            "credit": 0.0,
+        })
+
+    for p in payments:
+        rows.append({
+            "date": p.created_at,
+            "type": "Payment",
+            "reference": p.reference or f"TX-{p.id}",
+            "debit": 0.0,
+            "credit": float(p.amount_jmd or 0),
+        })
+
+    rows.sort(key=lambda x: x["date"] or datetime.min)
+
+    balance = 0.0
+    total_invoiced = 0.0
+    total_paid = 0.0
+
+    for row in rows:
+        total_invoiced += row["debit"]
+        total_paid += row["credit"]
+        balance += row["debit"] - row["credit"]
+        row["balance"] = balance
+
+    html = render_template(
+        "admin/finance/customer_statement_pdf.html",
+        user=user,
+        rows=rows,
+        total_invoiced=total_invoiced,
+        total_paid=total_paid,
+        balance=balance,
+        start=start,
+        end=end,
+        generated_at=datetime.now(),
+    )
+
+    pdf = HTML(string=html, base_url=request.url_root).write_pdf()
+
+    filename = f"statement_{user.registration_number or user.id}.pdf"
+
+    return send_file(
+        BytesIO(pdf),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename,
+    )
 
 @finance_bp.route("/payroll", methods=["GET"])
 @admin_required(roles=["finance"])

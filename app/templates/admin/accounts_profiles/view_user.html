@@ -778,6 +778,13 @@
           </div>
 
           <div class="d-flex align-items-center gap-2">
+
+            <a href="{{ url_for('finance.customer_statement_pdf', user_id=user.id) }}"
+               class="btn btn-sm btn-outline-secondary"
+               target="_blank"
+               title="Download Customer Statement">
+              <i class="bi bi-file-earmark-pdf"></i> Statement
+            </a>
             <button type="button"
                     class="btn btn-sm btn-outline-purple"
                     data-bs-toggle="modal"

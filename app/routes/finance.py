@@ -2475,13 +2475,16 @@ def daily_sales_report():
     rows_raw = (
         db.session.query(
             func.date(Payment.created_at).label("sale_date"),
-            func.coalesce(Payment.method, "Other").label("method"),
+            Payment.method.label("method"),
             func.count(Payment.id).label("payment_count"),
             func.coalesce(func.sum(Payment.amount_jmd), 0.0).label("total_sales"),
         )
         .filter(func.date(Payment.created_at).between(start_date, end_date))
         .filter(func.lower(func.coalesce(Payment.status, "completed")) == "completed")
-        .group_by(func.date(Payment.created_at), func.coalesce(Payment.method, "Other"))
+        .group_by(
+            func.date(Payment.created_at),
+            Payment.method
+        )
         .order_by(func.date(Payment.created_at).desc())
         .all()
     )

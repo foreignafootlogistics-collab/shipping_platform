@@ -2545,7 +2545,7 @@ def bulk_calculate_payroll(run_id):
 def bulk_email_payslips(run_id):
     run = PayrollRun.query.get_or_404(run_id)
 
-    item_ids = request.form.getlist("item_ids")
+    item_ids = [int(x) for x in request.form.getlist("item_ids") if str(x).isdigit()]
 
     if not item_ids:
         flash("Select at least one employee.", "warning")

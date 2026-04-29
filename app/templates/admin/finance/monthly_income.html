@@ -192,7 +192,13 @@
 
             <div class="d-flex justify-content-end mb-2">
               <button type="submit" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-envelope"></i> Send Selected Reminders
+                <i class="bi bi-envelope"></i> Email Selected
+              </button>
+
+              <button type="button"
+                      class="btn btn-sm btn-success"
+                      onclick="sendBulkWhatsApp()">
+                <i class="bi bi-whatsapp"></i> WhatsApp Selected
               </button>
             </div>
 
@@ -208,8 +214,7 @@
                     <th>Status</th>
                     <th class="text-end">Amount Due</th>
                     <th>Date Issued</th>
-                    <th>Age</th>
-                    <th class="text-end">Action</th>
+                    <th>Age</th>                    
                   </tr>
                 </thead>
 
@@ -220,7 +225,11 @@
                       <input type="checkbox"
                              name="invoice_ids"
                              value="{{ row.invoice_id }}"
-                             class="receivable-check">
+                             class="receivable-check"
+                             data-customer="{{ row.customer_name or 'Customer' }}"
+                             data-mobile="{{ row.customer_mobile or '' }}"
+                             data-invoice="{{ row.invoice_number }}"
+                            data-amount="{{ row.amount_due or 0 }}">
                     </td>
 
                     <td>
@@ -259,20 +268,11 @@
                       {% else %}
                         <span class="badge bg-danger">{{ row.age_days }} days</span>
                       {% endif %}
-                    </td>
-
-                    <td class="text-end">
-                      <button type="submit"
-                              formaction="{{ url_for('finance.send_invoice_reminder', invoice_id=row.invoice_id) }}"
-                              class="btn btn-sm btn-outline-primary"
-                              onclick="return confirm('Send payment reminder for {{ row.invoice_number }}?');">
-                        <i class="bi bi-envelope"></i> Reminder
-                      </button>
-                    </td>
+                    </td>                    
                   </tr>
                   {% else %}
                   <tr>
-                    <td colspan="8" class="text-center text-muted py-4">
+                    <td colspan="7" class="text-center text-muted py-4">
                       No receivables found for this period.
                     </td>
                   </tr>
@@ -302,6 +302,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+
   const paidCanvas = document.getElementById("incomeChart");
   if (paidCanvas) {
     new Chart(paidCanvas.getContext("2d"), {
@@ -354,6 +355,74 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     });
   }
+
 });
+
+/* ✅ ADD WHATSAPP FUNCTION RIGHT HERE */
+function sendBulkWhatsApp() {
+  const selected = document.querySelectorAll('.receivable-check:checked');
+
+  if (!selected.length) {
+    alert("Select at least one invoice.");
+    return;
+  }
+
+  const grouped = {};
+
+  selected.forEach(cb => {
+    const mobile = cb.dataset.mobile || "";
+    const customer = cb.dataset.customer || "Customer";
+    const invoice = cb.dataset.invoice || "";
+    const amount = parseFloat(cb.dataset.amount || "0");
+
+    if (!mobile) return;
+
+    if (!grouped[mobile]) {
+      grouped[mobile] = {
+        customer: customer,
+        invoices: [],
+        total: 0
+      };
+    }
+
+    grouped[mobile].invoices.push({
+      invoice: invoice,
+      amount: amount
+    });
+
+    grouped[mobile].total += amount;
+  });
+
+  const mobiles = Object.keys(grouped);
+
+  if (!mobiles.length) {
+    alert("No WhatsApp number found for the selected invoice(s).");
+    return;
+  }
+
+  mobiles.forEach(mobile => {
+    const g = grouped[mobile];
+
+    let lines = [];
+    lines.push(`Hi ${g.customer}, this is a payment reminder from Foreign A Foot Logistics.`);
+    lines.push("");
+    lines.push("The following invoice(s) have outstanding balances:");
+
+    g.invoices.forEach(item => {
+      lines.push(`- ${item.invoice}: JMD ${item.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+    });
+
+    lines.push("");
+    lines.push(`Total outstanding: JMD ${g.total.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+    lines.push("");
+    lines.push("Please settle as soon as possible. Thank you.");
+
+    const message = encodeURIComponent(lines.join("\n"));
+    const url = `https://wa.me/${mobile}?text=${message}`;
+
+    window.open(url, "_blank");
+  });
+}
+
 </script>
 {% endblock %}

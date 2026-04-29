@@ -6,6 +6,7 @@ from werkzeug.utils import secure_filename
 from flask import current_app, abort
 from flask import send_file
 from io import BytesIO
+from urllib.parse import quote
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, abort, current_app, make_response
 from datetime import datetime, date, timedelta, timezone
@@ -1362,6 +1363,7 @@ def monthly_income():
             User.full_name.label("customer_name"),
             User.email.label("customer_email"),
             User.registration_number.label("registration_number"),
+            User.mobile.label("customer_mobile"),
             amt_due_expr.label("amount_due"),
             func.date(issued_date_expr).label("date_issued"),
         )
@@ -1404,8 +1406,20 @@ def monthly_income():
             "invoice_number": r.invoice_number or f"INV{r.invoice_id:05d}",
             "customer_name": r.customer_name,
             "customer_email": r.customer_email,
+            "customer_mobile": "".join(ch for ch in str(r.customer_mobile or "") if ch.isdigit()),
             "registration_number": r.registration_number,
             "amount_due": float(r.amount_due or 0),
+            "whatsapp_url": (
+                "https://wa.me/"
+                + "".join(ch for ch in str(r.customer_mobile or "") if ch.isdigit())
+                + "?text="
+                + quote(
+                    f"Hi {r.customer_name or 'Customer'}, this is a payment reminder from Foreign A Foot Logistics. "
+                    f"Invoice {r.invoice_number or f'INV{r.invoice_id:05d}'} has a remaining balance of "
+                    f"JMD {float(r.amount_due or 0):,.2f}. Please settle as soon as possible. Thank you."
+                )
+                if r.customer_mobile else None
+            ),
             "date_issued": r.date_issued,
             "status": r.status or "unpaid",
             "age_days": age_days,
@@ -1466,59 +1480,6 @@ def monthly_income():
     )
 
 
-@finance_bp.route("/invoice/<int:invoice_id>/send-reminder", methods=["POST"])
-@admin_required(roles=["finance"])
-def send_invoice_reminder(invoice_id):
-    inv = Invoice.query.get_or_404(invoice_id)
-    user = User.query.get(inv.user_id)
-
-    if not user or not user.email:
-        flash("Customer does not have an email address.", "danger")
-        return redirect(request.referrer or url_for("finance.monthly_income"))
-
-    amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
-    invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
-
-    subject = f"Payment Reminder - Invoice {invoice_number}"
-
-    plain_body = f"""
-Hi {user.full_name or 'Customer'},
-
-This is a friendly reminder that invoice {invoice_number} has an outstanding balance of JMD {amount_due:,.2f}.
-
-Please make payment at your earliest convenience.
-
-Thank you,
-Foreign A Foot Logistics Limited
-""".strip()
-
-    html_body = f"""
-<p>Hi {user.full_name or 'Customer'},</p>
-
-<p>This is a friendly reminder that invoice <strong>{invoice_number}</strong> has an outstanding balance of:</p>
-
-<h3>JMD {amount_due:,.2f}</h3>
-
-<p>Please make payment at your earliest convenience.</p>
-
-<p>Thank you,<br>Foreign A Foot Logistics Limited</p>
-""".strip()
-
-    ok = send_email(
-        to_email=user.email,
-        subject=subject,
-        plain_body=plain_body,
-        html_body=html_body,
-        recipient_user_id=user.id,
-    )
-
-    if ok:
-        flash(f"Reminder sent to {user.email}.", "success")
-    else:
-        flash("Failed to send reminder email.", "danger")
-
-    return redirect(request.referrer or url_for("finance.monthly_income"))
-
 
 @finance_bp.route("/invoices/send-reminders-bulk", methods=["POST"])
 @admin_required(roles=["finance"])
@@ -1532,32 +1493,78 @@ def send_invoice_reminders_bulk():
         except Exception:
             pass
 
+    invoice_ids = list(dict.fromkeys(invoice_ids))
+
     if not invoice_ids:
         flash("Select at least one invoice to send reminders.", "warning")
         return redirect(request.referrer or url_for("finance.monthly_income"))
 
-    invoices = Invoice.query.filter(Invoice.id.in_(invoice_ids)).all()
+    invoices = (
+        Invoice.query
+        .filter(Invoice.id.in_(invoice_ids))
+        .order_by(Invoice.user_id.asc(), Invoice.date_issued.asc(), Invoice.id.asc())
+        .all()
+    )
+
+    grouped = {}
+
+    for inv in invoices:
+        user = User.query.get(inv.user_id)
+
+        if not user:
+            continue
+
+        if user.id not in grouped:
+            grouped[user.id] = {
+                "user": user,
+                "invoices": [],
+                "total_due": 0.0,
+            }
+
+        amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
+        invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
+
+        grouped[user.id]["invoices"].append({
+            "invoice_number": invoice_number,
+            "amount_due": amount_due,
+        })
+        grouped[user.id]["total_due"] += amount_due
 
     sent = 0
     failed = 0
     skipped = 0
 
-    for inv in invoices:
-        user = User.query.get(inv.user_id)
+    for group in grouped.values():
+        user = group["user"]
 
-        if not user or not user.email:
+        if not user.email:
             skipped += 1
             continue
 
-        amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
-        invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
+        invoice_lines_plain = "\n".join(
+            f"- {x['invoice_number']}: JMD {x['amount_due']:,.2f}"
+            for x in group["invoices"]
+        )
 
-        subject = f"Payment Reminder - Invoice {invoice_number}"
+        invoice_lines_html = "".join(
+            f"<li><strong>{x['invoice_number']}</strong>: JMD {x['amount_due']:,.2f}</li>"
+            for x in group["invoices"]
+        )
+
+        total_due = float(group["total_due"] or 0)
+
+        subject = "Payment Reminder - Outstanding Invoice Balance"
 
         plain_body = f"""
 Hi {user.full_name or 'Customer'},
 
-This is a friendly reminder that invoice {invoice_number} has an outstanding balance of JMD {amount_due:,.2f}.
+This is a friendly reminder from Foreign A Foot Logistics.
+
+The following invoice(s) have outstanding balances:
+
+{invoice_lines_plain}
+
+Total outstanding: JMD {total_due:,.2f}
 
 Please make payment at your earliest convenience.
 
@@ -1568,9 +1575,15 @@ Foreign A Foot Logistics Limited
         html_body = f"""
 <p>Hi {user.full_name or 'Customer'},</p>
 
-<p>This is a friendly reminder that invoice <strong>{invoice_number}</strong> has an outstanding balance of:</p>
+<p>This is a friendly reminder from <strong>Foreign A Foot Logistics</strong>.</p>
 
-<h3>JMD {amount_due:,.2f}</h3>
+<p>The following invoice(s) have outstanding balances:</p>
+
+<ul>
+  {invoice_lines_html}
+</ul>
+
+<h3>Total outstanding: JMD {total_due:,.2f}</h3>
 
 <p>Please make payment at your earliest convenience.</p>
 
@@ -1591,13 +1604,13 @@ Foreign A Foot Logistics Limited
             failed += 1
 
     if sent:
-        flash(f"Sent {sent} reminder email(s).", "success")
+        flash(f"Sent {sent} grouped reminder email(s).", "success")
 
     if failed:
-        flash(f"{failed} reminder email(s) failed.", "danger")
+        flash(f"{failed} grouped reminder email(s) failed.", "danger")
 
     if skipped:
-        flash(f"Skipped {skipped} invoice(s) because customer email was missing.", "warning")
+        flash(f"Skipped {skipped} customer(s) because email address was missing.", "warning")
 
     return redirect(request.referrer or url_for("finance.monthly_income"))
 

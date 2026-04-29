@@ -9,6 +9,12 @@
       <h2 class="mb-0">Monthly Profit / Loss</h2>
       <small class="text-muted">Income is based on actual completed payments received.</small>
     </div>
+    <div>
+      <a href="{{ url_for('finance.monthly_pl_pdf') }}"
+         class="btn btn-sm btn-danger">
+        <i class="bi bi-file-earmark-pdf"></i> Export PDF
+      </a>
+    </div>
   </div>
 
   <!-- KPI CARDS -->
@@ -184,7 +190,12 @@
           <tbody>
             {% for row in summary %}
             <tr>
-              <td class="fw-semibold">{{ row.month }}</td>
+              <td class="fw-semibold">
+                <a href="{{ url_for('finance.monthly_pl_detail', month=row.month) }}"
+                   class="text-decoration-none fw-semibold">
+                  {{ row.month }}
+                </a>
+              </td>
 
               <td class="text-end text-success">
                 ${{ "{:,.2f}".format(row.income or 0) }}

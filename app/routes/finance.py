@@ -1825,6 +1825,62 @@ def monthly_profit_loss():
         best_month=best_month,
         worst_month=worst_month,
     )
+
+
+@finance_bp.route('/monthly-pl/<month>')
+@admin_required(roles=['finance'])
+def monthly_pl_detail(month):
+    start, end = _month_bounds(month)
+
+    start_date = datetime.fromisoformat(start).date()
+    end_date = datetime.fromisoformat(end).date()
+
+    # Payments
+    payments = (
+        Payment.query
+        .filter(func.date(Payment.created_at).between(start_date, end_date))
+        .all()
+    )
+
+    # Expenses
+    expenses = (
+        Expense.query
+        .filter(func.date(Expense.date).between(start_date, end_date))
+        .all()
+    )
+
+    # Payroll
+    payroll = (
+        PayrollRun.query
+        .filter(func.date(PayrollRun.created_at).between(start_date, end_date))
+        .all()
+    )
+
+    return render_template(
+        "admin/finance/monthly_pl_detail.html",
+        month=month,
+        payments=payments,
+        expenses=expenses,
+        payroll=payroll
+    )
+
+@finance_bp.route('/monthly-pl/pdf')
+@admin_required(roles=['finance'])
+def monthly_pl_pdf():
+    html = render_template(
+        "admin/finance/monthly_profit_loss_pdf.html",
+        summary=summary   # reuse your existing data
+    )
+
+    pdf = HTML(string=html).write_pdf()
+
+    return Response(
+        pdf,
+        mimetype='application/pdf',
+        headers={"Content-Disposition": "attachment;filename=profit_loss.pdf"}
+    )
+
+
 def _build_customer_statement_pdf(user_id, start="", end=""):
     user = User.query.get_or_404(user_id)
 

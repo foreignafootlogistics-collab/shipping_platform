@@ -1731,13 +1731,11 @@ def monthly_profit_loss():
         current_refund_expenses=current_refund_expenses,
     )
 
-@finance_bp.route("/customer/<int:user_id>/statement.pdf")
-@admin_required(roles=["finance"])
-def customer_statement_pdf(user_id):
+def _build_customer_statement_pdf(user_id, start="", end=""):
     user = User.query.get_or_404(user_id)
 
-    start = (request.args.get("start") or "").strip()
-    end = (request.args.get("end") or "").strip()
+    start = (start or "").strip()
+    end = (end or "").strip()
 
     start_date = None
     end_date = None
@@ -1756,10 +1754,7 @@ def customer_statement_pdf(user_id):
 
     invoice_date_expr = _invoice_issued_date_expr()
 
-    invoice_q = (
-        db.session.query(Invoice)
-        .filter(Invoice.user_id == user.id)
-    )
+    invoice_q = db.session.query(Invoice).filter(Invoice.user_id == user.id)
 
     payment_q = (
         db.session.query(Payment)
@@ -1783,6 +1778,7 @@ def customer_statement_pdf(user_id):
     for inv in invoices:
         inv_date = inv.date_issued or inv.date_submitted or inv.created_at
         invoice_total = float(inv.grand_total or inv.amount or inv.amount_due or 0)
+
         rows.append({
             "date": inv_date,
             "type": "Invoice",
@@ -1809,7 +1805,11 @@ def customer_statement_pdf(user_id):
     for row in rows:
         total_invoiced += row["debit"]
         total_paid += row["credit"]
+
         balance += row["debit"] - row["credit"]
+        if balance < 0:
+            balance = 0
+
         row["balance"] = balance
 
     html = render_template(
@@ -1825,8 +1825,17 @@ def customer_statement_pdf(user_id):
     )
 
     pdf = HTML(string=html, base_url=request.url_root).write_pdf()
-
     filename = f"statement_{user.registration_number or user.id}.pdf"
+
+    return user, pdf, filename, balance
+
+@finance_bp.route("/customer/<int:user_id>/statement.pdf")
+@admin_required(roles=["finance"])
+def customer_statement_pdf(user_id):
+    start = (request.args.get("start") or "").strip()
+    end = (request.args.get("end") or "").strip()
+
+    user, pdf, filename, balance = _build_customer_statement_pdf(user_id, start, end)
 
     return send_file(
         BytesIO(pdf),
@@ -1834,6 +1843,66 @@ def customer_statement_pdf(user_id):
         as_attachment=True,
         download_name=filename,
     )
+
+@finance_bp.route("/customer/<int:user_id>/statement/email", methods=["POST"])
+@admin_required(roles=["finance"])
+def email_customer_statement_pdf(user_id):
+    user = User.query.get_or_404(user_id)
+
+    if not user.email:
+        flash("Customer does not have an email address.", "danger")
+        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=user_id, tab="payments"))
+
+    start = (request.form.get("start") or "").strip()
+    end = (request.form.get("end") or "").strip()
+
+    user, pdf, filename, balance = _build_customer_statement_pdf(user_id, start, end)
+
+    subject = "Your Foreign A Foot Logistics Customer Statement"
+
+    period_text = "All time"
+    if start or end:
+        period_text = f"{start or 'Beginning'} to {end or 'Today'}"
+
+    plain_body = f"""
+Hi {user.full_name or 'Customer'},
+
+Please find attached your customer statement for the period: {period_text}.
+
+Current balance due: JMD {float(balance or 0):,.2f}
+
+Thank you,
+Foreign A Foot Logistics Limited
+""".strip()
+
+    html_body = f"""
+<p>Hi {user.full_name or 'Customer'},</p>
+
+<p>Please find attached your customer statement for the period:</p>
+
+<p><strong>{period_text}</strong></p>
+
+<p><strong>Current balance due:</strong> JMD {float(balance or 0):,.2f}</p>
+
+<p>Thank you,<br>Foreign A Foot Logistics Limited</p>
+""".strip()
+
+    ok = send_email(
+        to_email=user.email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        attachments=[(pdf, filename, "application/pdf")],
+        recipient_user_id=user.id,
+    )
+
+    if ok:
+        flash(f"Statement emailed to {user.email}.", "success")
+    else:
+        flash("Failed to email statement.", "danger")
+
+    return redirect(request.referrer or url_for("accounts_profiles.view_user", id=user_id, tab="payments"))
+
 
 @finance_bp.route("/payroll", methods=["GET"])
 @admin_required(roles=["finance"])
@@ -2380,3 +2449,4 @@ Foreign A Foot Logistics
     flash(f"{sent} payslips sent, {failed} failed.", "success" if sent else "warning")
 
     return redirect(url_for("finance.payroll_detail", run_id=run_id))
+

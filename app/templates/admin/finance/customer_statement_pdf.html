@@ -26,6 +26,10 @@
       color: #666;
     }
 
+    .customer-name {
+      margin-bottom: 4px;
+    }
+
     .summary {
       display: table;
       width: 100%;
@@ -46,6 +50,19 @@
       margin-top: 5px;
     }
 
+    .notice-box {
+      border: 1px solid #4a148c;
+      background: #f7f1ff;
+      padding: 10px;
+      margin: 12px 0 16px 0;
+      font-size: 13px;
+    }
+
+    .notice-box strong {
+      color: #b00020;
+      font-size: 16px;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -63,6 +80,7 @@
     td {
       border-bottom: 1px solid #ddd;
       padding: 7px;
+      vertical-align: top;
     }
 
     .text-end {
@@ -79,12 +97,31 @@
       font-weight: bold;
     }
 
+    .invoice-row {
+      background-color: #f9f5ff;
+    }
+
+    .payment-row {
+      background-color: #ffffff;
+    }
+
+    .status-outstanding {
+      color: #b00020;
+      font-weight: bold;
+    }
+
+    .status-settled {
+      color: #198754;
+      font-weight: bold;
+    }
+
     .footer {
       margin-top: 25px;
       font-size: 11px;
       color: #666;
       border-top: 1px solid #ddd;
       padding-top: 10px;
+      line-height: 1.5;
     }
   </style>
 </head>
@@ -96,7 +133,7 @@
     <div class="muted">Generated: {{ generated_at.strftime("%Y-%m-%d %I:%M %p") }}</div>
   </div>
 
-  <h3>{{ user.full_name }}</h3>
+  <h3 class="customer-name">{{ user.full_name }}</h3>
   <p>
     <strong>Registration #:</strong> {{ user.registration_number or "—" }}<br>
     <strong>Email:</strong> {{ user.email or "—" }}<br>
@@ -125,6 +162,11 @@
     </div>
   </div>
 
+  <div class="notice-box">
+    <div><strong>Outstanding Balance: JMD {{ "{:,.2f}".format(balance or 0) }}</strong></div>
+    <div class="muted">Please review the transactions below and settle any outstanding balance promptly.</div>
+  </div>
+
   <table>
     <thead>
       <tr>
@@ -134,12 +176,13 @@
         <th class="text-end">Invoice / Debit</th>
         <th class="text-end">Payment / Credit</th>
         <th class="text-end">Balance</th>
+        <th>Status</th>
       </tr>
     </thead>
 
     <tbody>
       {% for row in rows %}
-      <tr>
+      <tr class="{% if row.type == 'Invoice' %}invoice-row{% else %}payment-row{% endif %}">
         <td>
           {% if row.date %}
             {{ row.date.strftime("%Y-%m-%d") }}
@@ -147,8 +190,10 @@
             —
           {% endif %}
         </td>
+
         <td>{{ row.type }}</td>
         <td>{{ row.reference }}</td>
+
         <td class="text-end">
           {% if row.debit %}
             JMD {{ "{:,.2f}".format(row.debit) }}
@@ -156,6 +201,7 @@
             —
           {% endif %}
         </td>
+
         <td class="text-end">
           {% if row.credit %}
             JMD {{ "{:,.2f}".format(row.credit) }}
@@ -163,13 +209,22 @@
             —
           {% endif %}
         </td>
+
         <td class="text-end">
           JMD {{ "{:,.2f}".format(row.balance or 0) }}
+        </td>
+
+        <td>
+          {% if row.balance and row.balance > 0 %}
+            <span class="status-outstanding">Outstanding</span>
+          {% else %}
+            <span class="status-settled">Settled</span>
+          {% endif %}
         </td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="6" style="text-align:center; padding:20px;">
+        <td colspan="7" style="text-align:center; padding:20px;">
           No statement activity found.
         </td>
       </tr>
@@ -178,7 +233,8 @@
   </table>
 
   <div class="footer">
-    This statement shows invoices and payments recorded in the Foreign A Foot Logistics system.
+    This statement reflects invoices and payments recorded in the Foreign A Foot Logistics system.
+    Kindly settle any outstanding balance promptly to avoid delays.
     Please contact us if any transaction appears incorrect.
   </div>
 

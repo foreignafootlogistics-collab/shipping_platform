@@ -779,12 +779,36 @@
 
           <div class="d-flex align-items-center gap-2">
 
-            <a href="{{ url_for('finance.customer_statement_pdf', user_id=user.id) }}"
-               class="btn btn-sm btn-outline-secondary"
-               target="_blank"
-               title="Download Customer Statement">
-              <i class="bi bi-file-earmark-pdf"></i> Statement
-            </a>
+            <form method="GET"
+                  action="{{ url_for('finance.customer_statement_pdf', user_id=user.id) }}"
+                  target="_blank"
+                  class="d-flex align-items-center gap-2 mb-0">
+
+              <input type="date" name="start" class="form-control form-control-sm" style="width:145px;">
+              <input type="date" name="end" class="form-control form-control-sm" style="width:145px;">
+
+              <button type="submit"
+                      class="btn btn-sm btn-outline-secondary"
+                      title="Download Customer Statement">
+                <i class="bi bi-file-earmark-pdf"></i> Statement
+              </button>
+            </form>
+
+            <form method="POST"
+                  action="{{ url_for('finance.email_customer_statement_pdf', user_id=user.id) }}"
+                  class="d-flex align-items-center gap-2 mb-0">
+
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="date" name="start" class="form-control form-control-sm" style="width:145px;">
+              <input type="date" name="end" class="form-control form-control-sm" style="width:145px;">
+
+              <button type="submit"
+                      class="btn btn-sm btn-outline-success"
+                      onclick="return confirm('Email customer statement to {{ user.email }}?');"
+                      title="Email Customer Statement">
+                <i class="bi bi-envelope"></i> Email Statement
+              </button>
+            </form>
             <button type="button"
                     class="btn btn-sm btn-outline-purple"
                     data-bs-toggle="modal"

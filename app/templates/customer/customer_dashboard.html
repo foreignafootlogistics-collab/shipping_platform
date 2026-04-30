@@ -165,55 +165,54 @@
   {% if subscription_summary %}
   <div class="dashboard-section">
     <div class="card-box subscription-card p-3 border rounded shadow-sm bg-white">
-      <div class="d-flex justify-content-between align-items-start mb-3">
+      <div class="d-flex justify-content-between align-items-center">
         <div>
-          <h5 class="mb-1" style="color:#4a148c;">My Subscription</h5>
-          <div class="text-muted small">
-            {{ subscription_summary.plan_name }} Plan
-          </div>
+          <h5 class="mb-0" style="color:#4a148c;">My Subscription</h5>
+          <small class="text-muted">
+            {{ subscription_summary.plan_name }} Plan •
+            {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} packages •
+            {{ "%.1f"|format(subscription_summary.weight_used) }}/{{ "%.1f"|format(subscription_summary.weight_limit) }} lb
+          </small>
         </div>
-        <span class="badge bg-success">
-          {{ subscription_summary.status|title }}
-        </span>
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge bg-success">
+            {{ subscription_summary.status|title }}
+          </span>
+          <button class="btn btn-sm btn-dashboard-outline"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#subscriptionDetails">
+            View Details
+          </button>
+        </div>
+
       </div>
 
-      <div class="row">
-        <div class="col-md-6 mb-3">
-          <div class="d-flex justify-content-between small mb-1">
-            <span>Packages Used</span>
-            <strong>{{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }}</strong>
-          </div>
+      <div class="row mt-3">
+        <div class="col-md-6 mb-2">
           <div class="progress subscription-progress">
             <div class="progress-bar subscription-progress-bar"
-                 role="progressbar"
                  style="width: {{ subscription_summary.package_percent }}%;">
             </div>
           </div>
-          <div class="text-muted small mt-1">
+          <small class="text-muted">
             {{ subscription_summary.packages_remaining }} package(s) remaining
-          </div>
+          </small>
         </div>
 
-        <div class="col-md-6 mb-3">
-          <div class="d-flex justify-content-between small mb-1">
-            <span>Billable Weight Used</span>
-            <strong>
-              {{ "%.1f"|format(subscription_summary.weight_used) }}/{{ "%.1f"|format(subscription_summary.weight_limit) }} lb
-            </strong>
-          </div>
+        <div class="col-md-6 mb-2">
           <div class="progress subscription-progress">
             <div class="progress-bar subscription-progress-bar"
-                 role="progressbar"
                  style="width: {{ subscription_summary.weight_percent }}%;">
             </div>
           </div>
-          <div class="text-muted small mt-1">
+          <small class="text-muted">
             {{ "%.1f"|format(subscription_summary.weight_remaining) }} lb remaining
-          </div>
+          </small>
         </div>
       </div>
 
-      <div class="subscription-rules mt-2">
+      <div class="collapse mt-2" id="subscriptionDetails">
         <div class="alert alert-light border mb-2 small">
           <strong>Plan Rule:</strong>
           Your plan applies until your package limit or weight limit is reached, whichever comes first.

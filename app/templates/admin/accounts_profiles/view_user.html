@@ -153,14 +153,21 @@
         <div class="mb-1">
           <strong>Subscription:</strong>
           {% if subscription_summary %}
-            <span class="badge bg-success">{{ subscription_summary.plan_name }}</span>
-            <small class="text-muted">
-              {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} used             
+            <div>
+              <span class="badge bg-success">{{ subscription_summary.plan_name }}
+              </span>
+            </div>
+            <div class="small text-muted">
+            
+            {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} used 
+            </div>         
               
-              {% if subscription_summary.days_remaining is not none %}
-                • Expires in {{ subscription_summary.days_remaining }} day(s)
-              {% endif %}
-            </small>
+            {% if subscription_summary.days_remaining is not none %}
+              <div class="small text-muted">
+                Expires in {{ subscription_summary.days_remaining }} day(s)
+              </div>
+            {% endif %}
+            
           {% else %}
             <span class="badge bg-secondary">None</span>
           {% endif %}
@@ -175,7 +182,7 @@
                 
 
         <!-- Wallet Icon at the bottom -->
-        <div class="position-absolute" style="bottom:1rem; right:1rem;">
+        <div class="mt-3 text-end">
           <button
             type="button"
             class="btn btn-purple btn-lg"

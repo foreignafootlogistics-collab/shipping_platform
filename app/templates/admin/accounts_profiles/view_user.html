@@ -111,44 +111,7 @@
 
         <!-- Details -->
         <div class="mb-1"><strong>Email:</strong> {{ user.email }}</div>
-        <div class="profile-row">
-          <div class="label">Subscription</div>
-          <div class="value">
-
-            {% if subscription_summary %}
-              <span class="badge bg-success">
-                {{ subscription_summary.plan_name }}
-              </span>
-              <div class="small text-muted">
-                {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} used
-              </div>
-
-              {% if subscription_summary.is_expired %}
-                <div class="text-danger small mt-1">
-                  ❌ Expired
-                </div>
-
-              {% elif subscription_summary.expires_soon %}
-                <div class="text-warning small mt-1">
-                  ⚠ Expires in {{ subscription_summary.days_remaining }} day(s)
-                </div>
-
-      {% elif subscription_summary.days_remaining is not none %}
-        <div class="text-muted small mt-1">
-          Expires in {{ subscription_summary.days_remaining }} day(s)
-        </div>
-      {% endif %}
-            {% else %}
-              <span class="badge bg-secondary">None</span>
-            {% endif %}
-            <button type="button"
-                    class="btn btn-sm btn-outline-purple mt-2"
-                    data-bs-toggle="modal"
-                    data-bs-target="#manualSubscriptionModal">
-              Add / Change Subscription
-            </button>
-          </div>
-        </div>
+        
         <div class="mb-1"><strong>Mobile:</strong> {{ user.mobile }}</div>
         <div class="mb-1"><strong>Referral Code:</strong> {{ user.referral_code }}</div>
         <div class="mb-1"><strong>Referrer:</strong> {{ user.referrer or 'None' }}</div>
@@ -182,7 +145,34 @@
         <div class="mb-1">
           <strong>Status:</strong>
           <span class="badge {{ user.activity_badge }}">{{ user.activity_status }}</span>
-        </div>        
+        </div>
+        <div class="mb-1">
+          <strong>Last Login:</strong> {{ user.last_login_display }}
+        </div>
+        
+        <div class="mb-1">
+          <strong>Subscription:</strong>
+          {% if subscription_summary %}
+            <span class="badge bg-success">{{ subscription_summary.plan_name }}</span>
+            <small class="text-muted">
+              {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} used             
+              
+              {% if subscription_summary.days_remaining is not none %}
+                • Expires in {{ subscription_summary.days_remaining }} day(s)
+              {% endif %}
+            </small>
+          {% else %}
+            <span class="badge bg-secondary">None</span>
+          {% endif %}
+        </div>
+
+        <button type="button"
+                class="btn btn-sm btn-outline-purple mt-2"
+                data-bs-toggle="modal"
+                data-bs-target="#manualSubscriptionModal">
+          Add / Change Subscription
+        </button>          
+                
 
         <!-- Wallet Icon at the bottom -->
         <div class="position-absolute" style="bottom:1rem; right:1rem;">

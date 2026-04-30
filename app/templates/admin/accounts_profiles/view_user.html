@@ -153,21 +153,14 @@
         <div class="mb-1">
           <strong>Subscription:</strong>
           {% if subscription_summary %}
-            <div>
-              <span class="badge bg-success">{{ subscription_summary.plan_name }}
-              </span>
-            </div>
-            <div class="small text-muted">
-            
-            {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} used 
-            </div>         
+            <span class="badge bg-success">{{ subscription_summary.plan_name }}</span>
+            <small class="text-muted">
+              {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} used             
               
-            {% if subscription_summary.days_remaining is not none %}
-              <div class="small text-muted">
-                Expires in {{ subscription_summary.days_remaining }} day(s)
-              </div>
-            {% endif %}
-            
+              {% if subscription_summary.days_remaining is not none %}
+                • Expires in {{ subscription_summary.days_remaining }} day(s)
+              {% endif %}
+            </small>
           {% else %}
             <span class="badge bg-secondary">None</span>
           {% endif %}

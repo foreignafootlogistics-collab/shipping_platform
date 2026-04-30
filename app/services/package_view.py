@@ -210,7 +210,19 @@ def fetch_packages_normalized(
 
             "invoice_total": float(meta["total"]) if meta else None,
             "invoice_paid_sum": float(meta["paid_sum"]) if meta else None,
+            # 🟣 SUBSCRIPTION FLAGS
+            d["subscription_applied"] = bool(getattr(pkg, "subscription_applied", False))
+            d["subscription_result"] = getattr(pkg, "subscription_result", None)
 
+            d["subscription_covered"] = (
+                d["subscription_applied"]
+                and (d["subscription_result"] or "") == "subscription_applied"
+            )
+
+            d["customs_only_due_to_subscription"] = (
+                d["subscription_covered"]
+                and float(getattr(pkg, "customs_total", 0) or 0) > 0
+            )
         }
 
         d["effective_value"] = _effective_value_dict(d)

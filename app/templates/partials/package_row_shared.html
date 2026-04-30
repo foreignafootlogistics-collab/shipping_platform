@@ -196,9 +196,43 @@
 <td class="pkg-cell">
   {% set status = _status %}
   {% include "partials/status_vars.html" %}
+
   <strong>{{ _house or "-" }}</strong><br>
+
   {% include "partials/status_tracker.html" with context %}
-  <div class="small text-muted mt-1">VAL: ${{ "%.2f"|format(dv or 0) }}</div>
+
+  <!-- 🟣 SUBSCRIPTION BADGE -->
+  {% if pkg.subscription_covered %}
+    <div class="mt-1">
+      {% if pkg.customs_only_due_to_subscription %}
+        <span class="badge bg-warning text-dark">
+          ⚡ Sub + Customs
+        </span>
+      {% else %}
+        <span class="badge bg-success">
+          ✓ Subscription
+        </span>
+      {% endif %}
+    </div>
+
+  {% elif pkg.subscription_applied and pkg.subscription_result == "package_over_plan_limit" %}
+    <div class="mt-1">
+      <span class="badge bg-secondary">
+        Over Limit
+      </span>
+    </div>
+
+  {% elif pkg.subscription_applied and pkg.subscription_result == "subscription_exhausted" %}
+    <div class="mt-1">
+      <span class="badge bg-info text-dark">
+        Subscriber Rate
+      </span>
+    </div>
+  {% endif %}
+
+  <div class="small text-muted mt-1">
+    VAL: ${{ "%.2f"|format(dv or 0) }}
+  </div>
 </td>
 
 {# ---------------- DESCRIPTION + ATTACHMENTS COLUMN ---------------- #}

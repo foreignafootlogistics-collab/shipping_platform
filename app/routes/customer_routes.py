@@ -35,6 +35,7 @@ from app.utils.invoice_pdf import generate_invoice_pdf
 from app.utils.messages import make_thread_key
 from app.utils.message_notify import send_new_message_email
 from app.utils.email_utils import pick_admin_recipient
+from app.utils.subscription_utils import get_subscription_summary
 from app.calculator_data import categories
 from app import mail
 from app.utils.files import allowed_file
@@ -268,6 +269,7 @@ def customer_dashboard():
     # Calculator form
     form = CalculatorForm()
     form.category.choices = [(c, c) for c in CATEGORIES.keys()]
+    subscription_summary = get_subscription_summary(current_user.id)
 
     return render_template(
         'customer/customer_dashboard.html',
@@ -283,7 +285,8 @@ def customer_dashboard():
         wallet_balance=wallet_balance,
         wallet_transactions=wallet_transactions,
         referral_code=getattr(user, "referral_code", None),
-        ready_packages=ready_packages
+        ready_packages=ready_packages,
+        subscription_summary=subscription_summary,
     )
 
 

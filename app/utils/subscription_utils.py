@@ -125,3 +125,49 @@ def get_subscription_discount_percent(package):
         return float(subscription.plan.overage_discount_percent or 0)
 
     return 0
+
+def get_subscription_summary(user_id):
+    subscription = get_active_subscription(user_id)
+
+    if not subscription:
+        return None
+
+    usage = ensure_usage(subscription)
+    plan = subscription.plan
+
+    packages_used = int(usage.packages_used or 0)
+    weight_used = float(usage.weight_used or 0)
+
+    package_limit = int(plan.package_limit or 0)
+    weight_limit = float(plan.weight_limit or 0)
+
+    package_percent = 0
+    weight_percent = 0
+
+    if package_limit > 0:
+        package_percent = min(100, round((packages_used / package_limit) * 100))
+
+    if weight_limit > 0:
+        weight_percent = min(100, round((weight_used / weight_limit) * 100))
+
+    return {
+        "subscription_id": subscription.id,
+        "plan_name": plan.name,
+        "status": subscription.status,
+        "start_date": subscription.start_date,
+        "end_date": subscription.end_date,
+
+        "packages_used": packages_used,
+        "package_limit": package_limit,
+        "packages_remaining": max(package_limit - packages_used, 0),
+        "package_percent": package_percent,
+
+        "weight_used": weight_used,
+        "weight_limit": weight_limit,
+        "weight_remaining": max(weight_limit - weight_used, 0),
+        "weight_percent": weight_percent,
+
+        "max_weight_per_package": float(plan.max_weight_per_package or 0),
+        "is_family_plan": bool(plan.is_family_plan),
+        "priority_processing": bool(plan.priority_processing),
+    }

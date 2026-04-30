@@ -211,7 +211,21 @@
             </td>           
             <td><input type="checkbox"></td>
             <td>{{ p.house_awb or "—" }}</td>
-            <td>{{ p.description or "—" }}</td>
+            <td>{{ p.description or "—" }}
+              {% if p.subscription_covered %}
+                <div class="mt-1">
+                  {% if p.customs_only_due_to_subscription %}
+                    <span class="badge bg-warning text-dark">
+                      Freight covered — customs charges apply
+                    </span>
+                  {% else %}
+                    <span class="badge bg-success">
+                      Covered by subscription
+                    </span>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </td>
             <td>{{ p.merchant or "—" }}</td>
             {% set recv = p.received_date or p.date_received %}
             <td>

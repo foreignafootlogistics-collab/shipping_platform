@@ -18,27 +18,16 @@
         <div class="top-bar-heading">My Profile</div>
         <div class="profile-card">
 
-          <!-- Profile Avatar -->
           <div class="profile-avatar text-center">
             {% if profile_picture %}
               <img src="{{ url_for('static', filename='profile_pics/' + profile_picture) }}" 
                    alt="Profile Picture" 
                    class="img-fluid rounded-circle mb-2">
             {% else %}
-              {% set colors = ['#FFEB3B', '#4CAF50'] %} {# yellow and green #}
+              {% set colors = ['#FFEB3B', '#4CAF50'] %}
               {% set color_index = current_user.id % 2 %}
               <div class="rounded-circle mb-2 d-flex align-items-center justify-content-center profile-initials-avatar"
-                   style="
-                     width:100px; 
-                     height:100px; 
-                     font-weight:bold; 
-                     font-size:2rem; 
-                     color:#000; 
-                     background-color: {{ colors[color_index] }};
-                     border: 3px solid #4a148c;
-                     text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
-                     cursor: pointer;
-                   ">
+                   style="width:100px;height:100px;font-weight:bold;font-size:2rem;color:#000;background-color: {{ colors[color_index] }};border:3px solid #4a148c;text-shadow:1px 1px 2px rgba(0,0,0,0.2);cursor:pointer;">
                 {{ current_user.full_name[:1]|upper }}{{ current_user.full_name.split(' ')[-1][:1]|upper }}
               </div>
             {% endif %}
@@ -49,23 +38,19 @@
             </form>
           </div>
 
-          <!-- Profile Details -->
           <div class="profile-details mt-3">
             <div class="profile-row">
               <div class="label">Name</div>
               <div class="value">{{ user.full_name }}</div>
             </div>
-
             <div class="profile-row">
               <div class="label">Email</div>
               <div class="value">{{ user.email }}</div>
             </div>
-
             <div class="profile-row">
               <div class="label">Mobile</div>
               <div class="value">{{ user.mobile }}</div>
             </div>
-
             <div class="profile-row">
               <div class="label">Registration</div>
               <div class="value">{{ user.registration_number }}</div>
@@ -76,14 +61,12 @@
               <span class="badge referral-code-badge" id="referralCode">
                 {{ user.referral_code or "Not set" }}
               </span>
-              <button type="button"
-                      id="copyReferralBtn"
-                      class="btn btn-dashboard-outline ms-2"
-                      title="Copy Code">
+              <button type="button" id="copyReferralBtn" class="btn btn-dashboard-outline ms-2" title="Copy Code">
                 <i class="fas fa-copy"></i>
               </button>
             </div>
           </div>
+
         </div>
       </div>
     </div>
@@ -91,8 +74,6 @@
     <!-- Shipping Address -->
     <div class="col-lg-6 mb-3">
       <div class="card-box shipping-card h-100 p-3 border rounded shadow-sm bg-white">
-
-        <!-- Top Bar -->
         <div class="top-bar d-flex justify-content-between align-items-center mb-3 border-bottom pb-2">
           <div class="fw-bold" style="color:#4a148c;">Addresses</div>
           <div class="d-flex gap-2">
@@ -105,25 +86,21 @@
           </div>
         </div>
 
-        <!-- Overseas Address -->
         <div id="overseas-address" class="overseas-address-grid">
           <div>
             <div class="label fw-bold text-muted">Recipient</div>
             <div class="value">{{ us_address.recipient }}</div>
-
             <div class="label fw-bold text-muted mt-2">Street</div>
             <div class="value">{{ us_address.address_line1 }}</div>
           </div>
           <div>
             <div class="label fw-bold text-muted">Suite</div>
             <div class="value">{{ us_address.address_line2 }}</div>
-
             <div class="label fw-bold text-muted mt-2">City/State/ZIP</div>
             <div class="value">{{ us_address.city }}, {{ us_address.state }}, {{ us_address.zip }}</div>
           </div>
         </div>
 
-        <!-- Home Address -->
         <div id="home-address" style="display:none;">
           <div class="label fw-bold text-muted mb-2">Home Address</div>
           <div class="value mb-3">
@@ -139,16 +116,12 @@
         <div class="mt-2">
           <div class="fw-bold text-muted mb-2">Tax Exemption</div>
 
-          <a href="{{ url_for('customer.tax_certificate') }}" 
-             class="btn btn-dashboard w-100" 
-             target="_blank">
+          <a href="{{ url_for('customer.tax_certificate') }}" class="btn btn-dashboard w-100" target="_blank">
             <i class="fas fa-file-pdf"></i> Download Tax Certificate
           </a>
 
-          <button type="button"
-                  class="btn btn-dashboard-outline w-100 mb-2"
-                  data-bs-toggle="modal"
-                  data-bs-target="#taxExemptionInstructionsModal">
+          <button type="button" class="btn btn-dashboard-outline w-100 mb-2"
+                  data-bs-toggle="modal" data-bs-target="#taxExemptionInstructionsModal">
             <i class="fas fa-circle-info"></i> View Instructions
           </button>
 
@@ -188,6 +161,77 @@
     </div>
   </div>
 
+  <!-- Subscription Summary -->
+  {% if subscription_summary %}
+  <div class="dashboard-section">
+    <div class="card-box subscription-card p-3 border rounded shadow-sm bg-white">
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+          <h5 class="mb-1" style="color:#4a148c;">My Subscription</h5>
+          <div class="text-muted small">
+            {{ subscription_summary.plan_name }} Plan
+          </div>
+        </div>
+        <span class="badge bg-success">
+          {{ subscription_summary.status|title }}
+        </span>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          <div class="d-flex justify-content-between small mb-1">
+            <span>Packages Used</span>
+            <strong>{{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }}</strong>
+          </div>
+          <div class="progress subscription-progress">
+            <div class="progress-bar subscription-progress-bar"
+                 role="progressbar"
+                 style="width: {{ subscription_summary.package_percent }}%;">
+            </div>
+          </div>
+          <div class="text-muted small mt-1">
+            {{ subscription_summary.packages_remaining }} package(s) remaining
+          </div>
+        </div>
+
+        <div class="col-md-6 mb-3">
+          <div class="d-flex justify-content-between small mb-1">
+            <span>Billable Weight Used</span>
+            <strong>
+              {{ "%.1f"|format(subscription_summary.weight_used) }}/{{ "%.1f"|format(subscription_summary.weight_limit) }} lb
+            </strong>
+          </div>
+          <div class="progress subscription-progress">
+            <div class="progress-bar subscription-progress-bar"
+                 role="progressbar"
+                 style="width: {{ subscription_summary.weight_percent }}%;">
+            </div>
+          </div>
+          <div class="text-muted small mt-1">
+            {{ "%.1f"|format(subscription_summary.weight_remaining) }} lb remaining
+          </div>
+        </div>
+      </div>
+
+      <div class="subscription-rules mt-2">
+        <div class="alert alert-light border mb-2 small">
+          <strong>Plan Rule:</strong>
+          Your plan applies until your package limit or weight limit is reached, whichever comes first.
+          Usage is based on rounded billable weight.
+        </div>
+
+        <div class="alert alert-warning border mb-0 small">
+          <strong>Important:</strong>
+          Subscription covers eligible shipping/freight charges only.
+          Customs charges may still apply for packages valued over <strong>USD $100</strong>.
+          Max package weight under this plan:
+          <strong>{{ "%.1f"|format(subscription_summary.max_weight_per_package) }} lb</strong>.
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Ready for Pick Up Packages -->
   <div class="dashboard-section">
     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -226,7 +270,6 @@
                     —
                   {% endif %}
                 </td>
-
                 <td>
                   {% if pkg.date_received %}
                     {{ pkg.date_received.strftime("%Y-%m-%d") }}
@@ -234,8 +277,7 @@
                     —
                   {% endif %}
                 </td>
-
-                <td>${{ "%.2f"|format(pkg.amount_due) }}</td>
+                <td>JMD {{ "%.2f"|format(pkg.amount_due or 0) }}</td>
               </tr>
             {% endfor %}
           {% else %}
@@ -253,7 +295,6 @@
 <!-- Toggle & Copy Script -->
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  // Toggle Addresses
   const overseasBtn = document.getElementById("overseas-btn");
   const homeBtn = document.getElementById("home-btn");
   const overseasAddress = document.getElementById("overseas-address");
@@ -270,7 +311,6 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Copy Referral Code
   const copyBtn = document.getElementById("copyReferralBtn");
   if (copyBtn) {
     copyBtn.addEventListener("click", function () {
@@ -296,7 +336,6 @@ document.addEventListener("DOMContentLoaded", function () {
   margin-left: 10px;
 }
 
-/* Profile details inline label-value pairs */
 .profile-row {
   display: flex;
   justify-content: space-between;
@@ -326,6 +365,23 @@ document.addEventListener("DOMContentLoaded", function () {
   transform: scale(1.1);
   box-shadow: 0 8px 20px rgba(0,0,0,0.3);
   filter: brightness(1.1);
+}
+
+.subscription-card {
+  border-left: 5px solid #4a148c !important;
+}
+
+.subscription-progress {
+  height: 9px;
+  background: #eee;
+}
+
+.subscription-progress-bar {
+  background: #4a148c;
+}
+
+.subscription-rules .alert {
+  border-radius: 10px;
 }
 </style>
 

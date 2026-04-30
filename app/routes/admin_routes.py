@@ -132,6 +132,19 @@ def _build_invoice_view_dict(inv):
             "caf":           _num(getattr(p, "caf", 0)),
             "gct":           _num(getattr(p, "gct", 0)),
             "discount_due":  _num(getattr(p, "discount_due", 0)),
+            "subscription_applied": bool(getattr(p, "subscription_applied", False)),
+            "subscription_result": getattr(p, "subscription_result", None),
+
+            "subscription_covered": (
+                bool(getattr(p, "subscription_applied", False))
+                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+            ),
+
+            "customs_only_due_to_subscription": (
+                bool(getattr(p, "subscription_applied", False))
+                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                and float(getattr(p, "customs_total", 0) or 0) > 0
+            ),
         })
     invoice_dict = {
         "id":            inv.id,
@@ -1470,6 +1483,17 @@ def generate_invoice_route(user_id):
             "value_usd":   val,
             "bad_address_fee": bad_address_fee,
             **ch,
+            "subscription_applied": getattr(p, "subscription_applied", False),
+            "subscription_result": getattr(p, "subscription_result", None),
+            "subscription_covered": (
+                getattr(p, "subscription_applied", False)
+                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+            ),
+            "customs_only_due_to_subscription": (
+                getattr(p, "subscription_applied", False)
+                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                and float(getattr(p, "customs_total", 0) or 0) > 0
+            ),
         })
 
     # finalize invoice from totals
@@ -1513,6 +1537,11 @@ def generate_invoice_route(user_id):
             "other_charges":  x.get("other_charges", 0),
             "bad_address_fee": x.get("bad_address_fee", 0),
             "discount_due":   x.get("discount_due", 0),
+            "subscription_applied": x.get("subscription_applied", False),
+            "subscription_result": x.get("subscription_result", None),
+
+            "subscription_covered": x.get("subscription_covered", False),
+            "customs_only_due_to_subscription": x.get("customs_only_due_to_subscription", False),
         } for x in view_lines],
     }
 

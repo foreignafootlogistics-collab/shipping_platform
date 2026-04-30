@@ -50,6 +50,7 @@ from app.utils.file_url import is_url
 from app.utils import email_utils, update_wallet
 from app.utils.wallet import process_first_shipment_bonus
 from app.utils.subscription_utils import apply_subscription_usage
+from app.utils.subscription_utils import get_subscription_discount_percent
 
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
@@ -322,6 +323,7 @@ def _apply_pkg_filters(
     epc_only=None,
     unassigned_only=None,
     not_notified_only=None,
+    subscription_only=None,
 ):
     """
     Apply package filters to a SQLAlchemy query.
@@ -428,6 +430,9 @@ def _apply_pkg_filters(
 
     if status_filter:
         q = q.filter(Package.status == status_filter)
+
+    if subscription_only:
+        q = q.filter(Package.subscription_applied.is_(True))
 
     # -------------------------
     # EPC filter
@@ -557,9 +562,93 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
     """
     One official calculator+writer used by bulk shipment action.
     """
+
     category = (category or getattr(p, "category", None) or "Other").strip() or "Other"
 
-    # normalize / protect
+    # -----------------------------------
+    # SUBSCRIPTION LOGIC
+    # -----------------------------------
+    if (
+        getattr(p, "subscription_applied", False)
+        and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+    ):
+        if hasattr(p, "category"):
+            p.category = category
+
+        try:
+            p.value = float(invoice_val or getattr(p, "value", 0) or 0)
+        except Exception:
+            pass
+
+        if hasattr(p, "declared_value"):
+            try:
+                p.declared_value = float(invoice_val or getattr(p, "declared_value", 0) or 0)
+            except Exception:
+                pass
+
+        declared_value = float(getattr(p, "declared_value", 0) or 0)
+
+        # -----------------------------------
+        # CASE 1: VALUE <= 100 USD → FULLY FREE
+        # -----------------------------------
+        if declared_value <= 100:
+
+            for field in [
+                "duty", "gct", "scf", "envl", "caf", "stamp",
+                "customs_total", "freight_fee", "handling_fee",
+                "freight_total"
+            ]:
+                if hasattr(p, field):
+                    setattr(p, field, 0.0)
+
+            if hasattr(p, "grand_total"):
+                p.grand_total = 0.0
+
+            if hasattr(p, "amount_due"):
+                p.amount_due = 0.0
+
+            return {
+                "subscription_applied": True,
+                "message": "Covered by subscription (no charges)"
+            }
+
+        # -----------------------------------
+        # CASE 2: VALUE > 100 USD → CUSTOMS ONLY
+        # -----------------------------------
+        else:
+
+            breakdown = calculate_charges(
+                category,
+                declared_value,
+                float(getattr(p, "weight", 0) or 0)
+            ) or {}
+
+            # ✅ Apply ONLY customs-related fields
+            for field in ["duty", "gct", "scf", "envl", "caf", "stamp", "customs_total"]:
+                if hasattr(p, field):
+                    setattr(p, field, float(breakdown.get(field, 0)))
+
+            # ❌ Remove freight completely
+            for field in ["freight_fee", "handling_fee", "freight_total"]:
+                if hasattr(p, field):
+                    setattr(p, field, 0.0)
+
+            final_total = float(getattr(p, "customs_total", 0) or 0)
+
+            if hasattr(p, "grand_total"):
+                p.grand_total = final_total
+
+            if hasattr(p, "amount_due"):
+                p.amount_due = final_total
+
+            return {
+                "subscription_applied": True,
+                "message": "Subscription applied (customs charges only)"
+            }
+
+    # -----------------------------------
+    # NORMAL CALCULATION (NON-SUBSCRIPTION)
+    # -----------------------------------
     try:
         invoice_val = float(invoice_val or 0)
     except Exception:
@@ -567,7 +656,6 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
 
     weight = _normalize_weight(weight)
 
-    # if still invalid, skip
     if invoice_val <= 0:
         invoice_val = 50.0
     if weight <= 0:
@@ -575,10 +663,8 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
 
     breakdown = calculate_charges(category, invoice_val, weight) or {}
 
-    # ✅ single writer for normal calculator fields
     apply_breakdown_to_package(p, breakdown, lock=False)
 
-    # keep core fields in sync
     if hasattr(p, "category"):
         p.category = category
 
@@ -587,7 +673,7 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
         p.declared_value = invoice_val
 
     # -----------------------------------
-    # Apply bad address separately
+    # BAD ADDRESS
     # -----------------------------------
     bad_address_on = bool(getattr(p, "bad_address", False))
     bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0)
@@ -606,7 +692,24 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
         or 0.0
     )
 
-    final_grand_total = normal_grand_total + bad_address_fee
+    # -----------------------------------
+    # SUBSCRIPTION DISCOUNT (AFTER EXHAUSTION)
+    # -----------------------------------
+    subscription_discount_percent = get_subscription_discount_percent(p)
+    subscription_discount_amount = 0.0
+
+    if subscription_discount_percent > 0:
+        subscription_discount_amount = normal_grand_total * (subscription_discount_percent / 100)
+
+        if hasattr(p, "discount_due"):
+            p.discount_due = subscription_discount_amount
+
+    total_discount = float(getattr(p, "discount_due", 0) or 0)
+
+    final_grand_total = normal_grand_total + bad_address_fee - total_discount
+
+    if final_grand_total < 0:
+        final_grand_total = 0.0
 
     if hasattr(p, "grand_total"):
         p.grand_total = final_grand_total
@@ -615,6 +718,7 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
         p.amount_due = final_grand_total
 
     return breakdown
+
 
 def _try_link_prealert_invoice_to_package(pkg: Package) -> bool:
     """
@@ -1411,6 +1515,17 @@ def logistics_dashboard():
                 # ✅ NEW
                 "att_count": len(atts),
                 "attachments": atts,
+                "subscription_applied": bool(getattr(p, "subscription_applied", False)),
+                "subscription_result": getattr(p, "subscription_result", None),
+                "subscription_covered": (
+                    bool(getattr(p, "subscription_applied", False))
+                    and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                ),
+                "customs_only_due_to_subscription": (
+                    bool(getattr(p, "subscription_applied", False))
+                    and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                    and float(getattr(p, "customs_total", 0) or 0) > 0
+                ),
             })
 
 
@@ -1431,6 +1546,7 @@ def logistics_dashboard():
     # filters used by _apply_pkg_filters
     epc_only = (request.args.get('epc_only') or '').lower() in ('1','true','on','yes')
     not_notified_only = (request.args.get('not_notified_only') or '').lower() in ('1','true','on','yes')
+    subscription_only = (request.args.get('subscription_only') or '').lower() in ('1','true','on','yes')
 
     house = request.args.get('house', '', type=str)
     tracking = request.args.get('tracking', '', type=str)
@@ -1483,6 +1599,7 @@ def logistics_dashboard():
         status_filter=status_filter,
         search=search,
         unassigned_only=unassigned_only,
+        subscription_only=subscription_only,
     )
 
     pkg_q = pkg_q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).desc())
@@ -1541,6 +1658,17 @@ def logistics_dashboard():
             "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
             "invoice_id": p.invoice_id,
             "customer_notified_at": getattr(p, "customer_notified_at", None),
+            "subscription_applied": bool(getattr(p, "subscription_applied", False)),
+            "subscription_result": getattr(p, "subscription_result", None),
+            "subscription_covered": (
+                bool(getattr(p, "subscription_applied", False))
+                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+            ),
+            "customs_only_due_to_subscription": (
+                bool(getattr(p, "subscription_applied", False))
+                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                and float(getattr(p, "customs_total", 0) or 0) > 0
+            ),
         })
 
     # Agg totals for the current filter
@@ -1562,6 +1690,7 @@ def logistics_dashboard():
         status_filter=status_filter,
         search=search,
         unassigned_only=unassigned_only,
+        subscription_only=subscription_only,
     )
 
     cnt, tw = totals_q.first()
@@ -1592,6 +1721,7 @@ def logistics_dashboard():
             status_filter=status_filter,
             search=search,
             unassigned_only=unassigned_only,
+            subscription_only=subscription_only,
         ).group_by(dtcol).order_by(dtcol.asc())
 
         for day, cnt, tw in dq.all():
@@ -1657,6 +1787,7 @@ def logistics_dashboard():
         unassigned_id=unassigned_id,
         epc_only=epc_only,
         not_notified_only=not_notified_only,
+        subscription_only=subscription_only,
 
         page=page,
         per_page=per_page,

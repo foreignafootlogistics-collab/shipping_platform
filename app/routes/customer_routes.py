@@ -211,11 +211,11 @@ def customer_dashboard():
     settings = db.session.get(Settings, 1)
 
     # Graceful defaults if settings row or fields are missing
-    us_street       = getattr(settings, "us_street", None)       or "3200 NW 112th Avenue"
-    us_suite_prefix = getattr(settings, "us_suite_prefix", None) or "KCDA-FAFL#"
-    us_city         = getattr(settings, "us_city", None)         or "Doral"
+    us_street       = getattr(settings, "us_street", None)       or "559 NE 42ND ST"
+    us_suite_prefix = getattr(settings, "us_suite_prefix", None) or "FAFL#"
+    us_city         = getattr(settings, "us_city", None)         or "Oakland Park"
     us_state        = getattr(settings, "us_state", None)        or "Florida"
-    us_zip          = getattr(settings, "us_zip", None)          or "33172"
+    us_zip          = getattr(settings, "us_zip", None)          or "33334"
 
     # Build the address dict used by the template
     reg = (getattr(user, "registration_number", "") or "").strip()
@@ -225,7 +225,7 @@ def customer_dashboard():
     us_address = {
         "recipient": user.full_name,
         "address_line1": us_street,
-        "address_line2": f"KCDA-{reg}" if reg else "KCDA",
+        "address_line2": f"{reg}" if reg else "KCDA",
         "city": us_city,
         "state": us_state,
         "zip": us_zip,
@@ -2512,6 +2512,21 @@ def terms():
 @customer_bp.route('/privacy')
 def privacy():
     return render_template('customer/privacy.html', current_year=datetime.now().year)
+
+@customer_bp.route("/subscriptions")
+@login_required
+def customer_subscriptions():
+    from app.models import SubscriptionPlan
+    from app.utils.subscription_utils import get_subscription_summary
+
+    plans = SubscriptionPlan.query.filter_by(is_active=True).order_by(SubscriptionPlan.price_usd.asc()).all()
+    subscription_summary = get_subscription_summary(current_user.id)
+
+    return render_template(
+        "customer/subscriptions.html",
+        plans=plans,
+        subscription_summary=subscription_summary,
+    )
 
 
 @customer_bp.route("/api/dashboard", methods=["GET"])

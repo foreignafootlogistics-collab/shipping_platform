@@ -150,6 +150,24 @@ def get_subscription_summary(user_id):
     if weight_limit > 0:
         weight_percent = min(100, round((weight_used / weight_limit) * 100))
 
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+
+    end_date = subscription.end_date
+    if end_date and end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=timezone.utc)
+
+    days_remaining = None
+    expires_soon = False
+    is_expired = False
+
+    if end_date:
+        delta = end_date - now
+        days_remaining = max(delta.days, 0)
+        is_expired = delta.total_seconds() <= 0
+        expires_soon = (not is_expired) and days_remaining <= 5
+
     return {
         "subscription_id": subscription.id,
         "plan_name": plan.name,
@@ -170,4 +188,7 @@ def get_subscription_summary(user_id):
         "max_weight_per_package": float(plan.max_weight_per_package or 0),
         "is_family_plan": bool(plan.is_family_plan),
         "priority_processing": bool(plan.priority_processing),
+        "days_remaining": days_remaining,
+        "expires_soon": expires_soon,
+        "is_expired": is_expired,
     }

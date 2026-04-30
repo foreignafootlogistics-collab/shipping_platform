@@ -178,6 +178,21 @@
           <span class="badge bg-success">
             {{ subscription_summary.status|title }}
           </span>
+          {% if subscription_summary.is_expired %}
+            <div class="text-danger small mt-1">
+              ❌ Expired
+            </div>
+
+          {% elif subscription_summary.expires_soon %}
+            <div class="text-warning small mt-1">
+              ⚠ Expires in {{ subscription_summary.days_remaining }} day(s)
+            </div>
+
+          {% elif subscription_summary.days_remaining is not none %}
+            <div class="text-muted small mt-1">
+              Expires in {{ subscription_summary.days_remaining }} day(s)
+            </div>
+          {% endif %}
           <button class="btn btn-sm btn-dashboard-outline"
                   type="button"
                   data-bs-toggle="collapse"

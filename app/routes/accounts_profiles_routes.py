@@ -33,6 +33,7 @@ from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import CATEGORIES
 from app.utils.time import to_jamaica
 from app.utils.messages import make_thread_key
+from app.utils.subscription_utils import get_subscription_summary
 
 # Models (these exist in your file)
 from app.models import (
@@ -42,6 +43,7 @@ from app.models import (
     Claim, ClaimAuditLog
 )
 from app.models import generate_claim_case_id
+from app.models import SubscriptionPlan, Subscription, SubscriptionUsage
 
 accounts_bp = Blueprint('accounts_profiles', __name__)
 
@@ -698,18 +700,18 @@ def view_user(id):
     settings = db.session.get(Settings, 1)
 
     if settings:
-        street       = settings.us_street or "3200 NW 112th Avenue"
-        suite_prefix = settings.us_suite_prefix or "KCDA-FAFL# "
-        city         = settings.us_city or "Doral"
+        street       = settings.us_street or "559 NE 42ND ST"
+        suite_prefix = settings.us_suite_prefix or "FAFL# "
+        city         = settings.us_city or "Oakland Park"
         state        = settings.us_state or "Florida"
-        zip_code     = settings.us_zip or "33172"
+        zip_code     = settings.us_zip or "33334"
     else:
         # Fallback defaults if settings row missing
-        street       = "3200 NW 112th Avenue"
-        suite_prefix = "KCDA- "
-        city         = "Doral"
+        street       = "559 NE 42ND ST"
+        suite_prefix = ""
+        city         = "Oakland Park"
         state        = "Florida"
-        zip_code     = "33172"
+        zip_code     = "33334"
 
     us_address = {
         "recipient":      user.full_name or "",
@@ -970,6 +972,9 @@ def view_user(id):
                 "amount_due": amt_due,
                 "invoice_file": getattr(p, "invoice_file", None),
                 "attachments": attachments,
+                "subscription_applied": getattr(p, "subscription_applied", False),
+                "subscription_result": getattr(p, "subscription_result", None),
+                "customs_total": getattr(p, "customs_total", 0),
             })
 
     except Exception:
@@ -1237,6 +1242,9 @@ def view_user(id):
         db.session.rollback()
         user_claims = []
 
+    subscription_summary = get_subscription_summary(id)
+    subscription_plans = SubscriptionPlan.query.filter_by(is_active=True).order_by(SubscriptionPlan.price_usd.asc()).all()
+
     return render_template(
         'admin/accounts_profiles/view_user.html',
         user={
@@ -1315,6 +1323,9 @@ def view_user(id):
         today=today,
         tomorrow=tomorrow,
         user_claims=user_claims,
+        subscription_summary=subscription_summary,
+        subscription_plans=subscription_plans,
+
     )
 
 
@@ -1790,3 +1801,43 @@ def bulk_delete_user_messages(id):
         flash("An error occurred while deleting messages.", "danger")
 
     return redirect(url_for("accounts_profiles.view_user", id=id, tab="messages"))
+
+@accounts_bp.route("/users/<int:id>/subscriptions/manual-add", methods=["POST"])
+@admin_required
+def manual_add_subscription(id):
+    user = db.session.get(User, id)
+    if not user:
+        flash("User not found.", "danger")
+        return redirect(url_for("accounts_profiles.manage_users"))
+
+    plan_id = request.form.get("plan_id", type=int)
+    duration_days = request.form.get("duration_days", 30, type=int)
+
+    plan = SubscriptionPlan.query.get(plan_id)
+    if not plan:
+        flash("Invalid subscription plan.", "danger")
+        return redirect(url_for("accounts_profiles.view_user", id=id))
+
+    # expire old active subs
+    old_subs = Subscription.query.filter_by(user_id=id, status="active").all()
+    for s in old_subs:
+        s.status = "expired"
+
+    sub = Subscription(
+        user_id=id,
+        plan_id=plan.id,
+        start_date=datetime.utcnow(),
+        end_date=datetime.utcnow() + timedelta(days=duration_days),
+        status="active",
+    )
+
+    db.session.add(sub)
+    db.session.flush()
+
+    usage = SubscriptionUsage(subscription_id=sub.id)
+    db.session.add(usage)
+
+    db.session.commit()
+
+    flash(f"{plan.name} subscription activated for {user.full_name}.", "success")
+    return redirect(url_for("accounts_profiles.view_user", id=id, tab="packages"))

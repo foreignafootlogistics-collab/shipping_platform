@@ -1,0 +1,45 @@
+{% extends "layout_customer.html" %}
+{% block title %}Subscriptions{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h3 class="mb-3" style="color:#4a148c;">Subscription Plans</h3>
+
+  {% if subscription_summary %}
+    <div class="alert alert-success">
+      Current Plan: <strong>{{ subscription_summary.plan_name }}</strong>
+      — {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} packages used,
+      {{ "%.1f"|format(subscription_summary.weight_used) }}/{{ "%.1f"|format(subscription_summary.weight_limit) }} lb used.
+    </div>
+  {% else %}
+    <div class="alert alert-secondary">
+      You do not currently have an active subscription.
+    </div>
+  {% endif %}
+
+  <div class="row">
+    {% for plan in plans %}
+    <div class="col-md-4 mb-3">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h5 style="color:#4a148c;">{{ plan.name }}</h5>
+          <h4>US${{ "%.2f"|format(plan.price_usd or 0) }}</h4>
+
+          <ul class="small">
+            <li>{{ plan.package_limit }} packages included</li>
+            <li>{{ "%.1f"|format(plan.weight_limit or 0) }} lb total weight</li>
+            <li>Max {{ "%.1f"|format(plan.max_weight_per_package or 0) }} lb per package</li>
+            <li>Eligible freight covered</li>
+            <li>Customs may apply over USD $100</li>
+          </ul>
+
+          <button class="btn btn-dashboard w-100" disabled>
+            Coming Soon
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

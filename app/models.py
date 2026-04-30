@@ -102,6 +102,118 @@ class User(db.Model, UserMixin):
         chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
         return "".join(secrets.choice(chars) for _ in range(length))
 
+
+# =========================
+# SUBSCRIPTION MODELS
+# =========================
+
+class SubscriptionPlan(db.Model):
+    __tablename__ = "subscription_plans"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    name = db.Column(db.String(50), nullable=False, unique=True)
+    description = db.Column(db.Text)
+
+    price_usd = db.Column(db.Float, nullable=False)
+
+    # Limits
+    package_limit = db.Column(db.Integer, nullable=False)
+    weight_limit = db.Column(db.Float, nullable=False)  # total monthly weight (billable)
+    max_weight_per_package = db.Column(db.Float, nullable=False)
+
+    # Plan type
+    is_family_plan = db.Column(db.Boolean, default=False)
+    max_users = db.Column(db.Integer, default=1)
+
+    # Benefits
+    priority_processing = db.Column(db.Boolean, default=False)
+
+    # Overage rules
+    overage_discount_percent = db.Column(db.Float, default=5.0)
+    overage_discount_max_weight = db.Column(db.Float, default=10.0)
+
+    is_active = db.Column(db.Boolean, default=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    subscriptions = db.relationship("Subscription", back_populates="plan")
+
+    def __repr__(self):
+        return f"<SubscriptionPlan {self.name}>"
+
+
+
+class Subscription(db.Model):
+    __tablename__ = "subscriptions"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    plan_id = db.Column(db.Integer, db.ForeignKey("subscription_plans.id"), nullable=False)
+
+    start_date = db.Column(db.DateTime, nullable=False)
+    end_date = db.Column(db.DateTime, nullable=False)
+
+    status = db.Column(db.String(20), default="active")
+    # active, exhausted, expired, cancelled
+
+    auto_renew = db.Column(db.Boolean, default=False)
+
+    # Family grouping
+    parent_subscription_id = db.Column(
+        db.Integer,
+        db.ForeignKey("subscriptions.id"),
+        nullable=True
+    )
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = db.relationship("User", backref=db.backref("subscriptions", lazy=True))
+    plan = db.relationship("SubscriptionPlan", back_populates="subscriptions")
+
+    usage = db.relationship(
+        "SubscriptionUsage",
+        back_populates="subscription",
+        uselist=False,
+        cascade="all, delete-orphan"
+    )
+
+    family_members = db.relationship(
+        "Subscription",
+        backref=db.backref("parent_subscription", remote_side=[id]),
+        lazy=True
+    )
+
+    def __repr__(self):
+        return f"<Subscription user_id={self.user_id} plan={self.plan_id} status={self.status}>"
+
+
+
+class SubscriptionUsage(db.Model):
+    __tablename__ = "subscription_usage"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    subscription_id = db.Column(
+        db.Integer,
+        db.ForeignKey("subscriptions.id"),
+        nullable=False,
+        unique=True
+    )
+
+    packages_used = db.Column(db.Integer, default=0)
+    weight_used = db.Column(db.Float, default=0.0)  # MUST be billable weight
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    subscription = db.relationship("Subscription", back_populates="usage")
+
+    def __repr__(self):
+        return f"<SubscriptionUsage packages={self.packages_used} weight={self.weight_used}>"
+
 class Wallet(db.Model):
     __tablename__ = 'wallets'
 
@@ -237,6 +349,11 @@ class Package(db.Model):
     discount_due  = db.Column(db.Float, default=0.0, nullable=False)
     bad_address = db.Column(db.Boolean, nullable=False, default=False)
     bad_address_fee = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+
+    subscription_applied = db.Column(db.Boolean, default=False, server_default="false", nullable=False)
+    subscription_applied_at = db.Column(db.DateTime, nullable=True)
+    subscription_id = db.Column(db.Integer, db.ForeignKey("subscriptions.id"), nullable=True, index=True)
+    subscription_result = db.Column(db.String(40), nullable=True)
     
     # Invoice linkage
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True, index=True)

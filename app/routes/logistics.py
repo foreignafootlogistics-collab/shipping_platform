@@ -49,6 +49,7 @@ from app.forms import (
 from app.utils.file_url import is_url 
 from app.utils import email_utils, update_wallet
 from app.utils.wallet import process_first_shipment_bonus
+from app.utils.subscription_utils import apply_subscription_usage
 
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
@@ -1185,7 +1186,26 @@ def logistics_dashboard():
                     created_at=datetime.now(timezone.utc),
                 )
                 db.session.add(p)
-                db.session.flush()  # ✅ get p.id now                
+                db.session.flush()  # ✅ get p.id now 
+
+                try:
+                    if not p.subscription_applied:
+                        result = apply_subscription_usage(p)
+
+                        p.subscription_applied = True
+                        p.subscription_applied_at = datetime.utcnow()
+                        p.subscription_result = result
+
+                        if p.user and p.user.subscriptions:
+                            active_sub = sorted(
+                                p.user.subscriptions,
+                                key=lambda s: s.created_at or datetime.min,
+                                reverse=True
+                            )[0]
+                            p.subscription_id = active_sub.id
+
+                except Exception:
+                    current_app.logger.exception("[SUBSCRIPTION APPLY ERROR - UPLOAD]")               
 
                 # ✅ AUTO-LINK prealert invoice -> package attachment
                 _try_link_prealert_invoice_to_package(p)

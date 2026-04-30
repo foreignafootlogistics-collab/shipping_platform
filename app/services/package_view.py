@@ -53,42 +53,55 @@ def fetch_packages_normalized(
     include_user=True,
     include_attachments=True,
 ):
-    """
-    base_query SHOULD return rows like:
-      (Package, User.full_name, User.registration_number)
-    but we handle Row objects safely too.
-    """
+    from datetime import datetime
+    from sqlalchemy import func
+    from app.extensions import db
+    from app.models import Package, PackageAttachment, User, Invoice, Payment
+
+    def _parse_dt_maybe(v):
+        if not v:
+            return None
+        if isinstance(v, datetime):
+            return v
+        try:
+            return datetime.fromisoformat(str(v))
+        except Exception:
+            return None
+
+    def _effective_value_dict(p_dict: dict) -> float:
+        dv = p_dict.get("declared_value")
+        if dv is not None:
+            try:
+                return float(dv)
+            except Exception:
+                return 0.0
+        v = p_dict.get("value")
+        try:
+            return float(v or 0)
+        except Exception:
+            return 0.0
 
     rows = base_query.all()
 
-    # -------- helper: extract Package from Row / tuple / object ----------
     def _get_pkg(row):
-        # tuple style: (Package, ...)
         if isinstance(row, tuple) and len(row) > 0:
             return row[0]
 
-        # SQLAlchemy Row style
         if hasattr(row, "_mapping"):
             m = row._mapping
-
-            # common cases
             if "Package" in m:
                 return m["Package"]
             if Package in m:
                 return m[Package]
 
-            # fallback: first value that looks like a model instance
             for v in m.values():
                 if hasattr(v, "__table__") and getattr(v, "__tablename__", None) == Package.__tablename__:
                     return v
 
-            # last resort: first mapping value
             return next(iter(m.values()), None)
 
-        # already ORM instance
         return row
 
-    # 1) collect package ids + invoice ids
     pkg_ids = []
     invoice_ids = set()
 
@@ -96,6 +109,7 @@ def fetch_packages_normalized(
         pkg = _get_pkg(row)
         if not pkg:
             continue
+
         pid = getattr(pkg, "id", None)
         if pid is not None:
             pkg_ids.append(pid)
@@ -104,7 +118,6 @@ def fetch_packages_normalized(
         if inv_id:
             invoice_ids.add(inv_id)
 
-    # 2) attachments in ONE query
     attachments_by_pkg = {}
     if include_attachments and pkg_ids:
         att_rows = (
@@ -125,7 +138,6 @@ def fetch_packages_normalized(
                 "file_name": file_name,
             })
 
-    # 3) invoice paid map (Invoice grand_total - sum(Payments))
     invoice_meta = {}
     if invoice_ids:
         pay_rows = (
@@ -146,7 +158,6 @@ def fetch_packages_normalized(
             paid_sum = float(paid_sum or 0)
             balance = max(total - paid_sum, 0.0)
 
-            # treat status paid OR balance <= 0 as paid
             is_paid = (str(status or "").strip().lower() == "paid") or (balance <= 0.00001)
 
             invoice_meta[int(inv_id)] = {
@@ -156,16 +167,16 @@ def fetch_packages_normalized(
                 "is_paid": is_paid,
             }
 
-    # 4) normalize to dicts
     out = []
+
     for row in rows:
         pkg = _get_pkg(row)
         if not pkg:
             continue
 
-        # user fields (depending on how query was built)
         full_name = None
         reg = None
+
         if include_user:
             if isinstance(row, tuple):
                 full_name = row[1] if len(row) > 1 else None
@@ -204,28 +215,28 @@ def fetch_packages_normalized(
 
             "attachments": attachments_by_pkg.get(getattr(pkg, "id", None), []),
 
-            # ✅ NEW
             "invoice_paid": bool(meta["is_paid"]) if meta else False,
             "invoice_balance": float(meta["balance"]) if meta else None,
-
             "invoice_total": float(meta["total"]) if meta else None,
             "invoice_paid_sum": float(meta["paid_sum"]) if meta else None,
-            # 🟣 SUBSCRIPTION FLAGS
-            d["subscription_applied"] = bool(getattr(pkg, "subscription_applied", False))
-            d["subscription_result"] = getattr(pkg, "subscription_result", None)
-
-            d["subscription_covered"] = (
-                d["subscription_applied"]
-                and (d["subscription_result"] or "") == "subscription_applied"
-            )
-
-            d["customs_only_due_to_subscription"] = (
-                d["subscription_covered"]
-                and float(getattr(pkg, "customs_total", 0) or 0) > 0
-            )
         }
 
+        # 🟣 SUBSCRIPTION FLAGS (CORRECT LOCATION)
+        d["subscription_applied"] = bool(getattr(pkg, "subscription_applied", False))
+        d["subscription_result"] = getattr(pkg, "subscription_result", None)
+
+        d["subscription_covered"] = (
+            d["subscription_applied"]
+            and (d["subscription_result"] or "") == "subscription_applied"
+        )
+
+        d["customs_only_due_to_subscription"] = (
+            d["subscription_covered"]
+            and float(getattr(pkg, "customs_total", 0) or 0) > 0
+        )
+
         d["effective_value"] = _effective_value_dict(d)
+
         out.append(d)
 
     return out

@@ -854,6 +854,7 @@ def transactions_all():
     def transaction_label(tx_type):
         labels = {
             "invoice_payment": "Invoice Payment",
+            "subscription_payment": "Subscription Payment",
             "delivery_payment": "Delivery Payment",
             "package_refund": "Package Refund",
             "delivery_refund": "Delivery Refund",
@@ -947,6 +948,14 @@ def transactions_all():
 
             if inv:
                 reference_sub = f"{transaction_label(tx_type)} • {inv.invoice_number or f'INV-{inv.id}'}"
+        elif tx_type == "subscription_payment":
+            inv = Invoice.query.filter_by(
+                id=p.invoice_id,
+                user_id=current_user.id
+            ).first()
+
+            if inv:
+                reference_sub = f"{transaction_label(tx_type)} • {inv.invoice_number or f'SUB-{inv.id}'}"
 
         elif tx_type == "delivery_payment":
 

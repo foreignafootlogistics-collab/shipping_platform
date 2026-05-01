@@ -141,18 +141,21 @@
         <span>Overseas</span>
       </div>
     </div>
+
     <div class="col-md-3 mb-3">
       <div class="stat">
         <h3>{{ ready_to_pickup }}</h3>
         <span>Ready to Pick Up</span>
       </div>
     </div>
+
     <div class="col-md-3 mb-3">
       <div class="stat">
         <h3>{{ total_shipped }}</h3>
         <span>Total Shipped</span>
       </div>
     </div>
+
     <div class="col-md-3 mb-3">
       <div class="stat">
         <h3>${{ "%.2f"|format(wallet_balance) }}</h3>
@@ -161,11 +164,11 @@
     </div>
   </div>
 
-  <!-- Subscription Summary -->
+  <!-- Subscription Section -->
   {% if subscription_summary %}
   <div class="dashboard-section">
     <div class="card-box subscription-card p-3 border rounded shadow-sm bg-white">
-      <div class="d-flex justify-content-between align-items-center">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
           <h5 class="mb-0" style="color:#4a148c;">My Subscription</h5>
           <small class="text-muted">
@@ -174,33 +177,30 @@
             {{ "%.1f"|format(subscription_summary.weight_used) }}/{{ "%.1f"|format(subscription_summary.weight_limit) }} lb
           </small>
         </div>
-        <div class="d-flex align-items-center gap-2">
+
+        <div class="d-flex align-items-center gap-2 flex-wrap">
           <span class="badge bg-success">
             {{ subscription_summary.status|title }}
           </span>
+
           {% if subscription_summary.is_expired %}
-            <div class="text-danger small mt-1">
-              ❌ Expired
-            </div>
-
+            <span class="text-danger small">❌ Expired</span>
           {% elif subscription_summary.expires_soon %}
-            <div class="text-warning small mt-1">
+            <span class="text-warning small">
               ⚠ Expires in {{ subscription_summary.days_remaining }} day(s)
-            </div>
-
+            </span>
           {% elif subscription_summary.days_remaining is not none %}
-            <div class="text-muted small mt-1">
+            <span class="text-muted small">
               Expires in {{ subscription_summary.days_remaining }} day(s)
-            </div>
+            </span>
           {% endif %}
-          <button class="btn btn-sm btn-dashboard-outline"
-                  type="button"
-                  data-bs-toggle="collapse"
-                  data-bs-target="#subscriptionDetails">
-            View Details
-          </button>
-        </div>
 
+          <a href="{{ url_for('customer.customer_subscriptions') }}"
+             class="btn btn-sm btn-outline-purple">
+            <i class="bi bi-arrow-right-circle me-1"></i>
+            Manage Subscription
+          </a>
+        </div>
       </div>
 
       <div class="row mt-3">
@@ -226,21 +226,33 @@
           </small>
         </div>
       </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="dashboard-section">
+    <div class="card-box no-subscription-card p-4 border rounded shadow-sm bg-white">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="subscription-crown">
+            <i class="bi bi-gem"></i>
+          </div>
 
-      <div class="collapse mt-2" id="subscriptionDetails">
-        <div class="alert alert-light border mb-2 small">
-          <strong>Plan Rule:</strong>
-          Your plan applies until your package limit or weight limit is reached, whichever comes first.
-          Usage is based on rounded billable weight.
+          <div>
+            <h5 class="mb-1" style="color:#9a6400;">No Active Subscription</h5>
+            <div class="text-muted">
+              Subscribe today to save on eligible shipping/freight charges.
+            </div>
+            <small class="text-muted">
+              Plans include monthly package and weight allowances.
+            </small>
+          </div>
         </div>
 
-        <div class="alert alert-warning border mb-0 small">
-          <strong>Important:</strong>
-          Subscription covers eligible shipping/freight charges only.
-          Customs charges may still apply for packages valued over <strong>USD $100</strong>.
-          Max package weight under this plan:
-          <strong>{{ "%.1f"|format(subscription_summary.max_weight_per_package) }} lb</strong>.
-        </div>
+        <a href="{{ url_for('customer.customer_subscriptions') }}"
+           class="btn btn-dashboard">
+          <i class="bi bi-star me-1"></i>
+          View Subscription Plans
+        </a>
       </div>
     </div>
   </div>
@@ -306,7 +318,6 @@
 
 </div>
 
-<!-- Toggle & Copy Script -->
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const overseasBtn = document.getElementById("overseas-btn");
@@ -319,6 +330,7 @@ document.addEventListener("DOMContentLoaded", function () {
       overseasAddress.style.display = "grid";
       homeAddress.style.display = "none";
     });
+
     homeBtn.addEventListener("click", function () {
       overseasAddress.style.display = "none";
       homeAddress.style.display = "block";
@@ -330,11 +342,13 @@ document.addEventListener("DOMContentLoaded", function () {
     copyBtn.addEventListener("click", function () {
       const codeEl = document.getElementById("referralCode");
       if (!codeEl) return;
+
       const code = codeEl.innerText.trim();
       if (!code || code === "Not set") {
         alert("No referral code assigned yet.");
         return;
       }
+
       navigator.clipboard.writeText(code).then(() => {
         alert("Referral code copied!");
       });
@@ -394,8 +408,33 @@ document.addEventListener("DOMContentLoaded", function () {
   background: #4a148c;
 }
 
-.subscription-rules .alert {
-  border-radius: 10px;
+.no-subscription-card {
+  border: 1px solid #f3c14b !important;
+  background: linear-gradient(90deg, #fffaf0, #ffffff) !important;
+}
+
+.subscription-crown {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #fff3cd;
+  color: #f0ad00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.btn-outline-purple {
+  border: 1px solid #4a148c;
+  color: #4a148c;
+  background: #fff;
+}
+
+.btn-outline-purple:hover {
+  background: #4a148c;
+  color: #fff;
 }
 </style>
 

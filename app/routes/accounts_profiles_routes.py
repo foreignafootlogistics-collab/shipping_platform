@@ -1852,17 +1852,33 @@ def manual_add_subscription(id):
 @accounts_bp.route("/subscriptions")
 @admin_required
 def admin_subscriptions():
-    subscriptions = (
+    status_filter = (request.args.get("status") or "").strip()
+
+    base_q = (
         Subscription.query
         .join(User, Subscription.user_id == User.id)
         .join(SubscriptionPlan, Subscription.plan_id == SubscriptionPlan.id)
-        .order_by(Subscription.created_at.desc())
-        .all()
     )
+
+    q = base_q
+
+    if status_filter:
+        q = q.filter(Subscription.status == status_filter)
+
+    subscriptions = q.order_by(Subscription.created_at.desc()).all()
+
+    counts = {
+        "all": Subscription.query.count(),
+        "pending_payment": Subscription.query.filter_by(status="pending_payment").count(),
+        "active": Subscription.query.filter_by(status="active").count(),
+        "expired": Subscription.query.filter_by(status="expired").count(),
+    }
 
     return render_template(
         "admin/accounts_profiles/subscriptions.html",
         subscriptions=subscriptions,
+        status_filter=status_filter,
+        counts=counts,
     )
 
 @accounts_bp.route("/subscriptions/bulk-activate", methods=["POST"])

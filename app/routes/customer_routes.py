@@ -2536,6 +2536,7 @@ def activate_subscription(plan_id):
 
     plan = SubscriptionPlan.query.get_or_404(plan_id)
 
+    # check current
     current = Subscription.query.filter_by(
         user_id=current_user.id,
         status="active"
@@ -2545,14 +2546,11 @@ def activate_subscription(plan_id):
         flash("You are already on this plan.", "info")
         return redirect(url_for("customer.customer_subscriptions"))
 
-    old_subs = Subscription.query.filter_by(
-        user_id=current_user.id,
-        status="active"
-    ).all()
+    # expire old
+    if current:
+        current.status = "expired"
 
-    for s in old_subs:
-        s.status = "expired"
-
+    # create new
     sub = Subscription(
         user_id=current_user.id,
         plan_id=plan.id,

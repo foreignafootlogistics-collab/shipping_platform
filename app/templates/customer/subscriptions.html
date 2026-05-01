@@ -8,7 +8,7 @@
     <div>
       <h3 class="mb-1" style="color:#4a148c;">Subscription Plans</h3>
       <small class="text-muted">
-        Save on eligible freight charges and track your monthly package usage.
+        Save on shipping and enjoy predictable monthly costs.
       </small>
     </div>
   </div>
@@ -17,16 +17,23 @@
     <div class="alert alert-success border shadow-sm">
       <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
         <div>
-          <strong>Current Plan:</strong> {{ subscription_summary.plan_name }}<br>
-          <small>
-            {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} packages used,
-            {{ "%.1f"|format(subscription_summary.weight_used) }}/{{ "%.1f"|format(subscription_summary.weight_limit) }} lb used.
-          </small>
+          <strong>Current Plan:</strong> {{ subscription_summary.plan_name }}
+
+          <div class="small mt-1">
+            {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} packages used
+            • {{ "%.1f"|format(subscription_summary.weight_used) }}/{{ "%.1f"|format(subscription_summary.weight_limit) }} lb used
+          </div>
 
           {% if subscription_summary.days_remaining is not none %}
             <div class="small mt-1">
-              Expires in {{ subscription_summary.days_remaining }} day(s).
+              Expires in {{ subscription_summary.days_remaining }} day(s)
             </div>
+
+            {% if subscription_summary.days_remaining <= 5 %}
+              <div class="text-danger small mt-1 fw-semibold">
+                ⚠ Plan expiring soon — renew to avoid regular charges.
+              </div>
+            {% endif %}
           {% endif %}
         </div>
 
@@ -43,9 +50,9 @@
 
   <div class="alert alert-warning border small">
     <strong>Important:</strong>
-    Subscriptions cover eligible shipping/freight charges only.
-    Customs charges may still apply for packages valued over <strong>USD $100</strong>.
-    Usage is based on rounded billable weight.
+    Subscriptions cover shipping (freight) charges only.
+    Customs charges still apply for packages valued over <strong>USD $100</strong>.
+    Weight is rounded up to the nearest pound.
   </div>
 
   <div class="row">
@@ -55,6 +62,12 @@
       <div class="col-md-4 mb-3">
         <div class="card h-100 shadow-sm {% if is_current %}border-success{% endif %}">
           <div class="card-body d-flex flex-column">
+
+            {% if plan.name == "Standard" %}
+              <div class="mb-2">
+                <span class="badge bg-primary">Most Popular</span>
+              </div>
+            {% endif %}
 
             <div class="d-flex justify-content-between align-items-start mb-2">
               <h5 class="mb-0" style="color:#4a148c;">{{ plan.name }}</h5>
@@ -71,22 +84,23 @@
 
             <ul class="small mb-3">
               <li><strong>{{ plan.package_limit }}</strong> packages included</li>
-              <li><strong>{{ "%.1f"|format(plan.weight_limit or 0) }} lb</strong> total billable weight</li>
+              <li><strong>{{ "%.1f"|format(plan.weight_limit or 0) }} lb</strong> total weight</li>
               <li>Max <strong>{{ "%.1f"|format(plan.max_weight_per_package or 0) }} lb</strong> per package</li>
-              <li>Eligible freight covered</li>
-              <li>Customs may apply over USD $100</li>
-
+              <li>Shipping (freight) covered</li>
+              
               {% if plan.priority_processing %}
-                <li>Priority processing included</li>
+                <li>⚡ Priority processing included</li>
               {% endif %}
 
               {% if plan.is_family_plan %}
-                <li>Family plan access</li>
+                <li class="text-success">
+                  <strong>Includes up to 4 persons</strong>
+                </li>
+                <li>Shared usage across members</li>
               {% endif %}
             </ul>
 
             <div class="mt-auto">
-
               {% if is_current %}
                 <button class="btn btn-success w-100" disabled>
                   Current Plan
@@ -94,7 +108,7 @@
               {% else %}
                 <form method="POST"
                       action="{{ url_for('customer.activate_subscription', plan_id=plan.id) }}"
-                      onsubmit="return confirm('Activate this subscription plan? Switching plans will reset your usage.');">
+                      onsubmit="return confirm('Activate this plan? This will start a new 30-day cycle and reset your usage.');">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                   <button type="submit" class="btn btn-dashboard w-100">
@@ -108,12 +122,12 @@
 
                 {% if subscription_summary %}
                   <small class="text-muted d-block mt-2 text-center">
-                    Switching plans starts a new 30-day cycle and resets usage.
+                    Switching plans resets your usage and billing cycle.
                   </small>
                 {% endif %}
               {% endif %}
-
             </div>
+
           </div>
         </div>
       </div>
@@ -127,17 +141,17 @@
       <div class="row small">
         <div class="col-md-4 mb-2">
           <strong>1. Limits</strong><br>
-          Your plan works until the package limit or weight limit is reached, whichever comes first.
+          Your plan applies until the package limit OR weight limit is reached.
         </div>
 
         <div class="col-md-4 mb-2">
           <strong>2. Weight</strong><br>
-          Usage is based on rounded billable weight. 
+          Weight is rounded up (e.g. 1.2 lb = 2 lb).
         </div>
 
         <div class="col-md-4 mb-2">
           <strong>3. Customs</strong><br>
-          If the declared value is over USD $100, customs charges still apply.
+          Customs charges still apply for packages over USD $100.
         </div>
       </div>
     </div>

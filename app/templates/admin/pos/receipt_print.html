@@ -1,168 +1,172 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Receipt {{ invoice.invoice_number }}</title>
+  <title>Receipt {{ invoice.invoice_number }}</title>
 
-    <style>
-        @page {
-            size: 58mm auto;
-            margin: 0;
-        }
+  <style>
+    @page {
+      size: 58mm auto;
+      margin: 0;
+    }
 
-        html, body {
-            width: 58mm;
-            margin: 0;
-            padding: 0;
-            background: #fff;
-        }
+    html, body {
+      width: 58mm;
+      margin: 0;
+      padding: 0;
+      background: #fff;
+    }
 
-        body {
-            font-family: monospace;
-            font-size: 10px;
-            color: #000;
-        }
+    body {
+      font-family: monospace;
+      font-size: 9px;
+      color: #000;
+    }
 
-        .receipt {
-            width: 48mm;
-            margin: 0 auto;
-            padding: 3mm 0;
-        }
+    .receipt {
+      width: 44mm;
+      margin: 0 auto;
+      padding: 2mm 0;
+    }
 
-        .center {
-            text-align: center;
-        }
+    .center { text-align: center; }
 
-        .line {
-            border-top: 1px dashed #000;
-            margin: 5px 0;
-        }
+    .line {
+      border-top: 1px dashed #000;
+      margin: 3px 0;
+    }
 
-        .row {
-            display: flex;
-            justify-content: space-between;
-            gap: 4px;
-        }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 3px;
+      align-items: flex-start;
+    }
 
-        .small {
-            font-size: 9px;
-            line-height: 1.3;
-        }
+    .small {
+      font-size: 8px;
+      line-height: 1.2;
+    }
 
-        .tracking {
-            flex: 1;
-            word-break: break-all;
-        }
+    .tracking {
+      width: 30mm;
+      overflow: hidden;
+      white-space: nowrap;
+    }
 
-        .amount {
-            text-align: right;
-            min-width: 35px;
-        }
+    .amount {
+      text-align: right;
+      width: 12mm;
+      white-space: nowrap;
+    }
 
-        .barcode-wrap {
-            text-align: center;
-            margin: 6px 0;
-            overflow: hidden;
-        }
+    .barcode-wrap {
+      text-align: center;
+      margin: 3px 0;
+      overflow: hidden;
+    }
 
-        #receiptBarcode {
-            max-width: 48mm;
-        }
+    #receiptBarcode {
+      max-width: 42mm;
+      height: 24px;
+    }
 
-        .print-btn-wrap {
-            text-align: center;
-            margin: 6px 0;
-        }
+    .print-btn-wrap {
+      text-align: center;
+      margin: 5px 0;
+    }
 
-        .print-btn {
-            border: 1px solid #000;
-            background: #fff;
-            padding: 4px 8px;
-            font-size: 10px;
-            cursor: pointer;
-        }
+    .print-btn {
+      border: 1px solid #000;
+      background: #fff;
+      padding: 3px 6px;
+      font-size: 9px;
+      cursor: pointer;
+    }
 
-        @media print {
-            .print-btn-wrap {
-                display: none;
-            }
+    @media print {
+      .print-btn-wrap { display: none; }
 
-            body {
-                width: 58mm;
-            }
+      body { width: 58mm; }
 
-            .receipt {
-                width: 48mm;
-                margin: 0 auto;
-                padding: 2mm 0;
-            }
-        }
-    </style>
+      .receipt {
+        width: 44mm;
+        margin: 0 auto;
+        padding: 1mm 0;
+      }
+    }
+  </style>
 </head>
 
 <body>
 
 <div class="print-btn-wrap">
-    <button class="print-btn" onclick="window.print()">Print</button>
+  <button class="print-btn" onclick="window.print()">Print</button>
 </div>
 
 <div class="receipt">
 
-    <div class="center">
-        <strong>Foreign A Foot Logistics</strong><br>
-        <span class="small">Portmore, Jamaica</span><br>
-        <span class="small">876-560-7764</span>
-    </div>
+  <div class="center">
+    <strong>Foreign A Foot Logistics</strong><br>
+    <span class="small">Portmore, Jamaica</span><br>
+    <span class="small">876-560-7764</span>
+  </div>
 
-    <div class="line"></div>
+  <div class="line"></div>
 
-    <div class="small">
-        Inv: {{ invoice.invoice_number }}<br>
-        {{ (invoice.date_paid or invoice.created_at).strftime('%Y-%m-%d %H:%M') if (invoice.date_paid or invoice.created_at) else '' }}<br>
-        {{ invoice.user.full_name if invoice.user else '' }}
-    </div>
+  <div class="small">
+    Inv: {{ invoice.invoice_number }}<br>
+    {{ (invoice.date_paid or invoice.created_at).strftime('%Y-%m-%d %H:%M') if (invoice.date_paid or invoice.created_at) else '' }}<br>
+    {{ invoice.user.full_name if invoice.user else '' }}
+  </div>
 
-    <div class="barcode-wrap">
-        <svg id="receiptBarcode"></svg>
-        <div class="small">Scan for lookup / return</div>
-    </div>
+  <div class="barcode-wrap">
+    <svg id="receiptBarcode"></svg>
+  </div>
 
-    <div class="line"></div>
+  <div class="line"></div>
 
-    <div class="row small">
-        <strong>Tracking</strong>
-        <strong>JMD</strong>
-    </div>
+  <div class="row small">
+    <strong>Tracking</strong>
+    <strong>JMD</strong>
+  </div>
 
-    {% for p in invoice.packages %}
-    <div class="row small">
-        <span class="tracking">{{ p.tracking_number or "-" }}</span>
-        <span class="amount">{{ "%.0f"|format(p.grand_total or p.amount_due or 0) }}</span>
-    </div>
-    {% endfor %}
-
-    <div class="line"></div>
-
-    <div class="row">
-        <strong>Total</strong>
-        <strong>{{ "%.0f"|format(invoice.grand_total or 0) }}</strong>
-    </div>
+  {% for p in invoice.packages %}
+    {% set tn = p.tracking_number or "-" %}
+    {% if tn|length > 14 %}
+      {% set short_tn = tn[:6] ~ "..." ~ tn[-5:] %}
+    {% else %}
+      {% set short_tn = tn %}
+    {% endif %}
 
     <div class="row small">
-        <span>Paid</span>
-        <span>{{ "%.0f"|format(invoice.amount or invoice.grand_total or 0) }}</span>
+      <span class="tracking">{{ short_tn }}</span>
+      <span class="amount">{{ "%.0f"|format(p.grand_total or p.amount_due or 0) }}</span>
     </div>
+  {% endfor %}
 
-    <div class="row small">
-        <span>Bal</span>
-        <span>{{ "%.0f"|format(invoice.amount_due or 0) }}</span>
-    </div>
+  <div class="line"></div>
 
-    <div class="line"></div>
+  <div class="row">
+    <strong>Total</strong>
+    <strong>{{ "%.0f"|format(invoice.grand_total or 0) }}</strong>
+  </div>
 
-    <div class="center small">
-        Thank you!<br>
-        Goods received ✔
-    </div>
+  <div class="row small">
+    <span>Paid</span>
+    <span>{{ "%.0f"|format(invoice.amount or invoice.grand_total or 0) }}</span>
+  </div>
+
+  <div class="row small">
+    <span>Bal</span>
+    <span>{{ "%.0f"|format(invoice.amount_due or 0) }}</span>
+  </div>
+
+  <div class="line"></div>
+
+  <div class="center small">
+    Thank you!<br>
+    Goods received
+  </div>
 
 </div>
 
@@ -170,26 +174,26 @@
 
 <script>
 (function () {
-    try {
-        JsBarcode("#receiptBarcode", "{{ invoice.invoice_number }}", {
-            format: "CODE128",
-            width: 1,
-            height: 28,
-            displayValue: true,
-            fontSize: 9,
-            margin: 0
-        });
-    } catch (e) {}
+  try {
+    JsBarcode("#receiptBarcode", "{{ invoice.invoice_number }}", {
+      format: "CODE128",
+      width: 0.8,
+      height: 22,
+      displayValue: true,
+      fontSize: 8,
+      margin: 0
+    });
+  } catch (e) {}
 
-    const params = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(window.location.search);
 
-    if (params.get("print") === "1") {
-        window.onload = function () {
-            setTimeout(() => {
-                window.print();
-            }, 300);
-        };
-    }
+  if (params.get("print") === "1") {
+    window.onload = function () {
+      setTimeout(() => {
+        window.print();
+      }, 300);
+    };
+  }
 })();
 </script>
 

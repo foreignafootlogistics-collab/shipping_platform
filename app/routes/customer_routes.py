@@ -2528,6 +2528,49 @@ def customer_subscriptions():
         subscription_summary=subscription_summary,
     )
 
+@customer_bp.route("/subscriptions/activate/<int:plan_id>", methods=["POST"])
+@login_required
+def activate_subscription(plan_id):
+    from app.models import SubscriptionPlan, Subscription, SubscriptionUsage
+    from datetime import datetime, timedelta
+
+    plan = SubscriptionPlan.query.get_or_404(plan_id)
+
+    current = Subscription.query.filter_by(
+        user_id=current_user.id,
+        status="active"
+    ).first()
+
+    if current and current.plan_id == plan.id:
+        flash("You are already on this plan.", "info")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    old_subs = Subscription.query.filter_by(
+        user_id=current_user.id,
+        status="active"
+    ).all()
+
+    for s in old_subs:
+        s.status = "expired"
+
+    sub = Subscription(
+        user_id=current_user.id,
+        plan_id=plan.id,
+        start_date=datetime.utcnow(),
+        end_date=datetime.utcnow() + timedelta(days=30),
+        status="active"
+    )
+
+    db.session.add(sub)
+    db.session.flush()
+
+    usage = SubscriptionUsage(subscription_id=sub.id)
+    db.session.add(usage)
+
+    db.session.commit()
+
+    flash(f"{plan.name} plan activated successfully.", "success")
+    return redirect(url_for("customer.customer_dashboard"))
 
 @customer_bp.route("/api/dashboard", methods=["GET"])
 def api_customer_dashboard():

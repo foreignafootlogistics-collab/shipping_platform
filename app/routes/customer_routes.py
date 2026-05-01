@@ -2516,59 +2516,75 @@ def privacy():
 @customer_bp.route("/subscriptions")
 @login_required
 def customer_subscriptions():
-    from app.models import SubscriptionPlan
+    from app.models import SubscriptionPlan, Subscription
     from app.utils.subscription_utils import get_subscription_summary
 
-    plans = SubscriptionPlan.query.filter_by(is_active=True).order_by(SubscriptionPlan.price_usd.asc()).all()
+    plans = (
+        SubscriptionPlan.query
+        .filter_by(is_active=True)
+        .order_by(SubscriptionPlan.price_usd.asc())
+        .all()
+    )
+
     subscription_summary = get_subscription_summary(current_user.id)
+
+    pending_subscription = (
+        Subscription.query
+        .filter_by(user_id=current_user.id, status="pending_payment")
+        .order_by(Subscription.created_at.desc())
+        .first()
+    )
 
     return render_template(
         "customer/subscriptions.html",
         plans=plans,
         subscription_summary=subscription_summary,
+        pending_subscription=pending_subscription,
     )
+
 
 @customer_bp.route("/subscriptions/activate/<int:plan_id>", methods=["POST"])
 @login_required
 def activate_subscription(plan_id):
-    from app.models import SubscriptionPlan, Subscription, SubscriptionUsage
+    from app.models import SubscriptionPlan, Subscription
     from datetime import datetime, timedelta
 
     plan = SubscriptionPlan.query.get_or_404(plan_id)
 
-    # check current
-    current = Subscription.query.filter_by(
-        user_id=current_user.id,
-        status="active"
-    ).first()
+    active_sub = (
+        Subscription.query
+        .filter_by(user_id=current_user.id, status="active")
+        .first()
+    )
 
-    if current and current.plan_id == plan.id:
+    if active_sub and active_sub.plan_id == plan.id:
         flash("You are already on this plan.", "info")
         return redirect(url_for("customer.customer_subscriptions"))
 
-    # expire old
-    if current:
-        current.status = "expired"
+    pending_sub = (
+        Subscription.query
+        .filter_by(user_id=current_user.id, status="pending_payment")
+        .first()
+    )
 
-    # create new
+    if pending_sub:
+        flash("You already have a pending subscription payment. Please complete payment or contact us.", "warning")
+        return redirect(url_for("customer.customer_subscriptions"))
+
     sub = Subscription(
         user_id=current_user.id,
         plan_id=plan.id,
         start_date=datetime.utcnow(),
         end_date=datetime.utcnow() + timedelta(days=30),
-        status="active"
+        status="pending_payment"
     )
 
     db.session.add(sub)
-    db.session.flush()
-
-    usage = SubscriptionUsage(subscription_id=sub.id)
-    db.session.add(usage)
-
     db.session.commit()
 
-    flash(f"{plan.name} plan activated successfully.", "success")
-    return redirect(url_for("customer.customer_dashboard"))
+    flash(f"{plan.name} plan selected. Please complete payment so we can activate it.", "info")
+    return redirect(url_for("customer.customer_subscriptions"))
+
 
 @customer_bp.route("/api/dashboard", methods=["GET"])
 def api_customer_dashboard():

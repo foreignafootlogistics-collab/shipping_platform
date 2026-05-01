@@ -13,6 +13,14 @@
     </div>
   </div>
 
+  {% if pending_subscription %}
+    <div class="alert alert-info border shadow-sm">
+      <strong>Status: Awaiting Payment</strong><br>
+      Your subscription request is pending payment confirmation.
+      Please make payment using one of the JMD accounts below and use your registration number as the reference.
+    </div>
+  {% endif %}
+
   {% if subscription_summary %}
     <div class="alert alert-success border shadow-sm">
       <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -42,7 +50,7 @@
         </span>
       </div>
     </div>
-  {% else %}
+  {% elif not pending_subscription %}
     <div class="alert alert-secondary border shadow-sm">
       You do not currently have an active subscription.
     </div>
@@ -50,9 +58,43 @@
 
   <div class="alert alert-warning border small">
     <strong>Important:</strong>
-    Subscriptions cover shipping (freight) charges only.
+    Subscriptions cover shipping/freight charges only.
     Customs charges still apply for packages valued over <strong>USD $100</strong>.
-    Weight is rounded up to the nearest pound.
+    Usage is based on rounded billable weight.
+  </div>
+
+  <div class="alert alert-light border shadow-sm small mb-4">
+    <h6 class="mb-2" style="color:#4a148c;">Payment Instructions</h6>
+
+    <p class="mb-2">
+      Subscription payments can be made by bank transfer or deposit using the JMD accounts below.
+      Please use your registration number as the payment reference.
+    </p>
+
+    <div class="row">
+      <div class="col-md-6 mb-2">
+        <div class="border rounded p-3 h-100 bg-white">
+          <strong>Bank of Nova Scotia</strong><br>
+          Account Name: Foreign A Foot Logistics Ltd<br>
+          Branch: Liguanea<br>
+          JMD Account: <strong>000851952</strong>
+        </div>
+      </div>
+
+      <div class="col-md-6 mb-2">
+        <div class="border rounded p-3 h-100 bg-white">
+          <strong>National Commercial Bank</strong><br>
+          Account Name: Foreign A Foot Logistics Ltd<br>
+          Branch: Duke Street<br>
+          JMD Account: <strong>065534177</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-2 text-muted">
+      Exchange rate for subscription payments:
+      <strong>US$1 = JMD $162</strong>.
+    </div>
   </div>
 
   <div class="row">
@@ -86,8 +128,9 @@
               <li><strong>{{ plan.package_limit }}</strong> packages included</li>
               <li><strong>{{ "%.1f"|format(plan.weight_limit or 0) }} lb</strong> total weight</li>
               <li>Max <strong>{{ "%.1f"|format(plan.max_weight_per_package or 0) }} lb</strong> per package</li>
-              <li>Shipping (freight) covered</li>
-              
+              <li>Shipping/freight covered</li>
+              <li>Customs still apply over USD $100</li>
+
               {% if plan.priority_processing %}
                 <li>⚡ Priority processing included</li>
               {% endif %}
@@ -105,26 +148,30 @@
                 <button class="btn btn-success w-100" disabled>
                   Current Plan
                 </button>
+
+              {% elif pending_subscription %}
+                <button class="btn btn-secondary w-100" disabled>
+                  Payment Pending
+                </button>
+
               {% else %}
                 <form method="POST"
                       action="{{ url_for('customer.activate_subscription', plan_id=plan.id) }}"
-                      onsubmit="return confirm('Activate this plan? This will start a new 30-day cycle and reset your usage.');">
+                      onsubmit="return confirm('Select this plan? Your subscription will activate after payment is confirmed.');">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                   <button type="submit" class="btn btn-dashboard w-100">
                     {% if subscription_summary %}
-                      Upgrade / Switch Plan
+                      Pay / Switch Plan
                     {% else %}
-                      Choose Plan
+                      Pay / Choose Plan
                     {% endif %}
                   </button>
                 </form>
 
-                {% if subscription_summary %}
-                  <small class="text-muted d-block mt-2 text-center">
-                    Switching plans resets your usage and billing cycle.
-                  </small>
-                {% endif %}
+                <small class="text-muted d-block mt-2 text-center">
+                  Your plan will activate after payment confirmation.
+                </small>
               {% endif %}
             </div>
 
@@ -140,13 +187,13 @@
 
       <div class="row small">
         <div class="col-md-4 mb-2">
-          <strong>1. Limits</strong><br>
-          Your plan applies until the package limit OR weight limit is reached.
+          <strong>1. Select Plan</strong><br>
+          Choose a subscription plan and make payment using one of the listed JMD accounts.
         </div>
 
         <div class="col-md-4 mb-2">
-          <strong>2. Weight</strong><br>
-          Weight is rounded up (e.g. 1.2 lb = 2 lb).
+          <strong>2. Payment Confirmation</strong><br>
+          Your subscription is activated after payment is confirmed by our team.
         </div>
 
         <div class="col-md-4 mb-2">

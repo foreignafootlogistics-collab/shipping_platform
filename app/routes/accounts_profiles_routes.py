@@ -1244,6 +1244,12 @@ def view_user(id):
 
     subscription_summary = get_subscription_summary(id)
     subscription_plans = SubscriptionPlan.query.filter_by(is_active=True).order_by(SubscriptionPlan.price_usd.asc()).all()
+    pending_subscription = (
+        Subscription.query
+        .filter_by(user_id=id, status="pending_payment")
+        .order_by(Subscription.created_at.desc())
+        .first()
+    )
 
     return render_template(
         'admin/accounts_profiles/view_user.html',
@@ -1325,6 +1331,7 @@ def view_user(id):
         user_claims=user_claims,
         subscription_summary=subscription_summary,
         subscription_plans=subscription_plans,
+        pending_subscription=pending_subscription,
 
     )
 
@@ -1841,3 +1848,102 @@ def manual_add_subscription(id):
 
     flash(f"{plan.name} subscription activated for {user.full_name}.", "success")
     return redirect(url_for("accounts_profiles.view_user", id=id, tab="packages"))
+
+@accounts_bp.route("/subscriptions")
+@admin_required
+def admin_subscriptions():
+    subscriptions = (
+        Subscription.query
+        .join(User, Subscription.user_id == User.id)
+        .join(SubscriptionPlan, Subscription.plan_id == SubscriptionPlan.id)
+        .order_by(Subscription.created_at.desc())
+        .all()
+    )
+
+    return render_template(
+        "admin/accounts_profiles/subscriptions.html",
+        subscriptions=subscriptions,
+    )
+
+@accounts_bp.route("/subscriptions/bulk-activate", methods=["POST"])
+@admin_required
+def bulk_activate_subscriptions():
+    subscription_ids = request.form.getlist("subscription_ids")
+    subscription_ids = [int(x) for x in subscription_ids if str(x).isdigit()]
+
+    if not subscription_ids:
+        flash("No pending subscriptions selected.", "warning")
+        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+    activated_count = 0
+
+    for sub_id in subscription_ids:
+        sub = Subscription.query.get(sub_id)
+
+        if not sub or sub.status != "pending_payment":
+            continue
+
+        plan = sub.plan
+        user = sub.user
+
+        amount_jmd = float(plan.price_usd or 0) * 162
+
+        # expire any other active subscription for this user
+        old_active = (
+            Subscription.query
+            .filter(
+                Subscription.user_id == sub.user_id,
+                Subscription.status == "active",
+                Subscription.id != sub.id
+            )
+            .all()
+        )
+
+        for old in old_active:
+            old.status = "expired"
+
+        # activate selected subscription
+        sub.status = "active"
+        sub.start_date = datetime.utcnow()
+        sub.end_date = datetime.utcnow() + timedelta(days=30)
+
+        # create usage if missing
+        if not sub.usage:
+            db.session.add(SubscriptionUsage(subscription_id=sub.id))
+
+        # create invoice
+        invoice = Invoice(
+            user_id=user.id,
+            invoice_number=f"SUB-{sub.id:05d}",
+            description=f"{plan.name} Subscription Plan",
+            amount=amount_jmd,
+            grand_total=amount_jmd,
+            amount_due=0.0,
+            status="paid",
+            date_issued=datetime.utcnow(),
+            date_paid=datetime.utcnow(),
+        )
+
+        db.session.add(invoice)
+        db.session.flush()
+
+        # create payment record
+        payment = Payment(
+            user_id=user.id,
+            invoice_id=invoice.id,
+            amount_jmd=amount_jmd,
+            method="Bank Transfer / Cash",
+            status="completed",
+            transaction_type="subscription_payment",
+            reference=f"Subscription {plan.name}",
+            notes=f"Activated subscription #{sub.id}",
+            authorized_by_admin_id=current_user.id,
+        )
+
+        db.session.add(payment)
+        activated_count += 1
+
+    db.session.commit()
+
+    flash(f"{activated_count} subscription(s) activated and payment recorded.", "success")
+    return redirect(url_for("accounts_profiles.admin_subscriptions"))

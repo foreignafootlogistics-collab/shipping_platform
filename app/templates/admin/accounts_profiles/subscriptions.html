@@ -1,0 +1,107 @@
+{% extends "layout_admin.html" %}
+{% block title %}Subscriptions{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0" style="color:#4a148c;">All Subscriptions</h3>
+
+    <form method="POST"
+          action="{{ url_for('accounts_profiles.bulk_activate_subscriptions') }}"
+          onsubmit="return confirm('Activate selected pending subscriptions and record payment?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <button type="submit" class="btn btn-success btn-sm">
+        <i class="bi bi-check-circle me-1"></i> Activate Selected
+      </button>
+  </div>
+
+  <table class="table table-striped mt-3 align-middle">
+    <thead class="table-dark">
+      <tr>
+        <th class="text-center" style="width:40px;">
+          <input type="checkbox" id="selectAllSubs">
+        </th>
+        <th>Customer</th>
+        <th>Plan</th>
+        <th>Status</th>
+        <th>Amount</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for s in subscriptions %}
+      <tr>
+        <td class="text-center">
+          {% if s.status == "pending_payment" %}
+            <input type="checkbox" name="subscription_ids" value="{{ s.id }}" class="sub-check">
+          {% else %}
+            <input type="checkbox" disabled>
+          {% endif %}
+        </td>
+
+        <td>
+          <a href="{{ url_for('accounts_profiles.view_user', id=s.user_id) }}"
+             class="fw-semibold text-decoration-none">
+            {{ s.user.full_name }}
+          </a><br>
+          <small>{{ s.user.registration_number }} • {{ s.user.email }}</small>
+        </td>
+
+        <td>{{ s.plan.name }}</td>
+
+        <td>
+          {% if s.status == "active" %}
+            <span class="badge bg-success">Active</span>
+          {% elif s.status == "pending_payment" %}
+            <span class="badge bg-warning text-dark">Pending Payment</span>
+          {% elif s.status == "expired" %}
+            <span class="badge bg-secondary">Expired</span>
+          {% else %}
+            <span class="badge bg-secondary">{{ s.status }}</span>
+          {% endif %}
+        </td>
+
+        <td>
+          US${{ "%.2f"|format(s.plan.price_usd or 0) }}<br>
+          <small class="text-muted">
+            JMD ${{ "%.2f"|format((s.plan.price_usd or 0) * 162) }}
+          </small>
+        </td>
+
+        <td>
+          {% if s.created_at %}
+            {{ s.created_at.strftime("%Y-%m-%d") if s.created_at.strftime is defined else s.created_at }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" class="text-center text-muted py-4">
+          No subscriptions found.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  </form>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const selectAll = document.getElementById("selectAllSubs");
+  if (!selectAll) return;
+
+  selectAll.addEventListener("change", function () {
+    document.querySelectorAll(".sub-check").forEach(cb => {
+      cb.checked = selectAll.checked;
+    });
+  });
+});
+</script>
+{% endblock %}

@@ -20,8 +20,12 @@
             font-family: monospace;
             font-size: 10px;
             color: #000;
-            padding: 6px;
-            box-sizing: border-box;
+        }
+
+        .receipt {
+            width: 48mm;
+            margin: 0 auto;
+            padding: 3mm 0;
         }
 
         .center {
@@ -30,7 +34,7 @@
 
         .line {
             border-top: 1px dashed #000;
-            margin: 4px 0;
+            margin: 5px 0;
         }
 
         .row {
@@ -46,29 +50,33 @@
 
         .tracking {
             flex: 1;
-            word-break: break-word;
-            max-width: 120px;
+            word-break: break-all;
         }
 
         .amount {
             text-align: right;
-            min-width: 40px;
+            min-width: 35px;
         }
 
         .barcode-wrap {
             text-align: center;
             margin: 6px 0;
+            overflow: hidden;
+        }
+
+        #receiptBarcode {
+            max-width: 48mm;
         }
 
         .print-btn-wrap {
             text-align: center;
-            margin-bottom: 5px;
+            margin: 6px 0;
         }
 
         .print-btn {
             border: 1px solid #000;
             background: #fff;
-            padding: 4px 6px;
+            padding: 4px 8px;
             font-size: 10px;
             cursor: pointer;
         }
@@ -76,6 +84,16 @@
         @media print {
             .print-btn-wrap {
                 display: none;
+            }
+
+            body {
+                width: 58mm;
+            }
+
+            .receipt {
+                width: 48mm;
+                margin: 0 auto;
+                padding: 2mm 0;
             }
         }
     </style>
@@ -87,64 +105,69 @@
     <button class="print-btn" onclick="window.print()">Print</button>
 </div>
 
-<div class="center">
-    <strong>Foreign A Foot Logistics</strong><br>
-    <span class="small">Portmore, Jamaica</span><br>
-    <span class="small">876-560-7764</span>
-</div>
+<div class="receipt">
 
-<div class="line"></div>
+    <div class="center">
+        <strong>Foreign A Foot Logistics</strong><br>
+        <span class="small">Portmore, Jamaica</span><br>
+        <span class="small">876-560-7764</span>
+    </div>
 
-<div class="small">
-    Inv: {{ invoice.invoice_number }}<br>
-    {{ (invoice.date_paid or invoice.created_at).strftime('%Y-%m-%d %H:%M') if (invoice.date_paid or invoice.created_at) else '' }}<br>
-    {{ invoice.user.full_name if invoice.user else '' }}
-</div>
+    <div class="line"></div>
 
-<div class="barcode-wrap">
-    <svg id="receiptBarcode"></svg>
-    <div class="small">Scan for lookup / return</div>
-</div>
+    <div class="small">
+        Inv: {{ invoice.invoice_number }}<br>
+        {{ (invoice.date_paid or invoice.created_at).strftime('%Y-%m-%d %H:%M') if (invoice.date_paid or invoice.created_at) else '' }}<br>
+        {{ invoice.user.full_name if invoice.user else '' }}
+    </div>
 
-<div class="line"></div>
+    <div class="barcode-wrap">
+        <svg id="receiptBarcode"></svg>
+        <div class="small">Scan for lookup / return</div>
+    </div>
 
-<div class="row small">
-    <strong>Tracking</strong>
-    <strong>JMD</strong>
-</div>
+    <div class="line"></div>
 
-{% for p in invoice.packages %}
-<div class="row small">
-    <span class="tracking">{{ p.tracking_number or "-" }}</span>
-    <span class="amount">{{ "%.0f"|format(p.grand_total or p.amount_due or 0) }}</span>
-</div>
-{% endfor %}
+    <div class="row small">
+        <strong>Tracking</strong>
+        <strong>JMD</strong>
+    </div>
 
-<div class="line"></div>
+    {% for p in invoice.packages %}
+    <div class="row small">
+        <span class="tracking">{{ p.tracking_number or "-" }}</span>
+        <span class="amount">{{ "%.0f"|format(p.grand_total or p.amount_due or 0) }}</span>
+    </div>
+    {% endfor %}
 
-<div class="row">
-    <strong>Total</strong>
-    <strong>{{ "%.0f"|format(invoice.grand_total or 0) }}</strong>
-</div>
+    <div class="line"></div>
 
-<div class="row small">
-    <span>Paid</span>
-    <span>{{ "%.0f"|format(invoice.amount or invoice.grand_total or 0) }}</span>
-</div>
+    <div class="row">
+        <strong>Total</strong>
+        <strong>{{ "%.0f"|format(invoice.grand_total or 0) }}</strong>
+    </div>
 
-<div class="row small">
-    <span>Bal</span>
-    <span>{{ "%.0f"|format(invoice.amount_due or 0) }}</span>
-</div>
+    <div class="row small">
+        <span>Paid</span>
+        <span>{{ "%.0f"|format(invoice.amount or invoice.grand_total or 0) }}</span>
+    </div>
 
-<div class="line"></div>
+    <div class="row small">
+        <span>Bal</span>
+        <span>{{ "%.0f"|format(invoice.amount_due or 0) }}</span>
+    </div>
 
-<div class="center small">
-    Thank you!<br>
-    Goods received ✔
+    <div class="line"></div>
+
+    <div class="center small">
+        Thank you!<br>
+        Goods received ✔
+    </div>
+
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+
 <script>
 (function () {
     try {
@@ -159,12 +182,12 @@
     } catch (e) {}
 
     const params = new URLSearchParams(window.location.search);
+
     if (params.get("print") === "1") {
         window.onload = function () {
-            window.print();
-            window.onafterprint = function () {
-                window.close();
-            };
+            setTimeout(() => {
+                window.print();
+            }, 300);
         };
     }
 })();

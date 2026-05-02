@@ -432,7 +432,10 @@ def _apply_pkg_filters(
         q = q.filter(Package.status == status_filter)
 
     if subscription_only:
-        q = q.filter(Package.subscription_applied.is_(True))
+        q = q.filter(
+            Package.subscription_applied.is_(True),
+            Package.subscription_result == "subscription_applied"
+        )
 
     # -------------------------
     # EPC filter

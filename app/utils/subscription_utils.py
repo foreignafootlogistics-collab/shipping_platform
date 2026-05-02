@@ -2,7 +2,7 @@ from datetime import datetime
 import math
 
 from app.extensions import db
-from app.models import Subscription, SubscriptionUsage
+from app.models import Subscription, SubscriptionUsage, SubscriptionMember
 
 
 def get_billable_weight(package):
@@ -15,9 +15,14 @@ def get_billable_weight(package):
 
 
 def get_active_subscription(user_id):
-    now = datetime.utcnow()
+    from datetime import datetime, timezone
 
-    return (
+    now = datetime.now(timezone.utc)
+
+    # -----------------------------------------
+    # FIRST: check if user is OWNER
+    # -----------------------------------------
+    sub = (
         Subscription.query
         .filter(
             Subscription.user_id == user_id,
@@ -28,6 +33,37 @@ def get_active_subscription(user_id):
         .order_by(Subscription.created_at.desc())
         .first()
     )
+
+    if sub:
+        return sub
+
+    # -----------------------------------------
+    # SECOND: check if user is FAMILY MEMBER
+    # -----------------------------------------
+    member = (
+        SubscriptionMember.query
+        .filter(
+            SubscriptionMember.user_id == user_id,
+            SubscriptionMember.status == "active"
+        )
+        .first()
+    )
+
+    if not member:
+        return None
+
+    sub = (
+        Subscription.query
+        .filter(
+            Subscription.id == member.subscription_id,
+            Subscription.status == "active",
+            Subscription.start_date <= now,
+            Subscription.end_date >= now
+        )
+        .first()
+    )
+
+    return sub
 
 
 def ensure_usage(subscription):
@@ -100,23 +136,16 @@ def apply_subscription_usage(package):
 def get_subscription_discount_percent(package):
     """
     Applies after subscription is exhausted:
-    5% discount only for packages <= 10 lb billable weight.
+    Works for BOTH owner and family members
     """
 
     if not package.user_id:
         return 0
 
-    subscription = (
-        Subscription.query
-        .filter(
-            Subscription.user_id == package.user_id,
-            Subscription.status == "exhausted"
-        )
-        .order_by(Subscription.created_at.desc())
-        .first()
-    )
+    # use correct lookup (owner OR member)
+    subscription = get_active_subscription(package.user_id)
 
-    if not subscription:
+    if not subscription or subscription.status != "exhausted":
         return 0
 
     billable_weight = get_billable_weight(package)
@@ -128,6 +157,7 @@ def get_subscription_discount_percent(package):
 
 def get_subscription_summary(user_id):
     subscription = get_active_subscription(user_id)
+    members = []
 
     if not subscription:
         return None
@@ -168,6 +198,13 @@ def get_subscription_summary(user_id):
         is_expired = delta.total_seconds() <= 0
         expires_soon = (not is_expired) and days_remaining <= 5
 
+    if subscription.plan.is_family_plan:
+        members = (
+            SubscriptionMember.query
+            .filter_by(subscription_id=subscription.id, status="active")
+            .all()
+        )
+
     return {
         "subscription_id": subscription.id,
         "plan_name": plan.name,
@@ -191,4 +228,5 @@ def get_subscription_summary(user_id):
         "days_remaining": days_remaining,
         "expires_soon": expires_soon,
         "is_expired": is_expired,
+        "members": members,
     }

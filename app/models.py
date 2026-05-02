@@ -181,8 +181,8 @@ class Subscription(db.Model):
     )
 
     family_members = db.relationship(
-        "Subscription",
-        backref=db.backref("parent_subscription", remote_side=[id]),
+        "SubscriptionMember",
+        backref="subscription",
         lazy=True
     )
 
@@ -246,10 +246,7 @@ class SubscriptionMember(db.Model):
         nullable=True
     )
 
-    subscription = db.relationship(
-        "Subscription",
-        backref=db.backref("family_members", lazy=True)
-    )
+    subscription = db.relationship("Subscription")
 
     user = db.relationship(
         "User",

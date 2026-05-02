@@ -189,6 +189,40 @@
           {% endif %}
         </div>
 
+        {% if subscription_summary and subscription_summary.plan_name == "Family" %}
+        <div class="mt-2">
+
+          <strong>Family Members:</strong>
+
+          <ul class="small mt-1 mb-2">
+            {% for m in subscription_summary.members %}
+              <li>
+                {{ m.user.full_name }}
+                {% if m.role == "owner" %}
+                  <span class="badge bg-primary">Owner</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+
+          <form method="POST"
+                action="{{ url_for('accounts_profiles.add_subscription_member', sub_id=subscription_summary.subscription_id) }}"
+                class="d-flex gap-2">
+
+            <input type="text"
+                   name="registration_number"
+                   class="form-control form-control-sm"
+                   placeholder="Enter Registration #"
+                   required>
+
+            <button class="btn btn-sm btn-outline-purple">
+              Add
+            </button>
+          </form>
+
+        </div>
+        {% endif %}
+
         <button type="button"
                 class="btn btn-sm btn-outline-purple mt-2"
                 data-bs-toggle="modal"

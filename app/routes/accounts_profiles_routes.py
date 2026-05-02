@@ -43,7 +43,7 @@ from app.models import (
     Claim, ClaimAuditLog
 )
 from app.models import generate_claim_case_id
-from app.models import SubscriptionPlan, Subscription, SubscriptionUsage
+from app.models import SubscriptionPlan, Subscription, SubscriptionUsage, SubscriptionMember
 
 accounts_bp = Blueprint('accounts_profiles', __name__)
 
@@ -1922,6 +1922,25 @@ def bulk_activate_subscriptions():
         sub.status = "active"
         sub.start_date = datetime.utcnow()
         sub.end_date = datetime.utcnow() + timedelta(days=30)
+
+        # -------------------------------
+        # Add owner for Family plan
+        # -------------------------------
+        if getattr(plan, "is_family_plan", False):
+            existing_owner = SubscriptionMember.query.filter_by(
+                subscription_id=sub.id,
+                user_id=user.id,
+                role="owner"
+            ).first()
+
+            if not existing_owner:
+                owner_member = SubscriptionMember(
+                    subscription_id=sub.id,
+                    user_id=user.id,
+                    role="owner",
+                    status="active"
+                )
+                db.session.add(owner_member)
 
         # create usage if missing
         if not sub.usage:

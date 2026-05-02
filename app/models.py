@@ -214,6 +214,59 @@ class SubscriptionUsage(db.Model):
     def __repr__(self):
         return f"<SubscriptionUsage packages={self.packages_used} weight={self.weight_used}>"
 
+class SubscriptionMember(db.Model):
+    __tablename__ = "subscription_members"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    subscription_id = db.Column(
+        db.Integer,
+        db.ForeignKey("subscriptions.id"),
+        nullable=False,
+        index=True
+    )
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=False,
+        index=True
+    )
+
+    role = db.Column(db.String(20), nullable=False, default="member")
+    status = db.Column(db.String(20), nullable=False, default="active")
+
+    added_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    removed_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True
+    )
+
+    subscription = db.relationship(
+        "Subscription",
+        backref=db.backref("family_members", lazy=True)
+    )
+
+    user = db.relationship(
+        "User",
+        backref=db.backref("subscription_memberships", lazy=True)
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "subscription_id",
+            "user_id",
+            name="uq_subscription_member_user"
+        ),
+    )
+
+    def __repr__(self):
+        return f"<SubscriptionMember sub={self.subscription_id} user={self.user_id} role={self.role}>"
+
 class Wallet(db.Model):
     __tablename__ = 'wallets'
 
@@ -227,6 +280,8 @@ class Wallet(db.Model):
 
     def __repr__(self):
         return f"<Wallet User {self.user_id} Balance {self.ewallet_balance}>"
+
+
 
 
 class WalletTransaction(db.Model):
@@ -245,9 +300,7 @@ class WalletTransaction(db.Model):
         return f"<WalletTransaction User {self.user_id} Amount {self.amount}>"
 
 
-# -------------------------------
-# Invoice & Package Models
-# -------------------------------
+
 # -------------------------------
 # Invoice & Package Models
 # -------------------------------

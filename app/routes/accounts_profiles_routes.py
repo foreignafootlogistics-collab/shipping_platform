@@ -1982,3 +1982,104 @@ def bulk_activate_subscriptions():
 
     flash(f"{activated_count} subscription(s) activated and payment recorded.", "success")
     return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+@accounts_bp.route("/subscriptions/<int:sub_id>/add-member", methods=["POST"])
+@admin_required
+def add_subscription_member(sub_id):
+    from app.models import Subscription, SubscriptionMember, User
+
+    sub = Subscription.query.get_or_404(sub_id)
+
+    if not sub.plan.is_family_plan:
+        flash("This is not a family plan.", "danger")
+        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+
+    reg = (request.form.get("registration_number") or "").strip().upper()
+
+    if not reg:
+        flash("Registration number required.", "warning")
+        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+
+    user = User.query.filter_by(registration_number=reg).first()
+
+    if not user:
+        flash("User not found.", "danger")
+        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+
+    # Prevent adding the subscription owner again
+    if user.id == sub.user_id:
+        flash("This user is already the owner of this subscription.", "info")
+        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+
+    # Max 4 persons total: owner + 3 members
+    active_member_count = SubscriptionMember.query.filter_by(
+        subscription_id=sub.id,
+        status="active"
+    ).count()
+
+    if active_member_count >= 4:
+        flash("Family plan already has the maximum 4 persons.", "warning")
+        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+
+    # Prevent duplicate on same subscription
+    existing_same_subscription = SubscriptionMember.query.filter_by(
+        subscription_id=sub.id,
+        user_id=user.id,
+        status="active"
+    ).first()
+
+    if existing_same_subscription:
+        flash("User is already added to this family plan.", "info")
+        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+
+    # Prevent user being in another active family subscription
+    existing_membership = (
+        SubscriptionMember.query
+        .filter(
+            SubscriptionMember.user_id == user.id,
+            SubscriptionMember.status == "active"
+        )
+        .first()
+    )
+
+    if existing_membership:
+        flash("User already belongs to another subscription.", "warning")
+        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+
+    member = SubscriptionMember(
+        subscription_id=sub.id,
+        user_id=user.id,
+        role="member",
+        status="active"
+    )
+
+    db.session.add(member)
+    db.session.commit()
+
+    flash(f"{user.full_name} added to family plan.", "success")
+    return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+
+@accounts_bp.route("/subscriptions/<int:sub_id>/remove-member/<int:user_id>", methods=["POST"])
+@admin_required
+def remove_subscription_member(sub_id, user_id):
+    member = (
+        SubscriptionMember.query
+        .filter_by(subscription_id=sub_id, user_id=user_id, status="active")
+        .first()
+    )
+
+    if not member:
+        flash("Member not found.", "warning")
+        return redirect(request.referrer)
+
+    if member.role == "owner":
+        flash("Cannot remove owner.", "danger")
+        return redirect(request.referrer)
+
+    member.status = "removed"
+    member.removed_at = datetime.utcnow()
+
+    db.session.commit()
+
+    flash("Member removed successfully.", "success")
+    return redirect(request.referrer)

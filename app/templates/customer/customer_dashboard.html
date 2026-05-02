@@ -182,6 +182,17 @@
           <span class="badge bg-success">
             {{ subscription_summary.status|title }}
           </span>
+          {% if subscription_summary.is_family_plan %}
+            <span class="badge bg-primary">
+              👨‍👩‍👧‍👦 Family Plan
+            </span>
+
+            {% if subscription_summary.members %}
+              <span class="badge bg-light text-dark">
+                {{ subscription_summary.members|length }} members
+              </span>
+            {% endif %}
+          {% endif %}
 
           {% if subscription_summary.is_expired %}
             <span class="text-danger small">❌ Expired</span>

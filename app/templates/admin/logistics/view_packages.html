@@ -40,6 +40,7 @@
       <input type="hidden" name="unassigned_only" value="{{ '1' if unassigned_only else '' }}">
       <input type="hidden" name="epc_only" value="{{ '1' if epc_only else '' }}">
       <input type="hidden" name="not_notified_only" value="{{ '1' if not_notified_only else '' }}">
+      <input type="hidden" name="subscription_only" value="{{ '1' if subscription_only else '' }}">
       <input type="hidden" name="return_to" id="returnToInput" value="">
 
       <div class="d-flex align-items-center action-toolbar shadow-sm">
@@ -275,7 +276,17 @@
     </label>
   </div>
 
-
+  <div class="col-12 col-md-auto d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
+    <input type="checkbox"
+           class="form-check-input"
+           id="filterSubscriptionOnly"
+           name="subscription_only"
+           value="1"
+           {% if subscription_only %}checked{% endif %}>
+    <label class="form-check-label" for="filterSubscriptionOnly">
+      Subscription Packages
+    </label>
+  </div>
 
   <!-- Toolbar row: left = actions, right = rows-per-page -->
   <div class="col-12">

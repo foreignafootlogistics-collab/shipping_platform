@@ -93,10 +93,50 @@
   {% include 'partials/status_tracker.html' with context %}
   <br>
   <small class="text-muted">{{ _tracking or '-' }}</small>
+  {% if pkg.subscription_covered %}
+    <div class="mt-1">
+      {% if pkg.customs_only_due_to_subscription %}
+        <span class="badge bg-warning text-dark">
+          ⚡ Sub + Customs
+        </span>
+      {% else %}
+        <span class="badge bg-success">
+          ✓ Subscription
+        </span>
+      {% endif %}
+    </div>
+
+  {% elif pkg.subscription_applied and pkg.subscription_result == "package_over_plan_limit" %}
+    <div class="mt-1">
+      <span class="badge bg-secondary">
+        Over Limit
+      </span>
+    </div>
+
+  {% elif pkg.subscription_applied and pkg.subscription_result == "subscription_exhausted" %}
+    <div class="mt-1">
+      <span class="badge bg-info text-dark">
+        Subscriber Rate
+      </span>
+    </div>
+  {% endif %}
 </td>
 
 <td data-order="{{ (_house or '0')|replace(',', '') }}" class="text-nowrap">
   {{ _house or '-' }}
+  {% if pkg.subscription_covered %}
+    <span class="ms-1"
+          data-bs-toggle="tooltip"
+          title="Covered by subscription">
+      <i class="bi bi-patch-check-fill text-success"></i>
+    </span>
+  {% elif pkg.subscription_applied %}
+    <span class="ms-1"
+          data-bs-toggle="tooltip"
+          title="Subscription package">
+      <i class="bi bi-patch-check text-primary"></i>
+    </span>
+  {% endif %}
 
   {# ✅ Notified icon #}
   {% if _notified_at %}

@@ -189,18 +189,33 @@
           {% endif %}
         </div>
 
-        {% if subscription_summary and subscription_summary.plan_name == "Family" %}
+        {% if subscription_summary and subscription_summary.is_family_plan %}
         <div class="mt-2">
 
           <strong>Family Members:</strong>
 
           <ul class="small mt-1 mb-2">
             {% for m in subscription_summary.members %}
-              <li>
+              <li class="d-flex justify-content-between align-items-center">
+
+              <span>
                 {{ m.user.full_name }}
                 {% if m.role == "owner" %}
                   <span class="badge bg-primary">Owner</span>
                 {% endif %}
+              </span>
+
+              {% if m.role != "owner" %}
+              <form method="POST"
+                    action="{{ url_for('accounts_profiles.remove_subscription_member',
+                                       sub_id=subscription_summary.subscription_id,
+                                       user_id=m.user.id) }}">
+                <button class="btn btn-sm btn-outline-danger">
+                  Remove
+                </button>
+              </form>
+              {% endif %}              
+
               </li>
             {% endfor %}
           </ul>

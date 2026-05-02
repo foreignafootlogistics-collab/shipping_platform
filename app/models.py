@@ -182,8 +182,9 @@ class Subscription(db.Model):
 
     family_members = db.relationship(
         "SubscriptionMember",
-        backref="subscription",
-        lazy=True
+        back_populates="subscription",
+        lazy=True,
+        cascade="all, delete-orphan"
     )
 
     def __repr__(self):
@@ -246,7 +247,10 @@ class SubscriptionMember(db.Model):
         nullable=True
     )
 
-    subscription = db.relationship("Subscription")
+    subscription = db.relationship(
+        "Subscription",
+        back_populates="family_members"
+    )
 
     user = db.relationship(
         "User",

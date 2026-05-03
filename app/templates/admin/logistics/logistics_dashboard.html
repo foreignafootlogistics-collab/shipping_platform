@@ -484,6 +484,18 @@
                     </div>
                   </div>
 
+                  <div class="col-md-3">
+                    <label class="form-label small mb-0">&nbsp;</label>
+                    <div class="form-check mt-1">
+                      <input type="checkbox"
+                             class="form-check-input"
+                             id="fltSubscriptionOnly">
+                      <label class="form-check-label small" for="fltSubscriptionOnly">
+                        Subscription Packages
+                      </label>
+                    </div>
+                  </div>
+
                   <div class="col-12 d-flex justify-content-between align-items-center mt-1">
                     <div class="d-flex gap-2 flex-wrap">
                       <button type="button" id="btnApplyFilters" class="btn btn-sm btn-outline-purple">
@@ -607,7 +619,11 @@
                     <td>
                       <div class="d-inline-flex align-items-center gap-1">
                         <span>{{ pkg.house_awb or '-' }}</span>
-
+                        {% if pkg.subscription_covered %}
+                          <i class="bi bi-patch-check-fill text-success ms-1 shipment-subscription-icon"
+                             style="font-size:0.9rem;"
+                             title="Covered by subscription"></i>
+                        {% endif %}
                         {% if pkg.invoice_id %}
                           {% if pkg.invoice_emailed_at %}
                             <i class="bi bi-envelope-check-fill text-success ms-1"  
@@ -1627,8 +1643,10 @@ Not emailed yet"></i>
     const wMaxRaw = (document.getElementById('fltWMax')?.value || '').trim();
     const wMin = wMinRaw === '' ? null : Number(wMinRaw);
     const wMax = wMaxRaw === '' ? null : Number(wMaxRaw);
+    const subscriptionOnly = document.getElementById('fltSubscriptionOnly')?.checked || false;
+    
 
-    return { name, tracking, house_awb, reg, wMin, wMax };
+    return { name, tracking, house_awb, reg, wMin, wMax, subscriptionOnly };
   }
 
   function parseCellText(td) {
@@ -1665,6 +1683,7 @@ Not emailed yet"></i>
       const pkgText = parseCellText(rowNode.querySelector('td:nth-child(4)'));
       const houseText = parseCellText(rowNode.querySelector('td:nth-child(5)'));
       const w = parseWeightFromRow(rowNode);
+      const isSubPackage = rowNode.querySelector('.shipment-subscription-icon') !== null;
 
       if (f.name && !userText.includes(f.name)) return false;
       if (f.reg && !userText.includes(f.reg)) return false;
@@ -1672,6 +1691,7 @@ Not emailed yet"></i>
       if (f.house_awb && !houseText.includes(f.house_awb)) return false;
       if (f.wMin != null && w < f.wMin) return false;
       if (f.wMax != null && w > f.wMax) return false;
+      if (f.subscriptionOnly && !isSubPackage) return false;
 
       return true;
     });

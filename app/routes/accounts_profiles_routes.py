@@ -2169,3 +2169,93 @@ def override_cancel_subscription(sub_id):
     flash("Subscription cancelled by admin override.", "success")
     return redirect(url_for("accounts_profiles.admin_subscriptions"))
 
+
+@accounts_bp.route("/subscriptions/bulk-cancel-pending", methods=["POST"])
+@admin_required
+def bulk_cancel_pending_subscriptions():
+    ids = request.form.getlist("subscription_ids")
+
+    count = 0
+
+    for sid in ids:
+        sub = Subscription.query.get(sid)
+        if sub and sub.status == "pending_payment":
+            sub.status = "cancelled"
+            count += 1
+
+    db.session.commit()
+
+    flash(f"{count} pending subscriptions cancelled.", "success")
+    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+@accounts_bp.route("/subscriptions/bulk-refund-unused", methods=["POST"])
+@admin_required
+def bulk_refund_unused_subscriptions():
+    ids = request.form.getlist("subscription_ids")
+
+    count = 0
+
+    for sid in ids:
+        sub = Subscription.query.get(sid)
+        if not sub or sub.status != "active":
+            continue
+
+        usage = sub.usage
+        packages_used = int(getattr(usage, "packages_used", 0) or 0)
+        weight_used = float(getattr(usage, "weight_used", 0) or 0)
+
+        if packages_used == 0 and weight_used == 0:
+            amount_jmd = float(sub.plan.price_usd or 0) * 162
+
+            sub.status = "cancelled"
+
+            refund = Payment(
+                user_id=sub.user_id,
+                amount_jmd=-amount_jmd,
+                method="Subscription Refund",
+                status="completed",
+                transaction_type="subscription_refund",
+                reference=f"Refund for {sub.plan.name}",
+                authorized_by_admin_id=current_user.id,
+            )
+
+            db.session.add(refund)
+            count += 1
+
+    db.session.commit()
+
+    flash(f"{count} subscriptions refunded.", "success")
+    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+@accounts_bp.route("/subscriptions/bulk-override-cancel", methods=["POST"])
+@admin_required
+def bulk_override_cancel_subscriptions():
+    ids = request.form.getlist("subscription_ids")
+
+    count = 0
+
+    for sid in ids:
+        sub = Subscription.query.get(sid)
+        if not sub:
+            continue
+
+        sub.status = "cancelled"
+
+        note = Payment(
+            user_id=sub.user_id,
+            amount_jmd=0,
+            method="Admin Override",
+            status="completed",
+            transaction_type="subscription_cancel_override",
+            reference=f"Override cancel subscription #{sub.id}",
+            authorized_by_admin_id=current_user.id,
+        )
+
+        db.session.add(note)
+        count += 1
+
+    db.session.commit()
+
+    flash(f"{count} subscriptions override cancelled.", "success")
+    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+

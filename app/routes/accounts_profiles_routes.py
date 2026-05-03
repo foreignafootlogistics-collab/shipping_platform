@@ -2286,6 +2286,7 @@ def bulk_upgrade_subscriptions():
 
     upgraded = 0
     skipped = 0
+    blocked_usage = 0
 
     for sub_id in subscription_ids:
         old_sub = Subscription.query.get(sub_id)
@@ -2299,6 +2300,22 @@ def bulk_upgrade_subscriptions():
 
         if new_price <= old_price:
             skipped += 1
+            continue
+
+        old_usage = old_sub.usage
+
+        packages_used = int(getattr(old_usage, "packages_used", 0) or 0)
+        weight_used = float(getattr(old_usage, "weight_used", 0) or 0)
+
+        old_package_limit = int(old_sub.plan.package_limit or 0)
+        old_weight_limit = float(old_sub.plan.weight_limit or 0)
+
+        package_used_percent = (packages_used / old_package_limit) if old_package_limit else 0
+        weight_used_percent = (weight_used / old_weight_limit) if old_weight_limit else 0
+
+        # Block upgrade after 60% usage
+        if package_used_percent >= 0.60 or weight_used_percent >= 0.60:
+            blocked_usage += 1
             continue
 
         difference_usd = new_price - old_price
@@ -2317,7 +2334,11 @@ def bulk_upgrade_subscriptions():
         db.session.add(new_sub)
         db.session.flush()
 
-        db.session.add(SubscriptionUsage(subscription_id=new_sub.id))
+        db.session.add(SubscriptionUsage(
+            subscription_id=new_sub.id,
+            packages_used=packages_used,
+            weight_used=weight_used,
+        ))
 
         if getattr(new_plan, "is_family_plan", False):
             db.session.add(SubscriptionMember(
@@ -2330,7 +2351,7 @@ def bulk_upgrade_subscriptions():
         invoice = Invoice(
             user_id=old_sub.user_id,
             invoice_number=f"SUB-UPG-{new_sub.id:05d}",
-            description=f"Upgrade to {new_plan.name} Subscription Plan",
+            description=f"Upgrade from {old_sub.plan.name} to {new_plan.name} Subscription Plan",
             amount=difference_jmd,
             grand_total=difference_jmd,
             amount_due=0.0,
@@ -2350,7 +2371,10 @@ def bulk_upgrade_subscriptions():
             status="completed",
             transaction_type="subscription_upgrade_payment",
             reference=f"Upgrade from {old_sub.plan.name} to {new_plan.name}",
-            notes=f"Paid difference only: US${difference_usd:.2f}",
+            notes=(
+                f"Paid difference only: US${difference_usd:.2f}. "
+                f"Usage carried forward: {packages_used} package(s), {weight_used:.1f} lb."
+            ),
             authorized_by_admin_id=current_user.id,
         ))
 
@@ -2358,5 +2382,9 @@ def bulk_upgrade_subscriptions():
 
     db.session.commit()
 
-    flash(f"{upgraded} subscription(s) upgraded. {skipped} skipped.", "success")
+    flash(
+        f"{blocked_usage} subscription(s) cannot be upgraded because they are over 60% usage. "
+        "Customer must start a new subscription.",
+        "success" if upgraded else "warning"
+    )
     return redirect(url_for("accounts_profiles.admin_subscriptions"))

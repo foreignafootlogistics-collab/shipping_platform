@@ -2083,3 +2083,89 @@ def remove_subscription_member(sub_id, user_id):
 
     flash("Member removed successfully.", "success")
     return redirect(request.referrer)
+
+@accounts_bp.route("/subscriptions/<int:sub_id>/cancel-pending", methods=["POST"])
+@admin_required
+def cancel_pending_subscription(sub_id):
+    sub = Subscription.query.get_or_404(sub_id)
+
+    if sub.status != "pending_payment":
+        flash("Only pending payment subscriptions can be cancelled here.", "warning")
+        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+    sub.status = "cancelled"
+    db.session.commit()
+
+    flash("Pending subscription cancelled.", "success")
+    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+
+@accounts_bp.route("/subscriptions/<int:sub_id>/cancel-refund-unused", methods=["POST"])
+@admin_required
+def cancel_refund_unused_subscription(sub_id):
+    sub = Subscription.query.get_or_404(sub_id)
+
+    if sub.status != "active":
+        flash("Only active subscriptions can be cancelled/refunded.", "warning")
+        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+    usage = sub.usage
+    packages_used = int(getattr(usage, "packages_used", 0) or 0)
+    weight_used = float(getattr(usage, "weight_used", 0) or 0)
+
+    if packages_used > 0 or weight_used > 0:
+        flash("This subscription has already been used. Refund blocked. Use admin override if needed.", "danger")
+        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+    amount_jmd = float(sub.plan.price_usd or 0) * 162
+
+    sub.status = "cancelled"
+
+    refund_payment = Payment(
+        user_id=sub.user_id,
+        amount_jmd=-amount_jmd,
+        method="Subscription Refund",
+        status="completed",
+        transaction_type="subscription_refund",
+        reference=f"Refund for {sub.plan.name} subscription",
+        notes=f"Unused subscription #{sub.id} cancelled and refunded.",
+        authorized_by_admin_id=current_user.id,
+    )
+
+    db.session.add(refund_payment)
+    db.session.commit()
+
+    flash("Unused subscription cancelled and refund recorded.", "success")
+    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+
+@accounts_bp.route("/subscriptions/<int:sub_id>/override-cancel", methods=["POST"])
+@admin_required
+def override_cancel_subscription(sub_id):
+    sub = Subscription.query.get_or_404(sub_id)
+
+    reason = (request.form.get("reason") or "").strip()
+
+    if not reason:
+        flash("Override cancellation requires a reason.", "warning")
+        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+    sub.status = "cancelled"
+
+    note = Payment(
+        user_id=sub.user_id,
+        amount_jmd=0,
+        method="Admin Override",
+        status="completed",
+        transaction_type="subscription_cancel_override",
+        reference=f"Override cancel subscription #{sub.id}",
+        notes=reason,
+        authorized_by_admin_id=current_user.id,
+    )
+
+    db.session.add(note)
+    db.session.commit()
+
+    flash("Subscription cancelled by admin override.", "success")
+    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+

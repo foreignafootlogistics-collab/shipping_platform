@@ -1874,11 +1874,20 @@ def admin_subscriptions():
         "expired": Subscription.query.filter_by(status="expired").count(),
     }
 
+    plans = (
+        SubscriptionPlan.query
+       .filter_by(is_active=True)
+        .order_by(SubscriptionPlan.price_usd.asc())
+        .all()
+    )
+
+
     return render_template(
         "admin/accounts_profiles/subscriptions.html",
         subscriptions=subscriptions,
         status_filter=status_filter,
         counts=counts,
+        plans=plans,
     )
 
 @accounts_bp.route("/subscriptions/bulk-activate", methods=["POST"])
@@ -2259,3 +2268,95 @@ def bulk_override_cancel_subscriptions():
     flash(f"{count} subscriptions override cancelled.", "success")
     return redirect(url_for("accounts_profiles.admin_subscriptions"))
 
+@accounts_bp.route("/subscriptions/bulk-upgrade", methods=["POST"])
+@admin_required
+def bulk_upgrade_subscriptions():
+    subscription_ids = [int(x) for x in request.form.getlist("subscription_ids") if str(x).isdigit()]
+    new_plan_id = request.form.get("new_plan_id", type=int)
+
+    if not subscription_ids:
+        flash("No subscriptions selected.", "warning")
+        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+    if not new_plan_id:
+        flash("Please select a plan to upgrade to.", "warning")
+        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+    new_plan = SubscriptionPlan.query.get_or_404(new_plan_id)
+
+    upgraded = 0
+    skipped = 0
+
+    for sub_id in subscription_ids:
+        old_sub = Subscription.query.get(sub_id)
+
+        if not old_sub or old_sub.status != "active":
+            skipped += 1
+            continue
+
+        old_price = float(old_sub.plan.price_usd or 0)
+        new_price = float(new_plan.price_usd or 0)
+
+        if new_price <= old_price:
+            skipped += 1
+            continue
+
+        difference_usd = new_price - old_price
+        difference_jmd = difference_usd * 162
+
+        old_sub.status = "expired"
+
+        new_sub = Subscription(
+            user_id=old_sub.user_id,
+            plan_id=new_plan.id,
+            start_date=datetime.now(timezone.utc),
+            end_date=datetime.now(timezone.utc) + timedelta(days=30),
+            status="active"
+        )
+
+        db.session.add(new_sub)
+        db.session.flush()
+
+        db.session.add(SubscriptionUsage(subscription_id=new_sub.id))
+
+        if getattr(new_plan, "is_family_plan", False):
+            db.session.add(SubscriptionMember(
+                subscription_id=new_sub.id,
+                user_id=old_sub.user_id,
+                role="owner",
+                status="active"
+            ))
+
+        invoice = Invoice(
+            user_id=old_sub.user_id,
+            invoice_number=f"SUB-UPG-{new_sub.id:05d}",
+            description=f"Upgrade to {new_plan.name} Subscription Plan",
+            amount=difference_jmd,
+            grand_total=difference_jmd,
+            amount_due=0.0,
+            status="paid",
+            date_issued=datetime.now(timezone.utc),
+            date_paid=datetime.now(timezone.utc),
+        )
+
+        db.session.add(invoice)
+        db.session.flush()
+
+        db.session.add(Payment(
+            user_id=old_sub.user_id,
+            invoice_id=invoice.id,
+            amount_jmd=difference_jmd,
+            method="Subscription Upgrade",
+            status="completed",
+            transaction_type="subscription_upgrade_payment",
+            reference=f"Upgrade from {old_sub.plan.name} to {new_plan.name}",
+            notes=f"Paid difference only: US${difference_usd:.2f}",
+            authorized_by_admin_id=current_user.id,
+        ))
+
+        upgraded += 1
+
+    db.session.commit()
+
+    flash(f"{upgraded} subscription(s) upgraded. {skipped} skipped.", "success")
+    return redirect(url_for("accounts_profiles.admin_subscriptions"))

@@ -17,7 +17,7 @@
       
       <button type="submit"
               formaction="{{ url_for('accounts_profiles.bulk_activate_subscriptions') }}"
-              class="btn btn-success btn-sm">
+              class="btn btn-success btn-sm"
               title="Activate Selected">
         <i class="bi bi-check-circle"></i>
       </button>
@@ -44,6 +44,25 @@
               title="Override Cancel"
               onclick="return confirm('Override cancel selected subscriptions?');">
         <i class="bi bi-exclamation-triangle"></i>
+      </button>
+
+      <select name="new_plan_id"
+              class="form-select form-select-sm d-inline-block"
+              style="width:180px;">
+        <option value="">Upgrade to...</option>
+        {% for plan in plans %}
+          <option value="{{ plan.id }}">
+            {{ plan.name }} — US${{ "%.2f"|format(plan.price_usd or 0) }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <button type="submit"
+              formaction="{{ url_for('accounts_profiles.bulk_upgrade_subscriptions') }}"
+              class="btn btn-primary btn-sm"
+              onclick="return confirm('Upgrade selected active subscriptions and record difference payment?');"
+              title="Upgrade selected">
+        <i class="bi bi-arrow-up-circle"></i>
       </button>
   </div>
 

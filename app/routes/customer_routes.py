@@ -2675,23 +2675,56 @@ def invite_family_member():
 
     subject = "You’ve been invited to join a Foreign A Foot Family Plan"
 
-    body = f"""
-Hi,
+    plain_body = f"""
+    Hi,
 
-{current_user.full_name} invited you to join their Foreign A Foot Family Plan.
+    {current_user.full_name} invited you to join their Foreign A Foot Family Plan.
 
-Accept invite here:
-{invite_url}
+    Accept invite here:
+    {invite_url}
 
-If you do not have an account, please register first using this email, then accept the invite.
+    If you do not have an account, please register first using this email, then accept the invite.
 
-This invite expires in 7 days.
+    This invite expires in 7 days.
 
-Foreign A Foot Logistics
-""".strip()
+    Foreign A Foot Logistics
+    """.strip()
+
+    html_body = f"""
+    <h2 style="margin:0 0 10px 0; color:#4a148c;">
+      You’re invited to join a Family Plan
+    </h2>
+
+    <p style="margin:0 0 12px 0;">
+      <strong>{current_user.full_name}</strong> invited you to join their
+      <strong>Foreign A Foot Family Plan</strong>.
+    </p>
+
+    <p style="margin:16px 0;">
+      <a href="{invite_url}"
+         style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
+        Accept Invite
+      </a>
+    </p>
+
+    <p style="margin:0 0 12px 0;">
+      If you do not have an account, please register first using this email, then accept the invite.
+    </p>
+
+    <p style="font-size:13px;color:#6b7280;">
+      This invite expires in 7 days.
+    </p>
+    """.strip()
 
     try:
-        email_utils.send_email(email, subject, body)
+
+        email_utils.send_email(
+            to_email=email,
+            subject=subject,
+            plain_body=plain_body,
+            html_body=html_body,
+            reply_to=email_utils.EMAIL_FROM or email_utils.EMAIL_ADDRESS,
+        )    
         flash("Family invite sent successfully.", "success")
     except Exception:
         current_app.logger.exception("[FAMILY INVITE EMAIL FAILED]")

@@ -151,6 +151,7 @@
               <tr>
                 <th>Email</th>
                 <th>Expires</th>
+                <th>Invite Link</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -164,6 +165,13 @@
                   {% else %}
                     —
                   {% endif %}
+                </td>
+                <td>
+                  <a href="{{ url_for('customer.accept_subscription_invite', token=invite.token, _external=True) }}"
+                     class="btn btn-sm btn-outline-purple"
+                     target="_blank">
+                    Open / Copy
+                  </a>
                 </td>
                 <td>
                   <span class="badge bg-warning text-dark">Pending</span>

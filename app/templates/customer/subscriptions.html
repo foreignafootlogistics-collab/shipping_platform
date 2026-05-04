@@ -38,12 +38,14 @@
           {% endif %}
         </div>
 
-        <span class="badge bg-success">Active</span>
+        <span class="badge bg-success">
+          {{ subscription_summary.status|title }}
+        </span>
       </div>
     </div>
 
     {% if not subscription_summary.is_family_plan %}
-      <div class="alert alert-info">
+      <div class="alert alert-info shadow-sm">
         Upgrade to a <strong>Family Plan</strong> to invite up to 3 additional members.
       </div>
     {% endif %}
@@ -61,7 +63,6 @@
     </div>
   {% endif %}
 
-  <!-- 🔥 FAMILY INVITE SECTION -->
   {% if subscription_summary and subscription_summary.is_family_plan %}
   <div class="card mb-4 shadow-sm border-0">
     <div class="card-header text-white" style="background:#4a148c;">
@@ -81,7 +82,7 @@
 
       {% if subscription_summary.members %}
         <div class="table-responsive mb-3">
-          <table class="table table-sm">
+          <table class="table table-sm align-middle">
             <thead class="table-light">
               <tr>
                 <th>Name</th>
@@ -111,30 +112,66 @@
       {% if subscription_summary.members|length < 4 %}
         <form method="POST"
               action="{{ url_for('customer.invite_family_member') }}"
-              class="row g-2">
+              class="row g-2 align-items-end">
 
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
           <div class="col-md-8">
+            <label class="form-label fw-semibold mb-1">Invite Family Member</label>
             <input type="email"
                    name="email"
                    class="form-control"
                    placeholder="Enter family member email"
                    required>
             <small class="text-muted">
-              They will receive an invite to join your plan.
+              They will receive an invite to join your plan. New customers can register first, then accept.
             </small>
           </div>
 
           <div class="col-md-4">
             <button class="btn btn-dashboard w-100">
-              <i class="bi bi-envelope-plus"></i> Invite
+              <i class="bi bi-envelope-plus me-1"></i>
+              Invite
             </button>
           </div>
         </form>
       {% else %}
-        <div class="alert alert-light">
+        <div class="alert alert-light border mb-0">
           Maximum 4 members reached.
+        </div>
+      {% endif %}
+
+      {% if pending_invites %}
+        <hr>
+        <h6 class="fw-bold mb-2">Pending Invites</h6>
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Email</th>
+                <th>Expires</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for invite in pending_invites %}
+              <tr>
+                <td>{{ invite.email }}</td>
+                <td>
+                  {% if invite.expires_at %}
+                    {{ invite.expires_at.strftime("%Y-%m-%d") if invite.expires_at.strftime is defined else invite.expires_at }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge bg-warning text-dark">Pending</span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
       {% endif %}
 
@@ -142,65 +179,107 @@
   </div>
   {% endif %}
 
-  <!-- PAYMENT -->
   <div class="alert alert-warning shadow-sm">
     <strong>Important:</strong>
-    Subscriptions cover shipping/freight only.
-    Customs charges apply over USD $100.
+    Subscriptions cover shipping/freight charges only.
+    Customs charges still apply for packages valued over <strong>USD $100</strong>.
+    Usage is based on rounded billable weight.
   </div>
 
   <div class="card mb-4 shadow-sm">
     <div class="card-body">
-      <h5>Payment Instructions</h5>
+      <h5 style="color:#4a148c;">Payment Instructions</h5>
+      <p class="mb-3">
+        Subscription payments can be made by bank transfer or deposit using the JMD accounts below.
+        Please use your registration number as the payment reference.
+      </p>
 
-      <div class="row">
+      <div class="row g-3">
         <div class="col-md-6">
-          <strong>Bank of Nova Scotia</strong><br>
-          Account Name: Foreign A Foot Logistics Ltd<br>
-          Branch: Liguanea<br>
-          JMD Account: 000851952
+          <div class="border rounded p-3 h-100">
+            <strong>Bank of Nova Scotia</strong><br>
+            Account Name: Foreign A Foot Logistics Ltd<br>
+            Branch: Liguanea<br>
+            JMD Account: <strong>000851952</strong>
+          </div>
         </div>
 
         <div class="col-md-6">
-          <strong>National Commercial Bank</strong><br>
-          Account Name: Foreign A Foot Logistics Ltd<br>
-          Branch: Duke Street<br>
-          JMD Account: 065534177
+          <div class="border rounded p-3 h-100">
+            <strong>National Commercial Bank</strong><br>
+            Account Name: Foreign A Foot Logistics Ltd<br>
+            Branch: Duke Street<br>
+            JMD Account: <strong>065534177</strong>
+          </div>
         </div>
       </div>
 
-      <small class="text-muted">
-        Exchange rate: US$1 = JMD $162
-      </small>
+      <p class="mt-3 mb-0">
+        Exchange rate for subscription payments:
+        <strong>US$1 = JMD $162</strong>.
+      </p>
     </div>
   </div>
 
-  <!-- PLANS -->
   <div class="row">
     {% for plan in plans %}
     <div class="col-md-4 mb-3">
-      <div class="card h-100 shadow-sm">
+      <div class="card h-100 shadow-sm {% if subscription_summary and subscription_summary.plan_name == plan.name %}border-success{% else %}border-0{% endif %}">
 
-        <div class="card-body">
-          <h5>{{ plan.name }}</h5>
-          <h4>US${{ "%.2f"|format(plan.price_usd or 0) }}</h4>
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              {% if plan.name|lower == "standard" %}
+                <span class="badge bg-primary mb-2">Most Popular</span>
+              {% endif %}
 
-          <ul class="small">
-            <li>{{ plan.package_limit }} packages</li>
-            <li>{{ "%.1f"|format(plan.weight_limit or 0) }} lb total</li>
+              <h5 class="mb-0" style="color:#4a148c;">{{ plan.name }}</h5>
+            </div>
+
+            {% if subscription_summary and subscription_summary.plan_name == plan.name %}
+              <span class="badge bg-success">Current</span>
+            {% elif plan.is_family_plan %}
+              <span class="badge bg-primary">Family</span>
+            {% endif %}
+          </div>
+
+          <h4 class="mb-3">
+            US${{ "%.2f"|format(plan.price_usd or 0) }}
+            <small class="text-muted fs-6">/ 30 days</small>
+          </h4>
+
+          <ul class="small flex-grow-1">
+            <li>{{ plan.package_limit }} packages included</li>
+            <li>{{ "%.1f"|format(plan.weight_limit or 0) }} lb total weight</li>
             <li>Max {{ "%.1f"|format(plan.max_weight_per_package or 0) }} lb per package</li>
+            <li>Shipping/freight covered</li>
+            <li>Customs still apply over USD $100</li>
+
+            {% if plan.priority_processing %}
+              <li>⚡ Priority processing included</li>
+            {% endif %}
 
             {% if plan.is_family_plan %}
-              <li>Includes up to 4 persons</li>
+              <li class="text-success fw-semibold">Includes up to 4 persons</li>
               <li>Shared usage across members</li>
+            {% endif %}
+
+            {% if plan.overage_discount_percent %}
+              <li>
+                {{ "%.0f"|format(plan.overage_discount_percent or 0) }}% subscriber rate after plan limit
+              </li>
             {% endif %}
           </ul>
 
           {% if subscription_summary and subscription_summary.plan_name == plan.name %}
-            <button class="btn btn-success w-100" disabled>Current Plan</button>
+            <button class="btn btn-success w-100" disabled>
+              Current Plan
+            </button>
 
           {% elif pending_subscription %}
-            <button class="btn btn-secondary w-100" disabled>Pending Payment</button>
+            <button class="btn btn-secondary w-100" disabled>
+              Pending Payment
+            </button>
 
           {% else %}
             <form method="POST"
@@ -210,6 +289,10 @@
                 Pay / Switch Plan
               </button>
             </form>
+
+            <small class="text-muted d-block text-center mt-2">
+              Your plan will activate after payment confirmation.
+            </small>
           {% endif %}
 
         </div>

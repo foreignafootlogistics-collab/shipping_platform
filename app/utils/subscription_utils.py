@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import math
 
 from app.extensions import db
@@ -15,13 +15,9 @@ def get_billable_weight(package):
 
 
 def get_active_subscription(user_id):
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
 
-    # -----------------------------------------
-    # FIRST: check if user is OWNER
-    # -----------------------------------------
+    # First: check if user is owner
     sub = (
         Subscription.query
         .filter(
@@ -37,9 +33,7 @@ def get_active_subscription(user_id):
     if sub:
         return sub
 
-    # -----------------------------------------
-    # SECOND: check if user is FAMILY MEMBER
-    # -----------------------------------------
+    # Second: check if user is family member
     member = (
         SubscriptionMember.query
         .filter(
@@ -88,7 +82,6 @@ def subscription_is_exhausted(subscription):
 
 def package_qualifies_for_subscription(subscription, package):
     billable_weight = get_billable_weight(package)
-
     return billable_weight <= subscription.plan.max_weight_per_package
 
 
@@ -135,14 +128,13 @@ def apply_subscription_usage(package):
 
 def get_subscription_discount_percent(package):
     """
-    Applies after subscription is exhausted:
-    Works for BOTH owner and family members
+    Applies after subscription is exhausted.
+    Works for both owner and family members.
     """
 
     if not package.user_id:
         return 0
 
-    # use correct lookup (owner OR member)
     subscription = get_active_subscription(package.user_id)
 
     if not subscription or subscription.status != "exhausted":
@@ -155,9 +147,9 @@ def get_subscription_discount_percent(package):
 
     return 0
 
+
 def get_subscription_summary(user_id):
     subscription = get_active_subscription(user_id)
-    members = []
 
     if not subscription:
         return None
@@ -180,8 +172,6 @@ def get_subscription_summary(user_id):
     if weight_limit > 0:
         weight_percent = min(100, round((weight_used / weight_limit) * 100))
 
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
 
     end_date = subscription.end_date
@@ -198,7 +188,8 @@ def get_subscription_summary(user_id):
         is_expired = delta.total_seconds() <= 0
         expires_soon = (not is_expired) and days_remaining <= 5
 
-    if subscription.plan.is_family_plan:
+    members = []
+    if bool(getattr(plan, "is_family_plan", False)):
         members = (
             SubscriptionMember.query
             .filter_by(subscription_id=subscription.id, status="active")
@@ -207,6 +198,7 @@ def get_subscription_summary(user_id):
 
     return {
         "subscription_id": subscription.id,
+        "plan_id": plan.id,
         "plan_name": plan.name,
         "status": subscription.status,
         "start_date": subscription.start_date,
@@ -223,10 +215,12 @@ def get_subscription_summary(user_id):
         "weight_percent": weight_percent,
 
         "max_weight_per_package": float(plan.max_weight_per_package or 0),
-        "is_family_plan": bool(plan.is_family_plan),
-        "priority_processing": bool(plan.priority_processing),
+        "is_family_plan": bool(getattr(plan, "is_family_plan", False)),
+        "priority_processing": bool(getattr(plan, "priority_processing", False)),
+
         "days_remaining": days_remaining,
         "expires_soon": expires_soon,
         "is_expired": is_expired,
+
         "members": members,
     }

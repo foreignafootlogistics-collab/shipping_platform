@@ -61,6 +61,9 @@ from app.models import (
     Wallet, WalletTransaction, Payment, Settings,
     Prealert, PackageAttachment,
 )
+
+from app.models import SubscriptionInvite, SubscriptionMember
+from app.utils.subscription_utils import get_active_subscription
 from app.models import normalize_tracking
 from sqlalchemy import func, or_
 # Email class from Flask-Mail (alias to avoid clash)
@@ -2525,8 +2528,8 @@ def privacy():
 @customer_bp.route("/subscriptions")
 @login_required
 def customer_subscriptions():
-    from app.models import SubscriptionPlan, Subscription
-    from app.utils.subscription_utils import get_subscription_summary
+    from app.models import SubscriptionPlan, Subscription, SubscriptionInvite
+    from app.utils.subscription_utils import get_subscription_summary, get_active_subscription
 
     plans = (
         SubscriptionPlan.query
@@ -2544,11 +2547,32 @@ def customer_subscriptions():
         .first()
     )
 
+    pending_invites = []
+
+    active_subscription = get_active_subscription(current_user.id)
+
+    if (
+        active_subscription
+        and active_subscription.plan
+        and active_subscription.plan.is_family_plan
+        and active_subscription.user_id == current_user.id
+    ):
+        pending_invites = (
+            SubscriptionInvite.query
+            .filter_by(
+                subscription_id=active_subscription.id,
+                status="pending"
+            )
+            .order_by(SubscriptionInvite.created_at.desc())
+            .all()
+        )
+
     return render_template(
         "customer/subscriptions.html",
         plans=plans,
         subscription_summary=subscription_summary,
         pending_subscription=pending_subscription,
+        pending_invites=pending_invites,
     )
 
 
@@ -2593,6 +2617,150 @@ def activate_subscription(plan_id):
 
     flash(f"{plan.name} plan selected. Please complete payment so we can activate it.", "info")
     return redirect(url_for("customer.customer_subscriptions"))
+
+
+@customer_bp.route("/subscriptions/invite-family", methods=["POST"])
+@login_required
+def invite_family_member():
+    email = (request.form.get("email") or "").strip().lower()
+
+    if not email:
+        flash("Please enter an email address.", "warning")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    subscription = get_active_subscription(current_user.id)
+
+    if not subscription or not subscription.plan.is_family_plan:
+        flash("You must have an active Family plan to invite members.", "danger")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    if subscription.user_id != current_user.id:
+        flash("Only the Family plan owner can invite members.", "danger")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    active_member_count = SubscriptionMember.query.filter_by(
+        subscription_id=subscription.id,
+        status="active"
+    ).count()
+
+    if active_member_count >= 4:
+        flash("Your Family plan already has the maximum 4 persons.", "warning")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    existing_invite = SubscriptionInvite.query.filter_by(
+        subscription_id=subscription.id,
+        email=email,
+        status="pending"
+    ).first()
+
+    if existing_invite:
+        flash("An invite is already pending for this email.", "info")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    token = secrets.token_urlsafe(32)
+
+    invite = SubscriptionInvite(
+        subscription_id=subscription.id,
+        email=email,
+        token=token,
+        status="pending",
+        invited_by_user_id=current_user.id,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+    )
+
+    db.session.add(invite)
+    db.session.commit()
+
+    invite_url = url_for("customer.accept_subscription_invite", token=token, _external=True)
+
+    subject = "You’ve been invited to join a Foreign A Foot Family Plan"
+
+    body = f"""
+Hi,
+
+{current_user.full_name} invited you to join their Foreign A Foot Family Plan.
+
+Accept invite here:
+{invite_url}
+
+If you do not have an account, please register first using this email, then accept the invite.
+
+This invite expires in 7 days.
+
+Foreign A Foot Logistics
+""".strip()
+
+    try:
+        email_utils.send_email(email, subject, body)
+        flash("Family invite sent successfully.", "success")
+    except Exception:
+        current_app.logger.exception("[FAMILY INVITE EMAIL FAILED]")
+        flash("Invite created, but email failed to send.", "warning")
+
+    return redirect(url_for("customer.customer_subscriptions"))
+
+
+@customer_bp.route("/subscriptions/invite/<token>")
+@login_required
+def accept_subscription_invite(token):
+    invite = SubscriptionInvite.query.filter_by(token=token).first_or_404()
+
+    now = datetime.now(timezone.utc)
+
+    expires_at = invite.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if invite.status != "pending":
+        flash("This invite is no longer active.", "warning")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    if expires_at and expires_at < now:
+        invite.status = "expired"
+        db.session.commit()
+        flash("This invite has expired.", "warning")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    if current_user.email.lower() != invite.email.lower():
+        flash("This invite was sent to a different email address.", "danger")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    active_member_count = SubscriptionMember.query.filter_by(
+        subscription_id=invite.subscription_id,
+        status="active"
+    ).count()
+
+    if active_member_count >= 4:
+        flash("This Family plan is already full.", "warning")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    existing_membership = SubscriptionMember.query.filter_by(
+        user_id=current_user.id,
+        status="active"
+    ).first()
+
+    if existing_membership:
+        flash("You already belong to an active subscription.", "warning")
+        return redirect(url_for("customer.customer_subscriptions"))
+
+    member = SubscriptionMember(
+        subscription_id=invite.subscription_id,
+        user_id=current_user.id,
+        role="member",
+        status="active",
+    )
+
+    invite.status = "accepted"
+    invite.accepted_user_id = current_user.id
+    invite.accepted_at = now
+
+    db.session.add(member)
+    db.session.commit()
+
+    flash("You have joined the Family plan successfully.", "success")
+    return redirect(url_for("customer.customer_subscriptions"))
+
+
 
 
 @customer_bp.route("/api/dashboard", methods=["GET"])

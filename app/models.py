@@ -283,6 +283,76 @@ class Wallet(db.Model):
         return f"<Wallet User {self.user_id} Balance {self.ewallet_balance}>"
 
 
+class SubscriptionInvite(db.Model):
+    __tablename__ = "subscription_invites"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    subscription_id = db.Column(
+        db.Integer,
+        db.ForeignKey("subscriptions.id"),
+        nullable=False,
+        index=True
+    )
+
+    email = db.Column(db.String(255), nullable=False, index=True)
+
+    token = db.Column(
+        db.String(100),
+        nullable=False,
+        unique=True,
+        index=True
+    )
+
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    # pending, accepted, expired, cancelled
+
+    invited_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=False
+    )
+
+    accepted_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True
+    )
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    expires_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False
+    )
+
+    accepted_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True
+    )
+
+    subscription = db.relationship(
+        "Subscription",
+        backref=db.backref("invites", lazy=True)
+    )
+
+    invited_by_user = db.relationship(
+        "User",
+        foreign_keys=[invited_by_user_id],
+        backref=db.backref("sent_subscription_invites", lazy=True)
+    )
+
+    accepted_user = db.relationship(
+        "User",
+        foreign_keys=[accepted_user_id],
+        backref=db.backref("accepted_subscription_invites", lazy=True)
+    )
+
+    def __repr__(self):
+        return f"<SubscriptionInvite email={self.email} status={self.status}>"
 
 
 class WalletTransaction(db.Model):

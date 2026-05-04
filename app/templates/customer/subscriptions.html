@@ -266,7 +266,7 @@
 
             {% if plan.overage_discount_percent %}
               <li>
-                {{ "%.0f"|format(plan.overage_discount_percent or 0) }}% subscriber rate after plan limit
+                {{ "%.0f"|format(plan.overage_discount_percent or 0) }}% discount after plan limit on eligible packages
               </li>
             {% endif %}
           </ul>

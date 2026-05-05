@@ -2173,18 +2173,12 @@ Not emailed yet"></i>
 
       const freight = numVal(resFreight);
       const handling = numVal(resHandling);
-      const other = numVal(resOther);
-
-      let badAddressAmt = numVal(resBadAddress);
+      const other = numVal(resOther);      
 
       const badAddressOn = !!badAddressToggle?.checked;
       const badAddressFee = numVal(badAddressFeeInput);
 
-      if (badAddressOn) {
-        badAddressAmt = badAddressFee;
-      } else {
-        badAddressAmt = 0;
-      }
+      let badAddressAmt = badAddressOn ? badAddressFee : 0;
 
       if (resBadAddress) resBadAddress.value = badAddressAmt.toFixed(2);
 
@@ -2198,21 +2192,17 @@ Not emailed yet"></i>
       syncHiddenOverridesFromModal(pkgId);
     }
 
-    [resDuty, resGct, resScf, resEnvl, resCaf, resStamp, resFreight, resHandling, resOther].forEach(el => {
-      if (!el) return;
-      el.addEventListener('input', () => {
-        setLocked(true);          // ✅ if user edits manually, lock it
-        recalcTotalsFromManual();
-      });
-    });
-
-    [badAddressToggle, badAddressFeeInput].forEach(el => {
-      if (!el) return;
-      el.addEventListener('input', () => {
+    [
+      resDuty, resGct, resScf, resEnvl, resCaf, resStamp,
+      resFreight, resHandling, resOther,
+      badAddressFeeInput, badAddressToggle
+    ].forEach(el => {
+      el?.addEventListener('input', () => {
         setLocked(true);
         recalcTotalsFromManual();
       });
-      el.addEventListener('change', () => {
+
+      el?.addEventListener('change', () => {
         setLocked(true);
         recalcTotalsFromManual();
       });

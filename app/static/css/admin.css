@@ -427,10 +427,18 @@ footer {
   background: #6b7280 !important;
 }
 
+#chargesModalSL .modal-dialog {
+  max-width: 95vw;
+  height: 92vh;
+  margin: 1.5rem auto;
+}
+
 #chargesModalSL .modal-content {
-  max-height: 90vh;
+  height: 100%;
+  max-height: 92vh;
 }
 
 #chargesModalSL .modal-body {
-  overflow-y: auto;
+  overflow-y: auto !important;
+  max-height: calc(92vh - 120px);
 }

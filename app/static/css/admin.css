@@ -11,7 +11,8 @@ body {
 /* ---------- Sidebar styles ---------- */
 .sidebar {
   height: 100vh;
-  background-color: #4a148c !important; /* unified purple */
+  background-color: #4a148c !important;
+  /* unified purple */
   padding-top: 20px;
   color: white;
   position: sticky;
@@ -28,7 +29,8 @@ body {
 
 .sidebar .nav-link.active,
 .sidebar .accordion-button:not(.collapsed) {
-  background-color: rgba(255, 255, 255, 0.15) !important; /* subtle highlight */
+  background-color: rgba(255, 255, 255, 0.15) !important;
+  /* subtle highlight */
   color: #fff !important;
 }
 
@@ -166,46 +168,54 @@ body {
 
 /* Inactive tabs: text purple, background white */
 .card-header .nav-tabs .nav-link {
-  color: #4a148c !important; /* text purple */
-  background-color: #fff !important; /* background stays white */
+  color: #4a148c !important;
+  /* text purple */
+  background-color: #fff !important;
+  /* background stays white */
   font-weight: 500;
 }
 
 /* Hover tabs: darker purple text */
 .card-header .nav-tabs .nav-link:hover {
-  color: #6a1b9a !important; /* slightly darker purple on hover */
+  color: #6a1b9a !important;
+  /* slightly darker purple on hover */
   background-color: #fff !important;
 }
+
 /* Active tab: bold purple text with white background */
 .card-header .nav-tabs .nav-link.active,
 .card-header .nav-tabs .nav-item.show .nav-link {
-  color: #4a148c !important; /* active tab text purple */
+  color: #4a148c !important;
+  /* active tab text purple */
   background-color: #fff !important;
-  border-color: #ddd #ddd #fff !important; /* subtle bottom border */
+  border-color: #ddd #ddd #fff !important;
+  /* subtle bottom border */
   font-weight: 600;
 }
+
 /* ---------- Table Header: Black Background + White Text ---------- */
 .tab-content table thead th {
-    background-color: #000 !important;
-    color: #fff !important;
-    border: 1px solid #000 !important;
+  background-color: #000 !important;
+  color: #fff !important;
+  border: 1px solid #000 !important;
 }
 
 /* ---------- Table Body: Bordered ---------- */
-.tab-content table, 
-.tab-content table th, 
+.tab-content table,
+.tab-content table th,
 .tab-content table td {
-    border: 1px solid #000 !important;
+  border: 1px solid #000 !important;
 }
 
 /* ---------- Striped Rows ---------- */
 .tab-content table.table-striped tbody tr:nth-of-type(odd) {
-    background-color: #f2f2f2; /* light gray for odd rows */
+  background-color: #f2f2f2;
+  /* light gray for odd rows */
 }
 
 /* Optional: Hover effect */
 .tab-content table tbody tr:hover {
-    background-color: #e0e0e0;
+  background-color: #e0e0e0;
 }
 
 
@@ -231,7 +241,8 @@ body {
 footer {
   text-align: center;
   padding: 15px 10px;
-  background-color: #4a148c; /* match sidebar */
+  background-color: #4a148c;
+  /* match sidebar */
   color: #fff;
   font-size: 14px;
 }
@@ -294,6 +305,7 @@ footer {
 .admin-profile-img:hover {
   transform: scale(1.05);
 }
+
 /* ================================
    Mobile Sidebar (Bootstrap collapse)
    ================================ */
@@ -305,10 +317,13 @@ footer {
     top: 0;
     left: 0;
     height: 100vh;
-    width: 280px;               /* you can adjust */
-    z-index: 1040;              /* above page content */
+    width: 280px;
+    /* you can adjust */
+    z-index: 1040;
+    /* above page content */
     overflow-y: auto;
-    transform: translateX(-100%);  /* hidden by default */
+    transform: translateX(-100%);
+    /* hidden by default */
     transition: transform .25s ease-in-out;
   }
 
@@ -323,13 +338,18 @@ footer {
     margin-left: 0 !important;
   }
 }
-.dashboard-card { cursor: pointer; }
+
+.dashboard-card {
+  cursor: pointer;
+}
+
 .page-narrow {
   max-width: 800px;
   margin-left: auto;
   margin-right: auto;
 }
-.status-badge{
+
+.status-badge {
   font-weight: 700;
   font-size: .72rem;
   padding: .35rem .55rem;
@@ -337,35 +357,80 @@ footer {
 }
 
 /* progress bar base */
-.status-progress{
+.status-progress {
   height: 7px;
   border-radius: 999px;
-  background: #e5e7eb; /* light gray track */
+  background: #e5e7eb;
+  /* light gray track */
   overflow: hidden;
   margin-top: .35rem;
 }
-.status-progress .fill{
+
+.status-progress .fill {
   height: 100%;
   border-radius: 999px;
 }
 
 /* ===== COLOR MAP ===== */
-.status-delivered { background: #16a34a !important; color: #fff !important; }
-.status-progress.status-delivered .fill{ background: #16a34a !important; }
+.status-delivered {
+  background: #16a34a !important;
+  color: #fff !important;
+}
 
-.status-overseas { background: #dc2626 !important; color: #fff !important; }
-.status-progress.status-overseas .fill{ background: #dc2626 !important; }
+.status-progress.status-delivered .fill {
+  background: #16a34a !important;
+}
 
-.status-local_port { background: #facc15 !important; color: #111827 !important; }
-.status-progress.status-local_port .fill{ background: #facc15 !important; }
+.status-overseas {
+  background: #dc2626 !important;
+  color: #fff !important;
+}
 
-.status-ready { background: #2563eb !important; color: #fff !important; }
-.status-progress.status-ready .fill{ background: #2563eb !important; }
+.status-progress.status-overseas .fill {
+  background: #dc2626 !important;
+}
 
-.status-unassigned { background: #4a148c !important; color: #fff !important; }
-.status-progress.status-unassigned .fill{ background: #4a148c !important; }
+.status-local_port {
+  background: #facc15 !important;
+  color: #111827 !important;
+}
+
+.status-progress.status-local_port .fill {
+  background: #facc15 !important;
+}
+
+.status-ready {
+  background: #2563eb !important;
+  color: #fff !important;
+}
+
+.status-progress.status-ready .fill {
+  background: #2563eb !important;
+}
+
+.status-unassigned {
+  background: #4a148c !important;
+  color: #fff !important;
+}
+
+.status-progress.status-unassigned .fill {
+  background: #4a148c !important;
+}
 
 /* fallback */
-.status-other { background: #6b7280 !important; color: #fff !important; }
-.status-progress.status-other .fill{ background: #6b7280 !important; }
+.status-other {
+  background: #6b7280 !important;
+  color: #fff !important;
+}
 
+.status-progress.status-other .fill {
+  background: #6b7280 !important;
+}
+
+#chargesModalSL .modal-content {
+  max-height: 90vh;
+}
+
+#chargesModalSL .modal-body {
+  overflow-y: auto;
+}

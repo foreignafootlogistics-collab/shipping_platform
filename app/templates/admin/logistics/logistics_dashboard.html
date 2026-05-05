@@ -387,8 +387,7 @@
                 {% endif %}
               </h5>
 
-              <button class="btn btn-sm btn-outline-purple flex-shrink-0" 
-                data-bs-toggle="modal"
+              <button class="btn btn-sm btn-outline-purple flex-shrink-0" data-bs-toggle="modal"
                 data-bs-target="#renameShipmentModal">
                 ✏️
               </button>
@@ -398,45 +397,40 @@
               <!-- export toolbar -->
               <div class="shipment-export-toolbar">
                 <a href="{{ url_for('logistics.print_shipment_log', shipment_id=selected_shipment.id) }}"
-                   class="ship-export-btn"
-                   target="_blank"
-                   title="Print shipment log">
+                  class="ship-export-btn" target="_blank" title="Print shipment log">
                   <i class="bi bi-printer"></i>
                 </a>
 
                 <span class="ship-export-divider"></span>
 
                 <a href="{{ url_for('logistics.download_shipment_log_csv', shipment_id=selected_shipment.id) }}"
-                   class="ship-export-btn"
-                   title="Download CSV">
+                  class="ship-export-btn" title="Download CSV">
                   <i class="bi bi-filetype-csv"></i>
                 </a>
 
                 <span class="ship-export-divider"></span>
 
                 <a href="{{ url_for('logistics.download_shipment_log_excel', shipment_id=selected_shipment.id) }}"
-                   class="ship-export-btn"
-                   title="Download Excel">
+                  class="ship-export-btn" title="Download Excel">
                   <i class="bi bi-file-earmark-excel"></i>
                 </a>
 
                 <span class="ship-export-divider"></span>
 
                 <a href="{{ url_for('logistics.download_shipment_log_pdf', shipment_id=selected_shipment.id) }}"
-                   class="ship-export-btn"
-                   title="Download PDF">
+                  class="ship-export-btn" title="Download PDF">
                   <i class="bi bi-file-earmark-pdf"></i>
                 </a>
               </div>
 
               <div>
-            
+
                 {% set return_to = request.args.get('return_to') %}
                 <a class="btn btn-outline-dark btn-sm"
                   href="{{ return_to or url_for('logistics.logistics_dashboard', tab='view_packages') }}">
                   <i class="bi bi-arrow-left"></i> Back to View Packages
                 </a>
-              </div>            
+              </div>
             </div>
             {% endif %}
           </div>
@@ -487,9 +481,7 @@
                   <div class="col-md-3">
                     <label class="form-label small mb-0">&nbsp;</label>
                     <div class="form-check mt-1">
-                      <input type="checkbox"
-                             class="form-check-input"
-                             id="fltSubscriptionOnly">
+                      <input type="checkbox" class="form-check-input" id="fltSubscriptionOnly">
                       <label class="form-check-label small" for="fltSubscriptionOnly">
                         Subscription Packages
                       </label>
@@ -586,12 +578,9 @@
                     <td class="text-center align-middle">
                       <!-- ✅ IMPORTANT: include data-category so modal opens correctly -->
                       <button type="button" class="btn btn-sm btn-outline-primary mb-1 js-open-charges"
-                        data-bs-toggle="modal" 
-                        data-bs-target="#chargesModalSL" 
-                        data-pkg-id="{{ pkg.id }}"
+                        data-bs-toggle="modal" data-bs-target="#chargesModalSL" data-pkg-id="{{ pkg.id }}"
                         data-desc="{{ pkg.description or pkg.tracking_number or ('Package #' ~ pkg.id) }}"
-                        data-category="{{ pkg.category or 'Other' }}"
-                        data-epc="{{ 1 if pkg.epc else 0 }}"
+                        data-category="{{ pkg.category or 'Other' }}" data-epc="{{ 1 if pkg.epc else 0 }}"
                         data-bad-address="{{ 1 if pkg.bad_address else 0 }}"
                         data-bad-address-fee="{{ pkg.bad_address_fee or 0 }}">
                         <i class="bi bi-calculator"></i>
@@ -620,29 +609,22 @@
                       <div class="d-inline-flex align-items-center gap-1">
                         <span>{{ pkg.house_awb or '-' }}</span>
                         {% if pkg.subscription_covered %}
-                          <i class="bi bi-patch-check-fill text-success ms-1 shipment-subscription-icon"
-                             style="font-size:0.9rem;"
-                             title="Covered by subscription"></i>
+                        <i class="bi bi-patch-check-fill text-success ms-1 shipment-subscription-icon"
+                          style="font-size:0.9rem;" title="Covered by subscription"></i>
                         {% endif %}
                         {% if pkg.invoice_id %}
-                          {% if pkg.invoice_emailed_at %}
-                            <i class="bi bi-envelope-check-fill text-success ms-1"  
-                               style="font-size:0.9rem;"
-                               title="Invoice {{ pkg.invoice_number or ('INV-' ~ pkg.invoice_id) }}
+                        {% if pkg.invoice_emailed_at %}
+                        <i class="bi bi-envelope-check-fill text-success ms-1" style="font-size:0.9rem;" title="Invoice {{ pkg.invoice_number or ('INV-' ~ pkg.invoice_id) }}
 Sent: {{ pkg.invoice_emailed_at.strftime('%b %d %Y %I:%M %p') }}"></i>
 
-                          {% elif pkg.invoice_email_failed %}
-                            <i class="bi bi-envelope-x-fill text-danger ms-1"  
-                               style="font-size:0.9rem;"
-                               title="Invoice {{ pkg.invoice_number or ('INV-' ~ pkg.invoice_id) }}
+                        {% elif pkg.invoice_email_failed %}
+                        <i class="bi bi-envelope-x-fill text-danger ms-1" style="font-size:0.9rem;" title="Invoice {{ pkg.invoice_number or ('INV-' ~ pkg.invoice_id) }}
 Email failed{% if pkg.invoice_email_failure_reason %}: {{ pkg.invoice_email_failure_reason }}{% endif %}"></i>
 
-                          {% else %}
-                            <i class="bi bi-envelope text-secondary ms-1"
-                               style="font-size:0.9rem;"
-                               title="Invoice {{ pkg.invoice_number or ('INV-' ~ pkg.invoice_id) }}
+                        {% else %}
+                        <i class="bi bi-envelope text-secondary ms-1" style="font-size:0.9rem;" title="Invoice {{ pkg.invoice_number or ('INV-' ~ pkg.invoice_id) }}
 Not emailed yet"></i>
-                          {% endif %}
+                        {% endif %}
                         {% endif %}
                       </div>
                     </td>
@@ -720,7 +702,7 @@ Not emailed yet"></i>
                   {% endfor %}
                 </tbody>
               </table>
-            </div>     
+            </div>
             {% else %}
             <p class="text-muted">No packages in this shipment.</p>
             {% endif %}
@@ -983,7 +965,7 @@ Not emailed yet"></i>
                       <div class="border rounded p-2">
                         <div class="text-muted small">Bad Address</div>
                         <input type="number" step="0.01" id="resBadAddress"
-                               class="form-control form-control-sm text-end">
+                          class="form-control form-control-sm text-end">
                       </div>
                     </div>
 
@@ -1158,7 +1140,7 @@ Not emailed yet"></i>
                   <select class="form-select form-select-sm" name="shipment_id">
                     <option value="">Select…</option>
                     {% for s in active_shipments %}
-                      <option value="{{ s.id }}">{{ s.sl_name or s.sl_id }}</option>                      
+                    <option value="{{ s.id }}">{{ s.sl_name or s.sl_id }}</option>
                     {% endfor %}
                   </select>
                 </div>
@@ -1166,7 +1148,7 @@ Not emailed yet"></i>
                 <div class="mb-3 d-none" id="searchNewShipmentWrap">
                   <label class="form-label small">New Shipment Name (optional)</label>
                   <input type="text" class="form-control form-control-sm" name="new_sl_name"
-                         placeholder="e.g. March Barrel Batch">
+                    placeholder="e.g. March Barrel Batch">
                 </div>
               </div>
 
@@ -1181,7 +1163,7 @@ Not emailed yet"></i>
             </form>
           </div>
         </div>
-      </div>     
+      </div>
 
       <!-- Delete Shipment Batch Modal -->
       <div class="modal fade" id="deleteShipmentModal" tabindex="-1" aria-labelledby="deleteShipmentLabel"
@@ -1576,10 +1558,10 @@ Not emailed yet"></i>
   window.INVOICE_PREVIEW_URL = "{{ url_for('logistics.bulk_invoice_preview') }}";
   window.INVOICE_FINALIZE_URL = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
 
-  window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}"; 
+  window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}";
 
-  window.CURRENT_SHIPMENT_ID = {{ selected_shipment.id if selected_shipment else 0 }}; 
-  window.BAD_ADDRESS_FEE_DEFAULT = {{ (settings.bad_address_fee_jmd or 500)|float }}; 
+  window.CURRENT_SHIPMENT_ID = {{ selected_shipment.id if selected_shipment else 0 }};
+  window.BAD_ADDRESS_FEE_DEFAULT = {{ (settings.bad_address_fee_jmd or 500)| float }};
 
   function attachUrl(id) {
     const sid = String(id || '').trim();
@@ -1644,7 +1626,7 @@ Not emailed yet"></i>
     const wMin = wMinRaw === '' ? null : Number(wMinRaw);
     const wMax = wMaxRaw === '' ? null : Number(wMaxRaw);
     const subscriptionOnly = document.getElementById('fltSubscriptionOnly')?.checked || false;
-    
+
 
     return { name, tracking, house_awb, reg, wMin, wMax, subscriptionOnly };
   }
@@ -2299,7 +2281,15 @@ Not emailed yet"></i>
       if (!pkgId) return;
 
       if (isLocked()) {
-        alert("Manual override is ON. Turn it OFF to auto-calculate.");
+        if (resultBox) resultBox.style.display = 'block';
+        if (btnApply) btnApply.style.display = 'inline-block';
+
+        if (errorBox) {
+          errorBox.style.display = 'none';
+          errorBox.textContent = '';
+        }
+
+        recalcTotalsFromManual();
         return;
       }
 
@@ -2358,7 +2348,7 @@ Not emailed yet"></i>
 
         recalcTotalsFromManual();
 
-        
+
         if (errorBox) errorBox.style.display = 'none';
         if (resultBox) resultBox.style.display = 'block';
         if (btnApply) btnApply.style.display = 'inline-block';
@@ -2411,7 +2401,7 @@ Not emailed yet"></i>
         grand_total: numVal(resTotal),
 
         amount_due: numVal(resTotal),
-        pricing_locked: isLocked(),        
+        pricing_locked: isLocked(),
         force: true
       };
 
@@ -2600,7 +2590,7 @@ Not emailed yet"></i>
     });
 
     const data = await res.json();
-    const tbody = document.querySelector('#shipmentSearchResultsBody');    
+    const tbody = document.querySelector('#shipmentSearchResultsBody');
     tbody.innerHTML = '';
 
     const searchSelectAll = document.getElementById('searchSelectAll');
@@ -2661,7 +2651,7 @@ Not emailed yet"></i>
     if (!selected.length) {
       alert("Please select at least one package.");
       return;
-    }   
+    }
 
     const holder = document.getElementById('searchMovePackageIdsContainer');
     if (holder) holder.innerHTML = '';
@@ -2709,7 +2699,7 @@ Not emailed yet"></i>
         newNameInput.required = false;
         newNameInput.value = '';
       }
-    }    
+    }
   });
 
   document.getElementById('searchMoveMode')?.dispatchEvent(new Event('change'));
@@ -2815,7 +2805,7 @@ Not emailed yet"></i>
 
         if (weightInput) weightInput.value = (wEl?.value ?? '0');
         if (valueInput) valueInput.value = (vEl?.value ?? '0');
-             
+
         // load bad address defaults
         const shouldCheckBadAddress = savedBadAddress || epcFlag;
 
@@ -3826,29 +3816,31 @@ Not emailed yet"></i>
     font-size: .95rem;
     line-height: 1;
   }
+
   /* Shipment header layout */
-  .shipment-header{
+  .shipment-header {
     flex-wrap: nowrap;
     gap: 10px;
   }
 
-  .shipment-title-wrap{
+  .shipment-title-wrap {
     min-width: 0;
     gap: 6px !important;
   }
 
-  .shipment-title-wrap h5{
+  .shipment-title-wrap h5 {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     margin-bottom: 0;
   }
 
-  .shipment-actions{
+  .shipment-actions {
     flex-shrink: 0;
     white-space: nowrap;
     flex-wrap: nowrap !important;
   }
+
   .shipment-export-toolbar {
     display: inline-flex;
     align-items: center;
@@ -3856,7 +3848,7 @@ Not emailed yet"></i>
     border: 1px solid rgba(74, 20, 140, 0.22);
     border-radius: 10px;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
     flex-shrink: 0;
   }
 
@@ -3877,7 +3869,8 @@ Not emailed yet"></i>
     background: rgba(74, 20, 140, 0.08);
     color: #4a148c;
   }
-  .ship-export-btn i{
+
+  .ship-export-btn i {
     font-size: .9rem;
     line-height: 1;
   }

@@ -2126,8 +2126,19 @@ Not emailed yet"></i>
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('.js-open-charges');
       if (!btn) return;
+
       lastTriggerBtn = btn;
-    }, true); // ✅ capture mode
+
+      const pkgId = btn.dataset.pkgId;
+      if (!pkgId) return;
+
+      // SET CURRENT PACKAGE
+      if (pkgIdInput) pkgIdInput.value = pkgId;
+
+      // 🔥 THIS IS THE FIX
+      loadSavedChargesForPackage(pkgId);
+
+    }, true);
 
 
     function numVal(el) {
@@ -2173,7 +2184,7 @@ Not emailed yet"></i>
 
       const freight = numVal(resFreight);
       const handling = numVal(resHandling);
-      const other = numVal(resOther);      
+      const other = numVal(resOther);
 
       const badAddressOn = !!badAddressToggle?.checked;
       const badAddressFee = numVal(badAddressFeeInput);
@@ -2227,6 +2238,47 @@ Not emailed yet"></i>
       const weight = wEl ? (wEl.value || "0") : "0";
       const value = vEl ? (vEl.value || "0") : "0";
       return { weight, value };
+    }
+
+    function getHiddenVal(id) {
+      const el = document.getElementById(id);
+      return Number(el?.value || 0).toFixed(2);
+    }
+
+    function loadSavedChargesForPackage(pkgId) {
+      if (!pkgId) return;
+
+      if (resDuty) resDuty.value = getHiddenVal(`duty_${pkgId}`);
+      if (resGct) resGct.value = getHiddenVal(`gct_${pkgId}`);
+      if (resScf) resScf.value = getHiddenVal(`scf_${pkgId}`);
+      if (resEnvl) resEnvl.value = getHiddenVal(`envl_${pkgId}`);
+      if (resCaf) resCaf.value = getHiddenVal(`caf_${pkgId}`);
+      if (resStamp) resStamp.value = getHiddenVal(`stamp_${pkgId}`);
+      if (resFreight) resFreight.value = getHiddenVal(`freight_${pkgId}`);
+      if (resHandling) resHandling.value = getHiddenVal(`handling_${pkgId}`);
+      if (resOther) resOther.value = getHiddenVal(`other_${pkgId}`);
+
+      const badAddressHidden = document.getElementById(`bad_address_${pkgId}`);
+      const badAddressFeeHidden = document.getElementById(`bad_address_fee_${pkgId}`);
+
+      if (badAddressToggle) {
+        badAddressToggle.checked = (badAddressHidden?.value || '0') === '1';
+      }
+
+      if (badAddressFeeInput) {
+        badAddressFeeInput.value = Number(badAddressFeeHidden?.value || window.BAD_ADDRESS_FEE_DEFAULT || 0).toFixed(2);
+      }
+
+      if (resBadAddress) {
+        resBadAddress.value = badAddressToggle?.checked
+          ? Number(badAddressFeeInput?.value || 0).toFixed(2)
+          : "0.00";
+      }
+
+      const lockedHidden = document.getElementById(`locked_${pkgId}`);
+      setLocked((lockedHidden?.value || '0') === '1');
+
+      recalcTotalsFromManual();
     }
 
     /*

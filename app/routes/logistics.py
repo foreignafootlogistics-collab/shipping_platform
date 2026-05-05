@@ -571,10 +571,7 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
     # -----------------------------------
     # SUBSCRIPTION LOGIC
     # -----------------------------------
-    if (
-        getattr(p, "subscription_applied", False)
-        and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
-    ):
+    if False:
         if hasattr(p, "category"):
             p.category = category
 
@@ -1294,25 +1291,7 @@ def logistics_dashboard():
                 )
                 db.session.add(p)
                 db.session.flush()  # ✅ get p.id now 
-
-                try:
-                    if not p.subscription_applied:
-                        result = apply_subscription_usage(p)
-
-                        p.subscription_applied = True
-                        p.subscription_applied_at = datetime.utcnow()
-                        p.subscription_result = result
-
-                        if p.user and p.user.subscriptions:
-                            active_sub = sorted(
-                                p.user.subscriptions,
-                                key=lambda s: s.created_at or datetime.min,
-                                reverse=True
-                            )[0]
-                            p.subscription_id = active_sub.id
-
-                except Exception:
-                    current_app.logger.exception("[SUBSCRIPTION APPLY ERROR - UPLOAD]")               
+                              
 
                 # ✅ AUTO-LINK prealert invoice -> package attachment
                 _try_link_prealert_invoice_to_package(p)
@@ -1661,17 +1640,9 @@ def logistics_dashboard():
             "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
             "invoice_id": p.invoice_id,
             "customer_notified_at": getattr(p, "customer_notified_at", None),
-            "subscription_applied": bool(getattr(p, "subscription_applied", False)),
-            "subscription_result": getattr(p, "subscription_result", None),
-            "subscription_covered": (
-                bool(getattr(p, "subscription_applied", False))
-                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
-            ),
-            "customs_only_due_to_subscription": (
-                bool(getattr(p, "subscription_applied", False))
-                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
-                and float(getattr(p, "customs_total", 0) or 0) > 0
-            ),
+            "subscription_applied": False,
+            "subscription_result": None,
+            "subscription_covered": False,
         })
 
     # Agg totals for the current filter

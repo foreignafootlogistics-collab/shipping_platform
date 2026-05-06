@@ -590,7 +590,7 @@ Amazon usually reviews submissions within about <strong>24 hours</strong>.
 #  WELCOME EMAIL (BODY ONLY)
 # ==========================================================
 def send_welcome_email(email, full_name, reg_number, recipient_user_id=None):
-plain_body = f"""
+    plain_body = f"""
 Hi {full_name},
 
 Welcome to Foreign A Foot Logistics Limited — Bringing the World To You 🌎✈️
@@ -644,7 +644,7 @@ Thank you for choosing Foreign A Foot Logistics Limited.
 — FAFL Team
 """.strip()
 
-html_body = f"""
+    html_body = f"""
 <h2 style="margin:0 0 10px 0; color:#111827;">
   Welcome, {full_name}! 👋
 </h2>

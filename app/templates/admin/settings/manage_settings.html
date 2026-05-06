@@ -9,6 +9,20 @@
   .help { font-size:.85rem; color:#6c757d; }
   .shadow-soft { box-shadow: 0 6px 16px rgba(0,0,0,.05); }
   .card-hint { background:#f7f4fb; border-left:4px solid var(--brand); }
+  .btn-purple{ background:#4a148c; color:#fff; }
+  .btn-purple:hover{ background:#3b0f70; color:#fff; }
+  .reg-preview-box{
+    background:linear-gradient(135deg,#f5f2fb,#ffffff);
+    border:1px solid #e9dffc;
+    border-radius:14px;
+    padding:18px;
+  }
+  .reg-preview-number{
+    font-size:1.8rem;
+    font-weight:800;
+    color:#4a148c;
+    letter-spacing:.04em;
+  }
 </style>
 
 <div class="container mt-4">
@@ -36,6 +50,11 @@
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="rates-tab" data-bs-toggle="tab" data-bs-target="#ratesFees" type="button" role="tab">
         Rates & Fees
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="registration-tab" data-bs-toggle="tab" data-bs-target="#registrationSettings" type="button" role="tab">
+        <i class="bi bi-person-badge me-1"></i> Registration
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -109,6 +128,7 @@
             </div>
           </form>
         </div>
+
         <form action="{{ url_for('settings.update_us_address') }}" method="POST" class="card mt-3">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="card-header" style="background-color:#4a148c; color:white;">
@@ -171,7 +191,7 @@
         </form>
       </div>
     </div>
-    
+
     {# ---------------- Rates & Fees ---------------- #}
     <div class="tab-pane fade" id="ratesFees" role="tabpanel" aria-labelledby="rates-tab">
       <div class="card shadow-soft mb-4">
@@ -212,7 +232,6 @@
               {# ===== FREIGHT TAB ===== #}
               <div class="tab-pane fade show active" id="tab-freight">
                 <div class="row g-3 mb-3">
-                  <!-- keep your simple base / handling here too -->
                   <div class="col-md-4">
                     <label class="form-label small">Base Rate (JMD / lb)</label>
                     <div class="input-group input-group-sm">
@@ -290,7 +309,6 @@
                   </div>
                 </div>
 
-                <!-- Per-lb brackets 1–50 -->
                 <div class="table-responsive">
                   <table class="table table-sm table-striped align-middle">
                     <thead class="table-light">
@@ -449,6 +467,141 @@
       </div>
     </div>
 
+    {# ---------------- Registration Settings ---------------- #}
+    <div class="tab-pane fade" id="registrationSettings" role="tabpanel" aria-labelledby="registration-tab">
+      <div class="card shadow-soft mb-4">
+        <div class="card-body">
+          <div class="card card-hint mb-3">
+            <div class="card-body py-2">
+              <i class="bi bi-person-badge me-2"></i>
+              Control how customer registration numbers are generated. Recommended: do not reuse deleted customer numbers.
+            </div>
+          </div>
+
+          <form method="POST" action="{{ url_for('settings.update_registration_settings') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="row g-3">
+              <div class="col-lg-8">
+                <div class="row g-3">
+                  <div class="col-md-4">
+                    <label class="form-label">Registration Prefix</label>
+                    <input type="text"
+                           id="registrationPrefix"
+                           name="registration_prefix"
+                           class="form-control"
+                           value="{{ settings.registration_prefix or 'FAFL' }}"
+                           placeholder="FAFL">
+                    <div class="help mt-1">Example: FAFL, FAF, KCD.</div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <label class="form-label">Number Width</label>
+                    <input type="number"
+                           id="registrationWidth"
+                           name="registration_number_width"
+                           class="form-control"
+                           min="1"
+                           max="10"
+                           value="{{ settings.registration_number_width or 5 }}">
+                    <div class="help mt-1">5 keeps numbers like FAFL10001.</div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <label class="form-label">Current Counter Value</label>
+                    <input type="number"
+                           id="registrationCounter"
+                           name="registration_counter_value"
+                           class="form-control"
+                           min="0"
+                           value="{{ registration_counter.value if registration_counter else 10000 }}">
+                    <div class="help mt-1">Next customer gets this number + 1.</div>
+                  </div>
+
+                  <div class="col-md-6">
+                    <div class="border rounded p-3 h-100">
+                      <div class="form-check">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               name="lock_registration_number"
+                               id="lock_registration_number"
+                               {% if settings.lock_registration_number %}checked{% endif %}>
+                        <label class="form-check-label fw-semibold" for="lock_registration_number">
+                          Lock registration number after creation
+                        </label>
+                      </div>
+                      <div class="help mt-2">
+                        Recommended ON. Prevents accidental changes after packages, invoices, and emails already reference the customer number.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="col-md-6">
+                    <div class="border rounded p-3 h-100">
+                      <div class="form-check">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               name="reuse_deleted_registration_numbers"
+                               id="reuse_deleted_registration_numbers"
+                               {% if settings.reuse_deleted_registration_numbers %}checked{% endif %}>
+                        <label class="form-check-label fw-semibold" for="reuse_deleted_registration_numbers">
+                          Allow reuse of deleted numbers
+                        </label>
+                      </div>
+                      <div class="help mt-2 text-danger">
+                        Recommended OFF. Reusing numbers can confuse old packages, invoices, receipts, and warehouse labels.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="col-12">
+                    <div class="alert alert-warning mb-0">
+                      <i class="bi bi-exclamation-triangle me-1"></i>
+                      Only change the counter if you are intentionally moving the next registration number forward.
+                      Avoid moving it backward because it may create duplicate customer numbers.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-lg-4">
+                <div class="reg-preview-box h-100">
+                  <div class="small text-muted text-uppercase fw-bold mb-2">Next Registration Preview</div>
+                  <div id="registrationPreview" class="reg-preview-number">
+                    {{ settings.registration_prefix or 'FAFL' }}{{ "%0*d"|format(settings.registration_number_width or 5, (registration_counter.value + 1) if registration_counter else 10001) }}
+                  </div>
+
+                  <hr>
+
+                  <div class="small text-muted mb-2">Example customer address line:</div>
+                  <div class="bg-white rounded border p-3 small">
+                    Air Standard<br>
+                    Customer Name<br>
+                    559 NE 42nd St<br>
+                    <strong><span id="registrationPreviewAddress">{{ settings.registration_prefix or 'FAFL' }}{{ "%0*d"|format(settings.registration_number_width or 5, (registration_counter.value + 1) if registration_counter else 10001) }}</span> A</strong><br>
+                    Oakland Park, Florida 33334
+                  </div>
+
+                  <div class="mt-3 small text-muted">
+                    This preview updates while you type before saving.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-3 d-flex gap-2">
+              <button type="submit" class="btn btn-purple">
+                <i class="bi bi-check2-circle me-1"></i> Save Registration Settings
+              </button>
+              <button type="reset" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     {# -------------- Branches & Locations -------------- #}
     <div class="tab-pane fade" id="branchesLocations" role="tabpanel" aria-labelledby="branches-tab">
       <div class="card shadow-soft mb-4">
@@ -578,6 +731,38 @@
     });
   }
 
+  // Registration preview
+  const registrationPrefix = document.getElementById('registrationPrefix');
+  const registrationWidth = document.getElementById('registrationWidth');
+  const registrationCounter = document.getElementById('registrationCounter');
+  const registrationPreview = document.getElementById('registrationPreview');
+  const registrationPreviewAddress = document.getElementById('registrationPreviewAddress');
+
+  function updateRegistrationPreview() {
+    if (!registrationPrefix || !registrationWidth || !registrationCounter || !registrationPreview) return;
+
+    const prefix = (registrationPrefix.value || 'FAFL').trim().toUpperCase();
+    const width = parseInt(registrationWidth.value || '5', 10);
+    const counter = parseInt(registrationCounter.value || '10000', 10);
+    const nextNumber = counter + 1;
+
+    const safeWidth = Number.isFinite(width) && width > 0 ? width : 5;
+    const formattedNumber = String(nextNumber).padStart(safeWidth, '0');
+    const finalValue = `${prefix}${formattedNumber}`;
+
+    registrationPreview.textContent = finalValue;
+
+    if (registrationPreviewAddress) {
+      registrationPreviewAddress.textContent = finalValue;
+    }
+  }
+
+  [registrationPrefix, registrationWidth, registrationCounter].forEach((el) => {
+    if (el) el.addEventListener('input', updateRegistrationPreview);
+  });
+
+  updateRegistrationPreview();
+
   // Terms live preview (naive; for admin only)
   const termsInput  = document.getElementById('termsInput');
   const termsPreview= document.getElementById('termsPreview');
@@ -603,9 +788,3 @@
   document.querySelectorAll('.autosize').forEach(t=>{ autosize(t); t.addEventListener('input',()=>autosize(t)); });
 </script>
 {% endblock %}
-
-<style>
-  .btn-purple{ background:#4a148c; color:#fff; }
-  .btn-purple:hover{ background:#3b0f70; color:#fff; }
-</style>
-

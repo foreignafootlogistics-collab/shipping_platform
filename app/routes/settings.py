@@ -4,7 +4,7 @@ import os
 
 from app.routes.admin_auth_routes import admin_required
 from app.extensions import db
-from app.models import Settings, AdminRate  # make sure this model exists and has the used columns
+from app.models import Settings, AdminRate, Counter  # make sure this model exists and has the used columns
 
 # Where to store the logo
 LOGO_UPLOAD_DIR = os.path.join('static', 'uploads', 'logos')
@@ -101,9 +101,12 @@ def update_display():
 def manage_settings():
     settings = _get_settings_row(create_if_missing=True)
     admin_rates = AdminRate.query.order_by(AdminRate.max_weight.asc()).all()
+    registration_counter = db.session.get(Counter, "registration_number")
+
     return render_template('admin/settings/manage_settings.html',
                            settings=settings,
-                           admin_rates=admin_rates)
+                           admin_rates=admin_rates,
+                           registration_counter=registration_counter)
 
 
 
@@ -132,6 +135,52 @@ def update_company_info():
     except Exception as e:
         db.session.rollback()
         flash(f"Error updating Company Info: {e}", "danger")
+
+    return redirect(url_for('settings.manage_settings'))
+
+
+
+@settings_bp.route('/update-registration-settings', methods=['POST'])
+@admin_required(roles=["superadmin"])
+def update_registration_settings():
+    def i(name, default=0):
+        raw = (request.form.get(name) or "").strip()
+        try:
+            return int(raw)
+        except ValueError:
+            return default
+
+    try:
+        settings = _get_settings_row()
+        if not settings:
+            flash("Settings row not found.", "danger")
+            return redirect(url_for('settings.manage_settings'))
+
+        prefix = (request.form.get("registration_prefix") or "FAFL").strip().upper()
+        width = i("registration_number_width", 5)
+        counter_value = i("registration_counter_value", 10000)
+
+        if width < 1:
+            width = 5
+
+        settings.registration_prefix = prefix
+        settings.registration_number_width = width
+        settings.reuse_deleted_registration_numbers = "reuse_deleted_registration_numbers" in request.form
+        settings.lock_registration_number = "lock_registration_number" in request.form
+
+        counter = db.session.get(Counter, "registration_number")
+        if not counter:
+            counter = Counter(name="registration_number", value=counter_value)
+            db.session.add(counter)
+        else:
+            counter.value = counter_value
+
+        db.session.commit()
+        flash("Registration settings updated successfully.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error updating registration settings: {e}", "danger")
 
     return redirect(url_for('settings.manage_settings'))
 

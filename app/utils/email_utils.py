@@ -204,7 +204,7 @@ def send_email_smtp(
 </head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;">
   <div style="width:100%;padding:24px 0;">
-    <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;
                 box-shadow:0 4px 12px rgba(0,0,0,0.05);" {_BRAND_WRAPPER_MARKER}="1">
 
       <!-- HEADER -->
@@ -245,7 +245,7 @@ def send_email_smtp(
                alt="WhatsApp"
                style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
           <a href="https://wa.me/18762104291" style="color:#4A148C;text-decoration:none;">
-            WhatsApp: (876) 210-4291
+            WhatsApp: (876) 560-7764
           </a><br>
 
           <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png"
@@ -433,7 +433,7 @@ def send_email(
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;">
   <div style="width:100%;padding:24px 0;">
-    <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;
+    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;
                 box-shadow:0 4px 12px rgba(0,0,0,0.05);" {_BRAND_WRAPPER_MARKER}="1">
       <div style="padding:18px 22px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #e5e7eb;">
         {_logo_img(22)}
@@ -455,7 +455,7 @@ def send_email(
           <a href="tel:18765607764" style="color:#4A148C;text-decoration:none;">(876) 560-7764</a><br>
           <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png" alt="WhatsApp"
                style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
-          <a href="https://wa.me/18762104291" style="color:#4A148C;text-decoration:none;">WhatsApp: (876) 210-4291</a><br>
+          <a href="https://wa.me/18762104291" style="color:#4A148C;text-decoration:none;">WhatsApp: (876) 560-7764</a><br>
           <img src="https://cdn-icons-png.flaticon.com/512/733/733585.png" alt="WhatsApp"
                style="width:14px;height:14px;vertical-align:middle;margin-right:6px;">
           <a href="https://wa.me/18765607764" style="color:#4A148C;text-decoration:none;">WhatsApp: (876) 560-7764</a><br>
@@ -590,41 +590,185 @@ Amazon usually reviews submissions within about <strong>24 hours</strong>.
 #  WELCOME EMAIL (BODY ONLY)
 # ==========================================================
 def send_welcome_email(email, full_name, reg_number, recipient_user_id=None):
-    plain_body = f"""
-Dear {full_name},
+plain_body = f"""
+Hi {full_name},
 
-Welcome to Foreign A Foot Logistics Limited – your trusted partner in shipping and logistics!
+Welcome to Foreign A Foot Logistics Limited — Bringing the World To You 🌎✈️
 
-Your account has been successfully created.
-Registration Number: {reg_number}
+Your account has been successfully created and you’re now ready to start shipping with us.
 
-You can now log in at {DASHBOARD_URL} using your email and password.
+Your Customer Number:
+{reg_number}
 
-📦 Your U.S. Shipping Address:
+━━━━━━━━━━━━━━━
+📦 Your U.S. Shipping Address
+━━━━━━━━━━━━━━━
+
 Air Standard
 {full_name}
 559 NE 42nd St
 {reg_number} A
-Oakland Park, Florida, 33334
+Oakland Park, Florida 33334
 
-Thank you for choosing us!
+IMPORTANT:
+Always include your FAFL number ({reg_number}) when shopping online so we can quickly identify your packages.
 
-- Foreign A Foot Logistics Limited Team
+━━━━━━━━━━━━━━━
+🚚 How Shipping With FAFL Works
+━━━━━━━━━━━━━━━
+
+🛒 Shop online using your U.S. shipping address
+
+📦 Your packages will automatically appear in your dashboard
+
+✈️ We ship your items to Jamaica
+
+📲 You’ll receive updates when your package:
+• arrives overseas
+• lands in Jamaica
+• is ready for pickup or delivery
+
+━━━━━━━━━━━━━━━
+📱 Need Help?
+━━━━━━━━━━━━━━━
+
+WhatsApp: (876) 560-7764
+Phone: (876) 560-7764
+Email: foreignafootlogistics@gmail.com
+
+Login to Dashboard:
+{DASHBOARD_URL}
+
+Thank you for choosing Foreign A Foot Logistics Limited.
+
+— FAFL Team
 """.strip()
 
-    html_body = f"""
-<h2 style="margin:0 0 10px 0;">Welcome, {full_name}!</h2>
-<p style="margin:0 0 10px 0;">Your registration number is <b>{reg_number}</b>.</p>
+html_body = f"""
+<h2 style="margin:0 0 10px 0; color:#111827;">
+  Welcome, {full_name}! 👋
+</h2>
 
-<p style="margin:0 0 10px 0;"><b>U.S. Shipping Address:</b><br>
-Air Standard<br>
-{full_name}<br>
-559 NE 42nd St<br>
-{reg_number} A<br>
-Oakland Park, Florida, 33334</p>
+<p style="margin:0 0 14px 0; line-height:1.7; color:#374151;">
+  Welcome to <strong>Foreign A Foot Logistics Limited</strong> — Bringing the World To You 🌎✈️
+</p>
 
-<p style="margin:14px 0 0 0;">
-  <a href="{DASHBOARD_URL}" style="background:#4A148C;color:#fff;padding:10px 18px;text-decoration:none;border-radius:6px;display:inline-block;">
+<div style="
+    background:#f5f2fb;
+    border:1px solid #e9dffc;
+    border-radius:12px;
+    padding:18px;
+    margin:18px 0;
+">
+  <div style="
+      font-size:13px;
+      text-transform:uppercase;
+      letter-spacing:0.08em;
+      color:#6b21a8;
+      margin-bottom:8px;
+      font-weight:700;
+  ">
+    Customer Number
+  </div>
+
+  <div style="
+      font-size:28px;
+      font-weight:800;
+      color:#4A148C;
+  ">
+    {reg_number}
+  </div>
+</div>
+
+<div style="
+    background:#ffffff;
+    border:1px solid #e5e7eb;
+    border-radius:12px;
+    padding:18px;
+    margin:18px 0;
+">
+  <div style="
+      font-size:16px;
+      font-weight:700;
+      color:#111827;
+      margin-bottom:12px;
+  ">
+    📦 Your U.S. Shipping Address
+  </div>
+
+  <div style="line-height:1.8; color:#374151;">
+    Air Standard<br>
+    {full_name}<br>
+    559 NE 42nd St<br>
+    <strong>{reg_number} A</strong><br>
+    Oakland Park, Florida 33334
+  </div>
+</div>
+
+<div style="
+    background:#fffbea;
+    border:1px solid #fde68a;
+    border-radius:12px;
+    padding:16px;
+    margin:18px 0;
+    color:#92400e;
+">
+  <strong>Important:</strong><br>
+  Always include your FAFL number
+  <strong>({reg_number})</strong>
+  when shopping online so we can quickly identify your packages.
+</div>
+
+<h3 style="
+    margin:24px 0 12px 0;
+    color:#111827;
+">
+  🚚 How Shipping With FAFL Works
+</h3>
+
+<div style="
+    line-height:1.9;
+    color:#374151;
+">
+  🛒 Shop online using your U.S. shipping address<br>
+  📦 Packages automatically appear in your dashboard<br>
+  ✈️ We ship your items to Jamaica<br>
+  📲 Get notified when your package is ready
+</div>
+
+<div style="
+    margin-top:26px;
+    padding:18px;
+    background:#f9fafb;
+    border-radius:12px;
+    border:1px solid #e5e7eb;
+">
+  <div style="
+      font-weight:700;
+      margin-bottom:10px;
+      color:#111827;
+  ">
+    📱 Need Help?
+  </div>
+
+  <div style="line-height:1.9; color:#374151;">
+    WhatsApp: (876) 560-7764<br>
+    Phone: (876) 560-7764<br>
+    Email: foreignafootlogistics@gmail.com
+  </div>
+</div>
+
+<p style="margin:26px 0 0 0;">
+  <a href="{DASHBOARD_URL}"
+     style="
+        background:#4A148C;
+        color:#ffffff;
+        padding:12px 22px;
+        text-decoration:none;
+        border-radius:8px;
+        display:inline-block;
+        font-weight:700;
+     ">
     Login to Dashboard
   </a>
 </p>

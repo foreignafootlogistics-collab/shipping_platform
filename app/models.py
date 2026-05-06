@@ -1331,6 +1331,13 @@ class Settings(db.Model):
     us_state        = db.Column(db.String(100))
     us_zip          = db.Column(db.String(20))
 
+    # Registration number settings
+    registration_prefix = db.Column(db.String(20), default="FAFL")
+    registration_number_width = db.Column(db.Integer, default=5)
+
+    reuse_deleted_registration_numbers = db.Column(db.Boolean, default=False)
+    lock_registration_number = db.Column(db.Boolean, default=True)
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(

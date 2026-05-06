@@ -8,7 +8,7 @@ from app.extensions import db
 REG_PREFIX = "FAFL"
 REG_WIDTH = 5  # FAFL10001, FAFL10059, etc.
 
-_reg_re = re.compile(r"^FAFL(\d+)$", re.IGNORECASE)
+_reg_re = re.compile(r"^[A-Z]+(\d+)$", re.IGNORECASE)
 
 
 def _extract_number(reg: str) -> Optional[int]:
@@ -50,25 +50,33 @@ def _max_reg_from_users() -> int:
 
 def next_registration_number() -> str:
     """
-    Generates the next unique FAFL registration number using the current DB contents.
-    Safe for Postgres; no sqlite access.
+    Generates the next registration number using the Counter table.
+    Example: FAFL10001, FAFL10002, etc.
     """
-    # Try a SQL max() using Postgres regexp; fallback to Python scan if not available
-    try:
-        row = db.session.execute(
-            db.text("""
-                SELECT MAX(
-                    CAST( REGEXP_REPLACE(LOWER(registration_number), '^fafl', '') AS INTEGER )
-                ) AS max_num
-                FROM users
-                WHERE registration_number ILIKE 'FAFL%'
-            """)
-        ).first()
-        max_num = (row.max_num or 0)
-        if not max_num:
-            max_num = _max_reg_from_users()
-    except Exception:
-        max_num = _max_reg_from_users()
+    from app.models import Settings, Counter
 
-    next_num = max_num + 1
-    return _format_reg(next_num)
+    settings = db.session.get(Settings, 1)
+
+    prefix = "FAFL"
+    width = 5
+
+    if settings:
+        prefix = settings.registration_prefix or "FAFL"
+        width = settings.registration_number_width or 5
+
+    counter = db.session.get(Counter, "registration_number")
+
+    if not counter:
+        # Seed from existing users so we do not accidentally reuse old numbers
+        max_num = _max_reg_from_users()
+        counter = Counter(name="registration_number", value=max_num)
+        db.session.add(counter)
+        db.session.flush()
+
+    counter.value += 1
+
+    reg_number = f"{prefix}{counter.value:0{width}d}"
+
+    db.session.commit()
+
+    return reg_number

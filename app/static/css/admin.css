@@ -428,19 +428,21 @@ footer {
 }
 
 #chargesModalSL .modal-dialog {
-  max-width: 96vw !important;
-  width: 96vw !important;
+  max-width: 85vw !important;
+  width: 85vw !important;
   margin: 1rem auto;
 }
 
 #chargesModalSL .modal-content {
-  max-height: 92vh;
+  max-height: 85vh;
   height: auto !important;
   display: flex;
   flex-direction: column;
+  border-radius: 14px;
 }
 
 #chargesModalSL .modal-body {
   overflow-y: auto !important;
   flex: 1;
+  padding-bottom: 1rem;
 }

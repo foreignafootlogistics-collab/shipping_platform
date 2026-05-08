@@ -690,7 +690,7 @@ Not emailed yet"></i>
                       <input type="hidden" name="freight_{{ pkg.id }}" id="freight_{{ pkg.id }}"
                         value="{{ pkg.freight_fee or 0 }}">
                       <input type="hidden" name="handling_{{ pkg.id }}" id="handling_{{ pkg.id }}"
-                        value="{{ pkg.storage_fee or 0 }}">
+                        value="{{ pkg.handling_fee or pkg.storage_fee or 0 }}">
                       <input type="hidden" name="other_{{ pkg.id }}" id="other_{{ pkg.id }}"
                         value="{{ pkg.other_charges or 0 }}">
                       <input type="hidden" name="bad_address_{{ pkg.id }}" id="bad_address_{{ pkg.id }}"
@@ -829,7 +829,7 @@ Not emailed yet"></i>
 
       <!-- Charges / Fees Modal -->
       <div class="modal fade" id="chargesModalSL" tabindex="-1" aria-labelledby="chargesModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-fullscreen modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-centered charges-modal-dialog">
           <div class="modal-content">
 
             <div class="modal-header" style="background:#4a148c; color:#fff;">
@@ -3950,6 +3950,20 @@ Not emailed yet"></i>
     width: 1px;
     height: 20px;
     background: rgba(74, 20, 140, 0.18);
+  }
+
+  .charges-modal-dialog{
+      max-width: 95vw !important;
+      width: 95vw !important;
+  }
+
+  .charges-modal-dialog .modal-content{
+      min-height: 88vh;
+      border-radius: 14px;
+  }
+
+  .charges-modal-dialog .modal-body{
+      overflow-y: visible !important;
   }
 </style>
 {% endblock %}

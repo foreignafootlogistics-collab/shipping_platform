@@ -829,7 +829,7 @@ Not emailed yet"></i>
 
       <!-- Charges / Fees Modal -->
       <div class="modal fade" id="chargesModalSL" tabindex="-1" aria-labelledby="chargesModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-dialog modal-fullscreen modal-dialog-scrollable">
           <div class="modal-content">
 
             <div class="modal-header" style="background:#4a148c; color:#fff;">
@@ -901,7 +901,7 @@ Not emailed yet"></i>
                 </div>
                 <hr class="my-3">
 
-                <div id="chargesResult" style="display:none;">
+                <div id="chargesResult">
                   <h6 class="fw-bold mb-2">Breakdown</h6>
                   <div class="row g-2 small">
                     <div class="col-md-4">
@@ -997,7 +997,7 @@ Not emailed yet"></i>
             <div class="modal-footer">
               <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
               <button type="button" id="btnApplyToPkg" class="btn btn-outline-success btn-sm"
-                style="display:none;">Apply & Save</button>
+                style="display:inline-block;">Apply & Save</button>
               <button type="button" id="btnCalcCharges" class="btn btn-purple btn-sm">
                 <i class="bi bi-calculator"></i> Calculate Charges
               </button>
@@ -1592,6 +1592,16 @@ Not emailed yet"></i>
     return r.json();
   }
 
+  function hasSavedChargeValues(pkgId) {
+    return [
+      "duty", "gct", "scf", "envl", "caf", "stamp",
+      "freight", "handling", "other", "bad_address_fee"
+    ].some(name => {
+      const el = document.getElementById(`${name}_${pkgId}`);
+      return Number(el?.value || 0) > 0;
+    });
+  }
+
   function hasDataTables() {
     return window.jQuery && $.fn && $.fn.DataTable;
   }
@@ -2137,7 +2147,16 @@ Not emailed yet"></i>
 
       // 🔥 THIS IS THE FIX
       loadSavedChargesForPackage(pkgId);
+      if (!hasSavedChargeValues(pkgId) && !isLocked()) {
+        if (chargesModal.dataset.autoCalcPkg !== pkgId) {
+          chargesModal.dataset.autoCalcPkg = pkgId;
 
+          setTimeout(() => {
+            btnCalc?.click();
+            chargesModal.dataset.autoCalcPkg = "";
+          }, 150);
+        }
+      }
     }, true);
 
 
@@ -2244,6 +2263,16 @@ Not emailed yet"></i>
       const el = document.getElementById(id);
       return Number(el?.value || 0).toFixed(2);
     }
+
+     function hasSavedChargeValues(pkgId) {
+       return [
+         "duty", "gct", "scf", "envl", "caf", "stamp",
+         "freight", "handling", "other", "bad_address_fee"
+       ].some(name => {
+         const el = document.getElementById(`${name}_${pkgId}`);
+         return Number(el?.value || 0) > 0;
+       });
+     }
 
     function loadSavedChargesForPackage(pkgId) {
       if (!pkgId) return;

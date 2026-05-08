@@ -1484,7 +1484,29 @@ def logistics_dashboard():
                 "house_awb": p.house_awb,
                 "value": p.value,
                 "declared_value": getattr(p, "declared_value", None),
-                "amount_due": p.amount_due,
+                "amount_due": p.amount_due,                
+
+                "duty": getattr(p, "duty", 0),
+                "gct": getattr(p, "gct", 0),
+                "scf": getattr(p, "scf", 0),
+                "envl": getattr(p, "envl", 0),
+                "caf": getattr(p, "caf", 0),
+                "stamp": getattr(p, "stamp", 0),
+
+                "customs_total": getattr(p, "customs_total", 0),
+
+                "freight_fee": getattr(p, "freight_fee", 0),
+                "handling_fee": getattr(p, "handling_fee", 0),
+                "storage_fee": getattr(p, "storage_fee", 0),
+                "freight_total": getattr(p, "freight_total", 0),
+
+                "grand_total": getattr(p, "grand_total", 0),
+
+                "bad_address": getattr(p, "bad_address", False),
+                "bad_address_fee": getattr(p, "bad_address_fee", 0),
+
+                "pricing_locked": getattr(p, "pricing_locked", False),
+
                 "other_charges": getattr(p, "other_charges", 0),
                 "epc": getattr(p, "epc", 0),
                 "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),

@@ -571,7 +571,7 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
     # -----------------------------------
     # SUBSCRIPTION LOGIC
     # -----------------------------------
-    if False:
+    if getattr(p, "subscription_applied", False):
         if hasattr(p, "category"):
             p.category = category
 
@@ -1291,6 +1291,25 @@ def logistics_dashboard():
                 )
                 db.session.add(p)
                 db.session.flush()  # ✅ get p.id now 
+
+                try:
+                    result = apply_subscription_usage(p)
+
+                    if result == "subscription_applied":
+                        p.subscription_applied = True
+                        p.subscription_result = "subscription_applied"
+                        p.subscription_applied_at = datetime.now(timezone.utc)
+                    else:
+                        p.subscription_applied = False
+                        p.subscription_result = result or "no_subscription"
+                        p.subscription_applied_at = None
+                        p.subscription_id = None
+
+                except Exception as e:
+                    current_app.logger.exception(f"Subscription application failed for package {p.id}: {e}")
+                    p.subscription_applied = False
+                    p.subscription_result = "subscription_error"
+                    p.subscription_applied_at = None
                               
 
                 # ✅ AUTO-LINK prealert invoice -> package attachment
@@ -1983,7 +2002,29 @@ def create_single_package_from_view():
     )
 
     db.session.add(p)
+    db.session.flush()
+
+    try:
+        result = apply_subscription_usage(p)
+
+        if result == "subscription_applied":
+            p.subscription_applied = True
+            p.subscription_result = "subscription_applied"
+            p.subscription_applied_at = datetime.now(timezone.utc)
+        else:
+            p.subscription_applied = False
+            p.subscription_result = result or "no_subscription"
+            p.subscription_applied_at = None
+            p.subscription_id = None
+
+    except Exception as e:
+        current_app.logger.exception(f"Subscription application failed for package {p.id}: {e}")
+        p.subscription_applied = False
+        p.subscription_result = "subscription_error"
+        p.subscription_applied_at = None
+
     db.session.commit()
+    
 
     # ✅ sync prealert invoice -> package attachments immediately after create
     try:

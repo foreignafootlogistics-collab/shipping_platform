@@ -608,7 +608,7 @@
                     <td>
                       <div class="d-inline-flex align-items-center gap-1">
                         <span>{{ pkg.house_awb or '-' }}</span>
-                        {% if False %}
+                        {% if pkg.subscription_applied %}
                         <i class="bi bi-patch-check-fill text-success ms-1 shipment-subscription-icon"
                           style="font-size:0.9rem;" title="Covered by subscription"></i>
                         {% endif %}
@@ -2264,15 +2264,15 @@ Not emailed yet"></i>
       return Number(el?.value || 0).toFixed(2);
     }
 
-     function hasSavedChargeValues(pkgId) {
-       return [
-         "duty", "gct", "scf", "envl", "caf", "stamp",
-         "freight", "handling", "other", "bad_address_fee"
-       ].some(name => {
-         const el = document.getElementById(`${name}_${pkgId}`);
-         return Number(el?.value || 0) > 0;
-       });
-     }
+    function hasSavedChargeValues(pkgId) {
+      return [
+        "duty", "gct", "scf", "envl", "caf", "stamp",
+        "freight", "handling", "other", "bad_address_fee"
+      ].some(name => {
+        const el = document.getElementById(`${name}_${pkgId}`);
+        return Number(el?.value || 0) > 0;
+      });
+    }
 
     function loadSavedChargesForPackage(pkgId) {
       if (!pkgId) return;
@@ -3951,6 +3951,5 @@ Not emailed yet"></i>
     height: 20px;
     background: rgba(74, 20, 140, 0.18);
   }
-
 </style>
 {% endblock %}

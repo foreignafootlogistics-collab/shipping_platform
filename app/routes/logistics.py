@@ -570,7 +570,10 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
     # -----------------------------------
     # SUBSCRIPTION LOGIC
     # -----------------------------------
-    if getattr(p, "subscription_applied", False):
+    if (
+        getattr(p, "subscription_applied", False)
+        and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+    ):
         if hasattr(p, "category"):
             p.category = category
 

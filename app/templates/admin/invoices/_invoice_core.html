@@ -1,96 +1,122 @@
 {# admin/invoices/_invoice_core.html #}
 
 <style>
-  .proforma-wrapper{
+  .proforma-wrapper {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 0.9rem;
-    color:#111827;
-  }
-  .proforma-header{
-    display:flex;
-    gap:0.5rem;
-    align-items:flex-start;
-    margin-bottom:1rem;
-    border-bottom:2px solid #4A148C;
-    padding-bottom:0.75rem;
-  }
-  .proforma-logo{
-    flex:0 0 110px;
-    padding-right:6px;
-  }
-  .proforma-logo img{
-    max-height:120px;
-    max-width:320px;
-    object-fit:contain;
-  }
-  .proforma-company{
-    flex:1 1 auto;
-    padding-top:2px;
-  }
-  .proforma-company h2{
-    font-size:1.2rem;
-    margin:0 0 0.15rem 0;
-    font-weight:700;
-  }
-  .proforma-company small{
-    color:#4b5563;
-    display:block;
-    line-height:1.2;
-  }
-  .proforma-meta{
-    flex:0 0 240px;
-    text-align:right;
-    font-size:0.85rem;
-  }
-  .proforma-meta .label{
-    color:#6b7280;
-  }
-  .proforma-meta .value{
-    font-weight:600;
+    color: #111827;
   }
 
-  .proforma-section-title{
-    font-size:0.9rem;
-    font-weight:700;
-    margin-top:0.75rem;
-    margin-bottom:0.25rem;
-    color:#4A148C;
-    text-transform:uppercase;
-    letter-spacing:0.04em;
+  .proforma-header {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid #4A148C;
+    padding-bottom: 0.75rem;
   }
 
-  .proforma-table{
-    width:100%;
-    border-collapse:collapse;
-    margin-top:0.75rem;
-    font-size:0.8rem;
+  .proforma-logo {
+    flex: 0 0 110px;
+    padding-right: 6px;
   }
+
+  .proforma-logo img {
+    max-height: 120px;
+    max-width: 320px;
+    object-fit: contain;
+  }
+
+  .proforma-company {
+    flex: 1 1 auto;
+    padding-top: 2px;
+  }
+
+  .proforma-company h2 {
+    font-size: 1.2rem;
+    margin: 0 0 0.15rem 0;
+    font-weight: 700;
+  }
+
+  .proforma-company small {
+    color: #4b5563;
+    display: block;
+    line-height: 1.2;
+  }
+
+  .proforma-meta {
+    flex: 0 0 240px;
+    text-align: right;
+    font-size: 0.85rem;
+  }
+
+  .proforma-meta .label {
+    color: #6b7280;
+  }
+
+  .proforma-meta .value {
+    font-weight: 600;
+  }
+
+  .proforma-section-title {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-top: 0.75rem;
+    margin-bottom: 0.25rem;
+    color: #4A148C;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .proforma-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+  }
+
   .proforma-table th,
-  .proforma-table td{
-    border:1px solid #d1d5db;
-    padding:0.35rem 0.4rem;
-    vertical-align:top;
-  }
-  .proforma-table thead th{
-    background:#111827;
-    color:#f9fafb;
-    font-weight:600;
-    text-align:left;
-  }
-  .proforma-table tbody tr:nth-child(even){
-    background:#f9fafb;
+  .proforma-table td {
+    border: 1px solid #d1d5db;
+    padding: 0.35rem 0.4rem;
+    vertical-align: top;
   }
 
-  .proforma-small{
-    font-size:0.8rem;
-    color:#4b5563;
+  .proforma-table thead th {
+    background: #111827;
+    color: #f9fafb;
+    font-weight: 600;
+    text-align: left;
   }
-  .text-right{ text-align:right; }
-  .text-center{ text-align:center; }
-  .fw-bold{ font-weight:600; }
-  .mt-1{ margin-top:0.25rem; }
-  .mt-2{ margin-top:0.5rem; }
 
+  .proforma-table tbody tr:nth-child(even) {
+    background: #f9fafb;
+  }
+
+  .proforma-small {
+    font-size: 0.8rem;
+    color: #4b5563;
+  }
+
+  .text-right {
+    text-align: right;
+  }
+
+  .text-center {
+    text-align: center;
+  }
+
+  .fw-bold {
+    font-weight: 600;
+  }
+
+  .mt-1 {
+    margin-top: 0.25rem;
+  }
+
+  .mt-2 {
+    margin-top: 0.5rem;
+  }
 </style>
 
 <div class="proforma-wrapper">
@@ -99,14 +125,15 @@
   <div class="proforma-header">
     <div class="proforma-logo">
       {% if logo_data_uri or logo_url %}
-        <img src="{{ logo_data_uri or logo_url }}" alt="Foreign A Foot Logistics Logo">
+      <img src="{{ logo_data_uri or logo_url }}" alt="Foreign A Foot Logistics Logo">
       {% endif %}
     </div>
 
     <div class="proforma-company">
       <h2>{{ (settings and settings.company_name) or "Foreign A Foot Logistics Limited" }}</h2>
       <small>
-        {{ (settings and settings.company_address) or "Unit 7, Lot C22 Cedar Manor, Gregory Park<br>Portmore, St. Catherine" | safe }}
+        {{ (settings and settings.company_address) or "Unit 7, Lot C22 Cedar Manor, Gregory Park<br>Portmore, St.
+        Catherine" | safe }}
       </small>
       <small>
         {{ (settings and settings.company_email) or "foreignafootlogistics@gmail.com" }}
@@ -121,15 +148,19 @@
 
     <div class="proforma-meta">
       <div><span class="label">Invoice&nbsp;</span>
-        <span class="value">{{ invoice.number }}</span></div>
+        <span class="value">{{ invoice.number }}</span>
+      </div>
       <div><span class="label">Branch&nbsp;</span>
-        <span class="value">{{ invoice.branch or "Main Branch" }}</span></div>
+        <span class="value">{{ invoice.branch or "Main Branch" }}</span>
+      </div>
       <div><span class="label">Staff&nbsp;</span>
-        <span class="value">{{ invoice.staff or "FAFL ADMIN" }}</span></div>
+        <span class="value">{{ invoice.staff or "FAFL ADMIN" }}</span>
+      </div>
       <div><span class="label">Date&nbsp;</span>
         <span class="value">
           {{ invoice.date.strftime("%b %d, %Y, %I:%M %p") if invoice.date else "" }}
-        </span></div>
+        </span>
+      </div>
       <div class="mt-1">
         <span class="label">Customer&nbsp;</span>
         <span class="value">
@@ -158,6 +189,30 @@
           Weight: {{ "%.1f"|format(p.weight or 0) }} lbs<br>
           USD Value: ${{ "%.2f"|format(p.value or 0) }}<br>
           {{ p.description }}
+
+          {% if p.subscription_covered %}
+          <div style="margin-top:4px;">
+            <span
+              style="display:inline-block;background:#198754;color:white;padding:2px 6px;border-radius:4px;font-size:11px;">
+              Subscription Covered
+            </span>
+
+            {% if p.customs_only_due_to_subscription %}
+            <span
+              style="display:inline-block;background:#ffc107;color:#111;padding:2px 6px;border-radius:4px;font-size:11px;">
+              Customs Charges Only
+            </span>
+            {% endif %}
+          </div>
+
+          {% elif p.subscription_result == "subscription_exhausted" %}
+          <div style="margin-top:4px;">
+            <span
+              style="display:inline-block;background:#0dcaf0;color:#111;padding:2px 6px;border-radius:4px;font-size:11px;">
+              Subscriber Rate Applied
+            </span>
+          </div>
+          {% endif %}
         </td>
         <td>
           Freight: JMD {{ "%.2f"|format(p.freight or 0) }}<br>
@@ -188,53 +243,52 @@
   </table>
 
   {# ---- totals helpers (use preview if available) ---- #}
-  {% set sub_total = (invoice.preview_subtotal if invoice.preview_subtotal is defined else invoice.subtotal or 0) | float %}
-  {% set discount_total = (invoice.preview_discount_total if invoice.preview_discount_total is defined else invoice.discount_total or 0) | float %}
-  {% set balance_due = (invoice.preview_total_due if invoice.preview_total_due is defined else invoice.total_due or 0) | float %}
+  {% set sub_total = (invoice.preview_subtotal if invoice.preview_subtotal is defined else invoice.subtotal or 0) |
+  float %}
+  {% set discount_total = (invoice.preview_discount_total if invoice.preview_discount_total is defined else
+  invoice.discount_total or 0) | float %}
+  {% set balance_due = (invoice.preview_total_due if invoice.preview_total_due is defined else invoice.total_due or 0) |
+  float %}
 
   {# total after discount (what customer should pay before payments) #}
   {% set total_after_discount = sub_total - discount_total %}
 
   {# payments = total_after_discount - balance_due #}
   {% set payments_total = total_after_discount - balance_due %}
-  {% if payments_total < 0 %}{% set payments_total = 0 %}{% endif %}
+  {% if payments_total < 0 %}{% set payments_total=0 %}{% endif %} <!-- TOTALS -->
+    <div class="mt-2 proforma-small" style="display:flex;justify-content:flex-end;">
+      <div style="min-width:260px;">
+        <div class="d-flex justify-content-between">
+          <span>Sub-Total:</span>
+          <span class="fw-bold">JMD {{ "%.2f"|format(sub_total) }}</span>
+        </div>
 
+        {% if discount_total > 0 %}
+        <div class="d-flex justify-content-between">
+          <span>Discount:</span>
+          <span class="fw-bold">- JMD {{ "%.2f"|format(discount_total) }}</span>
+        </div>
+        {% endif %}
 
+        <div class="d-flex justify-content-between">
+          <span>Total:</span>
+          <span class="fw-bold">JMD {{ "%.2f"|format(total_after_discount) }}</span>
+        </div>
 
-  <!-- TOTALS -->
-  <div class="mt-2 proforma-small" style="display:flex;justify-content:flex-end;">
-    <div style="min-width:260px;">
-      <div class="d-flex justify-content-between">
-        <span>Sub-Total:</span>
-        <span class="fw-bold">JMD {{ "%.2f"|format(sub_total) }}</span>
-      </div>
+        <div class="d-flex justify-content-between">
+          <span>Payment:</span>
+          <span class="fw-bold">JMD {{ "%.2f"|format(payments_total) }}</span>
+        </div>
 
-      {% if discount_total > 0 %}
-      <div class="d-flex justify-content-between">
-        <span>Discount:</span>
-        <span class="fw-bold">- JMD {{ "%.2f"|format(discount_total) }}</span>
-      </div>
-      {% endif %}
-
-      <div class="d-flex justify-content-between">
-        <span>Total:</span>
-        <span class="fw-bold">JMD {{ "%.2f"|format(total_after_discount) }}</span>
-      </div>
-
-      <div class="d-flex justify-content-between">
-        <span>Payment:</span>
-        <span class="fw-bold">JMD {{ "%.2f"|format(payments_total) }}</span>
-      </div>
-
-      <div class="d-flex justify-content-between mt-1" style="border-top:1px solid #e5e7eb;padding-top:.35rem;">
-        <span class="fw-bold">Balance:</span>
-        <span class="fw-bold">JMD {{ "%.2f"|format(balance_due) }}</span>
+        <div class="d-flex justify-content-between mt-1" style="border-top:1px solid #e5e7eb;padding-top:.35rem;">
+          <span class="fw-bold">Balance:</span>
+          <span class="fw-bold">JMD {{ "%.2f"|format(balance_due) }}</span>
+        </div>
       </div>
     </div>
-  </div>
 
 
-  <div class="mt-2 proforma-small">
-    Thank you for shipping with {{ (settings and settings.company_name) or "Foreign A Foot Logistics" }}.
-  </div>
+    <div class="mt-2 proforma-small">
+      Thank you for shipping with {{ (settings and settings.company_name) or "Foreign A Foot Logistics" }}.
+    </div>
 </div>

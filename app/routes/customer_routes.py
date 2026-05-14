@@ -1196,6 +1196,15 @@ def bill_invoice_modal(invoice_id):
             "caf": _num(getattr(p, "caf", 0)),
             "gct": _num(getattr(p, "gct", 0)),
             "discount_due": _num(getattr(p, "discount_due", 0)),
+            "subscription_applied": bool(getattr(p, "subscription_applied", False)),
+            "subscription_result": getattr(p, "subscription_result", None),
+            "subscription_label": (
+                "Subscription Covered"
+                if bool(getattr(p, "subscription_applied", False)) and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                else "Subscriber Rate"
+                if (getattr(p, "subscription_result", "") or "") == "subscription_exhausted"
+                else ""
+            ),
         })
 
     subtotal = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))

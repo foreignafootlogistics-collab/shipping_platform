@@ -145,9 +145,37 @@ def get_subscription_discount_percent(package):
     if not package.user_id:
         return 0
 
-    subscription = get_active_subscription(package.user_id)
+    subscription = (
+        Subscription.query
+        .filter(
+            Subscription.user_id == package.user_id,
+            Subscription.status == "exhausted"
+        )
+        .order_by(Subscription.created_at.desc())
+        .first()
+    )
 
-    if not subscription or subscription.status != "exhausted":
+    if not subscription:
+        member = (
+            SubscriptionMember.query
+            .filter(
+                SubscriptionMember.user_id == package.user_id,
+                SubscriptionMember.status == "active"
+            )
+            .first()
+        )
+
+        if member:
+            subscription = (
+                Subscription.query
+                .filter(
+                    Subscription.id == member.subscription_id,
+                    Subscription.status == "exhausted"
+                )
+                .first()
+            )
+
+    if not subscription:
         return 0
 
     billable_weight = get_billable_weight(package)

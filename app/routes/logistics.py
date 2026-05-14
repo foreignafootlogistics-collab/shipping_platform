@@ -1540,9 +1540,8 @@ def logistics_dashboard():
                 "attachments": atts,
                 "subscription_applied": bool(getattr(p, "subscription_applied", False)),
                 "subscription_result": getattr(p, "subscription_result", None),
-                "subscription_covered": (
-                    bool(getattr(p, "subscription_applied", False))
-                    and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                "subscription_covered": bool(
+                    getattr(p, "subscription_applied", False)
                 ),
                 "customs_only_due_to_subscription": (
                     bool(getattr(p, "subscription_applied", False))

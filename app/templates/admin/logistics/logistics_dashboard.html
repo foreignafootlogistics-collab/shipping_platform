@@ -2367,7 +2367,8 @@ Not emailed yet"></i>
       }
 
       // ✅ USE WHAT'S IN THE MODAL (do NOT pull from table here)
-      const weight = Number(weightInput?.value || 0);
+      const actualWeight = Number(weightInput?.value || 0);
+      const billingWeight = actualWeight > 0 ? Math.max(1, Math.ceil(actualWeight)) : 0;
       const value = Number(valueInput?.value || 0);
 
 
@@ -2382,13 +2383,14 @@ Not emailed yet"></i>
           },
           body: JSON.stringify({
             category: category,
-            weight: Number(weight || 0),
+            weight: billingWeight,
             invoice_usd: Number(value || 0)
           })
         });
 
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
+        const calc = d.data || d.breakdown || d;
 
         const pick = (obj, keys, fallback = 0) => {
           for (const k of keys) {

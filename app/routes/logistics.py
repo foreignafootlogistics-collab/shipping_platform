@@ -5807,6 +5807,22 @@ def api_update_package(pkg_id):
                 getattr(p, "weight", 0) or 0
             )
 
+        # Always remove freight/handling for covered subscription packages
+        for field in [
+            "freight_fee",
+            "freight",
+            "handling_fee",
+            "handling",
+            "storage_fee",
+            "freight_total",
+            "other_charges",
+            "bad_address_fee",
+            "discount_due",
+        ]:
+            if hasattr(p, field):
+                setattr(p, field, 0.0)
+
+        # If value is $100 or less, also remove customs
         if declared_value <= 100:
             for field in [
                 "duty",
@@ -5816,20 +5832,18 @@ def api_update_package(pkg_id):
                 "caf",
                 "stamp",
                 "customs_total",
-                "freight_fee",
-                "freight",
-                "handling_fee",
-                "handling",
-                "storage_fee",
-                "freight_total",
-                "other_charges",
-                "bad_address_fee",
-                "discount_due",
-                "grand_total",
-                "amount_due",
-            ]:
+            ]:            
                 if hasattr(p, field):
                     setattr(p, field, 0.0)
+
+            # Recalculate total from remaining customs only
+            customs_total = float(getattr(p, "customs_total", 0) or 0)
+
+            if hasattr(p, "grand_total"):
+                p.grand_total = customs_total
+
+            if hasattr(p, "amount_due"):
+                p.amount_due = customs_total
 
             if "pricing_locked" in data and hasattr(p, "pricing_locked"):
                 p.pricing_locked = bool(data.get("pricing_locked"))
@@ -5840,9 +5854,9 @@ def api_update_package(pkg_id):
                 "ok": True,
                 "pkg_id": pkg_id,
                 "updated": ["subscription_zeroed"],
-                "amount_due": 0.0,
-                "grand_total": 0.0,
-                "message": "Subscription package covered. Charges set to 0."
+                "amount_due": customs_total,
+                "grand_total": customs_total,
+                "message": "Subscription package covered. Freight removed."
             }), 200
 
     # -------------------------

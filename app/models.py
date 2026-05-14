@@ -159,6 +159,9 @@ class Subscription(db.Model):
     # active, exhausted, expired, cancelled
 
     auto_renew = db.Column(db.Boolean, default=False)
+    renewal_reminder_5d_sent = db.Column(db.Boolean, default=False)
+    renewal_reminder_2d_sent = db.Column(db.Boolean, default=False)
+    expiry_notice_sent = db.Column(db.Boolean, default=False)
 
     # Family grouping
     parent_subscription_id = db.Column(

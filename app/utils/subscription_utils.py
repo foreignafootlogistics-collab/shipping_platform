@@ -22,7 +22,7 @@ def get_active_subscription(user_id):
         Subscription.query
         .filter(
             Subscription.user_id == user_id,
-            Subscription.status == "active",
+            Subscription.status.in_(["active", "exhausted"]),
             Subscription.start_date <= now,
             Subscription.end_date >= now
         )
@@ -50,7 +50,7 @@ def get_active_subscription(user_id):
         Subscription.query
         .filter(
             Subscription.id == member.subscription_id,
-            Subscription.status == "active",
+            Subscription.status.in_(["active", "exhausted"]),
             Subscription.start_date <= now,
             Subscription.end_date >= now
         )

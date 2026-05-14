@@ -5757,8 +5757,10 @@ def api_update_package(pkg_id):
     if "value" in data and data["value"] is not None and hasattr(p, "value"):
         val = to_num(data["value"], 0.0)
         p.value = val
+
         if hasattr(p, "declared_value"):
             p.declared_value = val
+
         updated.append("value")
 
     # -------------------------
@@ -5772,27 +5774,6 @@ def api_update_package(pkg_id):
         p.bad_address_fee = to_num(data.get("bad_address_fee"), 0.0)
         updated.append("bad_address_fee")
 
-    # -------------------------
-    # Breakdown fields
-    # -------------------------
-    breakdown_map = {
-        "duty": "duty",
-        "gct": "gct",
-        "scf": "scf",
-        "envl": "envl",
-        "caf": "caf",
-        "stamp": "stamp",
-        "customs_total": "customs_total",
-        "freight": "freight_fee",
-        "freight_fee": "freight_fee",
-        "handling": "handling_fee",
-        "handling_fee": "handling_fee",
-        "storage_fee": "handling_fee",
-        "freight_total": "freight_total",
-        "grand_total": "grand_total",
-        "other_charges": "other_charges",
-        "amount_due": "amount_due",
-    }
     # -------------------------
     # Subscription protection:
     # covered subscription packages should not be saved as normal freight
@@ -5816,18 +5797,30 @@ def api_update_package(pkg_id):
         if "value" in data:
             if hasattr(p, "value"):
                 p.value = declared_value
-        if hasattr(p, "declared_value"):
-            p.declared_value = declared_value
+
+            if hasattr(p, "declared_value"):
+                p.declared_value = declared_value
 
         if "weight" in data and hasattr(p, "weight"):
-            p.weight = to_num(data.get("weight"), getattr(p, "weight", 0) or 0)
+            p.weight = to_num(
+                data.get("weight"),
+                getattr(p, "weight", 0) or 0
+            )
 
         if declared_value <= 100:
             for field in [
-                "duty", "gct", "scf", "envl", "caf", "stamp",
+                "duty",
+                "gct",
+                "scf",
+                "envl",
+                "caf",
+                "stamp",
                 "customs_total",
-                "freight_fee", "freight",
-                "handling_fee", "handling", "storage_fee",
+                "freight_fee",
+                "freight",
+                "handling_fee",
+                "handling",
+                "storage_fee",
                 "freight_total",
                 "other_charges",
                 "bad_address_fee",
@@ -5853,20 +5846,48 @@ def api_update_package(pkg_id):
             }), 200
 
     # -------------------------
+    # Breakdown fields
+    # -------------------------
+    breakdown_map = {
+        "duty": "duty",
+        "gct": "gct",
+        "scf": "scf",
+        "envl": "envl",
+        "caf": "caf",
+        "stamp": "stamp",
+        "customs_total": "customs_total",
+        "freight": "freight_fee",
+        "freight_fee": "freight_fee",
+        "handling": "handling_fee",
+        "handling_fee": "handling_fee",
+        "storage_fee": "handling_fee",
+        "freight_total": "freight_total",
+        "grand_total": "grand_total",
+        "other_charges": "other_charges",
+        "amount_due": "amount_due",
+    }
+
+    # -------------------------
     # Backwards compatibility:
     # accept old keys freight/handling/storage_fee if present
     # -------------------------
     if "freight" in data and "freight_fee" not in data:
         data["freight_fee"] = data.get("freight")
+
     if "handling" in data and "handling_fee" not in data:
         data["handling_fee"] = data.get("handling")
+
     if "storage_fee" in data and "handling_fee" not in data:
         data["handling_fee"] = data.get("storage_fee")
 
     for client_key, col in breakdown_map.items():
-        if client_key in data and data[client_key] is not None and hasattr(p, col):
+        if (
+            client_key in data
+            and data[client_key] is not None
+            and hasattr(p, col)
+        ):
             setattr(p, col, to_num(data[client_key], 0.0))
-            updated.append(client_key)   
+            updated.append(client_key)
 
     # -------------------------
     # Locking flags
@@ -5883,7 +5904,12 @@ def api_update_package(pkg_id):
 
     db.session.commit()
 
-    return jsonify({"ok": True, "pkg_id": pkg_id, "updated": updated}), 200
+    return jsonify({
+        "ok": True,
+        "pkg_id": pkg_id,
+        "updated": updated
+    }), 200
+
 # --------------------------------------------------------------------------------------
 # Invoice status
 # --------------------------------------------------------------------------------------

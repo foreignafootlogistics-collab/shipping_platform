@@ -210,7 +210,11 @@
             Renewal reminder: your subscription expires soon.
           </div>
           {% endif %}
-
+          {% if subscription_summary.is_expired %}
+          <div class="small text-danger fw-semibold mt-1">
+            Subscription expired. Normal pricing now applies.
+          </div>
+          {% endif %}
           {% if subscription_summary.status == "exhausted" %}
           <div class="small text-warning fw-semibold mt-1">
             Your package allowance is exhausted. Subscriber rate now applies until expiry.

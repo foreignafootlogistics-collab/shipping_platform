@@ -168,7 +168,7 @@ def get_subscription_discount_percent(package):
         Subscription.query
         .filter(
             Subscription.user_id == package.user_id,
-            Subscription.status == "exhausted"
+            Subscription.status.in_(["exhausted"])
         )
         .order_by(Subscription.created_at.desc())
         .first()
@@ -189,13 +189,24 @@ def get_subscription_discount_percent(package):
                 Subscription.query
                 .filter(
                     Subscription.id == member.subscription_id,
-                    Subscription.status == "exhausted"
+                    Subscription.status.in_(["exhausted"])
                 )
                 .first()
             )
 
     if not subscription:
         return 0
+    
+    if subscription.end_date:
+        now = datetime.now(timezone.utc)
+
+        end_date = subscription.end_date
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=timezone.utc)
+
+        if end_date < now:
+            return 0
+
 
     billable_weight = get_billable_weight(package)
 
@@ -210,7 +221,7 @@ def get_subscription_summary(user_id):
 
     if not subscription:
         return None
-
+    
     usage = ensure_usage(subscription)
     plan = subscription.plan
 

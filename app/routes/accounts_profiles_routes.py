@@ -1898,6 +1898,7 @@ def admin_subscriptions():
         "all": Subscription.query.count(),
         "pending_payment": Subscription.query.filter_by(status="pending_payment").count(),
         "active": Subscription.query.filter_by(status="active").count(),
+        "exhausted": Subscription.query.filter_by(status="exhausted").count(),
         "expired": Subscription.query.filter_by(status="expired").count(),
     }
 

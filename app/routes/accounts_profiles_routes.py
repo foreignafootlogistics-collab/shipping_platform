@@ -1385,10 +1385,30 @@ def create_single_package_for_user(id):
 
         from app.utils.prealert_sync import sync_prealert_invoice_to_package
         sync_prealert_invoice_to_package(pkg)  # attaches invoice (if found)
+        from app.utils.subscription_utils import apply_subscription_usage
+
+        try:
+            result = apply_subscription_usage(pkg)
+
+            if result in ("subscription_applied", "already_applied"):
+                pass
+            else:
+                pkg.subscription_applied = False
+                pkg.subscription_result = result or "no_subscription"
+                pkg.subscription_applied_at = None
+                pkg.subscription_id = None
+
+        except Exception as e:
+            current_app.logger.exception(
+                f"Subscription application failed for admin-created package {pkg.id}: {e}"
+            )
+            pkg.subscription_applied = False
+            pkg.subscription_result = "subscription_error"
+            pkg.subscription_applied_at = None
 
         db.session.commit()  # ✅ commit ONCE at the end
     except Exception:
-        current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed after single package create")
+        current_app.logger.exception("[ADMIN PACKAGE CREATE] failed after single package create")
         db.session.rollback()
         return jsonify({"success": False, "error": "Could not create package"}), 500
 

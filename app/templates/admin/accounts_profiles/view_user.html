@@ -8,18 +8,18 @@
 {% block title %}View User{% endblock %}
 
 {% block content %}
-<div class="container mt-4">  
+<div class="container mt-4">
   <!-- PROFILE CARD -->
   <div class="card shadow-sm mb-4 w-100">
 
     <!-- TOP GREY BAR -->
     <div class="d-flex justify-content-between align-items-center p-2"
-         style="background-color:#6c757d; border-bottom:1px solid black; position:relative">
+      style="background-color:#6c757d; border-bottom:1px solid black; position:relative">
 
       <!-- Left: Back to Manage Users -->
       <div>
         <a href="{{ request.args.get('next') or url_for('accounts_profiles.manage_users') }}"
-           class="text-white text-decoration-none fw-bold">
+          class="text-white text-decoration-none fw-bold">
           <i class="bi bi-arrow-left"></i> Manage Users
         </a>
       </div>
@@ -28,15 +28,15 @@
       <div class="d-flex align-items-center position-absolute" style="left: 33%; gap: 1rem;">
         <!-- Icons grouped -->
         <div class="d-flex align-items-center" style="gap: 0.5rem;">
-          <i class="bi bi-globe fs-5 text-white cursor-pointer"
-             onclick="showAddress('overseas')" title="Overseas Address"></i>
-          <i class="bi bi-house-door fs-5 text-white cursor-pointer"
-             onclick="showAddress('home')" title="Home Address"></i>
+          <i class="bi bi-globe fs-5 text-white cursor-pointer" onclick="showAddress('overseas')"
+            title="Overseas Address"></i>
+          <i class="bi bi-house-door fs-5 text-white cursor-pointer" onclick="showAddress('home')"
+            title="Home Address"></i>
         </div>
 
         <!-- Sensitive Info button (link to page) -->
-        <button type="button" class="btn btn-outline-light btn-sm"
-                data-bs-toggle="modal" data-bs-target="#sensitiveInfoModal">
+        <button type="button" class="btn btn-outline-light btn-sm" data-bs-toggle="modal"
+          data-bs-target="#sensitiveInfoModal">
           <i class="bi bi-shield-lock me-1"></i> Sensitive Info
         </button>
 
@@ -46,29 +46,25 @@
       <!-- Right: Account Actions -->
       <div class="d-flex gap-2">
         <!-- Change Password -->
-        <a href="{{ url_for('accounts_profiles.change_password', id=user.id) }}"
-           class="btn btn-outline-light btn-sm"
-           title="Change Password">
+        <a href="{{ url_for('accounts_profiles.change_password', id=user.id) }}" class="btn btn-outline-light btn-sm"
+          title="Change Password">
           <i class="bi bi-key"></i>
         </a>
 
         <!-- Delete Account -->
         <form action="{{ url_for('accounts_profiles.delete_account', id=user.id, next=request.full_path) }}"
-              method="POST" class="m-0">
+          method="POST" class="m-0">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="next" value="{{ next }}">
-          <button type="submit"
-                  class="btn btn-outline-light btn-sm"
-                  onclick="return confirm('Are you sure you want to delete this account?');">
+          <button type="submit" class="btn btn-outline-light btn-sm"
+            onclick="return confirm('Are you sure you want to delete this account?');">
             <i class="bi bi-trash"></i>
           </button>
         </form>
 
         <!-- Manage Account (open modal) -->
-        <button type="button"
-                class="btn btn-outline-light btn-sm"
-                data-bs-toggle="modal"
-                data-bs-target="#manageAccountModal">
+        <button type="button" class="btn btn-outline-light btn-sm" data-bs-toggle="modal"
+          data-bs-target="#manageAccountModal">
           <i class="bi bi-pencil-square"></i>
         </button>
 
@@ -87,31 +83,28 @@
         <!-- Profile Image / Initials -->
         <div class="d-flex align-items-center mb-3">
           {% if user.profile_picture %}
-            <img src="{{ url_for('static', filename='profile_pics/' ~ user.profile_picture) }}"
-                 alt="Profile" width="80" height="80"
-                 class="rounded-circle me-3">
+          <img src="{{ url_for('static', filename='profile_pics/' ~ user.profile_picture) }}" alt="Profile" width="80"
+            height="80" class="rounded-circle me-3">
           {% else %}
-            <div class="rounded-circle d-flex justify-content-center align-items-center me-3"
-                 style="width:80px; height:80px; background-color:#4a148c; color:white;
+          <div class="rounded-circle d-flex justify-content-center align-items-center me-3" style="width:80px; height:80px; background-color:#4a148c; color:white;
                         font-family:'Poppins',sans-serif; font-size:28px; font-weight:700;">
-              {{ user.full_name.split()[0][0] }}{{ user.full_name.split()[-1][0] }}
-            </div>
+            {{ user.full_name.split()[0][0] }}{{ user.full_name.split()[-1][0] }}
+          </div>
           {% endif %}
 
-          <h3 class="mb-0"
-              style="color:#4a148c; font-family:'Poppins',sans-serif; font-weight:700; font-size:1.6rem;">
+          <h3 class="mb-0" style="color:#4a148c; font-family:'Poppins',sans-serif; font-weight:700; font-size:1.6rem;">
             {{ user.full_name }}
             {% if user.registration_number %}
-              <span style="font-weight:500; font-size:1.2rem; color:#555;">
-                ({{ user.registration_number }})
-              </span>
+            <span style="font-weight:500; font-size:1.2rem; color:#555;">
+              ({{ user.registration_number }})
+            </span>
             {% endif %}
           </h3>
         </div>
 
         <!-- Details -->
         <div class="mb-1"><strong>Email:</strong> {{ user.email }}</div>
-        
+
         <div class="mb-1"><strong>Mobile:</strong> {{ user.mobile }}</div>
         <div class="mb-1"><strong>Referral Code:</strong> {{ user.referral_code }}</div>
         <div class="mb-1"><strong>Referrer:</strong> {{ user.referrer or 'None' }}</div>
@@ -133,8 +126,8 @@
         <div id="home-address" style="display:none;">
           <div class="label fw-bold text-dark mb-2">Home Address</div>
           <div class="value mb-3">{{ home_address if home_address else "Not set" }}</div>
-          <a href="{{ url_for('customer.update_delivery_address') }}"
-             class="btn btn-outline-dark btn-sm">Update Address</a>
+          <a href="{{ url_for('customer.update_delivery_address') }}" class="btn btn-outline-dark btn-sm">Update
+            Address</a>
         </div>
       </div>
 
@@ -149,43 +142,52 @@
         <div class="mb-1">
           <strong>Last Login:</strong> {{ user.last_login_display }}
         </div>
-        
+
         <div class="mb-1">
           <strong>Subscription:</strong>
           {% if subscription_summary %}
-            <div class="mt-1">
-              <span class="badge bg-success">
-                {{ subscription_summary.plan_name }}
-              </span>
-            </div>
+          <div class="mt-1">
+            <span
+              class="badge {% if subscription_summary.status == 'exhausted' %}bg-danger{% else %}bg-success{% endif %}">
+              {{ subscription_summary.plan_name }}
+            </span>
 
-            <div class="small text-muted">
-              {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} used
-            </div>
-
-            {% if subscription_summary.days_remaining is not none %}
-              <div class="small text-muted">
-                Expires in {{ subscription_summary.days_remaining }} day(s)
-              </div>
+            {% if subscription_summary.status == "exhausted" %}
+            <span class="badge bg-danger ms-1">Exhausted</span>
             {% endif %}
+          </div>
+
+          <div class="small text-muted">
+            {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} used
+          </div>
+
+          <div class="small text-muted">
+            {{ subscription_summary.weight_used }}/{{ subscription_summary.weight_limit }} lbs used
+          </div>
+
+          {% if subscription_summary.days_remaining is not none %}
+          <div class="small text-muted">
+            Expires in {{ subscription_summary.days_remaining }} day(s)
+          </div>
+          {% endif %}
 
           {% elif pending_subscription %}
-            <div class="mt-1">
-              <span class="badge bg-warning text-dark">
-                Pending Payment
-              </span>
-            </div>
+          <div class="mt-1">
+            <span class="badge bg-warning text-dark">
+              Pending Payment
+            </span>
+          </div>
 
-            <div class="small text-muted">
-              {{ pending_subscription.plan.name }} selected
-            </div>
+          <div class="small text-muted">
+            {{ pending_subscription.plan.name }} selected
+          </div>
 
-            <div class="small text-muted">
-              Awaiting payment confirmation
-            </div>
+          <div class="small text-muted">
+            Awaiting payment confirmation
+          </div>
 
           {% else %}
-            <span class="badge bg-secondary">None</span>
+          <span class="badge bg-secondary">None</span>
           {% endif %}
         </div>
 
@@ -196,39 +198,35 @@
 
           <ul class="small mt-1 mb-2">
             {% for m in subscription_summary.members %}
-              <li class="d-flex justify-content-between align-items-center">
+            <li class="d-flex justify-content-between align-items-center">
 
               <span>
                 {{ m.user.full_name }}
                 {% if m.role == "owner" %}
-                  <span class="badge bg-primary">Owner</span>
+                <span class="badge bg-primary">Owner</span>
                 {% endif %}
               </span>
 
               {% if m.role != "owner" %}
-              <form method="POST"
-                    action="{{ url_for('accounts_profiles.remove_subscription_member',
+              <form method="POST" action="{{ url_for('accounts_profiles.remove_subscription_member',
                                        sub_id=subscription_summary.subscription_id,
                                        user_id=m.user.id) }}">
                 <button class="btn btn-sm btn-outline-danger">
                   Remove
                 </button>
               </form>
-              {% endif %}              
+              {% endif %}
 
-              </li>
+            </li>
             {% endfor %}
           </ul>
 
           <form method="POST"
-                action="{{ url_for('accounts_profiles.add_subscription_member', sub_id=subscription_summary.subscription_id) }}"
-                class="d-flex gap-2">
+            action="{{ url_for('accounts_profiles.add_subscription_member', sub_id=subscription_summary.subscription_id) }}"
+            class="d-flex gap-2">
 
-            <input type="text"
-                   name="registration_number"
-                   class="form-control form-control-sm"
-                   placeholder="Enter Registration #"
-                   required>
+            <input type="text" name="registration_number" class="form-control form-control-sm"
+              placeholder="Enter Registration #" required>
 
             <button class="btn btn-sm btn-outline-purple">
               Add
@@ -238,23 +236,17 @@
         </div>
         {% endif %}
 
-        <button type="button"
-                class="btn btn-sm btn-outline-purple mt-2"
-                data-bs-toggle="modal"
-                data-bs-target="#manualSubscriptionModal">
+        <button type="button" class="btn btn-sm btn-outline-purple mt-2" data-bs-toggle="modal"
+          data-bs-target="#manualSubscriptionModal">
           Add / Change Subscription
-        </button>          
-                
+        </button>
+
 
         <!-- Wallet Icon at the bottom -->
         <div class="mt-3 text-end">
-          <button
-            type="button"
-            class="btn btn-purple btn-lg"
+          <button type="button" class="btn btn-purple btn-lg"
             style="font-size:1.5rem; background-color:#6c757d; border:none; color:white; padding:0.75rem 1.25rem;"
-            data-bs-toggle="modal"
-            data-bs-target="#editWalletModal"
-          >
+            data-bs-toggle="modal" data-bs-target="#editWalletModal">
             <i class="bi bi-wallet2 me-2"></i>
             ${{ money(user.wallet_balance) }}
           </button>
@@ -266,67 +258,59 @@
     <div class="card-header bg-white p-0">
       <ul class="nav nav-tabs card-header-tabs px-3" id="profileTab" role="tablist">
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if current_tab == 'prealerts' %}active{% endif %}"
-                  id="prealerts-tab" data-bs-toggle="tab"
-                  data-bs-target="#prealerts" type="button" role="tab">
+          <button class="nav-link {% if current_tab == 'prealerts' %}active{% endif %}" id="prealerts-tab"
+            data-bs-toggle="tab" data-bs-target="#prealerts" type="button" role="tab">
             <i class="bi bi-box-seam me-1"></i> Pre-Alert Shipments
           </button>
         </li>
 
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if current_tab == 'packages' %}active{% endif %}"
-                  id="packages-tab" data-bs-toggle="tab"
-                  data-bs-target="#packages" type="button" role="tab">
+          <button class="nav-link {% if current_tab == 'packages' %}active{% endif %}" id="packages-tab"
+            data-bs-toggle="tab" data-bs-target="#packages" type="button" role="tab">
             <i class="bi bi-box2 me-1"></i> Packages
           </button>
         </li>
 
-        
+
 
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if current_tab == 'invoices' %}active{% endif %}"
-                  id="invoices-tab" data-bs-toggle="tab"
-                  data-bs-target="#invoices" type="button" role="tab">
+          <button class="nav-link {% if current_tab == 'invoices' %}active{% endif %}" id="invoices-tab"
+            data-bs-toggle="tab" data-bs-target="#invoices" type="button" role="tab">
             <i class="bi bi-receipt"></i> Invoices
           </button>
         </li>
 
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if current_tab == 'payments' %}active{% endif %}"
-                  id="payments-tab" data-bs-toggle="tab"
-                  data-bs-target="#payments" type="button" role="tab">
+          <button class="nav-link {% if current_tab == 'payments' %}active{% endif %}" id="payments-tab"
+            data-bs-toggle="tab" data-bs-target="#payments" type="button" role="tab">
             <i class="bi bi-credit-card"></i> Payments
           </button>
         </li>
 
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if current_tab == 'messages' %}active{% endif %}"
-                  id="messages-tab" data-bs-toggle="tab"
-                  data-bs-target="#messages" type="button" role="tab">
+          <button class="nav-link {% if current_tab == 'messages' %}active{% endif %}" id="messages-tab"
+            data-bs-toggle="tab" data-bs-target="#messages" type="button" role="tab">
             <i class="bi bi-envelope me-1"></i> Messages
           </button>
         </li>
 
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if current_tab == 'claims' %}active{% endif %}"
-                  id="claims-tab" data-bs-toggle="tab"
-                  data-bs-target="#claims" type="button" role="tab">
+          <button class="nav-link {% if current_tab == 'claims' %}active{% endif %}" id="claims-tab"
+            data-bs-toggle="tab" data-bs-target="#claims" type="button" role="tab">
             <i class="bi bi-exclamation-diamond me-1"></i> Claims
           </button>
         </li>
 
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if current_tab == 'schedule' %}active{% endif %}"
-                  id="schedule-delivery-tab" data-bs-toggle="tab"
-                  data-bs-target="#schedule-delivery" type="button" role="tab">
+          <button class="nav-link {% if current_tab == 'schedule' %}active{% endif %}" id="schedule-delivery-tab"
+            data-bs-toggle="tab" data-bs-target="#schedule-delivery" type="button" role="tab">
             <i class="bi bi-truck"></i> Schedule Delivery
           </button>
         </li>
 
         <li class="nav-item" role="presentation">
-          <button class="nav-link {% if current_tab == 'referrals' %}active{% endif %}"
-                  id="referrals-tab" data-bs-toggle="tab"
-                  data-bs-target="#referrals" type="button" role="tab">
+          <button class="nav-link {% if current_tab == 'referrals' %}active{% endif %}" id="referrals-tab"
+            data-bs-toggle="tab" data-bs-target="#referrals" type="button" role="tab">
             <i class="bi bi-people me-1"></i> Referrals
           </button>
         </li>
@@ -337,8 +321,8 @@
     <!-- Tab Content -->
     <div class="tab-content p-3" id="profileTabContent">
       <!-- Packages Tab (server-side pagination; no DataTables init here) -->
-      <div class="tab-pane fade {% if current_tab == 'packages' %}show active{% endif %}"
-           id="packages" role="tabpanel" aria-labelledby="packages-tab">
+      <div class="tab-pane fade {% if current_tab == 'packages' %}show active{% endif %}" id="packages" role="tabpanel"
+        aria-labelledby="packages-tab">
 
         <!-- Header row + right actions -->
         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -346,11 +330,11 @@
             <label class="small text-muted mb-0">Rows</label>
 
             <select id="pkgPerPageSelect" class="form-select form-select-sm" style="width:auto;"
-                    onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1, pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn, pkg_status=pkg_status) }}&pkg_per_page=' + this.value;">
+              onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1, pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn, pkg_status=pkg_status) }}&pkg_per_page=' + this.value;">
 
               {% set current_pp = pkg_per_page|default(10) %}
               {% for n in [10,25,50,100,500,1000] %}
-                <option value="{{ n }}" {% if current_pp|int == n %}selected{% endif %}>{{ n }}</option>
+              <option value="{{ n }}" {% if current_pp|int==n %}selected{% endif %}>{{ n }}</option>
               {% endfor %}
             </select>
           </div>
@@ -358,39 +342,27 @@
           <!-- Right-side actions -->
           <div class="d-flex align-items-center gap-2">
             <!-- Add Package (adjust route if you want) -->
-            <button type="button"
-                    class="btn btn-sm btn-outline-purple"
-                    data-bs-toggle="modal"
-                    data-bs-target="#addSinglePackageModal"
-                    title="Add Package">
+            <button type="button" class="btn btn-sm btn-outline-purple" data-bs-toggle="modal"
+              data-bs-target="#addSinglePackageModal" title="Add Package">
               <i class="bi bi-plus-square"></i>
             </button>
 
             <!-- Add Claim -->
-            <button type="button"
-                    class="btn btn-sm btn-outline-purple"
-                    data-bs-toggle="modal"
-                    data-bs-target="#addClaimModal"
-                    title="Add Claim">
+            <button type="button" class="btn btn-sm btn-outline-purple" data-bs-toggle="modal"
+              data-bs-target="#addClaimModal" title="Add Claim">
               <i class="bi bi-exclamation-diamond"></i>
             </button>
 
 
             <!-- Bulk Delete -->
-            <button type="button"
-                    class="btn btn-sm btn-outline-purple"
-                    id="bulkDeleteBtn"
-                    disabled
-                    title="Delete selected packages">
+            <button type="button" class="btn btn-sm btn-outline-purple" id="bulkDeleteBtn" disabled
+              title="Delete selected packages">
               <i class="bi bi-trash"></i>
             </button>
 
             <!-- Filter -->
-            <button type="button"
-                    class="btn btn-sm btn-outline-purple"
-                    data-bs-toggle="modal"
-                    data-bs-target="#packageFilterModal"
-                    title="Filter Packages">
+            <button type="button" class="btn btn-sm btn-outline-purple" data-bs-toggle="modal"
+              data-bs-target="#packageFilterModal" title="Filter Packages">
               <i class="bi bi-funnel"></i>
             </button>
           </div>
@@ -410,7 +382,7 @@
                 <th class="text-start">Weight (lbs)</th>
                 <th>Date Received</th>
                 <th class="text-end">Declared Value</th>
-                <th class="text-end">Amount Due</th>                
+                <th class="text-end">Amount Due</th>
               </tr>
             </thead>
             <tbody>
@@ -418,19 +390,15 @@
               <tr>
                 {% set st = (pkg.status or '')|lower %}
                 {% set bar_class =
-                    'status-refunded' if ('claim refunded' in st or 'refunded' in st)
-                    else 'status-overseas' if 'overseas' in st
-                    else 'status-ready' if ('ready' in st or 'pickup' in st or 'pick up' in st)
-                    else 'status-delivered' if ('delivered' in st or st == 'delivery' or 'out for delivery' in st)
-                    else 'status-unknown'
+                'status-refunded' if ('claim refunded' in st or 'refunded' in st)
+                else 'status-overseas' if 'overseas' in st
+                else 'status-ready' if ('ready' in st or 'pickup' in st or 'pick up' in st)
+                else 'status-delivered' if ('delivered' in st or st == 'delivery' or 'out for delivery' in st)
+                else 'status-unknown'
                 %}
                 <td class="text-center align-middle">
-                  <input type="checkbox"
-                         class="pkg-check"
-                         value="{{ pkg.id }}"
-                         data-weight="{{ pkg.weight or 0 }}"
-                         data-value="{{ (pkg.declared_value if pkg.declared_value is defined and pkg.declared_value is not none else (pkg.value or 0)) }}"
-                  >
+                  <input type="checkbox" class="pkg-check" value="{{ pkg.id }}" data-weight="{{ pkg.weight or 0 }}"
+                    data-value="{{ (pkg.declared_value if pkg.declared_value is defined and pkg.declared_value is not none else (pkg.value or 0)) }}">
                 </td>
 
                 <td class="pkg-cell">
@@ -445,36 +413,37 @@
                   {% include 'partials/status_tracker.html' with context %}
                   {% if pkg.subscription_applied %}
 
-                    {% if pkg.subscription_result == "subscription_applied" %}
-                      {% if pkg.customs_total and pkg.customs_total > 0 %}
-                        <div class="mt-1">
-                          <span class="badge bg-warning text-dark">
-                            ⚡ Sub + Customs
-                          </span>
-                        </div>
-                      {% else %}
-                        <div class="mt-1">
-                          <span class="badge bg-success">
-                            ✓ Subscription
-                          </span>
-                        </div>
-                      {% endif %}
+                  {% if pkg.subscription_result == "subscription_applied" %}
+                  {% if pkg.customs_total and pkg.customs_total > 0 %}
+                  <div class="mt-1">
+                    <span class="badge bg-warning text-dark">
+                      ⚡ Sub + Customs
+                    </span>
+                  </div>
+                  {% else %}
+                  <div class="mt-1">
+                    <span class="badge bg-success">
+                      ✓ Subscription
+                    </span>
+                  </div>
+                  {% endif %}
 
-                    {% elif pkg.subscription_result == "package_over_plan_limit" %}
-                      <div class="mt-1">
-                        <span class="badge bg-secondary">
-                          Over Limit
-                        </span>
-                      </div>
+                  {% elif pkg.subscription_result == "package_over_plan_limit" %}
+                  <div class="mt-1">
+                    <span class="badge bg-secondary">
+                      Over Limit
+                    </span>
+                  </div>
 
-                    {% elif pkg.subscription_result == "subscription_exhausted" %}
-                      <div class="mt-1">
-                        <span class="badge bg-info text-dark">
-                          Subscriber Rate
-                        </span>
-                      </div>
+                  {% elif pkg.subscription_result == "subscription_exhausted" %}
+                  <div class="mt-1">
+                    <span class="badge bg-info text-dark">
+                      Subscriber Rate{% if subscription_summary and subscription_summary.status == "exhausted" %} (5%
+                      Off){% endif %}
+                    </span>
+                  </div>
 
-                    {% endif %}
+                  {% endif %}
 
                   {% endif %}
                 </td>
@@ -485,42 +454,40 @@
                   <div>{{ pkg.description or '-' }}</div>
 
                   {% if pkg.attachments and pkg.attachments|length > 0 %}
-                    <div class="mt-1 d-flex flex-wrap gap-2">
+                  <div class="mt-1 d-flex flex-wrap gap-2">
 
-                      {% for a in pkg.attachments %}
-                        <a class="btn btn-sm"
-                           style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
-                           target="_blank"
-                           href="{{ url_for('logistics.admin_view_package_attachment', attachment_id=a.id) }}"
-                           title="{{ a.original_name or 'Attachment' }}">
-                          <i class="fa-solid fa-file-lines"></i>                          
-                        </a>
+                    {% for a in pkg.attachments %}
+                    <a class="btn btn-sm"
+                      style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
+                      target="_blank"
+                      href="{{ url_for('logistics.admin_view_package_attachment', attachment_id=a.id) }}"
+                      title="{{ a.original_name or 'Attachment' }}">
+                      <i class="fa-solid fa-file-lines"></i>
+                    </a>
 
-                        <form method="POST"
-                              action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=a.id) }}"
-                              class="d-inline"
-                              onsubmit="return confirm('Delete this attachment?');">
-                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                          <input type="hidden" name="tab" value="{{ current_tab }}">
-                          <input type="hidden" name="pkg_page" value="{{ pkg_page }}">
-                          <input type="hidden" name="pkg_per_page" value="{{ pkg_per_page }}">
-                          <input type="hidden" name="pkg_from" value="{{ pkg_from or '' }}">
-                          <input type="hidden" name="pkg_to" value="{{ pkg_to or '' }}">
-                          <input type="hidden" name="pkg_awb" value="{{ pkg_awb or '' }}">
-                          <input type="hidden" name="pkg_tn" value="{{ pkg_tn or '' }}">
-                          <input type="hidden" name="pkg_status" value="{{ pkg_status or '' }}">
+                    <form method="POST"
+                      action="{{ url_for('logistics.delete_package_attachment_admin', attachment_id=a.id) }}"
+                      class="d-inline" onsubmit="return confirm('Delete this attachment?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="tab" value="{{ current_tab }}">
+                      <input type="hidden" name="pkg_page" value="{{ pkg_page }}">
+                      <input type="hidden" name="pkg_per_page" value="{{ pkg_per_page }}">
+                      <input type="hidden" name="pkg_from" value="{{ pkg_from or '' }}">
+                      <input type="hidden" name="pkg_to" value="{{ pkg_to or '' }}">
+                      <input type="hidden" name="pkg_awb" value="{{ pkg_awb or '' }}">
+                      <input type="hidden" name="pkg_tn" value="{{ pkg_tn or '' }}">
+                      <input type="hidden" name="pkg_status" value="{{ pkg_status or '' }}">
 
 
-                          <button type="submit" 
-                                  class="btn btn-sm"
-                                  style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .45rem;"
-                                  title="Delete attachment">
-                            <i class="fa-solid fa-trash"></i>
-                          </button>
-                        </form>
+                      <button type="submit" class="btn btn-sm"
+                        style="background:#fff; border:1px solid #dc3545; color:#dc3545; padding:.2rem .45rem;"
+                        title="Delete attachment">
+                        <i class="fa-solid fa-trash"></i>
+                      </button>
+                    </form>
 
-                      {% endfor %}
-                    </div>
+                    {% endfor %}
+                  </div>
                   {% endif %}
                 </td>
                 <td>{{ pkg.tracking_number or '-' }}</td>
@@ -586,8 +553,7 @@
                 href="{{ url_for('accounts_profiles.view_user',
                                  id=user_id, tab='packages', pkg_page=pkg_total_pages,
                                  pkg_per_page=pkg_per_page,
-                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn, pkg_status=pkg_status) }}"
->
+                                 pkg_from=pkg_from, pkg_to=pkg_to, pkg_awb=pkg_awb, pkg_tn=pkg_tn, pkg_status=pkg_status) }}">
                 &raquo;&raquo;
               </a>
             </li>
@@ -596,8 +562,8 @@
       </div>
 
       <!-- Prealerts Tab -->
-      <div class="tab-pane fade {% if current_tab == 'prealerts' %}show active{% endif %}"
-           id="prealerts" role="tabpanel" aria-labelledby="prealerts-tab">
+      <div class="tab-pane fade {% if current_tab == 'prealerts' %}show active{% endif %}" id="prealerts"
+        role="tabpanel" aria-labelledby="prealerts-tab">
         <div class="table-responsive">
           <table id="prealertsTable" class="table table-striped table-bordered">
             <thead class="table-dark">
@@ -618,9 +584,9 @@
               <tr>
                 <td>
                   {% if p.prealert_number %}
-                    PA-{{ "%05d"|format(p.prealert_number) }}
+                  PA-{{ "%05d"|format(p.prealert_number) }}
                   {% else %}
-                    {{ p.id }}
+                  {{ p.id }}
                   {% endif %}
                 </td>
 
@@ -632,13 +598,14 @@
                 <td>${{ money(p.item_value_usd) }}</td>
                 <td>
                   {% if p.invoice_filename %}
-                    {% if is_url(p.invoice_filename) %}
-                      <a href="{{ p.invoice_filename }}" target="_blank" rel="noopener">View</a>
-                    {% else %}
-                      <a href="{{ url_for('uploads.invoice_file', filename=p.invoice_filename) }}" target="_blank" rel="noopener">View</a>
-                    {% endif %}
+                  {% if is_url(p.invoice_filename) %}
+                  <a href="{{ p.invoice_filename }}" target="_blank" rel="noopener">View</a>
                   {% else %}
-                    N/A
+                  <a href="{{ url_for('uploads.invoice_file', filename=p.invoice_filename) }}" target="_blank"
+                    rel="noopener">View</a>
+                  {% endif %}
+                  {% else %}
+                  N/A
                   {% endif %}
                 </td>
 
@@ -652,8 +619,8 @@
       </div>
 
       <!-- Invoices Tab -->
-      <div class="tab-pane fade {% if current_tab == 'invoices' %}show active{% endif %}"
-           id="invoices" role="tabpanel" aria-labelledby="invoices-tab">
+      <div class="tab-pane fade {% if current_tab == 'invoices' %}show active{% endif %}" id="invoices" role="tabpanel"
+        aria-labelledby="invoices-tab">
 
 
         <!-- Top bar: Rows (left) + Filter (right) -->
@@ -662,52 +629,44 @@
             <label class="small text-muted mb-0">Rows</label>
 
             <select class="form-select form-select-sm" style="width:auto;"
-                    onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='invoices', inv_page=1, inv_from=inv_from, inv_to=inv_to) }}&inv_per_page=' + this.value;">
+              onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='invoices', inv_page=1, inv_from=inv_from, inv_to=inv_to) }}&inv_per_page=' + this.value;">
               {% set current_pp = inv_per_page|default(10) %}
               {% for n in [10,20,50,100,500,1000] %}
-                <option value="{{ n }}" {% if current_pp|int == n %}selected{% endif %}>{{ n }}</option>
+              <option value="{{ n }}" {% if current_pp|int==n %}selected{% endif %}>{{ n }}</option>
               {% endfor %}
             </select>
           </div>
 
           <div class="d-flex align-items-center gap-2 justify-content-end flex-nowrap">
             <!-- Cart -->
-            <button type="button"
-                    class="btn btn-sm btn-outline-purple position-relative"
-                    id="invoiceCartBtn"
-                    title="Invoice Cart"
-                    disabled>
+            <button type="button" class="btn btn-sm btn-outline-purple position-relative" id="invoiceCartBtn"
+              title="Invoice Cart" disabled>
               <i class="bi bi-cart3"></i> Cart
               <span id="invoiceCartCount"
-                    class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-                    style="display:none;">
+                class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                style="display:none;">
                 0
               </span>
             </button>
 
-            <button type="button"
-                    class="btn btn-sm btn-outline-purple"
-                    data-bs-toggle="modal"
-                    data-bs-target="#invoiceFilterModal"
-                    title="Filter invoices">
+            <button type="button" class="btn btn-sm btn-outline-purple" data-bs-toggle="modal"
+              data-bs-target="#invoiceFilterModal" title="Filter invoices">
               <i class="bi bi-funnel"></i> Filter
             </button>
 
-            <a href="{{ url_for('admin.generate_pdf_invoice', user_id=user.id) }}" 
-               class="btn btn-sm btn-outline-secondary text-nowrap"
-               target="_blank"
-               rel="noopener">
+            <a href="{{ url_for('admin.generate_pdf_invoice', user_id=user.id) }}"
+              class="btn btn-sm btn-outline-secondary text-nowrap" target="_blank" rel="noopener">
               <i class="bi bi-file-earmark-pdf me-1"></i> Export PDF
             </a>
           </div>
-        </div>        
+        </div>
 
         <div class="mb-3">
-          <strong>Total Owed:</strong>  ${{ money(total_owed) }} |
-          <strong>Total Paid:</strong>  ${{ money(total_paid) }} |
-          <strong>Balance:</strong>     ${{ money(balance) }}
+          <strong>Total Owed:</strong> ${{ money(total_owed) }} |
+          <strong>Total Paid:</strong> ${{ money(total_paid) }} |
+          <strong>Balance:</strong> ${{ money(balance) }}
 
-          
+
         </div>
         <div class="table-responsive">
           <table id="invoiceTable" class="table table-striped table-bordered">
@@ -720,9 +679,9 @@
                 <th>Description</th>
                 <th class="text-end">Amount Due</th>
                 <th class="text-end">Amount Paid</th>
-                <th class="text-end">Amount Owed</th>                
+                <th class="text-end">Amount Owed</th>
                 <th>Status</th>
-                <th class="text-center" style="width:60px;">Delete</th>                
+                <th class="text-center" style="width:60px;">Delete</th>
               </tr>
             </thead>
             <tbody>
@@ -730,34 +689,27 @@
               {% set inv_status = (inv.status or 'unpaid')|lower %}
               {# ---- Amount Due (robust fallback) ---- #}
               {% set due =
-                  (inv.grand_total if inv.grand_total is defined and inv.grand_total is not none
-                   else (inv.amount_due if inv.amount_due is defined and inv.amount_due is not none
-                         else 0))
+              (inv.grand_total if inv.grand_total is defined and inv.grand_total is not none
+              else (inv.amount_due if inv.amount_due is defined and inv.amount_due is not none
+              else 0))
               %}
 
               {% set paid = paid_sum|float %}
               {% set owed = (due|float - paid|float) %}
-              {% if owed < 0 %}{% set owed = 0 %}{% endif %}
-
-              <tr data-invoice-id="{{ inv.id }}"
-                  data-owed="{{ owed|float }}"
-                  data-label="{{ (inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)))|e }}">
+              {% if owed < 0 %}{% set owed=0 %}{% endif %} <tr data-invoice-id="{{ inv.id }}"
+                data-owed="{{ owed|float }}"
+                data-label="{{ (inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)))|e }}">
                 <td class="text-center align-middle">
                   {% if owed|float > 0 %}
-                    <input type="checkbox"
-                           class="invoice-check"
-                           value="{{ inv.id }}"
-                           data-invoice-id="{{ inv.id }}"
-                           data-user-id="{{ user.id }}">
+                  <input type="checkbox" class="invoice-check" value="{{ inv.id }}" data-invoice-id="{{ inv.id }}"
+                    data-user-id="{{ user.id }}">
                   {% else %}
-                    <input type="checkbox" disabled>
+                  <input type="checkbox" disabled>
                   {% endif %}
                 </td>
                 <td>
-                  <button type="button"
-                          class="btn btn-sm btn-outline-purple"
-                          onclick="openInvoiceModal({{ inv.id }})"
-                          title="Open invoice">
+                  <button type="button" class="btn btn-sm btn-outline-purple" onclick="openInvoiceModal({{ inv.id }})"
+                    title="Open invoice">
                     {{ inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)) }}
                     <i class="bi bi-box-arrow-up-right ms-1"></i>
                   </button>
@@ -766,15 +718,15 @@
                 <!-- Description (fallback if not present) -->
                 <td>
                   {% if inv.description is defined and inv.description %}
-                    {{ inv.description }}
+                  {{ inv.description }}
                   {% else %}
-                    No description
+                  No description
                   {% endif %}
                 </td>
 
                 <td class="text-end">${{ money(due) }}</td>
                 <td class="text-end">${{ money(paid) }}</td>
-                
+
                 <td class="text-end">
                   <span class="fw-bold {% if owed > 0 %}text-danger{% else %}text-success{% endif %}">
                     ${{ money(owed) }}
@@ -784,50 +736,48 @@
                 <td>
                   <div class="d-flex flex-column gap-1">
                     <!-- Status badge -->
-                    <span class="badge {% if inv_status == 'paid' or owed == 0 %}bg-success{% else %}bg-danger{% endif %}">
+                    <span
+                      class="badge {% if inv_status == 'paid' or owed == 0 %}bg-success{% else %}bg-danger{% endif %}">
                       {{ 'Paid' if (inv_status == 'paid' or owed == 0) else 'Unpaid' }}
                     </span>
 
                     <!-- Date line -->
                     {% if inv_status == 'paid' or owed == 0 %}
-                      {% if inv.date_paid is defined and inv.date_paid %}
-                        <small class="text-muted">
-                          Paid on {{ inv.date_paid.strftime('%Y-%m-%d') }}
-                        </small>
-                      {% elif inv.updated_at is defined and inv.updated_at %}
-                        <small class="text-muted">
-                          Paid on {{ inv.updated_at.strftime('%Y-%m-%d') }}
-                        </small>
-                      {% endif %}
+                    {% if inv.date_paid is defined and inv.date_paid %}
+                    <small class="text-muted">
+                      Paid on {{ inv.date_paid.strftime('%Y-%m-%d') }}
+                    </small>
+                    {% elif inv.updated_at is defined and inv.updated_at %}
+                    <small class="text-muted">
+                      Paid on {{ inv.updated_at.strftime('%Y-%m-%d') }}
+                    </small>
+                    {% endif %}
                     {% else %}
-                      {% if inv.date_issued is defined and inv.date_issued %}
-                        <small class="text-muted">
-                          Received {{ inv.date_issued.strftime('%Y-%m-%d') }}
-                        </small>
-                      {% elif inv.created_at is defined and inv.created_at %}
-                        <small class="text-muted">
-                          Received {{ inv.created_at.strftime('%Y-%m-%d') }}
-                        </small>
-                      {% endif %}
+                    {% if inv.date_issued is defined and inv.date_issued %}
+                    <small class="text-muted">
+                      Received {{ inv.date_issued.strftime('%Y-%m-%d') }}
+                    </small>
+                    {% elif inv.created_at is defined and inv.created_at %}
+                    <small class="text-muted">
+                      Received {{ inv.created_at.strftime('%Y-%m-%d') }}
+                    </small>
+                    {% endif %}
                     {% endif %}
                   </div>
                 </td>
                 <td class="text-center">
-                  {% if paid|float <= 0 %}
-                    <button type="button"
-                            class="btn btn-sm btn-outline-danger"
-                            title="Delete invoice"
-                            onclick="openDeleteInvoiceModal({{ inv.id }}, '{{ (inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)))|e }}')">
-                      <i class="bi bi-trash"></i>
+                  {% if paid|float <= 0 %} <button type="button" class="btn btn-sm btn-outline-danger"
+                    title="Delete invoice"
+                    onclick="openDeleteInvoiceModal({{ inv.id }}, '{{ (inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)))|e }}')">
+                    <i class="bi bi-trash"></i>
                     </button>
-                  {% else %}
-                    <i class="bi bi-lock text-muted"
-                       title="Cannot delete: payment exists"
-                       style="font-size: 1.1rem;"></i>
-                  {% endif %}
-                </td>               
-              </tr>              
-              {% endfor %}
+                    {% else %}
+                    <i class="bi bi-lock text-muted" title="Cannot delete: payment exists"
+                      style="font-size: 1.1rem;"></i>
+                    {% endif %}
+                </td>
+                </tr>
+                {% endfor %}
             </tbody>
           </table>
         </div>
@@ -840,8 +790,7 @@
 
           <ul class="pagination pagination-sm mb-0">
             <li class="page-item {% if inv_page == 1 %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user',
                                   id=user_id, tab='invoices',
                                   inv_page=1,
                                   inv_per_page=inv_per_page,
@@ -851,8 +800,7 @@
             </li>
 
             <li class="page-item {% if inv_page == 1 %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user',
                                   id=user_id, tab='invoices',
                                   inv_page=(inv_page-1 if inv_page>1 else 1),
                                   inv_per_page=inv_per_page,
@@ -862,8 +810,7 @@
             </li>
 
             <li class="page-item {% if inv_page == inv_total_pages %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user',
                                   id=user_id, tab='invoices',
                                   inv_page=(inv_page+1 if inv_page < inv_total_pages else inv_total_pages),
                                   inv_per_page=inv_per_page,
@@ -873,8 +820,7 @@
             </li>
 
             <li class="page-item {% if inv_page == inv_total_pages %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user',
                                   id=user_id, tab='invoices',
                                   inv_page=inv_total_pages,
                                   inv_per_page=inv_per_page,
@@ -888,8 +834,8 @@
       </div>
 
       <!-- Payments Tab -->
-      <div class="tab-pane fade {% if current_tab == 'payments' %}show active{% endif %}"
-           id="payments" role="tabpanel" aria-labelledby="payments-tab">
+      <div class="tab-pane fade {% if current_tab == 'payments' %}show active{% endif %}" id="payments" role="tabpanel"
+        aria-labelledby="payments-tab">
 
         <!-- Top bar: Rows (left) + Filter (right) -->
         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -897,51 +843,40 @@
             <label class="small text-muted mb-0">Rows</label>
 
             <select class="form-select form-select-sm" style="width:auto;"
-                    onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='payments', pay_page=1, pay_from=pay_from, pay_to=pay_to) }}&pay_per_page=' + this.value;">
+              onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='payments', pay_page=1, pay_from=pay_from, pay_to=pay_to) }}&pay_per_page=' + this.value;">
               {% set current_pp = pay_per_page|default(10) %}
               {% for n in [10,20,50,100,500,1000] %}
-                <option value="{{ n }}" {% if current_pp|int == n %}selected{% endif %}>{{ n }}</option>
+              <option value="{{ n }}" {% if current_pp|int==n %}selected{% endif %}>{{ n }}</option>
               {% endfor %}
             </select>
           </div>
 
           <div class="d-flex align-items-center gap-2">
 
-            <form method="GET"
-                  action="{{ url_for('finance.customer_statement_pdf', user_id=user.id) }}"
-                  target="_blank"
-                  class="d-flex align-items-center gap-2 mb-0">         
+            <form method="GET" action="{{ url_for('finance.customer_statement_pdf', user_id=user.id) }}" target="_blank"
+              class="d-flex align-items-center gap-2 mb-0">
 
-              <input type="date" id="statementStart" name="start" 
-                     class="form-control form-control-sm" style="width:145px;">
-              <input type="date" id="statementEnd" name="end" 
-                     class="form-control form-control-sm" style="width:145px;">
+              <input type="date" id="statementStart" name="start" class="form-control form-control-sm"
+                style="width:145px;">
+              <input type="date" id="statementEnd" name="end" class="form-control form-control-sm" style="width:145px;">
 
-              <button type="submit"
-                      class="btn btn-sm btn-outline-secondary"                    
-                      title="Download Customer Statement">
+              <button type="submit" class="btn btn-sm btn-outline-secondary" title="Download Customer Statement">
                 <i class="bi bi-file-earmark-pdf"></i> Statement
               </button>
             </form>
 
-            <form id="emailStatementForm"
-                  method="POST"
-                  action="{{ url_for('finance.email_customer_statement_pdf', user_id=user.id) }}"
-                  class="d-inline mb-0">
+            <form id="emailStatementForm" method="POST"
+              action="{{ url_for('finance.email_customer_statement_pdf', user_id=user.id) }}" class="d-inline mb-0">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="start" id="emailStatementStart">
               <input type="hidden" name="end" id="emailStatementEnd">
 
-              <button type="submit"
-                      class="btn btn-sm btn-outline-success"
-                      onclick="return prepareEmailStatement();">                      
+              <button type="submit" class="btn btn-sm btn-outline-success" onclick="return prepareEmailStatement();">
                 <i class="bi bi-envelope"></i> Email
               </button>
             </form>
-            <button type="button"
-                    class="btn btn-sm btn-outline-purple"
-                    data-bs-toggle="modal"
-                    data-bs-target="#paymentFilterModal">                    
+            <button type="button" class="btn btn-sm btn-outline-purple" data-bs-toggle="modal"
+              data-bs-target="#paymentFilterModal">
               <i class="bi bi-funnel"></i> Filter
             </button>
           </div>
@@ -968,37 +903,38 @@
 
                 <td>
                   {% if payment.payment_date %}
-                    {{ payment.payment_date.strftime("%Y-%m-%d %I:%M %p") if payment.payment_date.strftime is defined else payment.payment_date }}
+                  {{ payment.payment_date.strftime("%Y-%m-%d %I:%M %p") if payment.payment_date.strftime is defined else
+                  payment.payment_date }}
                   {% else %}
-                    —
+                  —
                   {% endif %}
                 </td>
 
                 <td>
                   {% set t = payment.transaction_type or '' %}
                   {% if t == 'invoice_payment' %}
-                    <span class="badge bg-primary">Invoice Payment</span>
+                  <span class="badge bg-primary">Invoice Payment</span>
                   {% elif t == 'delivery_payment' %}
-                    <span class="badge bg-info text-dark">Delivery Payment</span>
+                  <span class="badge bg-info text-dark">Delivery Payment</span>
                   {% elif t == 'package_refund' %}
-                    <span class="badge bg-success">Package Refund</span>
+                  <span class="badge bg-success">Package Refund</span>
                   {% elif t == 'delivery_refund' %}
-                    <span class="badge bg-warning text-dark">Delivery Refund</span>
+                  <span class="badge bg-warning text-dark">Delivery Refund</span>
                   {% else %}
-                    <span class="badge bg-secondary">{{ t or 'Transaction' }}</span>
+                  <span class="badge bg-secondary">{{ t or 'Transaction' }}</span>
                   {% endif %}
                 </td>
 
                 <td>
                   {% set s = payment.transaction_status or '' %}
                   {% if s == 'completed' %}
-                    <span class="badge bg-success">Completed</span>
+                  <span class="badge bg-success">Completed</span>
                   {% elif s == 'reversed' %}
-                    <span class="badge bg-danger">Reversed</span>
+                  <span class="badge bg-danger">Reversed</span>
                   {% elif s == 'pending' %}
-                    <span class="badge bg-warning text-dark">Pending</span>
+                  <span class="badge bg-warning text-dark">Pending</span>
                   {% else %}
-                    <span class="badge bg-secondary">{{ s or '—' }}</span>
+                  <span class="badge bg-secondary">{{ s or '—' }}</span>
                   {% endif %}
                 </td>
 
@@ -1007,9 +943,9 @@
                 <td class="text-end">
                   {% set t = payment.transaction_type or '' %}
                   {% if t in ['package_refund', 'delivery_refund'] %}
-                    <span class="text-success fw-bold">+${{ money(payment.amount) }}</span>
+                  <span class="text-success fw-bold">+${{ money(payment.amount) }}</span>
                   {% else %}
-                    <span class="fw-bold">${{ money(payment.amount) }}</span>
+                  <span class="fw-bold">${{ money(payment.amount) }}</span>
                   {% endif %}
                 </td>
 
@@ -1022,12 +958,12 @@
 
                 <td>
                   {% if payment.invoice_number %}
-                    <a href="{{ url_for('admin.view_invoice', invoice_id=payment.invoice_id) }}"
-                       title="View Invoice {{ payment.invoice_number }}">
-                      {{ payment.invoice_number }}
-                    </a>
+                  <a href="{{ url_for('admin.view_invoice', invoice_id=payment.invoice_id) }}"
+                    title="View Invoice {{ payment.invoice_number }}">
+                    {{ payment.invoice_number }}
+                  </a>
                   {% else %}
-                    —
+                  —
                   {% endif %}
                 </td>
               </tr>
@@ -1039,7 +975,7 @@
             </tbody>
           </table>
         </div>
-       
+
         <!-- Pagination footer -->
         <div class="d-flex justify-content-between align-items-center mt-2">
           <small class="text-muted">
@@ -1049,8 +985,7 @@
           <ul class="pagination pagination-sm mb-0">
             <!-- First -->
             <li class="page-item {% if pay_page == 1 %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user',
                                   id=user_id, tab='payments',
                                   pay_page=1,
                                   pay_per_page=pay_per_page,
@@ -1061,8 +996,7 @@
 
             <!-- Prev -->
             <li class="page-item {% if pay_page == 1 %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user',
                                   id=user_id, tab='payments',
                                   pay_page=(pay_page-1 if pay_page>1 else 1),
                                   pay_per_page=pay_per_page,
@@ -1073,8 +1007,7 @@
 
             <!-- Next -->
             <li class="page-item {% if pay_page == pay_total_pages %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user',
                                   id=user_id, tab='payments',
                                   pay_page=(pay_page+1 if pay_page < pay_total_pages else pay_total_pages),
                                   pay_per_page=pay_per_page,
@@ -1085,8 +1018,7 @@
 
             <!-- Last -->
             <li class="page-item {% if pay_page == pay_total_pages %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user',
                                   id=user_id, tab='payments',
                                   pay_page=pay_total_pages,
                                   pay_per_page=pay_per_page,
@@ -1099,8 +1031,8 @@
       </div>
 
       <!-- Messages Tab -->
-      <div class="tab-pane fade {% if current_tab == 'messages' %}show active{% endif %}"
-           id="messages" role="tabpanel" aria-labelledby="messages-tab">
+      <div class="tab-pane fade {% if current_tab == 'messages' %}show active{% endif %}" id="messages" role="tabpanel"
+        aria-labelledby="messages-tab">
 
         <!-- Top bar: Rows (left) + Search (middle) + Filter/Send (right) -->
         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -1110,10 +1042,10 @@
             <label class="small text-muted mb-0">Rows</label>
 
             <select class="form-select form-select-sm" style="width:auto;"
-                    onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages', msg_page=1, msg_from=msg_from, msg_to=msg_to, msg_q=msg_q) }}&msg_per_page=' + this.value;">
+              onchange="location.href='{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages', msg_page=1, msg_from=msg_from, msg_to=msg_to, msg_q=msg_q) }}&msg_per_page=' + this.value;">
               {% set current_pp = msg_per_page|default(10) %}
               {% for n in [10,20,50,100,500,1000] %}
-                <option value="{{ n }}" {% if current_pp|int == n %}selected{% endif %}>{{ n }}</option>
+              <option value="{{ n }}" {% if current_pp|int==n %}selected{% endif %}>{{ n }}</option>
               {% endfor %}
             </select>
           </div>
@@ -1122,37 +1054,25 @@
           <div class="d-flex align-items-center gap-2" style="min-width:260px; max-width:420px; width:100%;">
             <span class="small text-muted mb-0">Search</span>
 
-            <input id="msgSearchInput"
-                   type="text"
-                   class="form-control form-control-sm"
-                   placeholder="Search subject/body..."
-                   value="{{ msg_q or '' }}">
+            <input id="msgSearchInput" type="text" class="form-control form-control-sm"
+              placeholder="Search subject/body..." value="{{ msg_q or '' }}">
           </div>
 
           <!-- Right: Filter + Send -->
           <div class="d-flex align-items-center gap-2">
-            <button type="button"
-                    class="btn btn-sm btn-outline-purple"
-                    data-bs-toggle="modal"
-                    data-bs-target="#messageFilterModal"
-                    title="Filter messages">
+            <button type="button" class="btn btn-sm btn-outline-purple" data-bs-toggle="modal"
+              data-bs-target="#messageFilterModal" title="Filter messages">
               <i class="bi bi-funnel"></i> Filter
             </button>
 
-            <button type="button"
-                    class="btn btn-sm btn-outline-purple"
-                    data-bs-toggle="modal"
-                    data-bs-target="#sendMessageModal"
-                    title="Send message">
+            <button type="button" class="btn btn-sm btn-outline-purple" data-bs-toggle="modal"
+              data-bs-target="#sendMessageModal" title="Send message">
               <i class="bi bi-envelope"></i> Send
             </button>
 
-            <button type="button"
-                    class="btn btn-sm btn-outline-danger"
-                    id="bulkDeleteMessagesBtn"
-                    disabled>
-             <i class="bi bi-trash"></i> Delete
-           </button>
+            <button type="button" class="btn btn-sm btn-outline-danger" id="bulkDeleteMessagesBtn" disabled>
+              <i class="bi bi-trash"></i> Delete
+            </button>
           </div>
         </div>
 
@@ -1161,7 +1081,7 @@
             <thead class="table-dark">
               <tr>
                 <th class="text-center" style="width:38px;">
-                 <input type="checkbox" id="msgSelectAll">
+                  <input type="checkbox" id="msgSelectAll">
                 </th>
                 <th>Subject</th>
                 <th>Message</th>
@@ -1185,11 +1105,9 @@
               {% endfor %}
             </tbody>
           </table>
-          <form id="bulkDeleteMessagesForm"
-                method="POST"
-                action="{{ url_for('accounts_profiles.bulk_delete_user_messages', id=user_id) }}"
-                class="d-none">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">          
+          <form id="bulkDeleteMessagesForm" method="POST"
+            action="{{ url_for('accounts_profiles.bulk_delete_user_messages', id=user_id) }}" class="d-none">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           </form>
         </div>
 
@@ -1201,8 +1119,7 @@
 
           <ul class="pagination pagination-sm mb-0">
             <li class="page-item {% if msg_page == 1 %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages',
                                   msg_page=1, msg_per_page=msg_per_page,
                                   msg_from=msg_from, msg_to=msg_to, msg_q=msg_q) }}">
                 &laquo;&laquo;
@@ -1210,8 +1127,7 @@
             </li>
 
             <li class="page-item {% if msg_page == 1 %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages',
                                   msg_page=(msg_page-1 if msg_page>1 else 1), msg_per_page=msg_per_page,
                                   msg_from=msg_from, msg_to=msg_to, msg_q=msg_q) }}">
                 &laquo;
@@ -1219,8 +1135,7 @@
             </li>
 
             <li class="page-item {% if msg_page == msg_total_pages %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages',
                                   msg_page=(msg_page+1 if msg_page < msg_total_pages else msg_total_pages),
                                   msg_per_page=msg_per_page,
                                   msg_from=msg_from, msg_to=msg_to, msg_q=msg_q) }}">
@@ -1229,8 +1144,7 @@
             </li>
 
             <li class="page-item {% if msg_page == msg_total_pages %}disabled{% endif %}">
-              <a class="page-link"
-                 href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages',
+              <a class="page-link" href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages',
                                   msg_page=msg_total_pages, msg_per_page=msg_per_page,
                                   msg_from=msg_from, msg_to=msg_to, msg_q=msg_q) }}">
                 &raquo;&raquo;
@@ -1241,8 +1155,8 @@
       </div>
 
       <!-- Claims Tab -->
-      <div class="tab-pane fade {% if current_tab == 'claims' %}show active{% endif %}"
-           id="claims" role="tabpanel" aria-labelledby="claims-tab">
+      <div class="tab-pane fade {% if current_tab == 'claims' %}show active{% endif %}" id="claims" role="tabpanel"
+        aria-labelledby="claims-tab">
 
         <div class="d-flex justify-content-between align-items-center mb-3">
           <div>
@@ -1250,11 +1164,8 @@
             <small class="text-muted">Claims submitted by or on behalf of this customer</small>
           </div>
 
-          <button type="button"
-                  class="btn btn-sm btn-outline-purple"
-                  data-bs-toggle="modal"
-                  data-bs-target="#addClaimModal"
-                  title="Add Claim">
+          <button type="button" class="btn btn-sm btn-outline-purple" data-bs-toggle="modal"
+            data-bs-target="#addClaimModal" title="Add Claim">
             <i class="bi bi-plus-square me-1"></i> Add Claim
           </button>
         </div>
@@ -1282,42 +1193,41 @@
                 <td class="text-end">${{ money(c.item_value_jmd) }}</td>
                 <td>
                   {% if c.refund_method == 'bank_transfer' %}
-                    <span class="badge bg-info text-dark">Bank Transfer</span>
+                  <span class="badge bg-info text-dark">Bank Transfer</span>
                   {% elif c.refund_method == 'wallet_credit' %}
-                    <span class="badge bg-primary">Wallet Credit</span>
+                  <span class="badge bg-primary">Wallet Credit</span>
                   {% else %}
-                    <span class="badge bg-secondary">Cash</span>
+                  <span class="badge bg-secondary">Cash</span>
                   {% endif %}
                 </td>
                 <td>
                   {% set cs = (c.status or 'submitted')|lower %}
                   {% if cs == 'submitted' %}
-                    <span class="badge bg-warning text-dark">Submitted</span>
+                  <span class="badge bg-warning text-dark">Submitted</span>
                   {% elif cs == 'under_review' %}
-                    <span class="badge bg-info text-dark">Under Review</span>
+                  <span class="badge bg-info text-dark">Under Review</span>
                   {% elif cs == 'need_more_info' %}
-                    <span class="badge bg-secondary">Need More Info</span>
+                  <span class="badge bg-secondary">Need More Info</span>
                   {% elif cs == 'approved' %}
-                    <span class="badge bg-primary">Approved</span>
+                  <span class="badge bg-primary">Approved</span>
                   {% elif cs == 'rejected' %}
-                    <span class="badge bg-danger">Rejected</span>
+                  <span class="badge bg-danger">Rejected</span>
                   {% elif cs == 'paid' %}
-                    <span class="badge bg-success">Paid</span>
+                  <span class="badge bg-success">Paid</span>
                   {% else %}
-                    <span class="badge bg-secondary">{{ c.status }}</span>
+                  <span class="badge bg-secondary">{{ c.status }}</span>
                   {% endif %}
                 </td>
                 <td>
                   {% if c.created_at %}
-                    {{ c.created_at.strftime("%Y-%m-%d %I:%M %p") if c.created_at.strftime is defined else c.created_at }}
+                  {{ c.created_at.strftime("%Y-%m-%d %I:%M %p") if c.created_at.strftime is defined else c.created_at }}
                   {% else %}
-                    —
+                  —
                   {% endif %}
                 </td>
                 <td class="text-center">
-                  <a href="{{ url_for('admin_claims.review', claim_id=c.id) }}"
-                     class="btn btn-sm btn-outline-purple"
-                     title="Open Claim">
+                  <a href="{{ url_for('admin_claims.review', claim_id=c.id) }}" class="btn btn-sm btn-outline-purple"
+                    title="Open Claim">
                     <i class="bi bi-box-arrow-up-right"></i>
                   </a>
                 </td>
@@ -1341,14 +1251,12 @@
 
 
       <!-- Schedule Delivery Tab -->
-      <div class="tab-pane fade {% if current_tab == 'schedule' %}show active{% endif %}"
-           id="schedule-delivery" role="tabpanel" aria-labelledby="schedule-delivery-tab">
+      <div class="tab-pane fade {% if current_tab == 'schedule' %}show active{% endif %}" id="schedule-delivery"
+        role="tabpanel" aria-labelledby="schedule-delivery-tab">
 
         <div class="mb-3">
-          <button type="button"
-                  class="btn btn-primary mb-3"
-                  data-bs-toggle="modal"
-                  data-bs-target="#adminDeliveryModal">
+          <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal"
+            data-bs-target="#adminDeliveryModal">
             <i class="bi bi-truck me-1"></i> Add Delivery
           </button>
         </div>
@@ -1368,69 +1276,54 @@
             <tbody>
               {% for d in scheduled_deliveries %}
 
-                {# --- status + done logic --- #}
-                {% set done = st in ["Delivered", "Cancelled"] %}
+              {# --- status + done logic --- #}
+              {% set done = st in ["Delivered", "Cancelled"] %}
 
-                {# --- date helpers (safe if today not passed) --- #}
-                {% set _today = today if today is defined else none %}
-                {% set _tomorrow = tomorrow if tomorrow is defined else none %}
+              {# --- date helpers (safe if today not passed) --- #}
+              {% set _today = today if today is defined else none %}
+              {% set _tomorrow = tomorrow if tomorrow is defined else none %}
 
-                {# --- overdue = pending AND date < today --- #}
-                {% set is_overdue = (not done) and d.scheduled_date and _today and (d.scheduled_date < _today) %}
-                {% set is_today   = (not done) and d.scheduled_date and _today and (d.scheduled_date == _today) %}
-                {% set is_tomorrow = (not done) and d.scheduled_date and _tomorrow and (d.scheduled_date == _tomorrow) %}
-
-                <tr class="
+              {# --- overdue = pending AND date < today --- #} {% set is_overdue=(not done) and d.scheduled_date and
+                _today and (d.scheduled_date < _today) %} {% set is_today=(not done) and d.scheduled_date and _today and
+                (d.scheduled_date==_today) %} {% set is_tomorrow=(not done) and d.scheduled_date and _tomorrow and
+                (d.scheduled_date==_tomorrow) %} <tr class="
                       {% if st == 'Cancelled' %}table-secondary{% endif %}
                       {% if st != 'Cancelled' %}
                         {% if is_overdue %}table-danger{% elif is_today %}table-warning{% endif %}
                       {% endif %}
-                    "
-                    style="{% if st == 'Cancelled' %}opacity:.75;{% endif %}">
+                    " style="{% if st == 'Cancelled' %}opacity:.75;{% endif %}">
 
-                  <td>
-                    {{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}
+                <td>
+                  {{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}
 
-                    {# Tags: Today / Tomorrow / Overdue #}
-                    {% if is_overdue %}
-                      <span class="badge bg-danger ms-2">Overdue</span>
-                    {% elif is_today %}
-                      <span class="badge bg-warning text-dark ms-2">Today</span>
-                    {% elif is_tomorrow %}
-                      <span class="badge bg-info text-dark ms-2">Tomorrow</span>
-                    {% endif %}
-                  </td>
-
-                  <!-- Proper AM/PM formatting -->
-                  <td class="text-nowrap">
-                    {% if d.scheduled_time_from and d.scheduled_time_to %}
-                    {% set hh1 = d.scheduled_time_from.split(':')[0]|int %}
-                    {% set mm1 = d.scheduled_time_from.split(':')[1]|int %}
-                    {% set ap1 = 'AM' if hh1 < 12 else 'PM' %}
-                    {% set h12_1 = hh1 % 12 %}
-                    {% if h12_1 == 0 %}{% set h12_1 = 12 %}{% endif %}
-
-                    {% set hh2 = d.scheduled_time_to.split(':')[0]|int %}
-                    {% set mm2 = d.scheduled_time_to.split(':')[1]|int %}
-                    {% set ap2 = 'AM' if hh2 < 12 else 'PM' %}
-                    {% set h12_2 = hh2 % 12 %}
-                    {% if h12_2 == 0 %}{% set h12_2 = 12 %}{% endif %}
-
-                    {{ h12_1 }}:{% if mm1 < 10 %}0{% endif %}{{ mm1 }} {{ ap1 }}
-                    -
-                    {{ h12_2 }}:{% if mm2 < 10 %}0{% endif %}{{ mm2 }} {{ ap2 }}
-
-                  {% else %}
-                    {{ d.scheduled_time or "—" }}
+                  {# Tags: Today / Tomorrow / Overdue #}
+                  {% if is_overdue %}
+                  <span class="badge bg-danger ms-2">Overdue</span>
+                  {% elif is_today %}
+                  <span class="badge bg-warning text-dark ms-2">Today</span>
+                  {% elif is_tomorrow %}
+                  <span class="badge bg-info text-dark ms-2">Tomorrow</span>
                   {% endif %}
                 </td>
+
+                <!-- Proper AM/PM formatting -->
+                <td class="text-nowrap">
+                  {% if d.scheduled_time_from and d.scheduled_time_to %}
+                  {% set hh1 = d.scheduled_time_from.split(':')[0]|int %}
+                  {% set mm1 = d.scheduled_time_from.split(':')[1]|int %}
+                  {% set ap1 = 'AM' if hh1 < 12 else 'PM' %} {% set h12_1=hh1 % 12 %} {% if h12_1==0 %}{% set h12_1=12
+                    %}{% endif %} {% set hh2=d.scheduled_time_to.split(':')[0]|int %} {% set
+                    mm2=d.scheduled_time_to.split(':')[1]|int %} {% set ap2='AM' if hh2 < 12 else 'PM' %} {% set
+                    h12_2=hh2 % 12 %} {% if h12_2==0 %}{% set h12_2=12 %}{% endif %} {{ h12_1 }}:{% if mm1 < 10 %}0{%
+                    endif %}{{ mm1 }} {{ ap1 }} - {{ h12_2 }}:{% if mm2 < 10 %}0{% endif %}{{ mm2 }} {{ ap2 }} {% else
+                    %} {{ d.scheduled_time or "—" }} {% endif %} </td>
 
                 <td>
                   <div class="fw-semibold">{{ d.location }}</div>
                   <div class="small text-muted">
                     {{ d.person_receiving or "" }}
                     {% if d.mobile_number %}
-                      • {{ d.mobile_number }}
+                    • {{ d.mobile_number }}
                     {% endif %}
                   </div>
                 </td>
@@ -1438,11 +1331,11 @@
                 <!-- Area Zone -->
                 <td>
                   {% if d.area_zone %}
-                    <span class="badge bg-secondary text-uppercase">
-                      {{ d.area_zone.replace('_',' ') }}
-                    </span>
+                  <span class="badge bg-secondary text-uppercase">
+                    {{ d.area_zone.replace('_',' ') }}
+                  </span>
                   {% else %}
-                    —
+                  —
                   {% endif %}
                 </td>
 
@@ -1456,11 +1349,11 @@
                 <td>
                   {% set fs = (d.fee_status or "Unpaid")|lower %}
                   {% if fs == "paid" %}
-                    <span class="badge bg-success">Paid</span>
+                  <span class="badge bg-success">Paid</span>
                   {% elif fs == "waived" %}
-                    <span class="badge bg-info text-dark">Waived</span>
+                  <span class="badge bg-info text-dark">Waived</span>
                   {% else %}
-                    <span class="badge bg-warning text-dark">Unpaid</span>
+                  <span class="badge bg-warning text-dark">Unpaid</span>
                   {% endif %}
                 </td>
 
@@ -1468,34 +1361,34 @@
                 <td>
                   {% set st = (d.status or "Scheduled") %}
                   {% if st == "Scheduled" %}
-                    <span class="badge bg-primary">Scheduled</span>
+                  <span class="badge bg-primary">Scheduled</span>
                   {% elif st == "Out for Delivery" %}
-                    <span class="badge bg-warning text-dark">Out for Delivery</span>
+                  <span class="badge bg-warning text-dark">Out for Delivery</span>
                   {% elif st == "Delivered" %}
-                    <span class="badge bg-success">Delivered</span>
+                  <span class="badge bg-success">Delivered</span>
                   {% elif st == "Cancelled" %}
-                    <span class="badge bg-danger">Cancelled</span>
+                  <span class="badge bg-danger">Cancelled</span>
                   {% else %}
-                    <span class="badge bg-secondary">{{ st }}</span>
+                  <span class="badge bg-secondary">{{ st }}</span>
                   {% endif %}
                 </td>
 
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="7" class="text-center text-muted py-4">
-                  No scheduled deliveries for this user.
-                </td>
-              </tr>
-              {% endfor %}
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="7" class="text-center text-muted py-4">
+                    No scheduled deliveries for this user.
+                  </td>
+                </tr>
+                {% endfor %}
             </tbody>
           </table>
         </div>
       </div>
 
       <!-- Referrals Tab -->
-      <div class="tab-pane fade {% if current_tab == 'referrals' %}show active{% endif %}"
-           id="referrals" role="tabpanel" aria-labelledby="referrals-tab">
+      <div class="tab-pane fade {% if current_tab == 'referrals' %}show active{% endif %}" id="referrals"
+        role="tabpanel" aria-labelledby="referrals-tab">
         <p>Referrals details go here.</p>
       </div>
     </div>
@@ -1520,9 +1413,8 @@
 
             <!-- Left: selected invoice cards -->
             <div style="flex:1; min-width:320px;">
-              <div id="cartInvoicesGrid"
-                   class="d-grid"
-                   style="grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px;">
+              <div id="cartInvoicesGrid" class="d-grid"
+                style="grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px;">
                 <!-- JS renders cards -->
               </div>
             </div>
@@ -1559,9 +1451,7 @@
                   </div>
 
                   <div class="mt-3 d-flex justify-content-end">
-                    <button type="button"
-                            class="btn btn-outline-purple"
-                            id="cartOpenPayBtn">
+                    <button type="button" class="btn btn-outline-purple" id="cartOpenPayBtn">
                       <i class="bi bi-plus-lg me-1"></i> Add Payment
                     </button>
                   </div>
@@ -1573,15 +1463,11 @@
         </div>
 
         <div class="modal-footer">
-          <button type="button"
-                  class="btn btn-outline-secondary"
-                  data-bs-dismiss="modal">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
             Close
           </button>
 
-          <button type="button"
-                  class="btn btn-outline-danger"
-                  id="cartClearBtn">
+          <button type="button" class="btn btn-outline-danger" id="cartClearBtn">
             <i class="bi bi-x-circle me-1"></i> Clear Cart
           </button>
         </div>
@@ -1592,9 +1478,8 @@
 
   <div class="modal fade" id="manualSubscriptionModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-      <form class="modal-content"
-            method="POST"
-            action="{{ url_for('accounts_profiles.manual_add_subscription', id=user.id) }}">
+      <form class="modal-content" method="POST"
+        action="{{ url_for('accounts_profiles.manual_add_subscription', id=user.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="modal-header" style="background:#4a148c;color:white;">
@@ -1606,9 +1491,9 @@
           <label class="form-label">Plan</label>
           <select name="plan_id" class="form-select" required>
             {% for plan in subscription_plans %}
-              <option value="{{ plan.id }}">
-                {{ plan.name }} - US${{ "%.2f"|format(plan.price_usd or 0) }}
-              </option>
+            <option value="{{ plan.id }}">
+              {{ plan.name }} - US${{ "%.2f"|format(plan.price_usd or 0) }}
+            </option>
             {% endfor %}
           </select>
 
@@ -1652,8 +1537,7 @@
               <!-- LEFT: Keypad -->
               <div class="col-md-7">
                 <!-- Display -->
-                <div class="border rounded p-3 mb-2 text-center"
-                     style="background:#f7f1ff;">
+                <div class="border rounded p-3 mb-2 text-center" style="background:#f7f1ff;">
                   <div class="fw-bold" style="font-size:1.6rem;" id="bulkPayDisplay">JMD 0.00</div>
                 </div>
 
@@ -1730,11 +1614,8 @@
                   <!-- Authorized By -->
                   <div class="mt-3">
                     <div class="fw-semibold mb-1">Authorized By</div>
-                    <input type="text"
-                           class="form-control"
-                           id="bulkPayAuthBy"
-                           placeholder="Administrator / Sade / etc."
-                           required>
+                    <input type="text" class="form-control" id="bulkPayAuthBy" placeholder="Administrator / Sade / etc."
+                      required>
                   </div>
 
                   <!-- Allocation -->
@@ -1866,29 +1747,25 @@
               <!-- From / To -->
               <div class="col-md-6">
                 <label class="form-label fw-semibold">From</label>
-                <input type="date" name="pkg_from" class="form-control"
-                       value="{{ pkg_from or '' }}">
+                <input type="date" name="pkg_from" class="form-control" value="{{ pkg_from or '' }}">
               </div>
 
               <div class="col-md-6">
                 <label class="form-label fw-semibold">To</label>
-                <input type="date" name="pkg_to" class="form-control"
-                       value="{{ pkg_to or '' }}">
+                <input type="date" name="pkg_to" class="form-control" value="{{ pkg_to or '' }}">
               </div>
 
               <!-- AWB + Tracking side by side -->
               <div class="col-md-6">
                 <label class="form-label fw-semibold">House AWB</label>
-                <input type="text" name="pkg_awb" class="form-control"
-                       value="{{ pkg_awb or '' }}"
-                       placeholder="e.g. HAWB123...">
+                <input type="text" name="pkg_awb" class="form-control" value="{{ pkg_awb or '' }}"
+                  placeholder="e.g. HAWB123...">
               </div>
 
               <div class="col-md-6">
                 <label class="form-label fw-semibold">Tracking #</label>
-                <input type="text" name="pkg_tn" class="form-control"
-                       value="{{ pkg_tn or '' }}"
-                       placeholder="e.g. 1Z... / TBA...">
+                <input type="text" name="pkg_tn" class="form-control" value="{{ pkg_tn or '' }}"
+                  placeholder="e.g. 1Z... / TBA...">
               </div>
 
               <!-- Status -->
@@ -1896,12 +1773,13 @@
                 <label class="form-label fw-semibold">Status</label>
                 <select name="pkg_status" class="form-select">
                   <option value="" {% if not pkg_status %}selected{% endif %}>All</option>
-                  <option value="Overseas" {% if pkg_status == 'Overseas' %}selected{% endif %}>Overseas</option>
-                  <option value="Ready" {% if pkg_status == 'Ready' %}selected{% endif %}>Ready / Pickup</option>
-                  <option value="Delivered" {% if pkg_status == 'Delivered' %}selected{% endif %}>Delivered</option>
-                  <option value="Out for Delivery" {% if pkg_status == 'Out for Delivery' %}selected{% endif %}>Out for Delivery</option>
-                  <option value="Local Port" {% if pkg_status == 'Local Port' %}selected{% endif %}>Local Port</option>
-                  <option value="Unassigned" {% if pkg_status == 'Unassigned' %}selected{% endif %}>Unassigned</option>
+                  <option value="Overseas" {% if pkg_status=='Overseas' %}selected{% endif %}>Overseas</option>
+                  <option value="Ready" {% if pkg_status=='Ready' %}selected{% endif %}>Ready / Pickup</option>
+                  <option value="Delivered" {% if pkg_status=='Delivered' %}selected{% endif %}>Delivered</option>
+                  <option value="Out for Delivery" {% if pkg_status=='Out for Delivery' %}selected{% endif %}>Out for
+                    Delivery</option>
+                  <option value="Local Port" {% if pkg_status=='Local Port' %}selected{% endif %}>Local Port</option>
+                  <option value="Unassigned" {% if pkg_status=='Unassigned' %}selected{% endif %}>Unassigned</option>
                 </select>
               </div>
 
@@ -1911,7 +1789,7 @@
           <!-- Footer -->
           <div class="modal-footer d-flex justify-content-between">
             <a class="btn btn-outline-secondary"
-               href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1) }}">
+              href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='packages', pkg_page=1) }}">
               Clear
             </a>
 
@@ -1938,9 +1816,8 @@
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
 
-        <form id="addSinglePackageForm"
-              method="POST"
-              action="{{ url_for('accounts_profiles.create_single_package_for_user', id=user_id) }}">
+        <form id="addSinglePackageForm" method="POST"
+          action="{{ url_for('accounts_profiles.create_single_package_for_user', id=user_id) }}">
 
           <input type="hidden" name="user_id" value="{{ user_id }}">
           <!-- CSRF (works with Flask-WTF CSRFProtect if enabled) -->
@@ -1952,7 +1829,7 @@
           <input type="hidden" name="pkg_to" value="{{ pkg_to or '' }}">
           <input type="hidden" name="pkg_awb" value="{{ pkg_awb or '' }}">
           <input type="hidden" name="pkg_tn" value="{{ pkg_tn or '' }}">
-         <input type="hidden" name="pkg_status" value="{{ pkg_status or '' }}">
+          <input type="hidden" name="pkg_status" value="{{ pkg_status or '' }}">
 
 
           <div class="modal-body">
@@ -2027,8 +1904,8 @@
       </div>
     </div>
   </div>
-   
-    <!-- ✅ Add Claim Modal (Admin -> View User) -->
+
+  <!-- ✅ Add Claim Modal (Admin -> View User) -->
   <div class="modal fade" id="addClaimModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
       <div class="modal-content">
@@ -2040,9 +1917,8 @@
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
 
-        <form id="addClaimForm"
-              method="POST"
-              action="{{ url_for('accounts_profiles.create_claim_for_user', id=user_id) }}">
+        <form id="addClaimForm" method="POST"
+          action="{{ url_for('accounts_profiles.create_claim_for_user', id=user_id) }}">
 
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="tab" value="{{ current_tab }}">
@@ -2061,32 +1937,35 @@
                 <select name="package_id" id="adminClaimPackageSelect" class="form-select">
                   <option value="">-- Select overseas package --</option>
                   {% for pkg in packages %}
-                    {% set pkg_status = (pkg.status or '')|lower %}
-                    {% if 'overseas' in pkg_status %}
-                      <option value="{{ pkg.id }}"
-                              data-awb="{{ pkg.house_awb or '' }}"
-                              data-tracking="{{ pkg.tracking_number or '' }}">
-                        {{ pkg.house_awb or 'No AWB' }}{% if pkg.tracking_number %} • {{ pkg.tracking_number }}{% endif %}{% if pkg.description %} • {{ pkg.description }}{% endif %}
-                      </option>
-                    {% endif %}
+                  {% set pkg_status = (pkg.status or '')|lower %}
+                  {% if 'overseas' in pkg_status %}
+                  <option value="{{ pkg.id }}" data-awb="{{ pkg.house_awb or '' }}"
+                    data-tracking="{{ pkg.tracking_number or '' }}">
+                    {{ pkg.house_awb or 'No AWB' }}{% if pkg.tracking_number %} • {{ pkg.tracking_number }}{% endif %}{%
+                    if pkg.description %} • {{ pkg.description }}{% endif %}
+                  </option>
+                  {% endif %}
                   {% endfor %}
                 </select>
                 <div class="form-text">Choose an overseas package to auto-fill House AWB and Tracking Number.</div>
               </div>
 
-              <div class="col-md-6">                
+              <div class="col-md-6">
                 <label class="form-label">House AWB</label>
-                <input type="text" name="house_awb" id="adminClaimHouseAwb" class="form-control" required placeholder="e.g. HAWB123">
+                <input type="text" name="house_awb" id="adminClaimHouseAwb" class="form-control" required
+                  placeholder="e.g. HAWB123">
               </div>
 
               <div class="col-md-6">
                 <label class="form-label">Tracking Number</label>
-                <input type="text" name="tracking_number" id="adminClaimTrackingNumber" class="form-control" placeholder="Optional">
+                <input type="text" name="tracking_number" id="adminClaimTrackingNumber" class="form-control"
+                  placeholder="Optional">
               </div>
 
               <div class="col-md-6">
                 <label class="form-label">Item Value (JMD)</label>
-                <input type="number" step="0.01" min="0" name="item_value_jmd" class="form-control" required placeholder="e.g. 12000">
+                <input type="number" step="0.01" min="0" name="item_value_jmd" class="form-control" required
+                  placeholder="e.g. 12000">
               </div>
 
               <div class="col-md-6">
@@ -2100,7 +1979,8 @@
 
               <div class="col-12">
                 <label class="form-label">Description</label>
-                <textarea name="description" class="form-control" rows="4" placeholder="Explain the claim reason..."></textarea>
+                <textarea name="description" class="form-control" rows="4"
+                  placeholder="Explain the claim reason..."></textarea>
               </div>
 
               <div class="col-md-6">
@@ -2110,7 +1990,8 @@
 
               <div class="col-md-6">
                 <label class="form-label">Bank Statement URL (optional)</label>
-                <input type="text" name="bank_statement_url" class="form-control" placeholder="Optional link / leave blank">
+                <input type="text" name="bank_statement_url" class="form-control"
+                  placeholder="Optional link / leave blank">
               </div>
             </div>
 
@@ -2125,7 +2006,7 @@
                 <input type="text" name="bank_branch" class="form-control" placeholder="Branch name">
               </div>
 
-               <div class="col-md-6">
+              <div class="col-md-6">
                 <label class="form-label">Bank Account Number</label>
                 <input type="text" name="bank_account_number" class="form-control" placeholder="Account number">
               </div>
@@ -2136,7 +2017,7 @@
                   <option value="">Select type</option>
                   <option value="savings">Savings</option>
                   <option value="chequing">Chequing</option>
-                 </select>
+                </select>
               </div>
             </div>
 
@@ -2191,7 +2072,7 @@
 
           <div class="modal-footer">
             <a class="btn btn-outline-secondary"
-               href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='payments', pay_page=1, pay_per_page=pay_per_page) }}">
+              href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='payments', pay_page=1, pay_per_page=pay_per_page) }}">
               Clear
             </a>
             <button type="submit" class="btn" style="background-color:#4a148c; color:white;">
@@ -2241,7 +2122,7 @@
 
           <div class="modal-footer d-flex justify-content-between">
             <a class="btn btn-outline-secondary"
-               href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='invoices', inv_page=1, inv_per_page=inv_per_page) }}">
+              href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='invoices', inv_page=1, inv_per_page=inv_per_page) }}">
               Clear
             </a>
 
@@ -2289,7 +2170,7 @@
 
           <div class="modal-footer">
             <a class="btn btn-outline-secondary"
-               href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages', msg_page=1) }}">
+              href="{{ url_for('accounts_profiles.view_user', id=user_id, tab='messages', msg_page=1) }}">
               Clear
             </a>
             <button type="submit" class="btn" style="background-color:#4a148c; color:white;">
@@ -2355,7 +2236,7 @@
       </div>
     </div>
   </div>
- 
+
   <!-- Sensitive Info Modal -->
   <div class="modal fade" id="sensitiveInfoModal" tabindex="-1" aria-labelledby="sensitiveInfoLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -2395,9 +2276,7 @@
     <div class="modal-dialog modal-lg">
       <div class="modal-content">
 
-        <form id="adminDeliveryForm"
-              method="POST"
-              action="{{ url_for('logistics.add_scheduled_delivery') }}">
+        <form id="adminDeliveryForm" method="POST" action="{{ url_for('logistics.add_scheduled_delivery') }}">
 
           <!-- CSRF -->
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -2452,7 +2331,7 @@
               <label class="form-label">Directions</label>
               <textarea class="form-control" id="modalDeliveryDirections" name="direction"></textarea>
             </div>
-         </div>
+          </div>
 
           <div class="modal-footer">
             <button type="submit" class="btn btn-success">Schedule Delivery</button>
@@ -2468,9 +2347,7 @@
   <div class="modal fade" id="editWalletModal" tabindex="-1" aria-labelledby="editWalletLabel" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content">
-        <form id="editWalletForm"
-              method="POST"
-              action="{{ url_for('accounts_profiles.update_wallet', id=user.id) }}">
+        <form id="editWalletForm" method="POST" action="{{ url_for('accounts_profiles.update_wallet', id=user.id) }}">
           <!-- 🔐 CSRF -->
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="tab" value="{{ current_tab }}">
@@ -2491,7 +2368,7 @@
             <div class="mb-3">
               <label for="description" class="form-label">Description (optional)</label>
               <input type="text" name="description" id="description" class="form-control"
-                     placeholder="e.g. Adjustment for overcharge, manual top-up, promo, etc.">
+                placeholder="e.g. Adjustment for overcharge, manual top-up, promo, etc.">
             </div>
           </div>
 
@@ -2505,7 +2382,7 @@
       </div>
     </div>
   </div>
-      
+
   <!-- Mark Paid Modal -->
   <div class="modal fade" id="markPaidModal" tabindex="-1" aria-labelledby="markPaidLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -2541,7 +2418,7 @@
       </div>
     </div>
   </div>
- 
+
   <div class="modal fade" id="deleteInvoiceModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
@@ -2554,7 +2431,7 @@
         </div>
 
         <form id="deleteInvoiceForm" method="POST">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">          
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="tab" value="invoices">
           <input type="hidden" name="inv_page" value="{{ inv_page }}">
           <input type="hidden" name="inv_per_page" value="{{ inv_per_page }}">
@@ -2581,932 +2458,966 @@
 
       </div>
     </div>
-  </div> 
+  </div>
 
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-  const selectAll = document.getElementById("msgSelectAll");
-  const deleteBtn = document.getElementById("bulkDeleteMessagesBtn");
-  const form = document.getElementById("bulkDeleteMessagesForm");
+  document.addEventListener("DOMContentLoaded", function () {
+    const selectAll = document.getElementById("msgSelectAll");
+    const deleteBtn = document.getElementById("bulkDeleteMessagesBtn");
+    const form = document.getElementById("bulkDeleteMessagesForm");
 
-  function getChecks() {
-    return Array.from(document.querySelectorAll(".msg-check"));
-  }
-
-  function getSelected() {
-    return getChecks().filter(cb => cb.checked);
-  }
-
-  function updateState() {
-    const selected = getSelected();
-
-    if (deleteBtn) deleteBtn.disabled = selected.length === 0;
-
-    if (selectAll) {
-      const all = getChecks();
-      selectAll.checked = all.length > 0 && all.every(cb => cb.checked);
-      selectAll.indeterminate = all.some(cb => cb.checked) && !selectAll.checked;
+    function getChecks() {
+      return Array.from(document.querySelectorAll(".msg-check"));
     }
-  }
 
-  if (selectAll) {
-    selectAll.addEventListener("change", function () {
-      getChecks().forEach(cb => {
-        cb.checked = selectAll.checked;
-      });
-      updateState();
-    });
-  }
-
-  document.addEventListener("change", function (e) {
-    if (e.target.classList.contains("msg-check")) {
-      updateState();
+    function getSelected() {
+      return getChecks().filter(cb => cb.checked);
     }
-  });
 
-  if (deleteBtn && form) {
-    deleteBtn.addEventListener("click", function (e) {
-      e.preventDefault();
-
+    function updateState() {
       const selected = getSelected();
 
-      console.log("Selected checkboxes:", selected.map(cb => cb.value));
+      if (deleteBtn) deleteBtn.disabled = selected.length === 0;
 
-      if (!selected.length) {
-        alert("Select at least one message.");
-        return;
+      if (selectAll) {
+        const all = getChecks();
+        selectAll.checked = all.length > 0 && all.every(cb => cb.checked);
+        selectAll.indeterminate = all.some(cb => cb.checked) && !selectAll.checked;
       }
+    }
 
-      if (!confirm(`Delete ${selected.length} message(s)?`)) return;
-
-      form.querySelectorAll('input[name="message_ids"]').forEach(el => el.remove());
-
-      selected.forEach(cb => {
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = "message_ids";
-        input.value = cb.value;
-        form.appendChild(input);
+    if (selectAll) {
+      selectAll.addEventListener("change", function () {
+        getChecks().forEach(cb => {
+          cb.checked = selectAll.checked;
+        });
+        updateState();
       });
+    }
 
-      console.log(
-        "Hidden inputs before submit:",
-        Array.from(form.querySelectorAll('input[name="message_ids"]')).map(i => i.value)
-      );
-
-      form.submit();
+    document.addEventListener("change", function (e) {
+      if (e.target.classList.contains("msg-check")) {
+        updateState();
+      }
     });
-  }
 
-  updateState();
-});
+    if (deleteBtn && form) {
+      deleteBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+
+        const selected = getSelected();
+
+        console.log("Selected checkboxes:", selected.map(cb => cb.value));
+
+        if (!selected.length) {
+          alert("Select at least one message.");
+          return;
+        }
+
+        if (!confirm(`Delete ${selected.length} message(s)?`)) return;
+
+        form.querySelectorAll('input[name="message_ids"]').forEach(el => el.remove());
+
+        selected.forEach(cb => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "message_ids";
+          input.value = cb.value;
+          form.appendChild(input);
+        });
+
+        console.log(
+          "Hidden inputs before submit:",
+          Array.from(form.querySelectorAll('input[name="message_ids"]')).map(i => i.value)
+        );
+
+        form.submit();
+      });
+    }
+
+    updateState();
+  });
 </script>
 {% endblock %}
 
 {% block styles %}
 <style>
-.btn-purple {
-  background-color: #4a148c;
-  color: #fff;
-  border: 1px solid #4a148c;
-}
-.btn-purple:hover {
-  background-color: #3b0f73;
-  border-color: #3b0f73;
-  color: #fff;
-}
+  .btn-purple {
+    background-color: #4a148c;
+    color: #fff;
+    border: 1px solid #4a148c;
+  }
 
-/* ================================
+  .btn-purple:hover {
+    background-color: #3b0f73;
+    border-color: #3b0f73;
+    color: #fff;
+  }
+
+  /* ================================
    Tabs: White background, black text
    Purple hover & active
    ================================ */
 
-.card-header .nav-tabs {
-  border-bottom: 1px solid #dee2e6;
-  margin-bottom: 0;
-  padding-left: 1rem;
-  padding-right: 1rem;
-}
+  .card-header .nav-tabs {
+    border-bottom: 1px solid #dee2e6;
+    margin-bottom: 0;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
 
-/* Base tab */
-.card-header .nav-tabs .nav-link {
-  font-family: 'Poppins', sans-serif;
-  background-color: #ffffff !important;
-  color: #000000 !important;
-  border: 1px solid #dee2e6 !important;
-  border-bottom: none !important;
-  border-radius: 0.25rem 0.25rem 0 0;
-  margin-right: 4px;
-  font-weight: 500;
-  transition: all 0.2s ease-in-out;
-}
+  /* Base tab */
+  .card-header .nav-tabs .nav-link {
+    font-family: 'Poppins', sans-serif;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #dee2e6 !important;
+    border-bottom: none !important;
+    border-radius: 0.25rem 0.25rem 0 0;
+    margin-right: 4px;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+  }
 
-/* Hover */
-.card-header .nav-tabs .nav-link:hover {
-  background-color: #f5f0fa !important;
-  color: #4a148c !important;
-  border-color: #4a148c #4a148c #dee2e6 !important;
-}
+  /* Hover */
+  .card-header .nav-tabs .nav-link:hover {
+    background-color: #f5f0fa !important;
+    color: #4a148c !important;
+    border-color: #4a148c #4a148c #dee2e6 !important;
+  }
 
-/* Active */
-.card-header .nav-tabs .nav-link.active,
-.card-header .nav-tabs .nav-item.show .nav-link {
-  background-color: #ffffff !important;
-  color: #4a148c !important;
-  font-weight: 600;
-  border-color: #4a148c #4a148c #ffffff !important;
-}
+  /* Active */
+  .card-header .nav-tabs .nav-link.active,
+  .card-header .nav-tabs .nav-item.show .nav-link {
+    background-color: #ffffff !important;
+    color: #4a148c !important;
+    font-weight: 600;
+    border-color: #4a148c #4a148c #ffffff !important;
+  }
 
-/* Icons inherit text color */
-.card-header .nav-tabs .nav-link i {
-  color: inherit;
-}
+  /* Icons inherit text color */
+  .card-header .nav-tabs .nav-link i {
+    color: inherit;
+  }
 
-/* ---------- Buttons ---------- */
-.btn-outline-purple {
-  border: 1px solid #4a148c !important;
-  color: #4a148c !important;
-  background: transparent !important;
-}
-.btn-outline-purple:hover {
-  background: #4a148c !important;
-  color: #fff !important;
-}
+  /* ---------- Buttons ---------- */
+  .btn-outline-purple {
+    border: 1px solid #4a148c !important;
+    color: #4a148c !important;
+    background: transparent !important;
+  }
 
-/* ---------- Packages status bar + badge ---------- */
-td.pkg-cell{
-  position: relative;
-  padding-left: 14px !important; /* room for bar */
-}
-td.pkg-cell .pkg-status-bar{
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  border-radius: 2px;
-}
+  .btn-outline-purple:hover {
+    background: #4a148c !important;
+    color: #fff !important;
+  }
 
-/* left bar uses same progress_color keywords */
-td.pkg-cell .pkg-status-bar.bar-danger  { background-color: #dc3545 !important; }  /* red */
-td.pkg-cell .pkg-status-bar.bar-warning { background-color: #ffc107 !important; }  /* yellow */
-td.pkg-cell .pkg-status-bar.bar-primary { background-color: #0d6efd !important; }  /* blue */
-td.pkg-cell .pkg-status-bar.bar-success { background-color: #198754 !important; }  /* green */
-td.pkg-cell .pkg-status-bar.bar-dark    { background-color: #212529 !important; }  /* refunded */
-td.pkg-cell .pkg-status-bar.bar-secondary { background-color: #adb5bd !important; }
+  /* ---------- Packages status bar + badge ---------- */
+  td.pkg-cell {
+    position: relative;
+    padding-left: 14px !important;
+    /* room for bar */
+  }
 
-/* Badge base */
-td.pkg-cell span.badge.pkg-status-badge{
-  display: inline-block !important;
-  padding: .2rem .5rem !important;
-  border-radius: .35rem !important;
-  font-size: .75rem !important;
-  font-weight: 700 !important;
-  background-color: #6c757d !important;  /* fallback */
-  color: #fff !important;
-}
+  td.pkg-cell .pkg-status-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    border-radius: 2px;
+  }
 
-td.pkg-cell span.badge.pkg-status-badge.status-refunded{
-  background-color: #212529 !important;
-  color: #fff !important;
-}
-td.pkg-cell span.badge.pkg-status-badge.status-overseas{
-  background-color: #dc3545 !important;
-  color: #fff !important;
-}
-td.pkg-cell span.badge.pkg-status-badge.status-ready{
-  background-color: #ffc107 !important;
-  color: #212529 !important;
-}
-td.pkg-cell span.badge.pkg-status-badge.status-delivered{
-  background-color: #198754 !important;
-  color: #fff !important;
-}
-td.pkg-cell span.badge.pkg-status-badge.status-unknown{
-  background-color: #adb5bd !important;
-  color: #212529 !important;
-}
+  /* left bar uses same progress_color keywords */
+  td.pkg-cell .pkg-status-bar.bar-danger {
+    background-color: #dc3545 !important;
+  }
 
-/* ================================
+  /* red */
+  td.pkg-cell .pkg-status-bar.bar-warning {
+    background-color: #ffc107 !important;
+  }
+
+  /* yellow */
+  td.pkg-cell .pkg-status-bar.bar-primary {
+    background-color: #0d6efd !important;
+  }
+
+  /* blue */
+  td.pkg-cell .pkg-status-bar.bar-success {
+    background-color: #198754 !important;
+  }
+
+  /* green */
+  td.pkg-cell .pkg-status-bar.bar-dark {
+    background-color: #212529 !important;
+  }
+
+  /* refunded */
+  td.pkg-cell .pkg-status-bar.bar-secondary {
+    background-color: #adb5bd !important;
+  }
+
+  /* Badge base */
+  td.pkg-cell span.badge.pkg-status-badge {
+    display: inline-block !important;
+    padding: .2rem .5rem !important;
+    border-radius: .35rem !important;
+    font-size: .75rem !important;
+    font-weight: 700 !important;
+    background-color: #6c757d !important;
+    /* fallback */
+    color: #fff !important;
+  }
+
+  td.pkg-cell span.badge.pkg-status-badge.status-refunded {
+    background-color: #212529 !important;
+    color: #fff !important;
+  }
+
+  td.pkg-cell span.badge.pkg-status-badge.status-overseas {
+    background-color: #dc3545 !important;
+    color: #fff !important;
+  }
+
+  td.pkg-cell span.badge.pkg-status-badge.status-ready {
+    background-color: #ffc107 !important;
+    color: #212529 !important;
+  }
+
+  td.pkg-cell span.badge.pkg-status-badge.status-delivered {
+    background-color: #198754 !important;
+    color: #fff !important;
+  }
+
+  td.pkg-cell span.badge.pkg-status-badge.status-unknown {
+    background-color: #adb5bd !important;
+    color: #212529 !important;
+  }
+
+  /* ================================
    MOBILE / RESPONSIVE FIXES
    ================================ */
 
-/* Make icons clickable (you used cursor-pointer class) */
-.cursor-pointer { cursor: pointer; }
-
-/* ---------- Top grey bar: stop overlap on phones ---------- */
-@media (max-width: 768px) {
-
-  /* This targets your top grey bar inside the profile card */
-  .card .d-flex.justify-content-between.align-items-center.p-2[style*="background-color:#6c757d"]{
-    flex-wrap: wrap;
-    gap: .5rem;
-    position: relative !important; /* keep relative */
+  /* Make icons clickable (you used cursor-pointer class) */
+  .cursor-pointer {
+    cursor: pointer;
   }
 
-  /* The middle group was position-absolute; kill that on mobile */
-  .card .d-flex.justify-content-between.align-items-center.p-2
-  .position-absolute[style*="left: 33%"]{
-    position: static !important;
-    left: auto !important;
-    width: 100%;
-    justify-content: space-between;
-    gap: .5rem;
-    margin-top: .25rem;
-  }
+  /* ---------- Top grey bar: stop overlap on phones ---------- */
+  @media (max-width: 768px) {
 
-  /* Right-side buttons wrap nicely */
-  .card .d-flex.justify-content-between.align-items-center.p-2 > .d-flex.gap-2{
-    width: 100%;
-    justify-content: flex-end;
-    flex-wrap: wrap;
-    gap: .4rem !important;
-  }
+    /* This targets your top grey bar inside the profile card */
+    .card .d-flex.justify-content-between.align-items-center.p-2[style*="background-color:#6c757d"] {
+      flex-wrap: wrap;
+      gap: .5rem;
+      position: relative !important;
+      /* keep relative */
+    }
 
-  /* ---------- Profile body: stack columns ---------- */
-  .card-body.d-flex.p-3{
-    flex-direction: column !important;
-    gap: 1rem;
-    padding-bottom: 5rem !important; /* space for wallet button */
-  }
+    /* The middle group was position-absolute; kill that on mobile */
+    .card .d-flex.justify-content-between.align-items-center.p-2 .position-absolute[style*="left: 33%"] {
+      position: static !important;
+      left: auto !important;
+      width: 100%;
+      justify-content: space-between;
+      gap: .5rem;
+      margin-top: .25rem;
+    }
 
-  /* Hide your vertical divider lines on mobile */
-  .card-body.d-flex.p-3 .position-absolute[style*="border-left"],
-  .card-body.d-flex.p-3 .position-absolute[style*="border-top"]{
-    display: none !important;
-  }
+    /* Right-side buttons wrap nicely */
+    .card .d-flex.justify-content-between.align-items-center.p-2>.d-flex.gap-2 {
+      width: 100%;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: .4rem !important;
+    }
 
-  /* Remove extra column paddings that cause squeeze */
-  .card-body.d-flex.p-3 > div[style*="flex:1"]{
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-  }
+    /* ---------- Profile body: stack columns ---------- */
+    .card-body.d-flex.p-3 {
+      flex-direction: column !important;
+      gap: 1rem;
+      padding-bottom: 5rem !important;
+      /* space for wallet button */
+    }
 
-  /* Name sizing */
-  .card-body h3{
-    font-size: 1.25rem !important;
-    line-height: 1.2;
-  }
+    /* Hide your vertical divider lines on mobile */
+    .card-body.d-flex.p-3 .position-absolute[style*="border-left"],
+    .card-body.d-flex.p-3 .position-absolute[style*="border-top"] {
+      display: none !important;
+    }
 
-  /* ---------- Wallet button: stop absolute overlap ---------- */
-  .card-body .position-absolute[style*="bottom:1rem"][style*="right:1rem"]{
-    position: static !important;
-    margin-top: .75rem;
-    width: 100%;
-  }
+    /* Remove extra column paddings that cause squeeze */
+    .card-body.d-flex.p-3>div[style*="flex:1"] {
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+    }
 
-  .card-body .position-absolute[style*="bottom:1rem"][style*="right:1rem"] .btn{
-    width: 100%;
-    font-size: 1.1rem !important;
-    padding: .65rem 1rem !important;
-  }
+    /* Name sizing */
+    .card-body h3 {
+      font-size: 1.25rem !important;
+      line-height: 1.2;
+    }
 
-  /* ---------- Tabs: allow horizontal scroll instead of wrapping ugly ---------- */
-  .card-header .nav-tabs{
-    flex-wrap: nowrap !important;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-  }
+    /* ---------- Wallet button: stop absolute overlap ---------- */
+    .card-body .position-absolute[style*="bottom:1rem"][style*="right:1rem"] {
+      position: static !important;
+      margin-top: .75rem;
+      width: 100%;
+    }
 
-  .card-header .nav-tabs .nav-link{
-    white-space: nowrap;
-    flex: 0 0 auto;
-  }
+    .card-body .position-absolute[style*="bottom:1rem"][style*="right:1rem"] .btn {
+      width: 100%;
+      font-size: 1.1rem !important;
+      padding: .65rem 1rem !important;
+    }
 
-  /* ---------- Tables: make them readable on phones ---------- */
-  .table-responsive{
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+    /* ---------- Tabs: allow horizontal scroll instead of wrapping ugly ---------- */
+    .card-header .nav-tabs {
+      flex-wrap: nowrap !important;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+    }
 
-  /* Make the Packages table not feel cramped */
-  #packagesTable th, #packagesTable td{
-    white-space: nowrap;
-    font-size: .9rem;
-  }
+    .card-header .nav-tabs .nav-link {
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
 
-  /* Give House/Status cell ability to wrap inside if needed */
-  #packagesTable td.pkg-cell{
-    white-space: normal;
-    min-width: 180px;
-  }
+    /* ---------- Tables: make them readable on phones ---------- */
+    .table-responsive {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
 
-  /* Buttons row above tables should wrap */
-  .tab-pane .d-flex.justify-content-between.align-items-center.mb-2{
-    flex-wrap: wrap;
-    gap: .5rem;
-  }
+    /* Make the Packages table not feel cramped */
+    #packagesTable th,
+    #packagesTable td {
+      white-space: nowrap;
+      font-size: .9rem;
+    }
 
-  /* The search area in Messages tab */
-  #msgSearchInput{
-    min-width: 0 !important;
-  }
-}
+    /* Give House/Status cell ability to wrap inside if needed */
+    #packagesTable td.pkg-cell {
+      white-space: normal;
+      min-width: 180px;
+    }
 
+    /* Buttons row above tables should wrap */
+    .tab-pane .d-flex.justify-content-between.align-items-center.mb-2 {
+      flex-wrap: wrap;
+      gap: .5rem;
+    }
+
+    /* The search area in Messages tab */
+    #msgSearchInput {
+      min-width: 0 !important;
+    }
+  }
 </style>
 {% endblock %}
 
 {% block scripts %}
 <script>
-/* Expose this globally for inline onclick icons */
-function showAddress(type) {
-  document.getElementById("overseas-address").style.display = (type === 'overseas') ? 'block' : 'none';
-  document.getElementById("home-address").style.display = (type === 'home') ? 'block' : 'none';
-}
-
-/* ----------------------------------------------------
-   ✅ KEEP ACTIVE TAB IN THE URL (?tab=...)
-   This ensures reload/redirect stays on invoices tab
----------------------------------------------------- */
-(function syncTabsToUrl(){
-  // Bootstrap tab triggers are your <button data-bs-toggle="tab"...>
-  const tabButtons = document.querySelectorAll('button[data-bs-toggle="tab"]');
-  if (!tabButtons.length) return;
-
-  tabButtons.forEach(btn => {
-    btn.addEventListener('shown.bs.tab', function (event) {
-      const target = event.target.getAttribute('data-bs-target'); // e.g. "#invoices"
-      if (!target) return;
-
-      let tabName = target.replace('#', '');
-      if (tabName === 'schedule-delivery') tabName = 'schedule';
-      const url = new URL(window.location.href);
-
-      url.searchParams.set('tab', tabName);
-
-      // Optional: reset page for some tabs when switching (safe)
-      if (tabName === 'invoices') url.searchParams.set('inv_page', url.searchParams.get('inv_page') || '1');
-      if (tabName === 'packages') url.searchParams.set('pkg_page', url.searchParams.get('pkg_page') || '1');
-      if (tabName === 'payments') url.searchParams.set('pay_page', url.searchParams.get('pay_page') || '1');
-      if (tabName === 'messages') url.searchParams.set('msg_page', url.searchParams.get('msg_page') || '1');
-
-      window.history.replaceState({}, '', url.toString());
-    });
-  });
-})();
-
-$(document).ready(function () {
-  /* IMPORTANT: Do NOT initialize DataTables for #packagesTable */
-  // $('#packagesTable').DataTable();  // intentionally removed
-
-  // Prealerts
-  if ($('#prealertsTable').length) {
-    $('#prealertsTable').DataTable({
-      order: [[0, 'desc']],
-      pageLength: 10
-    });
+  /* Expose this globally for inline onclick icons */
+  function showAddress(type) {
+    document.getElementById("overseas-address").style.display = (type === 'overseas') ? 'block' : 'none';
+    document.getElementById("home-address").style.display = (type === 'home') ? 'block' : 'none';
   }
 
-  // Claims
-  if ($('#claimsTable').length && $('#claimsTable tbody tr').length > 0) {
-    $('#claimsTable').DataTable({
-      order: [[6, 'desc']],
-      pageLength: 10
-    });
-  }
+  /* ----------------------------------------------------
+     ✅ KEEP ACTIVE TAB IN THE URL (?tab=...)
+     This ensures reload/redirect stays on invoices tab
+  ---------------------------------------------------- */
+  (function syncTabsToUrl() {
+    // Bootstrap tab triggers are your <button data-bs-toggle="tab"...>
+    const tabButtons = document.querySelectorAll('button[data-bs-toggle="tab"]');
+    if (!tabButtons.length) return;
 
-  // -----------------------------
-  // Messages: server-side search (NO DataTables)
-  // -----------------------------
-  (function initServerSideMessageSearch() {
-    const input = document.getElementById('msgSearchInput');
-    if (!input) return;
+    tabButtons.forEach(btn => {
+      btn.addEventListener('shown.bs.tab', function (event) {
+        const target = event.target.getAttribute('data-bs-target'); // e.g. "#invoices"
+        if (!target) return;
 
-    let t = null;
+        let tabName = target.replace('#', '');
+        if (tabName === 'schedule-delivery') tabName = 'schedule';
+        const url = new URL(window.location.href);
 
-    function goSearch() {
-      const q = (input.value || '').trim();
+        url.searchParams.set('tab', tabName);
 
-      const url = new URL(window.location.href);
+        // Optional: reset page for some tabs when switching (safe)
+        if (tabName === 'invoices') url.searchParams.set('inv_page', url.searchParams.get('inv_page') || '1');
+        if (tabName === 'packages') url.searchParams.set('pkg_page', url.searchParams.get('pkg_page') || '1');
+        if (tabName === 'payments') url.searchParams.set('pay_page', url.searchParams.get('pay_page') || '1');
+        if (tabName === 'messages') url.searchParams.set('msg_page', url.searchParams.get('msg_page') || '1');
 
-      // stay on Messages tab
-      url.searchParams.set('tab', 'messages');
-
-      // reset to page 1 on new search
-      url.searchParams.set('msg_page', '1');
-
-      // set/clear q
-      if (q) url.searchParams.set('msg_q', q);
-      else url.searchParams.delete('msg_q');
-
-      window.location.href = url.toString();
-    }
-
-    // Enter triggers search immediately
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        goSearch();
-      }
-    });
-
-    // Debounced search while typing (optional)
-    input.addEventListener('input', () => {
-      clearTimeout(t);
-      t = setTimeout(goSearch, 450);
+        window.history.replaceState({}, '', url.toString());
+      });
     });
   })();
 
-  // ✅ Schedule Delivery: init DataTable ONLY when tab is shown
-  (function initScheduleDeliveryDT(){
-    const tableSel = '#scheduledeliveryTable';
-    if (!$(tableSel).length) return;
+  $(document).ready(function () {
+    /* IMPORTANT: Do NOT initialize DataTables for #packagesTable */
+    // $('#packagesTable').DataTable();  // intentionally removed
 
-    function initDT() {
-      if (!$.fn.DataTable.isDataTable(tableSel)) {
-        $(tableSel).DataTable({
-          autoWidth: false,
-          language: {
-            emptyTable: "No scheduled deliveries for this user."
-          }
-        });
-     } else {
-        $(tableSel).DataTable().columns.adjust();
-      }
+    // Prealerts
+    if ($('#prealertsTable').length) {
+      $('#prealertsTable').DataTable({
+        order: [[0, 'desc']],
+        pageLength: 10
+      });
     }
 
-    // If already active on load, init immediately
-    if ($('#schedule-delivery').hasClass('show') || $('#schedule-delivery').hasClass('active')) {
-      initDT();
-      return;
+    // Claims
+    if ($('#claimsTable').length && $('#claimsTable tbody tr').length > 0) {
+      $('#claimsTable').DataTable({
+        order: [[6, 'desc']],
+        pageLength: 10
+      });
     }
 
-    // Otherwise init the first time the tab is opened
-    const btn = document.getElementById('schedule-delivery-tab');
-    if (!btn) return;
+    // -----------------------------
+    // Messages: server-side search (NO DataTables)
+    // -----------------------------
+    (function initServerSideMessageSearch() {
+      const input = document.getElementById('msgSearchInput');
+      if (!input) return;
 
-    btn.addEventListener('shown.bs.tab', function () {
-      initDT();
-    });
-  })();
+      let t = null;
 
-  // Mark as Paid Modal
-  $('.mark-paid-btn').click(function () {
-    const invoiceId = $(this).data('invoice-id');
-    $('#modalInvoiceId').val(invoiceId);
+      function goSearch() {
+        const q = (input.value || '').trim();
 
-    const owed = $(this).data('amount-owed');
-    $('#payment_amount').val(owed || 0);
+        const url = new URL(window.location.href);
 
-    new bootstrap.Modal(document.getElementById('markPaidModal')).show();
-  });
+        // stay on Messages tab
+        url.searchParams.set('tab', 'messages');
 
-  $('#markPaidForm').submit(function (e) {
-    e.preventDefault();
-    const formData = $(this).serialize();
-    fetch("/admin/invoice/mark_paid", {
-      method: 'POST',
-      body: formData,
-      headers: {
-        "X-Requested-With": "XMLHttpRequest",
-        "Content-Type": "application/x-www-form-urlencoded"
+        // reset to page 1 on new search
+        url.searchParams.set('msg_page', '1');
+
+        // set/clear q
+        if (q) url.searchParams.set('msg_q', q);
+        else url.searchParams.delete('msg_q');
+
+        window.location.href = url.toString();
       }
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (data.success) {
-        const row = $(`tr[data-invoice-id="${data.invoice_id}"]`);
-        row.find('span.badge').removeClass('bg-danger').addClass('bg-success').text('paid');
-        row.find('.mark-paid-btn').remove();
 
-        $('#paymentsTable').DataTable().row.add([
-          data.bill_number,
-          data.payment_date,
-          data.payment_type,
-          `$${parseFloat(data.amount).toFixed(2)}`,
-          data.authorized_by,
-          data.invoice_path ? `<a href="${data.invoice_path}" target="_blank"><i class="fas fa-file-invoice fa-lg"></i></a>` : '—'
-        ]).draw();
-
-        bootstrap.Modal.getInstance(document.getElementById('markPaidModal')).hide();
-      } else {
-        alert(data.error || 'Error marking invoice as paid.');
-      }
-    });
-  });
-});
-
-/* -----------------------------
-   Delivery modals (outside jQuery)
-   ----------------------------- */
-
-// Full admin delivery modal launcher
-document.querySelectorAll('.open-admin-delivery-modal').forEach(btn => {
-  btn.addEventListener('click', function() {
-    const userId = this.getAttribute('data-user-id');
-    document.getElementById('modalUserId').value = userId;
-    document.getElementById('adminDeliveryForm').reset();
-    new bootstrap.Modal(document.getElementById('adminDeliveryModal')).show();
-  });
-});
-
-// Submit full admin delivery form (big modal)
-document.getElementById('adminDeliveryForm')?.addEventListener('submit', function(e){
-  e.preventDefault();
-
-  const payload = {
-    user_id: document.getElementById('modalUserId').value,
-    date: document.getElementById('modalDeliveryDate').value,
-    time_from: document.getElementById('modalDeliveryTimeFrom').value,
-    time_to: document.getElementById('modalDeliveryTimeTo').value,
-    location: document.getElementById('modalDeliveryLocation').value,
-    person_receiving: document.getElementById('modalPersonReceiving').value,
-    mobile_number: document.getElementById('modalDeliveryMobile').value,
-    direction: document.getElementById('modalDeliveryDirections').value
-  };
-
-  fetch("{{ url_for('logistics.add_scheduled_delivery') }}", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  })
-  .then(res => res.json())
-  .then(data => {
-    if(data.status === "success"){
-      bootstrap.Modal.getInstance(document.getElementById('adminDeliveryModal')).hide();
-      window.location.reload();   // ✅ simplest + guarantees table updates
-    } else {
-      alert(data.message || 'Error scheduling delivery.');
-    }
-  })
-  .catch(() => alert("Network/server error scheduling delivery."));
-});
-
-/* ================================
-   Bulk delete behaviour
-   ================================ */
-document.addEventListener("DOMContentLoaded", () => {
-  const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
-  const selectAll = document.getElementById("pkgSelectAll");
-
-  function selectedIds(){
-    return Array.from(document.querySelectorAll(".pkg-check:checked"))
-      .map(cb => parseInt(cb.value, 10))
-      .filter(n => !isNaN(n));
-  }
-
-  function toggleBulkBtn(){
-    if (!bulkDeleteBtn) return;
-    bulkDeleteBtn.disabled = selectedIds().length === 0;
-  }
-
-  // Select all
-  if (selectAll){
-    selectAll.addEventListener("change", () => {
-      document.querySelectorAll(".pkg-check").forEach(cb => cb.checked = selectAll.checked);
-      toggleBulkBtn();
-    });
-  }
-
-  // Per checkbox
-  document.querySelectorAll(".pkg-check").forEach(cb => {
-    cb.addEventListener("change", () => {
-      if (selectAll && !cb.checked) selectAll.checked = false;
-      toggleBulkBtn();
-    });
-  });
-
-  // Click bulk delete
-  if (bulkDeleteBtn){
-    bulkDeleteBtn.addEventListener("click", async () => {
-      const ids = selectedIds();
-      if (!ids.length) return;
-
-      if (!confirm(`Delete ${ids.length} selected package(s)?`)) return;
-
-      const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
-
-      const res = await fetch(
-        "{{ url_for('accounts_profiles.bulk_delete_user_packages', id=user_id) }}",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-            "X-CSRFToken": csrf
-          },
-          body: JSON.stringify({ package_ids: ids })
+      // Enter triggers search immediately
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          goSearch();
         }
-      );
+      });
 
-      const data = await res.json();
+      // Debounced search while typing (optional)
+      input.addEventListener('input', () => {
+        clearTimeout(t);
+        t = setTimeout(goSearch, 450);
+      });
+    })();
 
-      if (!data.success) {
-        alert(data.error || "Delete failed");
+    // ✅ Schedule Delivery: init DataTable ONLY when tab is shown
+    (function initScheduleDeliveryDT() {
+      const tableSel = '#scheduledeliveryTable';
+      if (!$(tableSel).length) return;
+
+      function initDT() {
+        if (!$.fn.DataTable.isDataTable(tableSel)) {
+          $(tableSel).DataTable({
+            autoWidth: false,
+            language: {
+              emptyTable: "No scheduled deliveries for this user."
+            }
+          });
+        } else {
+          $(tableSel).DataTable().columns.adjust();
+        }
+      }
+
+      // If already active on load, init immediately
+      if ($('#schedule-delivery').hasClass('show') || $('#schedule-delivery').hasClass('active')) {
+        initDT();
         return;
       }
 
-      window.location.reload();
+      // Otherwise init the first time the tab is opened
+      const btn = document.getElementById('schedule-delivery-tab');
+      if (!btn) return;
+
+      btn.addEventListener('shown.bs.tab', function () {
+        initDT();
+      });
+    })();
+
+    // Mark as Paid Modal
+    $('.mark-paid-btn').click(function () {
+      const invoiceId = $(this).data('invoice-id');
+      $('#modalInvoiceId').val(invoiceId);
+
+      const owed = $(this).data('amount-owed');
+      $('#payment_amount').val(owed || 0);
+
+      new bootstrap.Modal(document.getElementById('markPaidModal')).show();
     });
-  }
 
-  toggleBulkBtn();
-});
-
-/* ================================
-   Inline invoice behaviour (POS)
-   ================================ */
-function initInlineInvoice(rootElement) {
-  const root = rootElement || document;
-
-  const payOverlay      = root.querySelector('#inlinePayOverlay');
-  const discountOverlay = root.querySelector('#inlineDiscountOverlay');
-  const bdOverlay       = root.querySelector('#inlineBreakdownOverlay');
-
-  const showOverlay = (el) => { if (el) el.classList.remove('d-none'); };
-  const hideOverlay = (el) => { if (el) el.classList.add('d-none'); };
-
-  [payOverlay, discountOverlay, bdOverlay].forEach(el => el && el.classList.add('d-none'));
-
-  // Add Payment
-  root.querySelectorAll('.js-open-pay').forEach(btn => {
-    btn.addEventListener('click', function (e) {
+    $('#markPaidForm').submit(function (e) {
       e.preventDefault();
-      if (!payOverlay) return;
-      showOverlay(payOverlay);
-      setupPaymentLogic();
+      const formData = $(this).serialize();
+      fetch("/admin/invoice/mark_paid", {
+        method: 'POST',
+        body: formData,
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "Content-Type": "application/x-www-form-urlencoded"
+        }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            const row = $(`tr[data-invoice-id="${data.invoice_id}"]`);
+            row.find('span.badge').removeClass('bg-danger').addClass('bg-success').text('paid');
+            row.find('.mark-paid-btn').remove();
+
+            $('#paymentsTable').DataTable().row.add([
+              data.bill_number,
+              data.payment_date,
+              data.payment_type,
+              `$${parseFloat(data.amount).toFixed(2)}`,
+              data.authorized_by,
+              data.invoice_path ? `<a href="${data.invoice_path}" target="_blank"><i class="fas fa-file-invoice fa-lg"></i></a>` : '—'
+            ]).draw();
+
+            bootstrap.Modal.getInstance(document.getElementById('markPaidModal')).hide();
+          } else {
+            alert(data.error || 'Error marking invoice as paid.');
+          }
+        });
     });
   });
 
-  // Discount
-  root.querySelectorAll('.js-open-discount').forEach(btn => {
-    btn.addEventListener('click', function (e) {
-      e.preventDefault();
-      if (!discountOverlay) return;
-      showOverlay(discountOverlay);
-      setupDiscountLogic();
-    });
-  });
+  /* -----------------------------
+     Delivery modals (outside jQuery)
+     ----------------------------- */
 
-  // Close overlay buttons
-  root.querySelectorAll('.fa-inline-close').forEach(btn => {
+  // Full admin delivery modal launcher
+  document.querySelectorAll('.open-admin-delivery-modal').forEach(btn => {
     btn.addEventListener('click', function () {
-      const type = this.getAttribute('data-close');
-      if (type === 'pay')      hideOverlay(payOverlay);
-      if (type === 'discount') hideOverlay(discountOverlay);
-      if (type === 'bd')       hideOverlay(bdOverlay);
+      const userId = this.getAttribute('data-user-id');
+      document.getElementById('modalUserId').value = userId;
+      document.getElementById('adminDeliveryForm').reset();
+      new bootstrap.Modal(document.getElementById('adminDeliveryModal')).show();
     });
   });
 
-  function setupPaymentLogic() {
-    if (!payOverlay) return;
+  // Submit full admin delivery form (big modal)
+  document.getElementById('adminDeliveryForm')?.addEventListener('submit', function (e) {
+    e.preventDefault();
 
-    const display = payOverlay.querySelector('#payDisplayInline');
-    const hidden  = payOverlay.querySelector('#payAmountInputInline');
-    if (!display || !hidden) return;
+    const payload = {
+      user_id: document.getElementById('modalUserId').value,
+      date: document.getElementById('modalDeliveryDate').value,
+      time_from: document.getElementById('modalDeliveryTimeFrom').value,
+      time_to: document.getElementById('modalDeliveryTimeTo').value,
+      location: document.getElementById('modalDeliveryLocation').value,
+      person_receiving: document.getElementById('modalPersonReceiving').value,
+      mobile_number: document.getElementById('modalDeliveryMobile').value,
+      direction: document.getElementById('modalDeliveryDirections').value
+    };
 
-    let current = hidden.value && hidden.value !== '0' ? String(hidden.value) : '0';
+    fetch("{{ url_for('logistics.add_scheduled_delivery') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === "success") {
+          bootstrap.Modal.getInstance(document.getElementById('adminDeliveryModal')).hide();
+          window.location.reload();   // ✅ simplest + guarantees table updates
+        } else {
+          alert(data.message || 'Error scheduling delivery.');
+        }
+      })
+      .catch(() => alert("Network/server error scheduling delivery."));
+  });
 
-    function updateDisplay() {
-      let num = parseFloat(current || '0');
-      if (isNaN(num)) num = 0;
-      hidden.value = num.toFixed(2);
-      display.textContent =
-        'JMD ' + num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  /* ================================
+     Bulk delete behaviour
+     ================================ */
+  document.addEventListener("DOMContentLoaded", () => {
+    const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+    const selectAll = document.getElementById("pkgSelectAll");
+
+    function selectedIds() {
+      return Array.from(document.querySelectorAll(".pkg-check:checked"))
+        .map(cb => parseInt(cb.value, 10))
+        .filter(n => !isNaN(n));
     }
 
-    function pushKey(key) {
-      if (key === '.') {
-        if (current.includes('.')) return;
-        current += '.';
-      } else if (key === '00') {
-        if (current === '0') return;
-        current += '00';
-      } else {
-        if (current === '0') current = key;
-        else current += key;
+    function toggleBulkBtn() {
+      if (!bulkDeleteBtn) return;
+      bulkDeleteBtn.disabled = selectedIds().length === 0;
+    }
+
+    // Select all
+    if (selectAll) {
+      selectAll.addEventListener("change", () => {
+        document.querySelectorAll(".pkg-check").forEach(cb => cb.checked = selectAll.checked);
+        toggleBulkBtn();
+      });
+    }
+
+    // Per checkbox
+    document.querySelectorAll(".pkg-check").forEach(cb => {
+      cb.addEventListener("change", () => {
+        if (selectAll && !cb.checked) selectAll.checked = false;
+        toggleBulkBtn();
+      });
+    });
+
+    // Click bulk delete
+    if (bulkDeleteBtn) {
+      bulkDeleteBtn.addEventListener("click", async () => {
+        const ids = selectedIds();
+        if (!ids.length) return;
+
+        if (!confirm(`Delete ${ids.length} selected package(s)?`)) return;
+
+        const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+
+        const res = await fetch(
+          "{{ url_for('accounts_profiles.bulk_delete_user_packages', id=user_id) }}",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+              "X-CSRFToken": csrf
+            },
+            body: JSON.stringify({ package_ids: ids })
+          }
+        );
+
+        const data = await res.json();
+
+        if (!data.success) {
+          alert(data.error || "Delete failed");
+          return;
+        }
+
+        window.location.reload();
+      });
+    }
+
+    toggleBulkBtn();
+  });
+
+  /* ================================
+     Inline invoice behaviour (POS)
+     ================================ */
+  function initInlineInvoice(rootElement) {
+    const root = rootElement || document;
+
+    const payOverlay = root.querySelector('#inlinePayOverlay');
+    const discountOverlay = root.querySelector('#inlineDiscountOverlay');
+    const bdOverlay = root.querySelector('#inlineBreakdownOverlay');
+
+    const showOverlay = (el) => { if (el) el.classList.remove('d-none'); };
+    const hideOverlay = (el) => { if (el) el.classList.add('d-none'); };
+
+    [payOverlay, discountOverlay, bdOverlay].forEach(el => el && el.classList.add('d-none'));
+
+    // Add Payment
+    root.querySelectorAll('.js-open-pay').forEach(btn => {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!payOverlay) return;
+        showOverlay(payOverlay);
+        setupPaymentLogic();
+      });
+    });
+
+    // Discount
+    root.querySelectorAll('.js-open-discount').forEach(btn => {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (!discountOverlay) return;
+        showOverlay(discountOverlay);
+        setupDiscountLogic();
+      });
+    });
+
+    // Close overlay buttons
+    root.querySelectorAll('.fa-inline-close').forEach(btn => {
+      btn.addEventListener('click', function () {
+        const type = this.getAttribute('data-close');
+        if (type === 'pay') hideOverlay(payOverlay);
+        if (type === 'discount') hideOverlay(discountOverlay);
+        if (type === 'bd') hideOverlay(bdOverlay);
+      });
+    });
+
+    function setupPaymentLogic() {
+      if (!payOverlay) return;
+
+      const display = payOverlay.querySelector('#payDisplayInline');
+      const hidden = payOverlay.querySelector('#payAmountInputInline');
+      if (!display || !hidden) return;
+
+      let current = hidden.value && hidden.value !== '0' ? String(hidden.value) : '0';
+
+      function updateDisplay() {
+        let num = parseFloat(current || '0');
+        if (isNaN(num)) num = 0;
+        hidden.value = num.toFixed(2);
+        display.textContent =
+          'JMD ' + num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       }
+
+      function pushKey(key) {
+        if (key === '.') {
+          if (current.includes('.')) return;
+          current += '.';
+        } else if (key === '00') {
+          if (current === '0') return;
+          current += '00';
+        } else {
+          if (current === '0') current = key;
+          else current += key;
+        }
+        updateDisplay();
+      }
+
+      payOverlay.querySelectorAll('.payment-key-btn').forEach(btn => {
+        btn.onclick = function () { pushKey(this.getAttribute('data-key')); };
+      });
+
+      payOverlay.querySelectorAll('.payment-quick-btn[data-quick]').forEach(btn => {
+        btn.onclick = function () { current = String(this.getAttribute('data-quick') || '0'); updateDisplay(); };
+      });
+
+      const clearBtn = payOverlay.querySelector('#payClearBtnInline');
+      if (clearBtn) clearBtn.onclick = function () { current = '0'; updateDisplay(); };
+
+      // payment method
+      const methodInput = payOverlay.querySelector('#payMethodInputInline');
+      const methodList = payOverlay.querySelector('#paymentMethodListInline');
+      if (methodInput && methodList) {
+        methodList.querySelectorAll('.payment-method-btn').forEach(btn => {
+          btn.onclick = function () {
+            methodList.querySelectorAll('.payment-method-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            methodInput.value = this.getAttribute('data-method') || 'Cash';
+          };
+        });
+      }
+
+      // authorised by
+      const authSelect = payOverlay.querySelector('#authBySelectInline');
+      const authInput = payOverlay.querySelector('#authByInputInline');
+      const authHidden = payOverlay.querySelector('#authByHiddenInline');
+
+      if (authSelect && authHidden) {
+        if (authSelect.value !== '__other__') authHidden.value = authSelect.value;
+
+        authSelect.addEventListener('change', function () {
+          if (this.value === '__other__') {
+            if (authInput) {
+              authInput.classList.remove('d-none');
+              authInput.value = '';
+              authInput.focus();
+            }
+            authHidden.value = '';
+          } else {
+            if (authInput) authInput.classList.add('d-none');
+            authHidden.value = this.value;
+          }
+        });
+
+        if (authInput) {
+          authInput.addEventListener('input', function () {
+            if (authSelect.value === '__other__') authHidden.value = this.value;
+          });
+        }
+      }
+
       updateDisplay();
     }
 
-    payOverlay.querySelectorAll('.payment-key-btn').forEach(btn => {
-      btn.onclick = function () { pushKey(this.getAttribute('data-key')); };
-    });
+    function setupDiscountLogic() {
+      if (!discountOverlay) return;
 
-    payOverlay.querySelectorAll('.payment-quick-btn[data-quick]').forEach(btn => {
-      btn.onclick = function () { current = String(this.getAttribute('data-quick') || '0'); updateDisplay(); };
-    });
+      const form = discountOverlay.querySelector('#inlineDiscountForm');
+      if (!form) return;
 
-    const clearBtn = payOverlay.querySelector('#payClearBtnInline');
-    if (clearBtn) clearBtn.onclick = function () { current = '0'; updateDisplay(); };
+      const balance = parseFloat(form.getAttribute('data-balance') || '0') || 0;
+      const tabs = discountOverlay.querySelector('#discountTabsInline');
+      const panePct = discountOverlay.querySelector('#discountPercentPaneInline');
+      const paneAmt = discountOverlay.querySelector('#discountAmountPaneInline');
+      const pctInput = discountOverlay.querySelector('#discountPercentInputInline');
+      const pctLbl = discountOverlay.querySelector('#discountPercentAmountInline');
+      const amtInput = discountOverlay.querySelector('#discountAmountInputInline');
+      const hidden = discountOverlay.querySelector('#discountHiddenAmountInline');
 
-    // payment method
-    const methodInput = payOverlay.querySelector('#payMethodInputInline');
-    const methodList  = payOverlay.querySelector('#paymentMethodListInline');
-    if (methodInput && methodList) {
-      methodList.querySelectorAll('.payment-method-btn').forEach(btn => {
-        btn.onclick = function () {
-          methodList.querySelectorAll('.payment-method-btn').forEach(b => b.classList.remove('active'));
-          this.classList.add('active');
-          methodInput.value = this.getAttribute('data-method') || 'Cash';
-        };
-      });
-    }
+      let mode = tabs?.querySelector('.discount-tab.active')?.getAttribute('data-mode') || 'percent';
 
-    // authorised by
-    const authSelect = payOverlay.querySelector('#authBySelectInline');
-    const authInput  = payOverlay.querySelector('#authByInputInline');
-    const authHidden = payOverlay.querySelector('#authByHiddenInline');
+      function formatJMD(v) {
+        const n = parseFloat(v || '0') || 0;
+        return 'JMD ' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
 
-    if (authSelect && authHidden) {
-      if (authSelect.value !== '__other__') authHidden.value = authSelect.value;
-
-      authSelect.addEventListener('change', function () {
-        if (this.value === '__other__') {
-          if (authInput) {
-            authInput.classList.remove('d-none');
-            authInput.value = '';
-            authInput.focus();
-          }
-          authHidden.value = '';
+      function recalc() {
+        if (!hidden) return;
+        if (mode === 'percent') {
+          const pct = parseFloat(pctInput?.value || '0') || 0;
+          const disc = Math.max(0, balance * pct / 100);
+          hidden.value = disc.toFixed(2);
+          if (pctLbl) pctLbl.textContent = formatJMD(disc);
         } else {
-          if (authInput) authInput.classList.add('d-none');
-          authHidden.value = this.value;
+          const v = parseFloat(amtInput?.value || '0') || 0;
+          hidden.value = v.toFixed(2);
         }
-      });
+      }
 
-      if (authInput) {
-        authInput.addEventListener('input', function () {
-          if (authSelect.value === '__other__') authHidden.value = this.value;
+      if (tabs) {
+        tabs.querySelectorAll('.discount-tab').forEach(btn => {
+          btn.onclick = function () {
+            tabs.querySelectorAll('.discount-tab').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            mode = this.getAttribute('data-mode') || 'percent';
+            if (panePct && paneAmt) {
+              if (mode === 'percent') { panePct.classList.remove('d-none'); paneAmt.classList.add('d-none'); }
+              else { panePct.classList.add('d-none'); paneAmt.classList.remove('d-none'); }
+            }
+            recalc();
+          };
         });
       }
+
+      if (pctInput) pctInput.oninput = recalc;
+      if (amtInput) amtInput.oninput = recalc;
+
+      recalc();
     }
 
-    updateDisplay();
+    // charges breakdown overlay
+    if (bdOverlay) {
+      const ids = [
+        'bd-duty-inline', 'bd-gct-inline', 'bd-freight-inline', 'bd-handling-inline',
+        'bd-scf-inline', 'bd-envl-inline', 'bd-caf-inline', 'bd-stamp-inline',
+        'bd-other-inline', 'bd-total-inline'
+      ];
+      const setField = (id, val) => {
+        const el = bdOverlay.querySelector('#' + id);
+        if (el) el.textContent = val;
+      };
+
+      root.querySelectorAll('.js-bd').forEach(btn => {
+        btn.addEventListener('click', function () {
+          const pkgId = this.getAttribute('data-pkg');
+          if (!pkgId) return;
+
+          ids.forEach(id => setField(id, '…'));
+
+          fetch("{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace('0', pkgId))
+            .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+            .then(d => {
+              const nf = new Intl.NumberFormat();
+              setField('bd-duty-inline', nf.format(d.duty || 0));
+              setField('bd-gct-inline', nf.format(d.gct || 0));
+              setField('bd-freight-inline', nf.format(d.freight || 0));
+              setField('bd-handling-inline', nf.format(d.handling || 0));
+              setField('bd-scf-inline', nf.format(d.scf || 0));
+              setField('bd-envl-inline', nf.format(d.envl || 0));
+              setField('bd-caf-inline', nf.format(d.caf || 0));
+              setField('bd-stamp-inline', nf.format(d.stamp || 0));
+              setField('bd-other-inline', nf.format(d.other || 0));
+              setField('bd-total-inline', nf.format(d.total_jmd || 0));
+            })
+            .catch(() => ids.forEach(id => setField(id, '—')));
+
+          showOverlay(bdOverlay);
+        });
+      });
+    }
   }
 
-  function setupDiscountLogic() {
-    if (!discountOverlay) return;
+  function loadInvoiceInline(invoiceId) {
+    const url = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1"
+      .replace('0', String(invoiceId));
 
-    const form = discountOverlay.querySelector('#inlineDiscountForm');
-    if (!form) return;
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(r => { if (!r.ok) throw new Error('Failed to load invoice'); return r.text(); })
+      .then(html => {
+        const host = document.getElementById('invoiceInlineHost');
+        host.innerHTML = html;
+        host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        initInlineInvoice(host);
+      })
+      .catch(() => alert('⚠️ Unable to load invoice inline.'));
+  }
 
-    const balance  = parseFloat(form.getAttribute('data-balance') || '0') || 0;
-    const tabs     = discountOverlay.querySelector('#discountTabsInline');
-    const panePct  = discountOverlay.querySelector('#discountPercentPaneInline');
-    const paneAmt  = discountOverlay.querySelector('#discountAmountPaneInline');
-    const pctInput = discountOverlay.querySelector('#discountPercentInputInline');
-    const pctLbl   = discountOverlay.querySelector('#discountPercentAmountInline');
-    const amtInput = discountOverlay.querySelector('#discountAmountInputInline');
-    const hidden   = discountOverlay.querySelector('#discountHiddenAmountInline');
+  // Load invoice into modal
+  function openInvoiceModal(invoiceId) {
+    const modalEl = document.getElementById("invoiceModal");
+    const modal = new bootstrap.Modal(modalEl);
+    const bodyEl = document.getElementById("invoiceModalBody");
 
-    let mode = tabs?.querySelector('.discount-tab.active')?.getAttribute('data-mode') || 'percent';
+    bodyEl.innerHTML = "<p class='text-muted mb-0'>Loading invoice…</p>";
 
-    function formatJMD(v) {
-      const n = parseFloat(v || '0') || 0;
-      return 'JMD ' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
+    const base = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1";
+    const url = base.replace('0', String(invoiceId));
 
-    function recalc() {
-      if (!hidden) return;
-      if (mode === 'percent') {
-        const pct  = parseFloat(pctInput?.value || '0') || 0;
-        const disc = Math.max(0, balance * pct / 100);
-        hidden.value = disc.toFixed(2);
-        if (pctLbl) pctLbl.textContent = formatJMD(disc);
-      } else {
-        const v = parseFloat(amtInput?.value || '0') || 0;
-        hidden.value = v.toFixed(2);
-      }
-    }
+    fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+      .then(r => { if (!r.ok) throw new Error("Failed"); return r.text(); })
+      .then(html => {
+        bodyEl.innerHTML = html;
+        initInlineInvoice(modalEl);
+        modal.show();
+      });
+  }
 
-    if (tabs) {
-      tabs.querySelectorAll('.discount-tab').forEach(btn => {
-        btn.onclick = function () {
-          tabs.querySelectorAll('.discount-tab').forEach(b => b.classList.remove('active'));
-          this.classList.add('active');
-          mode = this.getAttribute('data-mode') || 'percent';
-          if (panePct && paneAmt) {
-            if (mode === 'percent') { panePct.classList.remove('d-none'); paneAmt.classList.add('d-none'); }
-            else { panePct.classList.add('d-none'); paneAmt.classList.remove('d-none'); }
+  // ✅ Add Single Package via AJAX (no page reload)
+  document.getElementById('addSinglePackageForm')
+    .addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      const form = this;
+      const formData = new FormData(form);
+
+      fetch(form.getAttribute('action'), {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (!data.success) {
+            alert(data.error || 'Failed to add package');
+            return;
           }
-          recalc();
-        };
-      });
-    }
 
-    if (pctInput) pctInput.oninput = recalc;
-    if (amtInput) amtInput.oninput = recalc;
+          const tbody = document.querySelector('#packagesTable tbody');
+          const st = String(data.pkg.status || '').toLowerCase();
 
-    recalc();
-  }
+          let progressColor = 'secondary';
+          if (st.includes('claim refunded') || st.includes('refunded')) progressColor = 'dark';
+          else if (st === 'overseas') progressColor = 'danger';
+          else if (st.includes('local port') || st.includes('received at local port') || st.includes('arrived')) progressColor = 'warning';
+          else if (st.includes('ready') || st.includes('pickup') || st.includes('pick up')) progressColor = 'primary';
+          else if (st.includes('deliver') || st === 'delivery' || st === 'delivered' || st.includes('out for delivery')) progressColor = 'success';
+          else if (st === 'unassigned') progressColor = 'warning';
 
-  // charges breakdown overlay
-  if (bdOverlay) {
-    const ids = [
-      'bd-duty-inline','bd-gct-inline','bd-freight-inline','bd-handling-inline',
-      'bd-scf-inline','bd-envl-inline','bd-caf-inline','bd-stamp-inline',
-      'bd-other-inline','bd-total-inline'
-    ];
-    const setField = (id, val) => {
-      const el = bdOverlay.querySelector('#' + id);
-      if (el) el.textContent = val;
-    };
-
-    root.querySelectorAll('.js-bd').forEach(btn => {
-      btn.addEventListener('click', function () {
-        const pkgId = this.getAttribute('data-pkg');
-        if (!pkgId) return;
-
-        ids.forEach(id => setField(id, '…'));
-
-        fetch("{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace('0', pkgId))
-          .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-          .then(d => {
-            const nf = new Intl.NumberFormat();
-            setField('bd-duty-inline',     nf.format(d.duty || 0));
-            setField('bd-gct-inline',      nf.format(d.gct || 0));
-            setField('bd-freight-inline',  nf.format(d.freight || 0));
-            setField('bd-handling-inline', nf.format(d.handling || 0));
-            setField('bd-scf-inline',      nf.format(d.scf || 0));
-            setField('bd-envl-inline',     nf.format(d.envl || 0));
-            setField('bd-caf-inline',      nf.format(d.caf || 0));
-            setField('bd-stamp-inline',    nf.format(d.stamp || 0));
-            setField('bd-other-inline',    nf.format(d.other || 0));
-            setField('bd-total-inline',    nf.format(d.total_jmd || 0));
-          })
-          .catch(() => ids.forEach(id => setField(id, '—')));
-
-        showOverlay(bdOverlay);
-      });
-    });
-  }
-}
-
-function loadInvoiceInline(invoiceId){
-  const url = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1"
-                .replace('0', String(invoiceId));
-
-  fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' }})
-    .then(r => { if(!r.ok) throw new Error('Failed to load invoice'); return r.text(); })
-    .then(html => {
-      const host = document.getElementById('invoiceInlineHost');
-      host.innerHTML = html;
-      host.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      initInlineInvoice(host);
-    })
-    .catch(() => alert('⚠️ Unable to load invoice inline.'));
-}
-
-// Load invoice into modal
-function openInvoiceModal(invoiceId) {
-  const modalEl  = document.getElementById("invoiceModal");
-  const modal    = new bootstrap.Modal(modalEl);
-  const bodyEl   = document.getElementById("invoiceModalBody");
-
-  bodyEl.innerHTML = "<p class='text-muted mb-0'>Loading invoice…</p>";
-
-  const base = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1";
-  const url  = base.replace('0', String(invoiceId));
-
-  fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" }})
-    .then(r => { if (!r.ok) throw new Error("Failed"); return r.text(); })
-    .then(html => {
-      bodyEl.innerHTML = html;
-      initInlineInvoice(modalEl);
-      modal.show();
-    });
-}
-
-// ✅ Add Single Package via AJAX (no page reload)
-document.getElementById('addSinglePackageForm')
-  .addEventListener('submit', function (e) {
-    e.preventDefault();
-
-    const form = this;
-    const formData = new FormData(form);
-
-    fetch(form.getAttribute('action'), {
-      method: 'POST',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      body: formData
-    })
-    .then(res => res.json())
-    .then(data => {
-      if (!data.success) {
-        alert(data.error || 'Failed to add package');
-        return;
-      }
-
-      const tbody = document.querySelector('#packagesTable tbody');
-      const st = String(data.pkg.status || '').toLowerCase();
-
-      let progressColor = 'secondary';
-      if (st.includes('claim refunded') || st.includes('refunded')) progressColor = 'dark';
-      else if (st === 'overseas') progressColor = 'danger';
-      else if (st.includes('local port') || st.includes('received at local port') || st.includes('arrived')) progressColor = 'warning';
-      else if (st.includes('ready') || st.includes('pickup') || st.includes('pick up')) progressColor = 'primary';
-      else if (st.includes('deliver') || st === 'delivery' || st === 'delivered' || st.includes('out for delivery')) progressColor = 'success';
-      else if (st === 'unassigned') progressColor = 'warning';
-
-      const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
-      const attachments = Array.isArray(data.pkg.attachments) ? data.pkg.attachments : [];
-      const attachmentsHtml = attachments.length
-        ? `
+          const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+          const attachments = Array.isArray(data.pkg.attachments) ? data.pkg.attachments : [];
+          const attachmentsHtml = attachments.length
+            ? `
           <div class="mt-1 d-flex flex-wrap gap-2">
             ${attachments.map(a => `
               <a class="btn btn-sm"
@@ -3532,9 +3443,9 @@ document.getElementById('addSinglePackageForm')
             `).join('')}
           </div>
         `
-        : ``;
+            : ``;
 
-      const row = `
+          const row = `
         <tr>
           <td class="text-center align-middle">
             <input type="checkbox" class="pkg-check" value="${data.pkg.id}">
@@ -3544,24 +3455,22 @@ document.getElementById('addSinglePackageForm')
             <div class="pkg-status-bar bar-${progressColor}"></div>
             <strong>${data.pkg.house_awb || '-'}</strong><br>
 
-            <span class="badge ${
-              progressColor === 'danger' ? 'bg-danger' :
+            <span class="badge ${progressColor === 'danger' ? 'bg-danger' :
               progressColor === 'warning' ? 'bg-warning text-dark' :
-              progressColor === 'primary' ? 'bg-primary' :
-              progressColor === 'success' ? 'bg-success' :
-              progressColor === 'dark' ? 'bg-dark' : 'bg-secondary'
+                progressColor === 'primary' ? 'bg-primary' :
+                  progressColor === 'success' ? 'bg-success' :
+                    progressColor === 'dark' ? 'bg-dark' : 'bg-secondary'
             }">
               ${data.pkg.status || 'Unknown'}
             </span>
 
             <div class="status-progress mt-1 ${progressColor}">
-              <div class="fill" style="width:${
-                progressColor === 'dark' ? 100 :
-                progressColor === 'danger' ? 33 :
+              <div class="fill" style="width:${progressColor === 'dark' ? 100 :
+              progressColor === 'danger' ? 33 :
                 progressColor === 'warning' ? (st === 'unassigned' ? 0 : 66) :
-                progressColor === 'primary' ? 80 :
-                progressColor === 'success' ? 100 : 0
-              }%;"></div>
+                  progressColor === 'primary' ? 80 :
+                    progressColor === 'success' ? 100 : 0
+            }%;"></div>
             </div>
           </td>
 
@@ -3578,284 +3487,284 @@ document.getElementById('addSinglePackageForm')
         </tr>
       `;
 
-      tbody.insertAdjacentHTML('afterbegin', row);
+          tbody.insertAdjacentHTML('afterbegin', row);
 
-      const newCheckbox = tbody.querySelector('tr:first-child .pkg-check');
-      if (newCheckbox) {
-        newCheckbox.addEventListener("change", () => {
-          const selectAll = document.getElementById("pkgSelectAll");
+          const newCheckbox = tbody.querySelector('tr:first-child .pkg-check');
+          if (newCheckbox) {
+            newCheckbox.addEventListener("change", () => {
+              const selectAll = document.getElementById("pkgSelectAll");
+              const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+
+              const checked = document.querySelectorAll(".pkg-check:checked").length;
+              if (bulkDeleteBtn) bulkDeleteBtn.disabled = checked === 0;
+              if (selectAll && !newCheckbox.checked) selectAll.checked = false;
+            });
+          }
+
           const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+          if (bulkDeleteBtn) {
+            const checked = document.querySelectorAll(".pkg-check:checked").length;
+            bulkDeleteBtn.disabled = checked === 0;
+          }
 
-          const checked = document.querySelectorAll(".pkg-check:checked").length;
-          if (bulkDeleteBtn) bulkDeleteBtn.disabled = checked === 0;
-          if (selectAll && !newCheckbox.checked) selectAll.checked = false;
-        });
-      }
-
-      const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
-      if (bulkDeleteBtn) {
-        const checked = document.querySelectorAll(".pkg-check:checked").length;
-        bulkDeleteBtn.disabled = checked === 0;
-      }
-
-      bootstrap.Modal.getInstance(document.getElementById('addSinglePackageModal')).hide();
-      form.reset();
-    })
-    .catch(() => alert('Server error adding package'));
-});
-
-function openDeleteInvoiceModal(invoiceId, invoiceLabel){
-  const modalEl = document.getElementById('deleteInvoiceModal');
-  const formEl  = document.getElementById('deleteInvoiceForm');
-  const labelEl = document.getElementById('delInvoiceLabel');
-
-  if (!modalEl || !formEl) return;
-
-  labelEl.textContent = invoiceLabel || ('Invoice #' + invoiceId);
-  formEl.action = "{{ url_for('admin.delete_invoice', invoice_id=0) }}".replace('0', String(invoiceId));
-
-  new bootstrap.Modal(modalEl).show();
-}
-
-/* ================================
-   Admin Add Claim via AJAX
-================================ */
-document.getElementById('addClaimForm')?.addEventListener('submit', function (e) {
-  e.preventDefault();
-
-  const form = this;
-  const formData = new FormData(form);
-
-  fetch(form.getAttribute('action'), {
-    method: 'POST',
-    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-    body: formData
-  })
-  .then(async (res) => {
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.error || 'Failed to create claim');
-    }
-    return data;
-  })
-  .then((data) => {
-    if (!data.success) {
-      alert(data.error || 'Failed to create claim');
-      return;
-    }
-
-    bootstrap.Modal.getInstance(document.getElementById('addClaimModal'))?.hide();
-    form.reset();
-
-    alert(`Claim created successfully. Case ID: ${data.case_id}`);
-
-    const url = new URL(window.location.href);
-    url.searchParams.set('tab', 'packages');
-    window.location.href = url.toString();
-  })
-  .catch((err) => {
-    alert(err.message || 'Server error creating claim');
-  });
-});
-
-/* ----------------------------------------------------
-   ✅ INVOICE DELETE: redirect back with tab=invoices
-   (instead of reload which defaults back to packages)
----------------------------------------------------- */
-document.getElementById('deleteInvoiceForm')?.addEventListener('submit', function(e){
-  e.preventDefault();
-
-  const form = this;
-  const action = form.action;
-  const formData = new FormData(form);
-
-  fetch(action, {
-    method: 'POST',
-    headers: { 'X-Requested-With': 'XMLHttpRequest' },
-    body: formData
-  })
-  .then(r => r.json())
-  .then(data => {
-    if (!data.success) {
-      alert(data.error || 'Delete failed');
-      return;
-    }
-
-    // ✅ force invoices tab in URL
-    const url = new URL(window.location.href);
-    url.searchParams.set('tab', 'invoices');
-    // keep current invoice page if present
-    if (!url.searchParams.get('inv_page')) url.searchParams.set('inv_page', '1');
-
-    window.location.href = url.toString();
-  })
-  .catch(() => alert('Server error deleting invoice'));
-});
-
-/* ==============================
-   INVOICE CART (multi-select)
-============================== */
-
-(function initInvoiceCart(){
-  const cartBtn     = document.getElementById('invoiceCartBtn');
-  const cartCountEl = document.getElementById('invoiceCartCount');
-  const selectAll   = document.getElementById('invSelectAll');
-
-  const cartModalEl = document.getElementById('invoiceCartModal');
-  const bulkPayModalEl = document.getElementById('bulkPayModal');
-
-  if (!cartBtn || !cartCountEl || !cartModalEl) return;
-
-  // Per-user cart key (prevents mixing between users)
-  const CART_KEY = `inv_cart_user_{{ user_id }}`;
-
-  function readCart(){
-    try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); }
-    catch { return []; }
-  }
-
-  function writeCart(ids){
-    const clean = Array.from(new Set((ids || []).map(x => parseInt(x,10)).filter(n => !isNaN(n))));
-    localStorage.setItem(CART_KEY, JSON.stringify(clean));
-    syncCartUI(clean);
-    return clean;
-  }
-
-  function syncCartUI(ids){
-    const n = (ids || []).length;
-    cartBtn.disabled = n === 0;
-    cartCountEl.textContent = String(n);
-    cartCountEl.style.display = n ? 'inline-block' : 'none';
-  }
-
-  function getCheckedIdsFromPage(){
-    return Array.from(document.querySelectorAll('.invoice-check:checked'))
-      .map(cb => parseInt(cb.value, 10))
-      .filter(n => !isNaN(n));
-  }
-
-  // Restore checked state on load
-  const saved = readCart();
-  saved.forEach(id => {
-    const cb = document.querySelector(`.invoice-check[value="${id}"]`);
-    if (cb && !cb.disabled) cb.checked = true;
-  });
-  syncCartUI(saved);
-
-  // Select all
-  if (selectAll){
-    selectAll.addEventListener('change', () => {
-      const all = Array.from(document.querySelectorAll('.invoice-check')).filter(cb => !cb.disabled);
-      all.forEach(cb => cb.checked = selectAll.checked);
-      writeCart(getCheckedIdsFromPage());
+          bootstrap.Modal.getInstance(document.getElementById('addSinglePackageModal')).hide();
+          form.reset();
+        })
+        .catch(() => alert('Server error adding package'));
     });
+
+  function openDeleteInvoiceModal(invoiceId, invoiceLabel) {
+    const modalEl = document.getElementById('deleteInvoiceModal');
+    const formEl = document.getElementById('deleteInvoiceForm');
+    const labelEl = document.getElementById('delInvoiceLabel');
+
+    if (!modalEl || !formEl) return;
+
+    labelEl.textContent = invoiceLabel || ('Invoice #' + invoiceId);
+    formEl.action = "{{ url_for('admin.delete_invoice', invoice_id=0) }}".replace('0', String(invoiceId));
+
+    new bootstrap.Modal(modalEl).show();
   }
 
-  // Individual checkbox changes
-  document.querySelectorAll('.invoice-check').forEach(cb => {
-    cb.addEventListener('change', () => {
-      if (selectAll && !cb.checked) selectAll.checked = false;
-      writeCart(getCheckedIdsFromPage());
-    });
-  });
-
-  // Open cart modal
-  cartBtn.addEventListener('click', () => {
-    const ids = readCart();
-    if (!ids.length) return;
-
-    // Show modal first
-    new bootstrap.Modal(cartModalEl).show();
-
-    // Load cart details from server (authoritative owed, paid, etc.)
-    loadCartDetails(ids);
-  });
-
-  // Clear cart
-  document.getElementById('cartClearBtn')?.addEventListener('click', () => {
-    localStorage.removeItem(CART_KEY);
-    document.querySelectorAll('.invoice-check').forEach(cb => cb.checked = false);
-    if (selectAll) selectAll.checked = false;
-    syncCartUI([]);
-    bootstrap.Modal.getInstance(cartModalEl)?.hide();
-  });
-
-  // Open payment modal from cart
-  document.getElementById('cartOpenPayBtn')?.addEventListener('click', () => {
-    const balText = document.getElementById('cartTotalBalance')?.textContent || '$0.00';
-    const balNum = parseMoney(balText);
-
-    // Show balance
-    document.getElementById('bulkPayCartBalance').textContent = formatMoney(balNum);
-
-    // Default amount = total balance
-    setBulkPayAmount(balNum);
-
-    new bootstrap.Modal(bulkPayModalEl).show();
-  });
-
-  // Submit payment
-  document.getElementById('bulkPayForm')?.addEventListener('submit', async (e) => {
+  /* ================================
+     Admin Add Claim via AJAX
+  ================================ */
+  document.getElementById('addClaimForm')?.addEventListener('submit', function (e) {
     e.preventDefault();
 
-    const ids = readCart();
-    if (!ids.length) { alert("Cart is empty."); return; }
+    const form = this;
+    const formData = new FormData(form);
 
-    const amount = parseFloat(document.getElementById('bulkPayAmount')?.value || '0') || 0;
-    const payment_type = document.getElementById('bulkPayType')?.value || 'Cash';
-    const authorized_by = (document.getElementById('bulkPayAuthBy')?.value || '').trim();
-    const allocation = document.getElementById('bulkPayAlloc')?.value || 'oldest_first';
+    fetch(form.getAttribute('action'), {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: formData
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to create claim');
+        }
+        return data;
+      })
+      .then((data) => {
+        if (!data.success) {
+          alert(data.error || 'Failed to create claim');
+          return;
+        }
 
-    if (amount <= 0) { alert("Enter a valid amount."); return; }
-    if (!authorized_by) { alert("Authorized By is required."); return; }
+        bootstrap.Modal.getInstance(document.getElementById('addClaimModal'))?.hide();
+        form.reset();
 
-    const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+        alert(`Claim created successfully. Case ID: ${data.case_id}`);
 
-    // You will implement this route (below)
-    const res = await fetch("{{ url_for('admin.bulk_invoice_payment') }}", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-        "X-CSRFToken": csrf
-      },
-      body: JSON.stringify({
-        user_id: {{ user_id }},
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', 'packages');
+        window.location.href = url.toString();
+      })
+      .catch((err) => {
+        alert(err.message || 'Server error creating claim');
+      });
+  });
+
+  /* ----------------------------------------------------
+     ✅ INVOICE DELETE: redirect back with tab=invoices
+     (instead of reload which defaults back to packages)
+  ---------------------------------------------------- */
+  document.getElementById('deleteInvoiceForm')?.addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    const form = this;
+    const action = form.action;
+    const formData = new FormData(form);
+
+    fetch(action, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: formData
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.success) {
+          alert(data.error || 'Delete failed');
+          return;
+        }
+
+        // ✅ force invoices tab in URL
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', 'invoices');
+        // keep current invoice page if present
+        if (!url.searchParams.get('inv_page')) url.searchParams.set('inv_page', '1');
+
+        window.location.href = url.toString();
+      })
+      .catch(() => alert('Server error deleting invoice'));
+  });
+
+  /* ==============================
+     INVOICE CART (multi-select)
+  ============================== */
+
+  (function initInvoiceCart() {
+    const cartBtn = document.getElementById('invoiceCartBtn');
+    const cartCountEl = document.getElementById('invoiceCartCount');
+    const selectAll = document.getElementById('invSelectAll');
+
+    const cartModalEl = document.getElementById('invoiceCartModal');
+    const bulkPayModalEl = document.getElementById('bulkPayModal');
+
+    if (!cartBtn || !cartCountEl || !cartModalEl) return;
+
+    // Per-user cart key (prevents mixing between users)
+    const CART_KEY = `inv_cart_user_{{ user_id }}`;
+
+    function readCart() {
+      try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); }
+      catch { return []; }
+    }
+
+    function writeCart(ids) {
+      const clean = Array.from(new Set((ids || []).map(x => parseInt(x, 10)).filter(n => !isNaN(n))));
+      localStorage.setItem(CART_KEY, JSON.stringify(clean));
+      syncCartUI(clean);
+      return clean;
+    }
+
+    function syncCartUI(ids) {
+      const n = (ids || []).length;
+      cartBtn.disabled = n === 0;
+      cartCountEl.textContent = String(n);
+      cartCountEl.style.display = n ? 'inline-block' : 'none';
+    }
+
+    function getCheckedIdsFromPage() {
+      return Array.from(document.querySelectorAll('.invoice-check:checked'))
+        .map(cb => parseInt(cb.value, 10))
+        .filter(n => !isNaN(n));
+    }
+
+    // Restore checked state on load
+    const saved = readCart();
+    saved.forEach(id => {
+      const cb = document.querySelector(`.invoice-check[value="${id}"]`);
+      if (cb && !cb.disabled) cb.checked = true;
+    });
+    syncCartUI(saved);
+
+    // Select all
+    if (selectAll) {
+      selectAll.addEventListener('change', () => {
+        const all = Array.from(document.querySelectorAll('.invoice-check')).filter(cb => !cb.disabled);
+        all.forEach(cb => cb.checked = selectAll.checked);
+        writeCart(getCheckedIdsFromPage());
+      });
+    }
+
+    // Individual checkbox changes
+    document.querySelectorAll('.invoice-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (selectAll && !cb.checked) selectAll.checked = false;
+        writeCart(getCheckedIdsFromPage());
+      });
+    });
+
+    // Open cart modal
+    cartBtn.addEventListener('click', () => {
+      const ids = readCart();
+      if (!ids.length) return;
+
+      // Show modal first
+      new bootstrap.Modal(cartModalEl).show();
+
+      // Load cart details from server (authoritative owed, paid, etc.)
+      loadCartDetails(ids);
+    });
+
+    // Clear cart
+    document.getElementById('cartClearBtn')?.addEventListener('click', () => {
+      localStorage.removeItem(CART_KEY);
+      document.querySelectorAll('.invoice-check').forEach(cb => cb.checked = false);
+      if (selectAll) selectAll.checked = false;
+      syncCartUI([]);
+      bootstrap.Modal.getInstance(cartModalEl)?.hide();
+    });
+
+    // Open payment modal from cart
+    document.getElementById('cartOpenPayBtn')?.addEventListener('click', () => {
+      const balText = document.getElementById('cartTotalBalance')?.textContent || '$0.00';
+      const balNum = parseMoney(balText);
+
+      // Show balance
+      document.getElementById('bulkPayCartBalance').textContent = formatMoney(balNum);
+
+      // Default amount = total balance
+      setBulkPayAmount(balNum);
+
+      new bootstrap.Modal(bulkPayModalEl).show();
+    });
+
+    // Submit payment
+    document.getElementById('bulkPayForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const ids = readCart();
+      if (!ids.length) { alert("Cart is empty."); return; }
+
+      const amount = parseFloat(document.getElementById('bulkPayAmount')?.value || '0') || 0;
+      const payment_type = document.getElementById('bulkPayType')?.value || 'Cash';
+      const authorized_by = (document.getElementById('bulkPayAuthBy')?.value || '').trim();
+      const allocation = document.getElementById('bulkPayAlloc')?.value || 'oldest_first';
+
+      if (amount <= 0) { alert("Enter a valid amount."); return; }
+      if (!authorized_by) { alert("Authorized By is required."); return; }
+
+      const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+
+      // You will implement this route (below)
+      const res = await fetch("{{ url_for('admin.bulk_invoice_payment') }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-CSRFToken": csrf
+        },
+        body: JSON.stringify({
+          user_id: {{ user_id }},
         invoice_ids: ids,
         amount,
         payment_type,
         authorized_by,
         allocation
       })
-    });
+  });
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-      alert(data.error || "Payment failed.");
-      return;
-    }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    alert(data.error || "Payment failed.");
+    return;
+  }
 
-    // Clear cart + reload so totals/status update everywhere
-    localStorage.removeItem(CART_KEY);
-    bootstrap.Modal.getInstance(bulkPayModalEl)?.hide();
-    bootstrap.Modal.getInstance(cartModalEl)?.hide();
+  // Clear cart + reload so totals/status update everywhere
+  localStorage.removeItem(CART_KEY);
+  bootstrap.Modal.getInstance(bulkPayModalEl)?.hide();
+  bootstrap.Modal.getInstance(cartModalEl)?.hide();
 
-    // Force invoices tab after reload
-    const url = new URL(window.location.href);
-    url.searchParams.set('tab', 'invoices');
-    window.location.href = url.toString();
+  // Force invoices tab after reload
+  const url = new URL(window.location.href);
+  url.searchParams.set('tab', 'invoices');
+  window.location.href = url.toString();
   });
 
   // -----------------------
   // Helpers + rendering
   // -----------------------
-  function parseMoney(txt){
+  function parseMoney(txt) {
     const s = String(txt || '').replace(/[^0-9.\-]/g, '');
     const n = parseFloat(s);
     return isNaN(n) ? 0 : n;
   }
 
-  function formatMoney(n){
+  function formatMoney(n) {
     const num = parseFloat(n || 0) || 0;
     return '$' + num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
@@ -3865,13 +3774,13 @@ document.getElementById('deleteInvoiceForm')?.addEventListener('submit', functio
   // -----------------------
   let bulkCurrent = '0';
 
-  function setBulkPayAmount(num){
+  function setBulkPayAmount(num) {
     const n = parseFloat(num || 0) || 0;
     bulkCurrent = String(n.toFixed(2));
     renderBulkPay();
   }
 
-  function renderBulkPay(){
+  function renderBulkPay() {
     const hidden = document.getElementById('bulkPayAmount');
     const display = document.getElementById('bulkPayDisplay');
 
@@ -3883,7 +3792,7 @@ document.getElementById('deleteInvoiceForm')?.addEventListener('submit', functio
       'JMD ' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  function pushBulkKey(key){
+  function pushBulkKey(key) {
     if (key === '.') {
       if (bulkCurrent.includes('.')) return;
       bulkCurrent += '.';
@@ -3928,7 +3837,7 @@ document.getElementById('deleteInvoiceForm')?.addEventListener('submit', functio
     renderBulkPay();
   });
 
-  async function loadCartDetails(ids){
+  async function loadCartDetails(ids) {
     const grid = document.getElementById('cartInvoicesGrid');
     if (grid) grid.innerHTML = `<div class="text-muted">Loading...</div>`;
 
@@ -3944,17 +3853,17 @@ document.getElementById('deleteInvoiceForm')?.addEventListener('submit', functio
       body: JSON.stringify({ user_id: {{ user_id }}, invoice_ids: ids })
     });
 
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-      if (grid) grid.innerHTML = `<div class="text-danger">${data.error || 'Failed to load cart details.'}</div>`;
-      return;
-    }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.success) {
+    if (grid) grid.innerHTML = `<div class="text-danger">${data.error || 'Failed to load cart details.'}</div>`;
+    return;
+  }
 
-    const rows = data.items || [];
+  const rows = data.items || [];
 
-    // Render invoice cards
-    if (grid){
-      grid.innerHTML = rows.map(inv => `
+  // Render invoice cards
+  if (grid) {
+    grid.innerHTML = rows.map(inv => `
         <div class="border rounded p-2 bg-white">
           <div class="d-flex justify-content-between align-items-center">
             <div class="fw-bold">TX</div>
@@ -3980,105 +3889,105 @@ document.getElementById('deleteInvoiceForm')?.addEventListener('submit', functio
         </div>
       `).join('');
 
-      // Remove from cart
-      grid.querySelectorAll('[data-remove]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = parseInt(btn.getAttribute('data-remove'), 10);
-          const cur = readCart().filter(x => x !== id);
-          writeCart(cur);
+    // Remove from cart
+    grid.querySelectorAll('[data-remove]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = parseInt(btn.getAttribute('data-remove'), 10);
+        const cur = readCart().filter(x => x !== id);
+        writeCart(cur);
 
-          // uncheck on page too
-          const cb = document.querySelector(`.invoice-check[value="${id}"]`);
-          if (cb) cb.checked = false;
+        // uncheck on page too
+        const cb = document.querySelector(`.invoice-check[value="${id}"]`);
+        if (cb) cb.checked = false;
 
-          // refresh modal view
-          if (!cur.length) bootstrap.Modal.getInstance(cartModalEl)?.hide();
-          else loadCartDetails(cur);
-        });
+        // refresh modal view
+        if (!cur.length) bootstrap.Modal.getInstance(cartModalEl)?.hide();
+        else loadCartDetails(cur);
       });
+    });
 
-      // Open invoice
-      grid.querySelectorAll('[data-open]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = parseInt(btn.getAttribute('data-open'), 10);
-          if (!isNaN(id)) openInvoiceModal(id);
-        });
+    // Open invoice
+    grid.querySelectorAll('[data-open]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = parseInt(btn.getAttribute('data-open'), 10);
+        if (!isNaN(id)) openInvoiceModal(id);
       });
-    }
-
-    // Totals
-    const totalDue = rows.reduce((a,x) => a + (parseFloat(x.due)||0), 0);
-    const totalPaid = rows.reduce((a,x) => a + (parseFloat(x.paid)||0), 0);
-    const totalOwed = rows.reduce((a,x) => a + (parseFloat(x.owed)||0), 0);
-
-    setText('cartPkgAmt', formatMoney(totalDue));
-    setText('cartSubTotal', formatMoney(totalDue));
-    setText('cartTotalDue', formatMoney(totalDue) + " (JMD)");
-    setText('cartTotalPayments', formatMoney(totalPaid) + " (JMD)");
-    setText('cartTotalBalance', formatMoney(totalOwed) + " (JMD)");
-
-    // keep button enabled
-    syncCartUI(readCart());
+    });
   }
 
-  function setText(id, txt){
+  // Totals
+  const totalDue = rows.reduce((a, x) => a + (parseFloat(x.due) || 0), 0);
+  const totalPaid = rows.reduce((a, x) => a + (parseFloat(x.paid) || 0), 0);
+  const totalOwed = rows.reduce((a, x) => a + (parseFloat(x.owed) || 0), 0);
+
+  setText('cartPkgAmt', formatMoney(totalDue));
+  setText('cartSubTotal', formatMoney(totalDue));
+  setText('cartTotalDue', formatMoney(totalDue) + " (JMD)");
+  setText('cartTotalPayments', formatMoney(totalPaid) + " (JMD)");
+  setText('cartTotalBalance', formatMoney(totalOwed) + " (JMD)");
+
+  // keep button enabled
+  syncCartUI(readCart());
+  }
+
+  function setText(id, txt) {
     const el = document.getElementById(id);
     if (el) el.textContent = txt;
   }
 
-  function escapeHtml(s){
+  function escapeHtml(s) {
     return String(s || '').replace(/[&<>"']/g, m => ({
-      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
     }[m]));
   }
-})();
+}) ();
 
-document.addEventListener("DOMContentLoaded", function () {
-  const refundMethod = document.getElementById("adminClaimRefundMethod");
-  const bankFields = document.getElementById("adminClaimBankFields");
+  document.addEventListener("DOMContentLoaded", function () {
+    const refundMethod = document.getElementById("adminClaimRefundMethod");
+    const bankFields = document.getElementById("adminClaimBankFields");
 
-  function toggleAdminClaimBankFields() {
-    if (!refundMethod || !bankFields) return;
-    bankFields.style.display = refundMethod.value === "bank_transfer" ? "" : "none";
+    function toggleAdminClaimBankFields() {
+      if (!refundMethod || !bankFields) return;
+      bankFields.style.display = refundMethod.value === "bank_transfer" ? "" : "none";
+    }
+
+    if (refundMethod) {
+      refundMethod.addEventListener("change", toggleAdminClaimBankFields);
+      toggleAdminClaimBankFields();
+    }
+  });
+  document.addEventListener("DOMContentLoaded", function () {
+    const pkgSelect = document.getElementById("adminClaimPackageSelect");
+    const awbInput = document.getElementById("adminClaimHouseAwb");
+    const trackingInput = document.getElementById("adminClaimTrackingNumber");
+
+    function fillClaimPackageFields() {
+      if (!pkgSelect) return;
+
+      const opt = pkgSelect.options[pkgSelect.selectedIndex];
+      if (!opt) return;
+
+      const awb = opt.getAttribute("data-awb") || "";
+      const tracking = opt.getAttribute("data-tracking") || "";
+
+      if (awbInput) awbInput.value = awb;
+      if (trackingInput) trackingInput.value = tracking;
+    }
+
+    if (pkgSelect) {
+      pkgSelect.addEventListener("change", fillClaimPackageFields);
+    }
+  });
+
+  function prepareEmailStatement() {
+    const start = document.getElementById("statementStart")?.value || "";
+    const end = document.getElementById("statementEnd")?.value || "";
+
+    document.getElementById("emailStatementStart").value = start;
+    document.getElementById("emailStatementEnd").value = end;
+
+    return confirm("Email customer statement to {{ user.email }}?");
   }
-
-  if (refundMethod) {
-    refundMethod.addEventListener("change", toggleAdminClaimBankFields);
-    toggleAdminClaimBankFields();
-  }
-});
-document.addEventListener("DOMContentLoaded", function () {
-  const pkgSelect = document.getElementById("adminClaimPackageSelect");
-  const awbInput = document.getElementById("adminClaimHouseAwb");
-  const trackingInput = document.getElementById("adminClaimTrackingNumber");
-
-  function fillClaimPackageFields() {
-    if (!pkgSelect) return;
-
-    const opt = pkgSelect.options[pkgSelect.selectedIndex];
-    if (!opt) return;
-
-    const awb = opt.getAttribute("data-awb") || "";
-    const tracking = opt.getAttribute("data-tracking") || "";
-
-    if (awbInput) awbInput.value = awb;
-    if (trackingInput) trackingInput.value = tracking;
-  }
-
-  if (pkgSelect) {
-    pkgSelect.addEventListener("change", fillClaimPackageFields);
-  }
-});
-
-function prepareEmailStatement() {
-  const start = document.getElementById("statementStart")?.value || "";
-  const end = document.getElementById("statementEnd")?.value || "";
-
-  document.getElementById("emailStatementStart").value = start;
-  document.getElementById("emailStatementEnd").value = end;
-
-  return confirm("Email customer statement to {{ user.email }}?");
-}
 
 </script>
 {% endblock %}

@@ -2149,15 +2149,15 @@ Not emailed yet"></i>
 
       // 🔥 THIS IS THE FIX
       loadSavedChargesForPackage(pkgId);
-      if (!hasSavedChargeValues(pkgId) && !isLocked()) {
-        if (chargesModal.dataset.autoCalcPkg !== pkgId) {
-          chargesModal.dataset.autoCalcPkg = pkgId;
+      // auto-calculate for unlocked packages
+      if (!isLocked()) {
 
-          setTimeout(() => {
-            btnCalc?.click();
-            chargesModal.dataset.autoCalcPkg = "";
-          }, 150);
-        }
+        chargesModal.dataset.autoCalcPkg = pkgId;
+
+        setTimeout(() => {
+          btnCalc?.click();
+          chargesModal.dataset.autoCalcPkg = "";
+        }, 150);
       }
     }, true);
 

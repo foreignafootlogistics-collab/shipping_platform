@@ -5793,6 +5793,64 @@ def api_update_package(pkg_id):
         "other_charges": "other_charges",
         "amount_due": "amount_due",
     }
+    # -------------------------
+    # Subscription protection:
+    # covered subscription packages should not be saved as normal freight
+    # -------------------------
+    if (
+        getattr(p, "subscription_applied", False)
+        and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+    ):
+        declared_value = to_num(
+            data.get("value")
+            or data.get("declared_value")
+            or getattr(p, "declared_value", None)
+            or getattr(p, "value", 0),
+            0.0
+        )
+
+        # keep category/value/weight updates
+        if "category" in data and hasattr(p, "category"):
+            p.category = (data.get("category") or "Other").strip()
+
+        if "value" in data:
+            if hasattr(p, "value"):
+                p.value = declared_value
+        if hasattr(p, "declared_value"):
+            p.declared_value = declared_value
+
+        if "weight" in data and hasattr(p, "weight"):
+            p.weight = to_num(data.get("weight"), getattr(p, "weight", 0) or 0)
+
+        if declared_value <= 100:
+            for field in [
+                "duty", "gct", "scf", "envl", "caf", "stamp",
+                "customs_total",
+                "freight_fee", "freight",
+                "handling_fee", "handling", "storage_fee",
+                "freight_total",
+                "other_charges",
+                "bad_address_fee",
+                "discount_due",
+                "grand_total",
+                "amount_due",
+            ]:
+                if hasattr(p, field):
+                    setattr(p, field, 0.0)
+
+            if "pricing_locked" in data and hasattr(p, "pricing_locked"):
+                p.pricing_locked = bool(data.get("pricing_locked"))
+
+            db.session.commit()
+
+            return jsonify({
+                "ok": True,
+                "pkg_id": pkg_id,
+                "updated": ["subscription_zeroed"],
+                "amount_due": 0.0,
+                "grand_total": 0.0,
+                "message": "Subscription package covered. Charges set to 0."
+            }), 200
 
     # -------------------------
     # Backwards compatibility:

@@ -1846,7 +1846,14 @@ def manual_add_subscription(id):
         return redirect(url_for("accounts_profiles.view_user", id=id))
 
     # expire old active subs
-    old_subs = Subscription.query.filter_by(user_id=id, status="active").all()
+    old_subs = (
+        Subscription.query
+        .filter(
+            Subscription.user_id == id,
+            Subscription.status.in_(["active", "exhausted"])
+        )
+        .all()
+    )
     for s in old_subs:
         s.status = "expired"
 
@@ -1938,7 +1945,7 @@ def bulk_activate_subscriptions():
             Subscription.query
             .filter(
                 Subscription.user_id == sub.user_id,
-                Subscription.status == "active",
+                Subscription.status.in_(["active", "exhausted"]),
                 Subscription.id != sub.id
             )
             .all()

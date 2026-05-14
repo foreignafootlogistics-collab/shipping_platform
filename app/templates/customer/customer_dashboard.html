@@ -11,7 +11,7 @@
 
   <!-- Profile & Shipping -->
   <div class="row dashboard-section">
-    
+
     <!-- My Profile -->
     <div class="col-lg-6 mb-3">
       <div class="card-box profile-card-container h-100">
@@ -20,16 +20,15 @@
 
           <div class="profile-avatar text-center">
             {% if profile_picture %}
-              <img src="{{ url_for('static', filename='profile_pics/' + profile_picture) }}" 
-                   alt="Profile Picture" 
-                   class="img-fluid rounded-circle mb-2">
+            <img src="{{ url_for('static', filename='profile_pics/' + profile_picture) }}" alt="Profile Picture"
+              class="img-fluid rounded-circle mb-2">
             {% else %}
-              {% set colors = ['#FFEB3B', '#4CAF50'] %}
-              {% set color_index = current_user.id % 2 %}
-              <div class="rounded-circle mb-2 d-flex align-items-center justify-content-center profile-initials-avatar"
-                   style="width:100px;height:100px;font-weight:bold;font-size:2rem;color:#000;background-color: {{ colors[color_index] }};border:3px solid #4a148c;text-shadow:1px 1px 2px rgba(0,0,0,0.2);cursor:pointer;">
-                {{ current_user.full_name[:1]|upper }}{{ current_user.full_name.split(' ')[-1][:1]|upper }}
-              </div>
+            {% set colors = ['#FFEB3B', '#4CAF50'] %}
+            {% set color_index = current_user.id % 2 %}
+            <div class="rounded-circle mb-2 d-flex align-items-center justify-content-center profile-initials-avatar"
+              style="width:100px;height:100px;font-weight:bold;font-size:2rem;color:#000;background-color: {{ colors[color_index] }};border:3px solid #4a148c;text-shadow:1px 1px 2px rgba(0,0,0,0.2);cursor:pointer;">
+              {{ current_user.full_name[:1]|upper }}{{ current_user.full_name.split(' ')[-1][:1]|upper }}
+            </div>
             {% endif %}
 
             <form action="{{ url_for('customer.upload_profile_pic') }}" method="POST" enctype="multipart/form-data">
@@ -120,8 +119,8 @@
             <i class="fas fa-file-pdf"></i> Download Tax Certificate
           </a>
 
-          <button type="button" class="btn btn-dashboard-outline w-100 mb-2"
-                  data-bs-toggle="modal" data-bs-target="#taxExemptionInstructionsModal">
+          <button type="button" class="btn btn-dashboard-outline w-100 mb-2" data-bs-toggle="modal"
+            data-bs-target="#taxExemptionInstructionsModal">
             <i class="fas fa-circle-info"></i> View Instructions
           </button>
 
@@ -174,7 +173,8 @@
           <small class="text-muted">
             {{ subscription_summary.plan_name }} Plan •
             {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} packages •
-            {{ "%.1f"|format(subscription_summary.weight_used) }}/{{ "%.1f"|format(subscription_summary.weight_limit) }} lb
+            {{ "%.1f"|format(subscription_summary.weight_used) }}/{{ "%.1f"|format(subscription_summary.weight_limit) }}
+            lb
           </small>
         </div>
 
@@ -183,31 +183,41 @@
             {{ subscription_summary.status|title }}
           </span>
           {% if subscription_summary.is_family_plan %}
-            <span class="badge bg-primary">
-              👨‍👩‍👧‍👦 Family Plan
-            </span>
+          <span class="badge bg-primary">
+            👨‍👩‍👧‍👦 Family Plan
+          </span>
 
-            {% if subscription_summary.members %}
-              <span class="badge bg-light text-dark">
-                {{ subscription_summary.members|length }} members
-              </span>
-            {% endif %}
+          {% if subscription_summary.members %}
+          <span class="badge bg-light text-dark">
+            {{ subscription_summary.members|length }} members
+          </span>
+          {% endif %}
           {% endif %}
 
           {% if subscription_summary.is_expired %}
-            <span class="text-danger small">❌ Expired</span>
+          <span class="text-danger small">❌ Expired</span>
           {% elif subscription_summary.expires_soon %}
-            <span class="text-warning small">
-              ⚠ Expires in {{ subscription_summary.days_remaining }} day(s)
-            </span>
+          <span class="text-warning small">
+            ⚠ Expires in {{ subscription_summary.days_remaining }} day(s)
+          </span>
           {% elif subscription_summary.days_remaining is not none %}
-            <span class="text-muted small">
-              Expires in {{ subscription_summary.days_remaining }} day(s)
-            </span>
+          <span class="text-muted small">
+            Expires in {{ subscription_summary.days_remaining }} day(s)
+          </span>
+          {% endif %}
+          {% if subscription_summary.expires_soon %}
+          <div class="small text-danger fw-semibold mt-1">
+            Renewal reminder: your subscription expires soon.
+          </div>
           {% endif %}
 
-          <a href="{{ url_for('customer.customer_subscriptions') }}"
-             class="btn btn-sm btn-outline-purple">
+          {% if subscription_summary.status == "exhausted" %}
+          <div class="small text-warning fw-semibold mt-1">
+            Your package allowance is exhausted. Subscriber rate now applies until expiry.
+          </div>
+          {% endif %}
+
+          <a href="{{ url_for('customer.customer_subscriptions') }}" class="btn btn-sm btn-outline-purple">
             <i class="bi bi-arrow-right-circle me-1"></i>
             Manage Subscription
           </a>
@@ -218,7 +228,7 @@
         <div class="col-md-6 mb-2">
           <div class="progress subscription-progress">
             <div class="progress-bar subscription-progress-bar"
-                 style="width: {{ subscription_summary.package_percent }}%;">
+              style="width: {{ subscription_summary.package_percent }}%;">
             </div>
           </div>
           <small class="text-muted">
@@ -229,7 +239,7 @@
         <div class="col-md-6 mb-2">
           <div class="progress subscription-progress">
             <div class="progress-bar subscription-progress-bar"
-                 style="width: {{ subscription_summary.weight_percent }}%;">
+              style="width: {{ subscription_summary.weight_percent }}%;">
             </div>
           </div>
           <small class="text-muted">
@@ -259,8 +269,7 @@
           </div>
         </div>
 
-        <a href="{{ url_for('customer.customer_subscriptions') }}"
-           class="btn btn-dashboard">
+        <a href="{{ url_for('customer.customer_subscriptions') }}" class="btn btn-dashboard">
           <i class="bi bi-star me-1"></i>
           View Subscription Plans
         </a>
@@ -292,35 +301,35 @@
         </thead>
         <tbody>
           {% if ready_packages %}
-            {% for pkg in ready_packages %}
-              <tr>
-                <td>
-                  {{ pkg.house_awb }}<br>
-                  <small class="text-muted">Status: {{ pkg.status }}</small>
-                </td>
-                <td>{{ pkg.description }}</td>
-                <td>{{ pkg.tracking_number }}</td>
-                <td>
-                  {% if pkg.weight is not none %}
-                    {{ (pkg.weight|float)|round(0, 'ceil')|int }}
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-                <td>
-                  {% if pkg.date_received %}
-                    {{ pkg.date_received.strftime("%Y-%m-%d") }}
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-                <td>JMD {{ "%.2f"|format(pkg.amount_due or 0) }}</td>
-              </tr>
-            {% endfor %}
+          {% for pkg in ready_packages %}
+          <tr>
+            <td>
+              {{ pkg.house_awb }}<br>
+              <small class="text-muted">Status: {{ pkg.status }}</small>
+            </td>
+            <td>{{ pkg.description }}</td>
+            <td>{{ pkg.tracking_number }}</td>
+            <td>
+              {% if pkg.weight is not none %}
+              {{ (pkg.weight|float)|round(0, 'ceil')|int }}
+              {% else %}
+              —
+              {% endif %}
+            </td>
+            <td>
+              {% if pkg.date_received %}
+              {{ pkg.date_received.strftime("%Y-%m-%d") }}
+              {% else %}
+              —
+              {% endif %}
+            </td>
+            <td>JMD {{ "%.2f"|format(pkg.amount_due or 0) }}</td>
+          </tr>
+          {% endfor %}
           {% else %}
-            <tr>
-              <td colspan="6" class="text-center">No packages ready for pick up.</td>
-            </tr>
+          <tr>
+            <td colspan="6" class="text-center">No packages ready for pick up.</td>
+          </tr>
           {% endif %}
         </tbody>
       </table>
@@ -330,126 +339,127 @@
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-  const overseasBtn = document.getElementById("overseas-btn");
-  const homeBtn = document.getElementById("home-btn");
-  const overseasAddress = document.getElementById("overseas-address");
-  const homeAddress = document.getElementById("home-address");
+  document.addEventListener("DOMContentLoaded", function () {
+    const overseasBtn = document.getElementById("overseas-btn");
+    const homeBtn = document.getElementById("home-btn");
+    const overseasAddress = document.getElementById("overseas-address");
+    const homeAddress = document.getElementById("home-address");
 
-  if (overseasBtn && homeBtn) {
-    overseasBtn.addEventListener("click", function () {
-      overseasAddress.style.display = "grid";
-      homeAddress.style.display = "none";
-    });
-
-    homeBtn.addEventListener("click", function () {
-      overseasAddress.style.display = "none";
-      homeAddress.style.display = "block";
-    });
-  }
-
-  const copyBtn = document.getElementById("copyReferralBtn");
-  if (copyBtn) {
-    copyBtn.addEventListener("click", function () {
-      const codeEl = document.getElementById("referralCode");
-      if (!codeEl) return;
-
-      const code = codeEl.innerText.trim();
-      if (!code || code === "Not set") {
-        alert("No referral code assigned yet.");
-        return;
-      }
-
-      navigator.clipboard.writeText(code).then(() => {
-        alert("Referral code copied!");
+    if (overseasBtn && homeBtn) {
+      overseasBtn.addEventListener("click", function () {
+        overseasAddress.style.display = "grid";
+        homeAddress.style.display = "none";
       });
-    });
-  }
-});
+
+      homeBtn.addEventListener("click", function () {
+        overseasAddress.style.display = "none";
+        homeAddress.style.display = "block";
+      });
+    }
+
+    const copyBtn = document.getElementById("copyReferralBtn");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        const codeEl = document.getElementById("referralCode");
+        if (!codeEl) return;
+
+        const code = codeEl.innerText.trim();
+        if (!code || code === "Not set") {
+          alert("No referral code assigned yet.");
+          return;
+        }
+
+        navigator.clipboard.writeText(code).then(() => {
+          alert("Referral code copied!");
+        });
+      });
+    }
+  });
 </script>
 
 <style>
-.dashboard-greeting {
-  font-weight: 600;
-  font-size: 1.2rem;
-  margin-left: 10px;
-}
+  .dashboard-greeting {
+    font-weight: 600;
+    font-size: 1.2rem;
+    margin-left: 10px;
+  }
 
-.profile-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 6px 0;
-  border-bottom: 1px solid #ddd;
-  align-items: center;
-}
+  .profile-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #ddd;
+    align-items: center;
+  }
 
-.label {
-  font-weight: 600;
-  color: #555;
-  min-width: 130px;
-}
+  .label {
+    font-weight: 600;
+    color: #555;
+    min-width: 130px;
+  }
 
-.value {
-  flex-grow: 1;
-  color: #333;
-  text-align: left;
-  word-wrap: break-word;
-}
+  .value {
+    flex-grow: 1;
+    color: #333;
+    text-align: left;
+    word-wrap: break-word;
+  }
 
-.profile-initials-avatar {
-  transition: transform 0.3s ease, box-shadow 0.3s ease, filter 0.3s ease;
-}
+  .profile-initials-avatar {
+    transition: transform 0.3s ease, box-shadow 0.3s ease, filter 0.3s ease;
+  }
 
-.profile-initials-avatar:hover {
-  transform: scale(1.1);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-  filter: brightness(1.1);
-}
+  .profile-initials-avatar:hover {
+    transform: scale(1.1);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+    filter: brightness(1.1);
+  }
 
-.subscription-card {
-  border-left: 5px solid #4a148c !important;
-}
+  .subscription-card {
+    border-left: 5px solid #4a148c !important;
+  }
 
-.subscription-progress {
-  height: 9px;
-  background: #eee;
-}
+  .subscription-progress {
+    height: 9px;
+    background: #eee;
+  }
 
-.subscription-progress-bar {
-  background: #4a148c;
-}
+  .subscription-progress-bar {
+    background: #4a148c;
+  }
 
-.no-subscription-card {
-  border: 1px solid #f3c14b !important;
-  background: linear-gradient(90deg, #fffaf0, #ffffff) !important;
-}
+  .no-subscription-card {
+    border: 1px solid #f3c14b !important;
+    background: linear-gradient(90deg, #fffaf0, #ffffff) !important;
+  }
 
-.subscription-crown {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: #fff3cd;
-  color: #f0ad00;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2rem;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-}
+  .subscription-crown {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #fff3cd;
+    color: #f0ad00;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
 
-.btn-outline-purple {
-  border: 1px solid #4a148c;
-  color: #4a148c;
-  background: #fff;
-}
+  .btn-outline-purple {
+    border: 1px solid #4a148c;
+    color: #4a148c;
+    background: #fff;
+  }
 
-.btn-outline-purple:hover {
-  background: #4a148c;
-  color: #fff;
-}
+  .btn-outline-purple:hover {
+    background: #4a148c;
+    color: #fff;
+  }
 </style>
 
-<div class="modal fade" id="taxExemptionInstructionsModal" tabindex="-1" aria-labelledby="taxExemptionInstructionsLabel" aria-hidden="true">
+<div class="modal fade" id="taxExemptionInstructionsModal" tabindex="-1" aria-labelledby="taxExemptionInstructionsLabel"
+  aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 shadow">
       <div class="modal-header" style="background:#4a148c; color:#fff;">

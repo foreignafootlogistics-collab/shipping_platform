@@ -171,6 +171,18 @@
           </div>
           {% endif %}
 
+          {% if subscription_summary.expires_soon %}
+          <div class="small text-danger fw-semibold">
+            Renewal reminder: plan expires soon.
+          </div>
+          {% endif %}
+
+          {% if subscription_summary.status == "exhausted" %}
+          <div class="small text-danger fw-semibold">
+            Plan exhausted. Customer now receives subscriber rate until expiry.
+          </div>
+          {% endif %}
+
           {% elif pending_subscription %}
           <div class="mt-1">
             <span class="badge bg-warning text-dark">

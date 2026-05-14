@@ -17,6 +17,23 @@ def get_billable_weight(package):
 def get_active_subscription(user_id):
     now = datetime.now(timezone.utc)
 
+    # Auto-expire old active/exhausted subscriptions
+    expired_subs = (
+        Subscription.query
+        .filter(
+            Subscription.status.in_(["active", "exhausted"]),
+            Subscription.end_date.isnot(None),
+            Subscription.end_date < now
+        )
+        .all()
+    )
+
+    for s in expired_subs:
+        s.status = "expired"
+
+    if expired_subs:
+        db.session.flush()
+
     # First: check if user is owner
     sub = (
         Subscription.query
@@ -58,7 +75,6 @@ def get_active_subscription(user_id):
     )
 
     return sub
-
 
 def ensure_usage(subscription):
     if subscription.usage:

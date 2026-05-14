@@ -2519,6 +2519,37 @@ Not emailed yet"></i>
         const out = await res.json().catch(() => ({}));
         if (!res.ok || out.ok === false) throw new Error(out.error || `HTTP ${res.status}`);
 
+        // ✅ subscription packages should remain zero
+        const serverAmount =
+          Number(out.amount_due ?? out.grand_total ?? 0);
+
+        const isSubscriptionZero =
+          serverAmount === 0 &&
+          out.updated &&
+          out.updated.includes("subscription_zeroed");
+
+        if (isSubscriptionZero) {
+
+          // modal values
+          if (resFreight) resFreight.value = "0.00";
+          if (resHandling) resHandling.value = "0.00";
+          if (resOther) resOther.value = "0.00";
+          if (resCustomsTotal) resCustomsTotal.value = "0.00";
+          if (resFreightTotal) resFreightTotal.value = "0.00";
+          if (resTotal) resTotal.value = "0.00";
+
+          // shipment table amount
+          const rowAmount = document.getElementById(`amount_due_${pkgId}`);
+          if (rowAmount) {
+            rowAmount.value = "0.00";
+          }
+
+          // hidden inputs
+          setHidden(`freight_${pkgId}`, 0);
+          setHidden(`handling_${pkgId}`, 0);
+          setHidden(`other_${pkgId}`, 0);
+        }
+
         // ✅ remember lock state in the row for next time modal opens
         const lockedEl = document.getElementById(`locked_${pkgId}`);
         if (lockedEl) lockedEl.value = payload.pricing_locked ? '1' : '0';

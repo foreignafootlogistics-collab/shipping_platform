@@ -1680,9 +1680,14 @@ def logistics_dashboard():
             "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
             "invoice_id": p.invoice_id,
             "customer_notified_at": getattr(p, "customer_notified_at", None),
-            "subscription_applied": False,
-            "subscription_result": None,
-            "subscription_covered": False,
+            "subscription_applied": bool(getattr(p, "subscription_applied", False)),
+            "subscription_result": getattr(p, "subscription_result", None),
+            "subscription_covered": bool(getattr(p, "subscription_applied", False)),
+            "customs_only_due_to_subscription": (
+                bool(getattr(p, "subscription_applied", False))
+                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                and float(getattr(p, "customs_total", 0) or 0) > 0
+            ),
         })
 
     # Agg totals for the current filter

@@ -2420,6 +2420,34 @@ Not emailed yet"></i>
         if (resOther) resOther.value = fmt(otherVal);
         if (resBadAddress) resBadAddress.value = fmt(badAddressVal);
 
+        // ✅ Subscription-covered packages:
+        // value <= 100 = all charges zero
+        // value > 100 = customs only, no freight/handling
+        const row = document
+          .querySelector(`input.package-checkbox[value="${pkgId}"]`)
+          ?.closest('tr');
+
+        const isSubscriptionCovered =
+          String(row?.dataset?.subscriptionApplied || '').toLowerCase() === 'true' &&
+          String(row?.dataset?.subscriptionResult || '').toLowerCase() === 'subscription_applied';
+
+        if (isSubscriptionCovered) {
+          if (value <= 100) {
+            if (resDuty) resDuty.value = "0.00";
+            if (resGct) resGct.value = "0.00";
+            if (resScf) resScf.value = "0.00";
+            if (resEnvl) resEnvl.value = "0.00";
+            if (resCaf) resCaf.value = "0.00";
+            if (resStamp) resStamp.value = "0.00";
+            if (resCustomsTotal) resCustomsTotal.value = "0.00";
+          }
+
+          if (resFreight) resFreight.value = "0.00";
+          if (resHandling) resHandling.value = "0.00";
+          if (resOther) resOther.value = "0.00";
+          if (resBadAddress) resBadAddress.value = "0.00";
+          if (badAddressToggle) badAddressToggle.checked = false;
+        }
 
         recalcTotalsFromManual();
 

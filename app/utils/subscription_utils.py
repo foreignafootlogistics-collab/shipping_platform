@@ -92,9 +92,14 @@ def apply_subscription_usage(package):
     Returns:
     - subscription_applied
     - no_subscription
+    - already_applied
     - package_over_plan_limit
     - subscription_exhausted
     """
+
+    # ✅ Prevent duplicate counting
+    if getattr(package, "subscription_applied", False) and getattr(package, "subscription_id", None):
+        return "already_applied"
 
     if not package.user_id:
         return "no_subscription"
@@ -118,6 +123,11 @@ def apply_subscription_usage(package):
 
     usage.packages_used += 1
     usage.weight_used += billable_weight
+
+    package.subscription_applied = True
+    package.subscription_result = "subscription_applied"
+    package.subscription_id = subscription.id
+    package.subscription_applied_at = datetime.now(timezone.utc)
 
     if subscription_is_exhausted(subscription):
         subscription.status = "exhausted"

@@ -1295,10 +1295,8 @@ def logistics_dashboard():
                 try:
                     result = apply_subscription_usage(p)
 
-                    if result == "subscription_applied":
-                        p.subscription_applied = True
-                        p.subscription_result = "subscription_applied"
-                        p.subscription_applied_at = datetime.now(timezone.utc)
+                    if result in ("subscription_applied", "already_applied"):
+                        pass
                     else:
                         p.subscription_applied = False
                         p.subscription_result = result or "no_subscription"
@@ -2011,10 +2009,8 @@ def create_single_package_from_view():
     try:
         result = apply_subscription_usage(p)
 
-        if result == "subscription_applied":
-            p.subscription_applied = True
-            p.subscription_result = "subscription_applied"
-            p.subscription_applied_at = datetime.now(timezone.utc)
+        if result in ("subscription_applied", "already_applied"):
+            pass
         else:
             p.subscription_applied = False
             p.subscription_result = result or "no_subscription"

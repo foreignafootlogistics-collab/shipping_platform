@@ -1962,6 +1962,26 @@ def create_single_package_from_view():
             current_app.logger.exception("[ADMIN CREATE SINGLE] failed updating existing package")
             db.session.rollback()
 
+        try:
+            result = apply_subscription_usage(existing)
+
+            if result in ("subscription_applied", "already_applied"):
+                pass
+            else:
+                existing.subscription_applied = False
+                existing.subscription_result = result or "no_subscription"
+                existing.subscription_applied_at = None
+                existing.subscription_id = None
+
+            db.session.commit()
+
+        except Exception as e:
+            current_app.logger.exception(f"Subscription application failed for existing package {existing.id}: {e}")
+            existing.subscription_applied = False
+            existing.subscription_result = "subscription_error"
+            existing.subscription_applied_at = None
+            db.session.commit()
+
         flash(f"Package already exists for {user.registration_number}: {tracking}", "warning")
 
         # ✅ still try to sync prealert invoice onto the existing package

@@ -2416,3 +2416,155 @@ def bulk_upgrade_subscriptions():
         "success" if upgraded else "warning"
     )
     return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+@accounts_bp.route("/subscriptions/process-reminders")
+@login_required
+@admin_required
+def process_subscription_reminders():
+    from datetime import datetime, timezone
+    from app.utils.email_utils import send_email
+
+    now = datetime.now(timezone.utc)
+
+    subscriptions = (
+        Subscription.query
+        .filter(Subscription.status.in_(["active", "exhausted"]))
+        .all()
+    )
+
+    sent_count = 0
+
+    for sub in subscriptions:
+        if not sub.end_date:
+            continue
+
+        end_date = sub.end_date
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=timezone.utc)
+
+        delta = end_date - now
+        days_remaining = delta.days
+
+        user = sub.user
+        if not user or not user.email:
+            continue
+
+        # 5-day reminder
+        if days_remaining <= 5 and days_remaining > 2 and not sub.renewal_reminder_5d_sent:
+            send_email(
+                to_email=user.email,
+                subject="Your FAFL Subscription Expires Soon",
+                plain_body=f"""
+Hi {user.full_name},
+
+Your Foreign A Foot Logistics subscription expires in {days_remaining} day(s).
+
+Please renew soon to continue enjoying your subscription benefits.
+
+Login here:
+https://app.faflcourier.com/customer/subscriptions
+
+— Foreign A Foot Logistics Limited
+""".strip(),
+                html_body=f"""
+<p>Hi {user.full_name},</p>
+
+<p>Your <strong>Foreign A Foot Logistics</strong> subscription expires in <strong>{days_remaining} day(s)</strong>.</p>
+
+<p>Please renew soon to continue enjoying your subscription benefits.</p>
+
+<p>
+  <a href="https://app.faflcourier.com/customer/subscriptions"
+     style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
+    Renew Subscription
+  </a>
+</p>
+""".strip(),
+                recipient_user_id=user.id,
+            )
+
+            sub.renewal_reminder_5d_sent = True
+            sent_count += 1
+
+        # 2-day reminder
+        elif days_remaining <= 2 and days_remaining >= 0 and not sub.renewal_reminder_2d_sent:
+            send_email(
+                to_email=user.email,
+                subject="Final Reminder: Your FAFL Subscription Is Expiring",
+                plain_body=f"""
+Hi {user.full_name},
+
+Your Foreign A Foot Logistics subscription expires in {days_remaining} day(s).
+
+Please renew to avoid interruption to your subscription benefits.
+
+Login here:
+https://app.faflcourier.com/customer/subscriptions
+
+— Foreign A Foot Logistics Limited
+""".strip(),
+                html_body=f"""
+<p>Hi {user.full_name},</p>
+
+<p>Your <strong>Foreign A Foot Logistics</strong> subscription expires in <strong>{days_remaining} day(s)</strong>.</p>
+
+<p>Please renew to avoid interruption to your subscription benefits.</p>
+
+<p>
+  <a href="https://app.faflcourier.com/customer/subscriptions"
+     style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
+    Renew Subscription
+  </a>
+</p>
+""".strip(),
+                recipient_user_id=user.id,
+            )
+
+            sub.renewal_reminder_2d_sent = True
+            sent_count += 1
+
+        # Expired notice
+        elif days_remaining < 0 and not sub.expiry_notice_sent:
+            sub.status = "expired"
+            sub.renewal_reminder_5d_sent = True
+            sub.renewal_reminder_2d_sent = True
+
+            send_email(
+                to_email=user.email,
+                subject="Your FAFL Subscription Has Expired",
+                plain_body=f"""
+Hi {user.full_name},
+
+Your Foreign A Foot Logistics subscription has expired.
+
+Normal package pricing now applies. You may renew anytime from your dashboard.
+
+Login here:
+https://app.faflcourier.com/customer/subscriptions
+
+— Foreign A Foot Logistics Limited
+""".strip(),
+                html_body=f"""
+<p>Hi {user.full_name},</p>
+
+<p>Your <strong>Foreign A Foot Logistics</strong> subscription has expired.</p>
+
+<p>Normal package pricing now applies. You may renew anytime from your dashboard.</p>
+
+<p>
+  <a href="https://app.faflcourier.com/customer/subscriptions"
+     style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
+    Renew Subscription
+  </a>
+</p>
+""".strip(),
+                recipient_user_id=user.id,
+            )
+
+            sub.expiry_notice_sent = True
+            sent_count += 1
+
+    db.session.commit()
+
+    flash(f"Processed subscription reminders. Emails sent: {sent_count}", "success")
+    return redirect(url_for("accounts_profiles.admin_subscriptions"))

@@ -433,8 +433,7 @@ def _apply_pkg_filters(
 
     if subscription_only:
         q = q.filter(
-            Package.subscription_applied.is_(True),
-            Package.subscription_result == "subscription_applied"
+            Package.subscription_applied.is_(True)            
         )
 
     # -------------------------

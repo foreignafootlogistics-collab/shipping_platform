@@ -2113,6 +2113,23 @@ def bulk_assign_packages():
 
         p.user_id = user.id
 
+        try:
+            result = apply_subscription_usage(p)
+
+            if result in ("subscription_applied", "already_applied"):
+                pass
+            else:
+                p.subscription_applied = False
+                p.subscription_result = result or "no_subscription"
+                p.subscription_applied_at = None
+                p.subscription_id = None
+
+        except Exception as e:
+            current_app.logger.exception(f"Subscription application failed for package {p.id}: {e}")
+            p.subscription_applied = False
+            p.subscription_result = "subscription_error"
+            p.subscription_applied_at = None
+
         if was_unassigned_user:
             p.status = "Overseas"   # ✅ always unlock by assigning to real customer
         elif reset_flag and (p.status or "").strip().lower() == "unassigned":

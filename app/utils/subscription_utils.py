@@ -108,6 +108,9 @@ def apply_subscription_usage(package):
 
     if not subscription:
         return "no_subscription"
+    
+    if subscription.status == "exhausted":
+        return "subscription_exhausted"
 
     billable_weight = get_billable_weight(package)
 

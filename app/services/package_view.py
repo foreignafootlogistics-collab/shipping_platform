@@ -225,9 +225,8 @@ def fetch_packages_normalized(
         d["subscription_applied"] = bool(getattr(pkg, "subscription_applied", False))
         d["subscription_result"] = getattr(pkg, "subscription_result", None)
 
-        d["subscription_covered"] = (
+        d["subscription_covered"] = bool(
             d["subscription_applied"]
-            and (d["subscription_result"] or "") == "subscription_applied"
         )
 
         d["customs_only_due_to_subscription"] = (

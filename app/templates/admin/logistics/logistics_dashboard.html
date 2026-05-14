@@ -842,20 +842,7 @@ Not emailed yet"></i>
             <div class="modal-body">
               <form id="chargesForm" onsubmit="return false;">
                 <input type="hidden" id="chargesPkgId">
-                <div id="chargesSubscriptionNotice" class="alert alert-success py-2 px-3 small mb-3"
-                  style="display:none;">
-                  ✅ Subscription Covered — charges will remain $0.00 for eligible packages.
-                </div>
 
-                <div id="chargesSubscriptionExhaustedNotice" class="alert alert-info py-2 px-3 small mb-3"
-                  style="display:none;">
-                  ℹ Subscriber discount rate applied (subscription exhausted).
-                </div>
-
-                <div id="chargesSubscriptionExpiredNotice" class="alert alert-warning py-2 px-3 small mb-3"
-                  style="display:none;">
-                  ⚠ Subscription expired — normal pricing applies.
-                </div>
 
                 <div class="row g-3 mb-2">
                   <div class="col-12">
@@ -2909,51 +2896,6 @@ Not emailed yet"></i>
         if (pkgIdInput) pkgIdInput.value = pkgId;
         if (pkgDescInput) pkgDescInput.value = desc;
 
-        // -------------------------------------
-        // Subscription notices
-        // -------------------------------------
-        const subNotice = document.getElementById('chargesSubscriptionNotice');
-        const exhaustedNotice = document.getElementById('chargesSubscriptionExhaustedNotice');
-        const expiredNotice = document.getElementById('chargesSubscriptionExpiredNotice');
-
-        if (subNotice) subNotice.style.display = 'none';
-        if (exhaustedNotice) exhaustedNotice.style.display = 'none';
-        if (expiredNotice) expiredNotice.style.display = 'none';
-
-        const row = findRowByPkgId(pkgId);
-
-        const subApplied =
-          String(row?.dataset?.subscriptionApplied || '').toLowerCase() === 'true';
-
-        const subResult =
-          String(row?.dataset?.subscriptionResult || '').toLowerCase();
-
-        if (subApplied && subResult === 'subscription_applied') {
-
-          if (subNotice) subNotice.style.display = 'block';
-
-          // immediately show zeros in modal
-          if (resDuty) resDuty.value = "0.00";
-          if (resGct) resGct.value = "0.00";
-          if (resScf) resScf.value = "0.00";
-          if (resEnvl) resEnvl.value = "0.00";
-          if (resCaf) resCaf.value = "0.00";
-          if (resStamp) resStamp.value = "0.00";
-          if (resCustomsTotal) resCustomsTotal.value = "0.00";
-          if (resFreight) resFreight.value = "0.00";
-          if (resHandling) resHandling.value = "0.00";
-          if (resFreightTotal) resFreightTotal.value = "0.00";
-          if (resOther) resOther.value = "0.00";
-          if (resTotal) resTotal.value = "0.00";
-
-        } else if (subResult === 'subscription_exhausted') {
-
-          if (exhaustedNotice) exhaustedNotice.style.display = 'block';
-
-        } else if (subResult === 'subscription_expired') {
-
-          if (expiredNotice) expiredNotice.style.display = 'block';
-        }
 
         // category
         const catHidden = document.getElementById(`category_${pkgId}`);

@@ -582,7 +582,7 @@
                         data-bs-toggle="modal" data-bs-target="#chargesModalSL" data-pkg-id="{{ pkg.id }}"
                         data-desc="{{ pkg.description or pkg.tracking_number or ('Package #' ~ pkg.id) }}"
                         data-category="{{ pkg.category or 'Other' }}" data-epc="{{ 1 if pkg.epc else 0 }}"
-                        data-bad-address="{{ 1 if pkg.bad_address else 0 }}"
+                        data-bad-address="{{ 1 if (pkg.bad_address or pkg.epc or (pkg.bad_address_fee and pkg.bad_address_fee > 0)) else 0 }}"
                         data-bad-address-fee="{{ pkg.bad_address_fee or 0 }}">
                         <i class="bi bi-calculator"></i>
                       </button>
@@ -631,7 +631,15 @@ Not emailed yet"></i>
                     </td>
 
                     <td>
-                      <div>{{ pkg.description or '-' }}</div>
+                      <div class="d-flex align-items-center gap-1 flex-wrap">
+                        <span>{{ pkg.description or '-' }}</span>
+
+                        {% if pkg.epc %}
+                        <span class="badge bg-warning text-dark" title="EPC / Bad Address Fee applies">
+                          EPC
+                        </span>
+                        {% endif %}
+                      </div>
 
                       {% set atts = pkg.attachments %}
                       {% if atts and atts|length %}
@@ -695,7 +703,8 @@ Not emailed yet"></i>
                       <input type="hidden" name="other_{{ pkg.id }}" id="other_{{ pkg.id }}"
                         value="{{ pkg.other_charges or 0 }}">
                       <input type="hidden" name="bad_address_{{ pkg.id }}" id="bad_address_{{ pkg.id }}"
-                        value="{{ 1 if pkg.bad_address else 0 }}">
+                        value="{{ 1 if (pkg.bad_address or pkg.epc or (pkg.bad_address_fee and pkg.bad_address_fee > 0)) else 0 }}">
+                      value="{{ 1 if pkg.bad_address else 0 }}">
                       <input type="hidden" name="bad_address_fee_{{ pkg.id }}" id="bad_address_fee_{{ pkg.id }}"
                         value="{{ pkg.bad_address_fee or 0 }}">
                     </td>
@@ -2292,16 +2301,28 @@ Not emailed yet"></i>
       const badAddressHidden = document.getElementById(`bad_address_${pkgId}`);
       const badAddressFeeHidden = document.getElementById(`bad_address_fee_${pkgId}`);
 
+      const savedBadAddressFee =
+        Number(badAddressFeeHidden?.value || 0);
+
+      const savedBadAddress =
+        (badAddressHidden?.value || '0') === '1' ||
+        savedBadAddressFee > 0;
+
       if (badAddressToggle) {
-        badAddressToggle.checked = (badAddressHidden?.value || '0') === '1';
+        badAddressToggle.checked = savedBadAddress;
       }
 
       if (badAddressFeeInput) {
-        badAddressFeeInput.value = Number(badAddressFeeHidden?.value || window.BAD_ADDRESS_FEE_DEFAULT || 0).toFixed(2);
+        badAddressFeeInput.value =
+          Number(
+            savedBadAddressFee ||
+            window.BAD_ADDRESS_FEE_DEFAULT ||
+            0
+          ).toFixed(2);
       }
 
       if (resBadAddress) {
-        resBadAddress.value = badAddressToggle?.checked
+        resBadAddress.value = savedBadAddress
           ? Number(badAddressFeeInput?.value || 0).toFixed(2)
           : "0.00";
       }

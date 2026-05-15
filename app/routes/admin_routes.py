@@ -2424,7 +2424,12 @@ def invoice_breakdown(package_id):
         handling_db = float(
             getattr(p, "handling_fee", getattr(p, "storage_fee", getattr(p, "handling", 0))) or 0
         )
+        # Bad address/EPC fee
+        is_epc = bool(getattr(p, "epc", False))
         bad_address_db = float(getattr(p, "bad_address_fee", 0) or 0)
+
+        if is_epc and bad_address_db <= 0:
+            bad_address_db = 500.0
         other_db = float(getattr(p, "other_charges", 0) or 0)
 
         freight_val = freight_db if freight_db > 0 else float(ch.get("freight", 0) or 0)

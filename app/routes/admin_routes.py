@@ -114,48 +114,62 @@ def _num(x):
 
 def _build_invoice_view_dict(inv):
     packages = []
+
     for p in Package.query.filter_by(invoice_id=inv.id).all():
+
+        _is_subscription_covered = (
+            bool(getattr(p, "subscription_applied", False))
+            and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+        )
+
+        _value_usd = _num(
+            getattr(p, "value", getattr(p, "invoice_value", getattr(p, "value_usd", 0)))
+        )
+
+        if _is_subscription_covered:
+            _freight = 0
+            _storage = 0
+        else:
+            _freight = _num(getattr(p, "freight_fee", getattr(p, "freight", 0)))
+            _storage = _num(getattr(p, "storage_fee", getattr(p, "handling", 0)))
+
         packages.append({
             "house_awb":     getattr(p, "house_awb", "") or "",
             "description":   getattr(p, "description", "") or "",
             "weight":        _num(getattr(p, "weight", 0)),
-            # value field can be named variously
-            "value":         _num(getattr(p, "value", getattr(p, "invoice_value", getattr(p, "value_usd", 0)))),
-            # fees – support both naming styles
-            "freight":       _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
-            "storage":       _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
+            "value":         _value_usd,
+
             "other_charges": _num(getattr(p, "other_charges", 0)),
-            # customs breakdown
+            "freight":       _freight,
+            "storage":       _storage,
+
             "duty":          _num(getattr(p, "duty", 0)),
             "scf":           _num(getattr(p, "scf", 0)),
             "envl":          _num(getattr(p, "envl", 0)),
             "caf":           _num(getattr(p, "caf", 0)),
             "gct":           _num(getattr(p, "gct", 0)),
             "discount_due":  _num(getattr(p, "discount_due", 0)),
+
             "subscription_applied": bool(getattr(p, "subscription_applied", False)),
             "subscription_result": getattr(p, "subscription_result", None),
-
-            "subscription_covered": (
-                bool(getattr(p, "subscription_applied", False))
-                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
-            ),
+            "subscription_covered": _is_subscription_covered,
 
             "customs_only_due_to_subscription": (
-                bool(getattr(p, "subscription_applied", False))
-                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                _is_subscription_covered
                 and float(getattr(p, "customs_total", 0) or 0) > 0
             ),
         })
+
     invoice_dict = {
-        "id":            inv.id,
-        "number":        inv.invoice_number,
-        "date":          inv.date_submitted or datetime.utcnow(),
+        "id": inv.id,
+        "number": inv.invoice_number,
+        "date": inv.date_submitted or datetime.utcnow(),
         "customer_code": getattr(inv.user, "registration_number", "") if getattr(inv, "user", None) else "",
         "customer_name": getattr(inv.user, "full_name", "") if getattr(inv, "user", None) else "",
-        "subtotal":      _num(getattr(inv, "subtotal", getattr(inv, "grand_total", 0))),
-        "discount_total":_num(getattr(inv, "discount_total", 0)),
-        "total_due":     _num(getattr(inv, "grand_total", getattr(inv, "amount", 0))),
-        "packages":      packages,  
+        "subtotal": _num(getattr(inv, "subtotal", getattr(inv, "grand_total", 0))),
+        "discount_total": _num(getattr(inv, "discount_total", 0)),
+        "total_due": _num(getattr(inv, "grand_total", getattr(inv, "amount", 0))),
+        "packages": packages,  
     
 # Optional:
         # "branch": "Main Branch",
@@ -1687,8 +1701,20 @@ def view_customer_invoice(user_id):
         stamp         = float(getattr(p, "stamp", 0) or 0)
 
         # freight/handling can live in different columns depending on your model
-        freight  = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
-        handling = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
+        # ✅ Subscription-covered packages should not show freight
+        is_subscription_covered = (
+            bool(getattr(p, "subscription_applied", False))
+            and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+        )
+
+        value_usd = float(getattr(p, "value", 0) or 0)
+
+        if is_subscription_covered:
+            freight = 0.0
+            handling = 0.0
+        else:
+            freight = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
+            handling = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
 
         other_charges = float(getattr(p, "other_charges", 0) or 0)
         bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0)

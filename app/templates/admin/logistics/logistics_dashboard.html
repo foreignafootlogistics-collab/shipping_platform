@@ -704,7 +704,6 @@ Not emailed yet"></i>
                         value="{{ pkg.other_charges or 0 }}">
                       <input type="hidden" name="bad_address_{{ pkg.id }}" id="bad_address_{{ pkg.id }}"
                         value="{{ 1 if (pkg.bad_address or pkg.epc or (pkg.bad_address_fee and pkg.bad_address_fee > 0)) else 0 }}">
-                      value="{{ 1 if pkg.bad_address else 0 }}">
                       <input type="hidden" name="bad_address_fee_{{ pkg.id }}" id="bad_address_fee_{{ pkg.id }}"
                         value="{{ pkg.bad_address_fee or 0 }}">
                     </td>

@@ -2388,32 +2388,60 @@ def invoice_breakdown(package_id):
     weight = float(getattr(p, "weight", 0) or 0)
     value = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
 
-    ch = calculate_charges(desc, value, weight)
-
-    # saved/manual values first
-    freight_db = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
-    handling_db = float(
-        getattr(p, "handling_fee", getattr(p, "storage_fee", getattr(p, "handling", 0))) or 0
+    is_subscription_covered = (
+        bool(getattr(p, "subscription_applied", False))
+        and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
     )
-    bad_address_db = float(getattr(p, "bad_address_fee", 0) or 0)
-    other_db = float(getattr(p, "other_charges", 0) or 0)
 
-    freight_val = freight_db if freight_db > 0 else float(ch.get("freight", 0) or 0)
-    handling_val = handling_db if handling_db > 0 else float(ch.get("handling", 0) or 0)
+    if is_subscription_covered:
+        freight_val = 0.0
+        handling_val = 0.0
+        bad_address_val = 0.0
+        other_val = 0.0
 
-    # ✅ always use saved package bad address
-    bad_address_val = bad_address_db
+        if value <= 100:
+            duty_val = 0.0
+            gct_val = 0.0
+            scf_val = 0.0
+            envl_val = 0.0
+            caf_val = 0.0
+            stamp_val = 0.0
+        else:
+            duty_val = float(getattr(p, "duty", 0) or 0)
+            gct_val = float(getattr(p, "gct", 0) or 0)
+            scf_val = float(getattr(p, "scf", 0) or 0)
+            envl_val = float(getattr(p, "envl", 0) or 0)
+            caf_val = float(getattr(p, "caf", 0) or 0)
+            stamp_val = float(getattr(p, "stamp", 0) or 0)
 
-    other_val = other_db if other_db > 0 else float(ch.get("other_charges", 0) or 0)
+        customs_total_val = duty_val + gct_val + scf_val + envl_val + caf_val + stamp_val
+        freight_total_val = 0.0
 
-    duty_val = float(getattr(p, "duty", 0) or ch.get("duty", 0) or 0)
-    gct_val = float(getattr(p, "gct", 0) or ch.get("gct", 0) or 0)
-    scf_val = float(getattr(p, "scf", 0) or ch.get("scf", 0) or 0)
-    envl_val = float(getattr(p, "envl", 0) or ch.get("envl", 0) or 0)
-    caf_val = float(getattr(p, "caf", 0) or ch.get("caf", 0) or 0)
-    stamp_val = float(getattr(p, "stamp", 0) or ch.get("stamp", 0) or 0)
+    else:
+        ch = calculate_charges(desc, value, weight)
 
-    # ✅ total must include bad address
+        freight_db = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
+        handling_db = float(
+            getattr(p, "handling_fee", getattr(p, "storage_fee", getattr(p, "handling", 0))) or 0
+        )
+        bad_address_db = float(getattr(p, "bad_address_fee", 0) or 0)
+        other_db = float(getattr(p, "other_charges", 0) or 0)
+
+        freight_val = freight_db if freight_db > 0 else float(ch.get("freight", 0) or 0)
+        handling_val = handling_db if handling_db > 0 else float(ch.get("handling", 0) or 0)
+        bad_address_val = bad_address_db
+        other_val = other_db if other_db > 0 else float(ch.get("other_charges", 0) or 0)
+
+        duty_val = float(getattr(p, "duty", 0) or ch.get("duty", 0) or 0)
+        gct_val = float(getattr(p, "gct", 0) or ch.get("gct", 0) or 0)
+        scf_val = float(getattr(p, "scf", 0) or ch.get("scf", 0) or 0)
+        envl_val = float(getattr(p, "envl", 0) or ch.get("envl", 0) or 0)
+        caf_val = float(getattr(p, "caf", 0) or ch.get("caf", 0) or 0)
+        stamp_val = float(getattr(p, "stamp", 0) or ch.get("stamp", 0) or 0)
+
+        customs_total_val = float(ch.get("customs_total", 0) or 0)
+        freight_total_val = freight_val + handling_val + bad_address_val + other_val
+
     grand_total_val = (
         freight_val
         + handling_val
@@ -2439,12 +2467,14 @@ def invoice_breakdown(package_id):
         "bad_address_fee": bad_address_val,
         "other_charges": other_val,
         "grand_total": grand_total_val,
-        "customs_total": float(ch.get("customs_total", 0) or 0),
-        "freight_total": float(ch.get("freight_total", 0) or 0),
+        "customs_total": customs_total_val,
+        "freight_total": freight_total_val,
         "category": desc,
         "weight": weight,
         "value": value,
-    }   
+        "subscription_applied": bool(getattr(p, "subscription_applied", False)),
+        "subscription_result": getattr(p, "subscription_result", None),
+    }
 
     return jsonify(payload)
 
@@ -2699,13 +2729,11 @@ def proforma_invoice_modal(invoice_id):
         .all()
     )
 
-    # Settings (logo + rates)
     from app.models import Settings
     settings = Settings.query.get(1)
 
     effective_usd_to_jmd = (getattr(settings, "usd_to_jmd", None) or USD_TO_JMD)
 
-    # ---- logo (robust) ----
     raw_logo = (settings.logo_path if settings and settings.logo_path else "logo.png") or "logo.png"
     raw_logo = raw_logo.lstrip("/")
     if raw_logo.lower().startswith("static/"):
@@ -2725,28 +2753,46 @@ def proforma_invoice_modal(invoice_id):
     for p in pkgs:
         desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
         wt_raw = float(p.weight or 0)
-        wt = math.ceil(wt_raw)
+        wt = math.ceil(wt_raw) if wt_raw > 0 else 0
         val = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
 
-        # ✅ Calculate charges live (same as lightning breakdown)
-        ch = calculate_charges(desc, val, wt)
-
-        freight = float(ch.get("freight", 0) or 0)
-        handling = float(ch.get("handling", 0) or 0)
-        duty = float(ch.get("duty", 0) or 0)
-        gct = float(ch.get("gct", 0) or 0)
-        scf = float(ch.get("scf", 0) or 0)
-        envl = float(ch.get("envl", 0) or 0)
-        caf = float(ch.get("caf", 0) or 0)
-        stamp = float(ch.get("stamp", 0) or 0)
-        other = float(ch.get("other_charges", 0) or 0)
-
-        # ✅ add bad address fee
-        bad_address_fee = float(
-            getattr(p, "bad_address_fee", 0)
-            or ch.get("bad_address_fee", 0)
-            or 0
+        is_subscription_covered = (
+            bool(getattr(p, "subscription_applied", False))
+            and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
         )
+
+        if is_subscription_covered:
+            freight = 0.0
+            handling = 0.0
+            other = 0.0
+            bad_address_fee = 0.0
+
+            if val <= 100:
+                duty = 0.0
+                gct = 0.0
+                scf = 0.0
+                envl = 0.0
+                caf = 0.0
+                stamp = 0.0
+            else:
+                duty = float(getattr(p, "duty", 0) or 0)
+                gct = float(getattr(p, "gct", 0) or 0)
+                scf = float(getattr(p, "scf", 0) or 0)
+                envl = float(getattr(p, "envl", 0) or 0)
+                caf = float(getattr(p, "caf", 0) or 0)
+                stamp = float(getattr(p, "stamp", 0) or 0)
+
+        else:
+            freight = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
+            handling = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
+            duty = float(getattr(p, "duty", 0) or 0)
+            gct = float(getattr(p, "gct", 0) or 0)
+            scf = float(getattr(p, "scf", 0) or 0)
+            envl = float(getattr(p, "envl", 0) or 0)
+            caf = float(getattr(p, "caf", 0) or 0)
+            stamp = float(getattr(p, "stamp", 0) or 0)
+            other = float(getattr(p, "other_charges", 0) or 0)
+            bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0)
 
         total_jmd = (
             freight
@@ -2770,7 +2816,9 @@ def proforma_invoice_modal(invoice_id):
             "value": val,
             "freight": freight,
             "handling": handling,
-            "storage": handling,   # optional alias
+            "storage": handling,
+            "freight_fee": freight,
+            "storage_fee": handling,
             "bad_address_fee": bad_address_fee,
             "duty": duty,
             "gct": gct,
@@ -2779,16 +2827,20 @@ def proforma_invoice_modal(invoice_id):
             "caf": caf,
             "stamp": stamp,
             "other_charges": other,
-            "discount_due": 0.0,
+            "discount_due": float(getattr(p, "discount_due", 0) or 0),
+            "amount_due": total_jmd,
+            "subscription_applied": bool(getattr(p, "subscription_applied", False)),
+            "subscription_result": getattr(p, "subscription_result", None),
+            "subscription_covered": is_subscription_covered,
+            "customs_only_due_to_subscription": (
+                is_subscription_covered and val > 100 and total_jmd > 0
+            ),
         })
 
-    # ✅ Keep the LIVE subtotal you calculated above
     live_subtotal = float(subtotal or 0.0)
 
-    # Pull discounts/payments from DB (ignore DB subtotal)
     _db_subtotal, discount_total, payments_total, _db_total_due = fetch_invoice_totals_pg(invoice_id)
 
-    # ✅ Compute balance due using LIVE subtotal
     balance_due = max(
         live_subtotal - float(discount_total or 0) - float(payments_total or 0),
         0.0
@@ -2802,7 +2854,6 @@ def proforma_invoice_modal(invoice_id):
         "customer_name": getattr(user, "full_name", "") or "",
         "branch": "Main Branch",
         "staff": getattr(current_user, "full_name", "FAFL ADMIN"),
-
         "subtotal": live_subtotal,
         "discount_total": float(discount_total or 0.0),
         "payments_total": float(payments_total or 0.0),
@@ -2819,7 +2870,6 @@ def proforma_invoice_modal(invoice_id):
         logo_data_uri=logo_data_uri,
         logo_url=logo_url,
     )
-
 @admin_bp.route("/invoice/save/<int:invoice_id>", methods=["POST"])
 @admin_required
 def save_invoice_notes(invoice_id):

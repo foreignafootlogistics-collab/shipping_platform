@@ -3939,12 +3939,18 @@ def bulk_shipment_action(shipment_id):
             raw_bad_address = request.form.get(f"bad_address_{p.id}")
             raw_bad_address_fee = request.form.get(f"bad_address_fee_{p.id}")
 
-            bad_address = str(raw_bad_address or "0").strip() in ("1", "true", "True", "yes", "on")
+            form_bad_address = str(raw_bad_address or "0").strip() in ("1", "true", "True", "yes", "on")
+            is_epc = bool(getattr(p, "epc", False))
+
+            bad_address = form_bad_address or is_epc
 
             try:
                 bad_address_fee = float(str(raw_bad_address_fee).strip()) if raw_bad_address_fee not in (None, "", "None") else 0.0
             except Exception:
                 bad_address_fee = 0.0
+
+            if bad_address and bad_address_fee <= 0:
+                bad_address_fee = 500.0
 
             # save the toggled values onto package before calc/apply
             if hasattr(p, "bad_address"):

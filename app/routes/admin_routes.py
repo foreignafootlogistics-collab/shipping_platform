@@ -2469,6 +2469,7 @@ def invoice_breakdown(package_id):
         "envl": envl_val,
         "caf": caf_val,
         "stamp": stamp_val,
+        "bad_address": bool(getattr(p, "bad_address", False) or getattr(p, "epc", False) or bad_address_val > 0),
         "bad_address_fee": bad_address_val,
         "other_charges": other_val,
         "grand_total": grand_total_val,

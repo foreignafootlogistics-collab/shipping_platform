@@ -3911,7 +3911,23 @@ def bulk_shipment_action(shipment_id):
 
         for p in eligible_pkgs:
             # ✅ Respect lock: locked packages should NOT be recalculated in bulk
-            if bool(getattr(p, "pricing_locked", False)) or bool(getattr(p, "is_locked", False)):
+            is_subscription_covered = (
+                bool(getattr(p, "subscription_applied", False))
+                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+            )
+
+            has_epc_fee = bool(
+                getattr(p, "epc", False)
+                or getattr(p, "bad_address", False)
+                or float(getattr(p, "bad_address_fee", 0) or 0) > 0
+            )
+
+            # Locked normal packages should not be recalculated.
+            # But subscription + EPC must be allowed so the 500 fee can be applied.
+            if (
+                (bool(getattr(p, "pricing_locked", False)) or bool(getattr(p, "is_locked", False)))
+                and not (is_subscription_covered and has_epc_fee)
+            ):
                 skipped_locked += 1
                 continue
 

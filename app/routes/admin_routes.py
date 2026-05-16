@@ -2399,7 +2399,7 @@ def invoice_breakdown(package_id):
         freight_val = 0.0
         handling_val = 0.0
         bad_address_val = 500.0 if bool(getattr(p, "epc", False) or getattr(p, "bad_address", False)) else 0.0
-        other_val = 0.0
+        other_val = float(getattr(p, "other_charges", 0) or 0)
 
         if value <= 100:
             duty_val = 0.0

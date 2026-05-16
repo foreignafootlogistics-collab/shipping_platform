@@ -5890,6 +5890,11 @@ def api_update_package(pkg_id):
                 getattr(p, "weight", 0) or 0
             )
 
+        # Allow manual negotiated/custom charges for subscription packages
+        if "other_charges" in data and hasattr(p, "other_charges"):
+            p.other_charges = to_num(data.get("other_charges"), 0.0)
+            updated.append("other_charges")
+
         # Always remove freight/handling for covered subscription packages
         for field in [
             "freight_fee",

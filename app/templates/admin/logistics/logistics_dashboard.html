@@ -2465,8 +2465,19 @@ Not emailed yet"></i>
           if (resFreight) resFreight.value = "0.00";
           if (resHandling) resHandling.value = "0.00";
           if (resOther) resOther.value = "0.00";
-          if (resBadAddress) resBadAddress.value = "0.00";
-          if (badAddressToggle) badAddressToggle.checked = false;
+
+          // EPC / bad address fee should STILL apply for subscription packages
+          const epcOn =
+            !!badAddressToggle?.checked;
+
+          const epcFee =
+            epcOn
+              ? Number(badAddressFeeInput?.value || window.BAD_ADDRESS_FEE_DEFAULT || 500)
+              : 0;
+
+          if (resBadAddress) {
+            resBadAddress.value = epcFee.toFixed(2);
+          }
         }
 
         recalcTotalsFromManual();

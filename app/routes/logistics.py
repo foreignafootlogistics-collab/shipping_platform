@@ -708,7 +708,7 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
 
     total_discount = float(getattr(p, "discount_due", 0) or 0)
 
-    final_grand_total = normal_grand_total + bad_address_fee - total_discount
+    final_grand_total = normal_grand_total - total_discount
 
     if final_grand_total < 0:
         final_grand_total = 0.0

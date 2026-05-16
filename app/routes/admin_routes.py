@@ -2801,6 +2801,11 @@ def proforma_invoice_modal(invoice_id):
             stamp = float(getattr(p, "stamp", 0) or 0)
             other = float(getattr(p, "other_charges", 0) or 0)
             bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0)
+            if (
+                bool(getattr(p, "epc", False))
+                or bool(getattr(p, "bad_address", False))
+            ) and bad_address_fee <= 0:
+                bad_address_fee = 500.0
 
         total_jmd = (
             freight

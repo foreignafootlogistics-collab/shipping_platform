@@ -617,6 +617,9 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
             if hasattr(p, "amount_due"):
                 p.amount_due = bad_address_fee
 
+            if hasattr(p, "outstanding"):
+                p.outstanding = bad_address_fee
+
             return {
                 "subscription_applied": True,
                 "message": "Covered by subscription (no charges)"
@@ -661,6 +664,9 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
 
             if hasattr(p, "amount_due"):
                 p.amount_due = final_total
+
+            if hasattr(p, "outstanding"):
+                p.outstanding = final_total
 
             return {
                 "subscription_applied": True,

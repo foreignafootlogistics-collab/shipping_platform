@@ -10,20 +10,14 @@
   <div class="d-flex flex-wrap align-items-center gap-2">
 
     <!-- Create Package -->
-    <button type="button"
-            class="btn btn-purple btn-sm d-inline-flex align-items-center gap-1"
-            data-bs-toggle="modal"
-            data-bs-target="#createSinglePackageModal"
-            title="Create a single package">
+    <button type="button" class="btn btn-purple btn-sm d-inline-flex align-items-center gap-1" data-bs-toggle="modal"
+      data-bs-target="#createSinglePackageModal" title="Create a single package">
       <i class="bi bi-plus-circle"></i>
       <span class="d-none d-md-inline">Create Package</span>
     </button>
 
     <!-- Top actions -->
-    <form method="POST"
-          id="bulkActionForm"
-          action="{{ url_for('logistics.packages_bulk_action') }}"
-          class="m-0">
+    <form method="POST" id="bulkActionForm" action="{{ url_for('logistics.packages_bulk_action') }}" class="m-0">
       {{ bulk_form.hidden_tag() }}
       <input type="hidden" name="bulk_action" id="bulkActionHiddenAction" value="">
 
@@ -46,64 +40,42 @@
       <div class="d-flex align-items-center action-toolbar shadow-sm">
 
         <!-- Move to Shipment Log -->
-        <button type="button"
-                class="toolbar-btn"
-                id="openMoveToShipmentBtn"
-                title="Move to Shipment Log"
-                data-bs-toggle="modal"
-                data-bs-target="#moveToShipmentModal">
+        <button type="button" class="toolbar-btn" id="openMoveToShipmentBtn" title="Move to Shipment Log"
+          data-bs-toggle="modal" data-bs-target="#moveToShipmentModal">
           <i class="bi bi-send"></i>
         </button>
 
         <!-- Email selected packages (Overseas notification) -->
-        <button type="submit"
-                class="toolbar-btn"
-                title="Email selected package details"
-                formaction="{{ url_for('logistics.email_selected_packages') }}"
-                formmethod="POST">
+        <button type="submit" class="toolbar-btn" title="Email selected package details"
+          formaction="{{ url_for('logistics.email_selected_packages') }}" formmethod="POST">
           <i class="bi bi-envelope"></i>
         </button>
 
         <!-- Send Invoice Request (stays on bulk_action route) -->
-        <button type="submit"
-                class="toolbar-btn"
-                onclick="document.getElementById('bulkActionHiddenAction').value='send_invoice_request';"
-                title="Send Invoice Request">
+        <button type="submit" class="toolbar-btn"
+          onclick="document.getElementById('bulkActionHiddenAction').value='send_invoice_request';"
+          title="Send Invoice Request">
           <i class="bi bi-file-earmark-text"></i>
         </button>
 
-        <button type="button"
-                class="toolbar-btn"
-                id="btnFinanceInvoicePreview"
-                title="Finance Invoice Preview">
+        <button type="button" class="toolbar-btn" id="btnFinanceInvoicePreview" title="Finance Invoice Preview">
           <i class="bi bi-receipt"></i>
         </button>
 
         <!-- Bulk Assign to Customer (opens modal) -->
-        <button type="button"
-                id="openBulkAssignBtn"
-                class="toolbar-btn"
-                title="Assign selected package(s) to a customer"
-                data-bs-toggle="modal"
-                data-bs-target="#bulkAssignModal">
+        <button type="button" id="openBulkAssignBtn" class="toolbar-btn"
+          title="Assign selected package(s) to a customer" data-bs-toggle="modal" data-bs-target="#bulkAssignModal">
           <i class="bi bi-person-check"></i>
         </button>
 
         <!-- Mark EPC -->
-        <button type="submit"
-                name="action"
-                value="mark_epc"
-                class="toolbar-btn toolbar-btn-epc"
-                title="Mark selected as EPC">
+        <button type="submit" name="action" value="mark_epc" class="toolbar-btn toolbar-btn-epc"
+          title="Mark selected as EPC">
           <i class="bi bi-star-fill"></i>
         </button>
 
         <!-- Clear EPC -->
-        <button type="submit"
-                name="action"
-                value="clear_epc"
-                class="toolbar-btn"
-                title="Clear EPC flag">
+        <button type="submit" name="action" value="clear_epc" class="toolbar-btn" title="Clear EPC flag">
           <i class="bi bi-star"></i>
         </button>
 
@@ -114,197 +86,164 @@
 </div>
 {# ==== Summary just under the heading ==== #}
 <div id="vpAjaxRegion">
-<div class="alert mb-3 py-2 px-3 d-flex justify-content-between align-items-center"
-     style="background-color:#4a148c; color:white; border:none; border-radius:0.5rem;">
-  <div>
-    <strong>Summary</strong>
-    {% if date_from or date_to %}
+  <div class="alert mb-3 py-2 px-3 d-flex justify-content-between align-items-center"
+    style="background-color:#4a148c; color:white; border:none; border-radius:0.5rem;">
+    <div>
+      <strong>Summary</strong>
+      {% if date_from or date_to %}
       — for
       {% if date_from %}{{ date_from }}{% else %}…{% endif %}
       {% if date_to %} to {{ date_to }}{% endif %}
-    {% else %}
+      {% else %}
       — for all dates
-    {% endif %}
-  </div>
-  <div class="text-end">
-    <span class="me-3"><strong>{{ total_packages }}</strong> packages</span>
-    <span><strong>{{ "%.2f"|format(total_weight or 0) }}</strong> lbs total</span>
-  </div>
-</div>
-
-{% if daily_totals and (date_from or date_to) %}
-<div class="card shadow-sm mb-3">
-  <div class="card-header bg-dark">
-    <strong>Per-day breakdown</strong>
-  </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-sm table-striped mb-0">
-        <thead>
-          <tr>
-            <th style="width: 160px;">Date</th>
-            <th class="text-end" style="width: 140px;">Packages</th>
-            <th class="text-end" style="width: 180px;">Total Weight (lbs)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for d in daily_totals %}
-          <tr>
-            <td>{{ d.day }}</td>
-            <td class="text-end">{{ d.count }}</td>
-            <td class="text-end">{{ "%.2f"|format(d.total_weight or 0) }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-        <tfoot>
-          <tr class="fw-semibold">
-            <td class="text-end">Totals:</td>
-            <td class="text-end">{{ total_packages }}</td>
-            <td class="text-end">{{ "%.2f"|format(total_weight or 0) }}</td>
-          </tr>
-        </tfoot>
-      </table>
+      {% endif %}
+    </div>
+    <div class="text-end">
+      <span class="me-3"><strong>{{ total_packages }}</strong> packages</span>
+      <span><strong>{{ "%.2f"|format(total_weight or 0) }}</strong> lbs total</span>
     </div>
   </div>
-</div>
-{% endif %}
 
-<!-- ====================== -->
-<!-- Filters (moved below)  -->
-<!-- ====================== -->
-<form id="filterForm"
-      method="GET"
-      action="{{ url_for('logistics.logistics_dashboard') }}"
-      class="row g-3 align-items-end mb-3">
-
-  <input type="hidden" name="tab" value="view_packages">
-
-  <!-- Start Date -->
-  <div class="col-12 col-md-2">
-    <label for="date_from" class="form-label fw-semibold mb-1">Start Date</label>
-    <input type="date" id="date_from" name="date_from"
-           class="form-control form-control-sm"
-           value="{{ date_from or '' }}">
+  {% if daily_totals and (date_from or date_to) %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header bg-dark">
+      <strong>Per-day breakdown</strong>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead>
+            <tr>
+              <th style="width: 160px;">Date</th>
+              <th class="text-end" style="width: 140px;">Packages</th>
+              <th class="text-end" style="width: 180px;">Total Weight (lbs)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in daily_totals %}
+            <tr>
+              <td>{{ d.day }}</td>
+              <td class="text-end">{{ d.count }}</td>
+              <td class="text-end">{{ "%.2f"|format(d.total_weight or 0) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="fw-semibold">
+              <td class="text-end">Totals:</td>
+              <td class="text-end">{{ total_packages }}</td>
+              <td class="text-end">{{ "%.2f"|format(total_weight or 0) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
   </div>
+  {% endif %}
 
-  <!-- End Date -->
-  <div class="col-12 col-md-2">
-    <label for="date_to" class="form-label fw-semibold mb-1">End Date</label>
-    <input type="date" id="date_to" name="date_to"
-           class="form-control form-control-sm"
-           value="{{ date_to or '' }}">
-  </div>
+  <!-- ====================== -->
+  <!-- Filters (moved below)  -->
+  <!-- ====================== -->
+  <form id="filterForm" method="GET" action="{{ url_for('logistics.logistics_dashboard') }}"
+    class="row g-3 align-items-end mb-3">
 
-  <!-- House # -->
-  <div class="col-12 col-md-4">
-    <label for="house" class="form-label fw-semibold mb-1">House #</label>
-    <input type="text" id="house" name="house"
-           class="form-control form-control-sm"
-           placeholder="e.g., 06978687"
-           value="{{ house or '' }}">
-  </div>
+    <input type="hidden" name="tab" value="view_packages">
 
-  <!-- Tracking # -->
-  <div class="col-12 col-md-4">
-    <label for="tracking" class="form-label fw-semibold mb-1">Tracking #</label>
-    <input type="text" id="tracking" name="tracking"
-           class="form-control form-control-sm"
-           placeholder="e.g., 865767565"
-           value="{{ tracking or '' }}">
-  </div>
+    <!-- Start Date -->
+    <div class="col-12 col-md-2">
+      <label for="date_from" class="form-label fw-semibold mb-1">Start Date</label>
+      <input type="date" id="date_from" name="date_from" class="form-control form-control-sm"
+        value="{{ date_from or '' }}">
+    </div>
 
-  <!-- User Code -->
-  <div class="col-12 col-md-4">
-    <label for="user_code" class="form-label fw-semibold mb-1">User Code</label>
-    <input type="text" id="user_code" name="user_code"
-           class="form-control form-control-sm"
-           placeholder="e.g., AV34455"
-           value="{{ user_code or '' }}">
-  </div>
+    <!-- End Date -->
+    <div class="col-12 col-md-2">
+      <label for="date_to" class="form-label fw-semibold mb-1">End Date</label>
+      <input type="date" id="date_to" name="date_to" class="form-control form-control-sm" value="{{ date_to or '' }}">
+    </div>
 
-  <!-- User First Name -->
-  <div class="col-12 col-md-4">
-    <label for="first_name" class="form-label fw-semibold mb-1">User First Name</label>
-    <input type="text" id="first_name" name="first_name"
-           class="form-control form-control-sm"
-           placeholder="First Name"
-           value="{{ first_name or '' }}">
-  </div>
+    <!-- House # -->
+    <div class="col-12 col-md-4">
+      <label for="house" class="form-label fw-semibold mb-1">House #</label>
+      <input type="text" id="house" name="house" class="form-control form-control-sm" placeholder="e.g., 06978687"
+        value="{{ house or '' }}">
+    </div>
 
-  <!-- User Last Name -->
-  <div class="col-12 col-md-4">
-    <label for="last_name" class="form-label fw-semibold mb-1">User Last Name</label>
-    <input type="text" id="last_name" name="last_name"
-           class="form-control form-control-sm"
-           placeholder="Last Name"
-           value="{{ last_name or '' }}">
-  </div>
-  
-  <!-- Show Unassigned Only -->
-  <div class="col-12 col-md-auto">
-    <label class="form-check-label d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
-      <input type="checkbox"
-             class="form-check-input"
-             id="filterUnassigned"
-             name="unassigned_only"
-             value="1"
-             {% if unassigned_only %}checked{% endif %}>
-      Unassigned Packages
-    </label>
-  </div>
-  
-  <div class="col-12 col-md-auto d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
-    <input type="checkbox"
-           class="form-check-input"
-           id="filterEpcOnly"
-           name="epc_only"
-           value="1"
-           {% if epc_only %}checked{% endif %}>
-    <label class="form-check-label" for="filterEpcOnly">EPC </label>
-    <small id="epcCount" class="text-muted ms-2" style="display:none;"></small>
-  </div>
+    <!-- Tracking # -->
+    <div class="col-12 col-md-4">
+      <label for="tracking" class="form-label fw-semibold mb-1">Tracking #</label>
+      <input type="text" id="tracking" name="tracking" class="form-control form-control-sm"
+        placeholder="e.g., 865767565" value="{{ tracking or '' }}">
+    </div>
 
-  <div class="col-12 col-md-auto d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
-    <input type="checkbox"
-           class="form-check-input"
-           id="filterNotNotifiedOnly"
-           name="not_notified_only"
-           value="1"
-           {% if not_notified_only %}checked{% endif %}>
-    <label class="form-check-label" for="filterNotNotifiedOnly">
-      Not Yet Notified
-    </label>
-  </div>
+    <!-- User Code -->
+    <div class="col-12 col-md-4">
+      <label for="user_code" class="form-label fw-semibold mb-1">User Code</label>
+      <input type="text" id="user_code" name="user_code" class="form-control form-control-sm"
+        placeholder="e.g., AV34455" value="{{ user_code or '' }}">
+    </div>
 
-  <div class="col-12 col-md-auto d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
-    <input type="checkbox"
-           class="form-check-input"
-           id="filterSubscriptionOnly"
-           name="subscription_only"
-           value="1"
-           {% if subscription_only %}checked{% endif %}>
-    <label class="form-check-label" for="filterSubscriptionOnly">
-      Subscription Packages
-    </label>
-  </div>
+    <!-- User First Name -->
+    <div class="col-12 col-md-4">
+      <label for="first_name" class="form-label fw-semibold mb-1">User First Name</label>
+      <input type="text" id="first_name" name="first_name" class="form-control form-control-sm" placeholder="First Name"
+        value="{{ first_name or '' }}">
+    </div>
 
-  <!-- Toolbar row: left = actions, right = rows-per-page -->
-  <div class="col-12">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <!-- User Last Name -->
+    <div class="col-12 col-md-4">
+      <label for="last_name" class="form-label fw-semibold mb-1">User Last Name</label>
+      <input type="text" id="last_name" name="last_name" class="form-control form-control-sm" placeholder="Last Name"
+        value="{{ last_name or '' }}">
+    </div>
 
-      <!-- Left: Actions -->
-      <div class="btn-group btn-group-sm filter-actions" role="group" aria-label="Filter actions">
-        <button type="submit" class="btn btn-purple">
-          <i class="fas fa-filter me-1"></i> Filter Packages
-        </button>
+    <!-- Show Unassigned Only -->
+    <div class="col-12 col-md-auto">
+      <label class="form-check-label d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
+        <input type="checkbox" class="form-check-input" id="filterUnassigned" name="unassigned_only" value="1" {% if
+          unassigned_only %}checked{% endif %}>
+        Unassigned Packages
+      </label>
+    </div>
 
-        <a class="btn btn-purple"
-           href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}">
-          <i class="fas fa-filter-circle-xmark me-1"></i> Clear Filter
-        </a>
+    <div class="col-12 col-md-auto d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
+      <input type="checkbox" class="form-check-input" id="filterEpcOnly" name="epc_only" value="1" {% if epc_only
+        %}checked{% endif %}>
+      <label class="form-check-label" for="filterEpcOnly">EPC </label>
+      <small id="epcCount" class="text-muted ms-2" style="display:none;"></small>
+    </div>
 
-        <a class="btn btn-purple"
-           href="{{ url_for('logistics.download_packages',
+    <div class="col-12 col-md-auto d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
+      <input type="checkbox" class="form-check-input" id="filterNotNotifiedOnly" name="not_notified_only" value="1" {%
+        if not_notified_only %}checked{% endif %}>
+      <label class="form-check-label" for="filterNotNotifiedOnly">
+        Not Yet Notified
+      </label>
+    </div>
+
+    <div class="col-12 col-md-auto d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
+      <input type="checkbox" class="form-check-input" id="filterSubscriptionOnly" name="subscription_only" value="1" {%
+        if subscription_only %}checked{% endif %}>
+      <label class="form-check-label" for="filterSubscriptionOnly">
+        Subscription Packages
+      </label>
+    </div>
+
+    <!-- Toolbar row: left = actions, right = rows-per-page -->
+    <div class="col-12">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+
+        <!-- Left: Actions -->
+        <div class="btn-group btn-group-sm filter-actions" role="group" aria-label="Filter actions">
+          <button type="submit" class="btn btn-purple">
+            <i class="fas fa-filter me-1"></i> Filter Packages
+          </button>
+
+          <a class="btn btn-purple" href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}">
+            <i class="fas fa-filter-circle-xmark me-1"></i> Clear Filter
+          </a>
+
+          <a class="btn btn-purple" href="{{ url_for('logistics.download_packages',
                             tab='view_packages',
                             date_from=date_from,
                             date_to=date_to,
@@ -320,178 +259,171 @@
                             unassigned_only='1' if unassigned_only else None,
                             epc_only='1' if epc_only else None,
                             not_notified_only='1' if not_notified_only else None) }}">
-          <i class="fas fa-download me-1"></i> Download Packages
-        </a>
+            <i class="fas fa-download me-1"></i> Download Packages
+          </a>
 
-        <!-- Delete uses JS to submit selected IDs to packages_bulk_action -->
-        <button type="button" class="btn btn-purple" id="deleteSelectedBtn">
-          <i class="fas fa-trash-alt me-1"></i> Delete
-        </button>
+          <!-- Delete uses JS to submit selected IDs to packages_bulk_action -->
+          <button type="button" class="btn btn-purple" id="deleteSelectedBtn">
+            <i class="fas fa-trash-alt me-1"></i> Delete
+          </button>
+        </div>
+
+        <!-- Right: Rows per page -->
+        <div class="d-flex align-items-center">
+          <label for="per_page" class="me-2 mb-0 fw-semibold">Rows / page</label>
+          <select id="per_page" name="per_page" class="form-select form-select-sm border-purple text-purple fw-semibold"
+            style="width:90px;" onchange="document.getElementById('filterForm').submit()">
+            {% set sizes = allowed_page_sizes or [10,25,50,100,500,1000] %}
+            {% for n in sizes %}
+            <option value="{{ n }}" {% if per_page==n %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
       </div>
-
-      <!-- Right: Rows per page -->
-      <div class="d-flex align-items-center">
-        <label for="per_page" class="me-2 mb-0 fw-semibold">Rows / page</label>
-        <select id="per_page" name="per_page"
-                class="form-select form-select-sm border-purple text-purple fw-semibold"
-                style="width:90px;"
-                onchange="document.getElementById('filterForm').submit()">
-          {% set sizes = allowed_page_sizes or [10,25,50,100,500,1000] %}
-          {% for n in sizes %}
-            <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
-          {% endfor %}
-        </select>
-      </div>
-
     </div>
-  </div>
-</form>
+  </form>
 
-<!-- ====================== -->
-<!-- Packages Table         -->
-<!-- ====================== -->
-<div class="table-responsive">
-  <table id="packagesTable" class="table table-bordered table-striped table-hover align-middle w-100">
-    <thead class="table-dark">
-      <tr>
-        <th style="width:70px;">
-          <input type="checkbox" id="selectAll"> Actions
-        </th>
-        <th>User</th>
-        <th>Package</th>
-        <th>House AWB</th>
-        <th>Description</th>
-        <th>Date Received</th>
-        <th>Weight (lbs)</th>
-        <th>Item Value ($)</th>
-        <th>Amount Due ($)</th>
+  <!-- ====================== -->
+  <!-- Packages Table         -->
+  <!-- ====================== -->
+  <div class="table-responsive">
+    <table id="packagesTable" class="table table-bordered table-striped table-hover align-middle w-100">
+      <thead class="table-dark">
+        <tr>
+          <th style="width:70px;">
+            <input type="checkbox" id="selectAll"> Actions
+          </th>
+          <th>User</th>
+          <th>Package</th>
+          <th>House AWB</th>
+          <th>Description</th>
+          <th>Date Received</th>
+          <th>Weight (lbs)</th>
+          <th>Item Value ($)</th>
+          <th>Amount Due ($)</th>
 
-        {# Hidden EPC flag column header for filtering #}
-        <th data-col="epc-flag" class="d-none">EPC</th>
-      </tr>
-    </thead>
+          {# Hidden EPC flag column header for filtering #}
+          <th data-col="epc-flag" class="d-none">EPC</th>
+        </tr>
+      </thead>
 
-    {% set mode = "admin" %}
-    <tbody>
-      {% for pkg in all_packages %}
+      {% set mode = "admin" %}
+      <tbody>
+        {% for pkg in all_packages %}
         {% include "partials/package_row_shared.html" with context %}
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-
-
-<!-- 📄 Invoice Preview Modal -->
-<div class="modal fade" id="invoiceModal" tabindex="-1" aria-labelledby="invoiceModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-dialog modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header bg-light">
-        <h5 class="modal-title" id="invoiceModalLabel">
-          <i class="fas fa-file-invoice-dollar me-1"></i> Invoice Preview
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body" id="invoiceModalBody">
-        <p class="text-muted mb-0">Loading invoice…</p>
-      </div>
-    </div>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
-</div>
 
-<!-- Warehouse Finance Preview Modal -->
-<div class="modal fade" id="warehouseFinancePreviewModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header bg-light">
-        <h5 class="modal-title">
-          <i class="bi bi-receipt me-1"></i> Warehouse Charges Preview
-        </h5>
-        <div class="d-flex align-items-center gap-2">
-          <button type="button"
-                  class="btn btn-outline-dark btn-sm"
-                  id="downloadWarehouseExcelBtn">
-            <i class="bi bi-file-earmark-excel me-1"></i> Excel
-          </button>
 
-          <button type="button"
-                  class="btn btn-outline-dark btn-sm"
-                  id="downloadWarehousePdfBtn">
-            <i class="bi bi-file-earmark-pdf me-1"></i> PDF
-          </button>
-
-          
+  <!-- 📄 Invoice Preview Modal -->
+  <div class="modal fade" id="invoiceModal" tabindex="-1" aria-labelledby="invoiceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-light">
+          <h5 class="modal-title" id="invoiceModalLabel">
+            <i class="fas fa-file-invoice-dollar me-1"></i> Invoice Preview
+          </h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-      </div>
-
-      <div class="modal-body">
-        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-          <div>
-            <div class="small text-muted" id="warehouse-period-label">Period: —</div>
-            <div class="fw-semibold" id="warehouse-package-count">0 packages</div>
-            <div class="small text-muted" id="warehouse-category-count">0 weight categories used</div>
-          </div>
-
-          <div class="text-end">
-            <div class="small text-muted">Grand Total</div>
-            <div class="fw-bold fs-5" id="warehouse-grand-total-top">0.00 USD</div>
-            <div class="small text-muted" id="warehouse-grand-total-jmd">≈ 0.00 JMD</div>
-          </div>
-        </div>
-
-        <div class="table-responsive mb-4">
-          <table class="table table-sm table-bordered align-middle">
-            <thead class="table-dark">
-              <tr>
-                <th>Weight Category</th>
-                <th class="text-end">Rate (USD)</th>
-                <th class="text-end"># Packages</th>
-                <th class="text-end">Category Total (USD)</th>
-              </tr>
-            </thead>
-            <tbody id="warehouse-summary-tbody"></tbody>
-            <tfoot>
-              <tr class="table-light fw-semibold">
-                <th colspan="3" class="text-end">Grand Total</th>
-                <th class="text-end" id="warehouse-grand-total">0.00</th>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <div class="table-responsive">
-          <table class="table table-sm table-striped align-middle">
-            <thead class="table-dark">
-              <tr>
-                <th>Date Received</th>
-                <th>Tracking #</th>
-                <th>House AWB</th>
-                <th>Description</th>
-                <th class="text-end">Weight (lbs)</th>
-                <th>Category</th>
-                <th class="text-end">Rate (USD)</th>
-              </tr>
-            </thead>
-            <tbody id="warehouse-packages-tbody"></tbody>
-          </table>
+        <div class="modal-body" id="invoiceModalBody">
+          <p class="text-muted mb-0">Loading invoice…</p>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Pagination -->
-{% if total_pages > 1 %}
-<nav class="d-flex justify-content-between align-items-center mt-3" aria-label="Packages pagination">
-  <small class="text-muted">
-    Showing {{ showing_from }}–{{ showing_to }} of {{ total_count }}
-  </small>
+  <!-- Warehouse Finance Preview Modal -->
+  <div class="modal fade" id="warehouseFinancePreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-light">
+          <h5 class="modal-title">
+            <i class="bi bi-receipt me-1"></i> Warehouse Charges Preview
+          </h5>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-dark btn-sm" id="downloadWarehouseExcelBtn">
+              <i class="bi bi-file-earmark-excel me-1"></i> Excel
+            </button>
 
-  <ul class="pagination pagination-sm mb-0">
-    <!-- First -->
-    <li class="page-item {% if page == 1 %}disabled{% endif %}">
-      <a class="page-link"
-         href="{{ url_for('logistics.logistics_dashboard',
+            <button type="button" class="btn btn-outline-dark btn-sm" id="downloadWarehousePdfBtn">
+              <i class="bi bi-file-earmark-pdf me-1"></i> PDF
+            </button>
+
+
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+        </div>
+
+        <div class="modal-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+            <div>
+              <div class="small text-muted" id="warehouse-period-label">Period: —</div>
+              <div class="fw-semibold" id="warehouse-package-count">0 packages</div>
+              <div class="small text-muted" id="warehouse-category-count">0 weight categories used</div>
+            </div>
+
+            <div class="text-end">
+              <div class="small text-muted">Grand Total</div>
+              <div class="fw-bold fs-5" id="warehouse-grand-total-top">0.00 USD</div>
+              <div class="small text-muted" id="warehouse-grand-total-jmd">≈ 0.00 JMD</div>
+            </div>
+          </div>
+
+          <div class="table-responsive mb-4">
+            <table class="table table-sm table-bordered align-middle">
+              <thead class="table-dark">
+                <tr>
+                  <th>Weight Category</th>
+                  <th class="text-end">Rate (USD)</th>
+                  <th class="text-end"># Packages</th>
+                  <th class="text-end">Category Total (USD)</th>
+                </tr>
+              </thead>
+              <tbody id="warehouse-summary-tbody"></tbody>
+              <tfoot>
+                <tr class="table-light fw-semibold">
+                  <th colspan="3" class="text-end">Grand Total</th>
+                  <th class="text-end" id="warehouse-grand-total">0.00</th>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+              <thead class="table-dark">
+                <tr>
+                  <th>Date Received</th>
+                  <th>Tracking #</th>
+                  <th>House AWB</th>
+                  <th>Description</th>
+                  <th class="text-end">Weight (lbs)</th>
+                  <th>Category</th>
+                  <th class="text-end">Rate (USD)</th>
+                </tr>
+              </thead>
+              <tbody id="warehouse-packages-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  {% if total_pages > 1 %}
+  <nav class="d-flex justify-content-between align-items-center mt-3" aria-label="Packages pagination">
+    <small class="text-muted">
+      Showing {{ showing_from }}–{{ showing_to }} of {{ total_count }}
+    </small>
+
+    <ul class="pagination pagination-sm mb-0">
+      <!-- First -->
+      <li class="page-item {% if page == 1 %}disabled{% endif %}">
+        <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
                           tab='view_packages',                          
                           page=1,
                           per_page=per_page,
@@ -505,14 +437,13 @@
                           unassigned_only=('1' if unassigned_only else None),
                           epc_only=('1' if epc_only else None),
                           not_notified_only=('1' if not_notified_only else None)) }}">
-        &laquo;&laquo;
-      </a>
-    </li>
+          &laquo;&laquo;
+        </a>
+      </li>
 
-    <!-- Prev -->
-    <li class="page-item {% if page == 1 %}disabled{% endif %}">
-      <a class="page-link"
-         href="{{ url_for('logistics.logistics_dashboard',
+      <!-- Prev -->
+      <li class="page-item {% if page == 1 %}disabled{% endif %}">
+        <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
                           tab='view_packages',                          
                           page=(page-1 if page>1 else 1),
                           per_page=per_page,
@@ -526,17 +457,15 @@
                           unassigned_only=('1' if unassigned_only else None),
                           epc_only=('1' if epc_only else None),
                           not_notified_only=('1' if not_notified_only else None)) }}">
-        &laquo;
-      </a>
-    </li>
+          &laquo;
+        </a>
+      </li>
 
-    <!-- Page window -->
-    {% set start = 1 if total_pages <= 5 else [page-2, 1]|max %}
-    {% set end   = total_pages if total_pages <= 5 else [page+2, total_pages]|min %}
-    {% for p in range(start, end + 1) %}
-      <li class="page-item {% if p == page %}active{% endif %}">
-        <a class="page-link"
-           href="{{ url_for('logistics.logistics_dashboard',
+      <!-- Page window -->
+      {% set start = 1 if total_pages <= 5 else [page-2, 1]|max %} {% set end=total_pages if total_pages <=5 else
+        [page+2, total_pages]|min %} {% for p in range(start, end + 1) %} <li
+        class="page-item {% if p == page %}active{% endif %}">
+        <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
                             tab='view_packages',
                             page=p,
                             per_page=per_page,
@@ -552,13 +481,12 @@
                             not_notified_only=('1' if not_notified_only else None)) }}">
           {{ p }}
         </a>
-      </li>
-    {% endfor %}
+        </li>
+        {% endfor %}
 
-    <!-- Next -->
-    <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-      <a class="page-link"
-         href="{{ url_for('logistics.logistics_dashboard',
+        <!-- Next -->
+        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
                           tab='view_packages',                          
                           page=(page+1 if page<total_pages else total_pages),
                           per_page=per_page,
@@ -572,14 +500,13 @@
                           unassigned_only=('1' if unassigned_only else None),
                           epc_only=('1' if epc_only else None),
                           not_notified_only=('1' if not_notified_only else None)) }}">
-        &raquo;
-      </a>
-    </li>
+            &raquo;
+          </a>
+        </li>
 
-    <!-- Last -->
-    <li class="page-item {% if page == total_pages %}disabled{% endif %}">
-      <a class="page-link"
-         href="{{ url_for('logistics.logistics_dashboard',
+        <!-- Last -->
+        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
                           tab='view_packages',                          
                           page=total_pages,
                           per_page=per_page,
@@ -593,17 +520,17 @@
                           unassigned_only=('1' if unassigned_only else None),
                           epc_only=('1' if epc_only else None),
                           not_notified_only=('1' if not_notified_only else None)) }}">
-        &raquo;&raquo;
-      </a>
-    </li>
-  </ul>
-</nav>
-{% else %}
+            &raquo;&raquo;
+          </a>
+        </li>
+    </ul>
+  </nav>
+  {% else %}
   <small class="text-muted d-block mt-3">
     Showing {{ showing_from }}–{{ showing_to }} of {{ total_count }}
   </small>
-{% endif %}
-</div>  <!-- END vpAjaxRegion -->
+  {% endif %}
+</div> <!-- END vpAjaxRegion -->
 
 <!-- ========================= -->
 <!-- Attach Invoice Modal (Shared) -->
@@ -629,21 +556,12 @@
 
         <div class="mb-3">
           <label for="attachPkgValue" class="form-label fw-semibold mb-1">Item Value (USD)</label>
-          <input type="number"
-                 step="0.01"
-                 min="0"
-                 id="attachPkgValue"
-                 class="form-control"
-                 value="0.00">
+          <input type="number" step="0.01" min="0" id="attachPkgValue" class="form-control" value="0.00">
         </div>
 
         <div class="mb-3">
           <label class="form-label fw-semibold">Choose file(s)</label>
-          <input type="file"
-                 id="attachFiles"
-                 class="form-control"
-                 accept=".pdf,.png,.jpg,.jpeg,.webp"
-                 multiple>
+          <input type="file" id="attachFiles" class="form-control" accept=".pdf,.png,.jpg,.jpeg,.webp" multiple>
           <div class="form-text">
             Allowed: PDF, PNG, JPG, WEBP
           </div>
@@ -653,15 +571,11 @@
       </div>
 
       <div class="modal-footer">
-        <button type="button"
-                class="btn btn-outline-secondary"
-                data-bs-dismiss="modal">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
           Cancel
         </button>
 
-        <button type="button"
-                class="btn btn-purple"
-                id="btnAttachUpload">
+        <button type="button" class="btn btn-purple" id="btnAttachUpload">
           Upload
         </button>
       </div>
@@ -703,15 +617,11 @@
       </div>
 
       <div class="modal-footer">
-        <button type="button"
-                class="btn btn-secondary"
-                data-bs-dismiss="modal">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
           Cancel
         </button>
-        <button id="btn-finalize-invoices"
-                class="btn btn-purple"
-                type="button"
-                onclick="finalizeInvoicesFromModal(event)">
+        <button id="btn-finalize-invoices" class="btn btn-purple" type="button"
+          onclick="finalizeInvoicesFromModal(event)">
           Generate Customer Invoice(s)
         </button>
       </div>
@@ -722,10 +632,8 @@
 {# =============== Bulk Assign Modal =============== #}
 <div class="modal fade" id="bulkAssignModal" tabindex="-1" aria-labelledby="bulkAssignLabel" aria-hidden="true">
   <div class="modal-dialog">
-    <form method="POST"
-          action="{{ url_for('logistics.bulk_assign_packages') }}"
-          class="modal-content"
-          id="bulkAssignForm">
+    <form method="POST" action="{{ url_for('logistics.bulk_assign_packages') }}" class="modal-content"
+      id="bulkAssignForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div class="modal-header">
         <h5 class="modal-title" id="bulkAssignLabel">Assign Selected Packages to Customer</h5>
@@ -764,10 +672,8 @@
 
 <div class="modal fade" id="moveToShipmentModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
-    <form method="POST"
-          action="{{ url_for('logistics.assign_packages_to_shipment') }}"
-          class="modal-content"
-          id="moveToShipmentForm">
+    <form method="POST" action="{{ url_for('logistics.assign_packages_to_shipment') }}" class="modal-content"
+      id="moveToShipmentForm">
 
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -794,9 +700,9 @@
           <select name="shipment_id" class="form-select">
             <option value="">-- Select shipment --</option>
             {% for s in shipments %}
-              <option value="{{ s.id }}">
-                {{ s.sl_id }}{% if s.sl_name %} — {{ s.sl_name }}{% endif %}
-              </option>
+            <option value="{{ s.id }}">
+              {{ s.sl_id }}{% if s.sl_name %} — {{ s.sl_name }}{% endif %}
+            </option>
             {% endfor %}
           </select>
           <div class="form-text">Packages will be moved into that shipment.</div>
@@ -827,9 +733,7 @@
 <!-- ========================= -->
 <div class="modal fade" id="createSinglePackageModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-    <form method="POST"
-          action="{{ url_for('logistics.create_single_package_from_view') }}"
-          class="modal-content">
+    <form method="POST" action="{{ url_for('logistics.create_single_package_from_view') }}" class="modal-content">
 
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -861,22 +765,15 @@
           <label class="form-label fw-semibold">Customer Reg # or Email</label>
 
           <div class="input-group">
-            <input type="text"
-                   class="form-control"
-                   name="user_code"
-                   id="createPkgUserCode"
-                   placeholder="FAFL10462 or user@email.com"
-                   required>
-            <button class="btn btn-outline-secondary d-none"
-                    type="button"
-                    id="unlockCreatePkgUser"
-                    title="Edit customer">
+            <input type="text" class="form-control" name="user_code" id="createPkgUserCode"
+              placeholder="FAFL10462 or user@email.com" required>
+            <button class="btn btn-outline-secondary d-none" type="button" id="unlockCreatePkgUser"
+              title="Edit customer">
               <i class="bi bi-pencil"></i>
             </button>
           </div>
 
-          <div id="createPkgUserDisplay"
-               class="small text-muted mt-1 d-none"></div>
+          <div id="createPkgUserDisplay" class="small text-muted mt-1 d-none"></div>
 
           <div class="form-text">
             If you filtered View Packages by a customer, it will auto-fill and lock here.
@@ -898,11 +795,8 @@
 
           <div class="col-12 col-md-6">
             <label class="form-label fw-semibold">Date Received</label>
-            <input type="date"
-                   class="form-control"
-                   name="date_received"
-                   value="">
-           <div class="form-text">Optional. Leave blank if not received yet.</div>
+            <input type="date" class="form-control" name="date_received" value="">
+            <div class="form-text">Optional. Leave blank if not received yet.</div>
           </div>
 
           <div class="col-12">
@@ -944,7 +838,7 @@
   </div>
 </div>
 
-<script> 
+<script>
   /* =========================================================
      KEEP DATATABLE STATE (page length, page number, search)
      ========================================================= */
@@ -960,7 +854,7 @@
         search: dt.search()
       };
       localStorage.setItem('VP_PACKAGES_DT_STATE', JSON.stringify(st));
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function restorePackagesDTState() {
@@ -982,21 +876,21 @@
       if (typeof st.page === 'number') {
         dt.page(st.page).draw(false);
       }
-    } catch (e) {}
+    } catch (e) { }
   }
- 
+
   // Toggle pricing row
   function togglePricing(pkgId) {
     document.getElementById("pricing_" + pkgId)?.classList.toggle("d-none");
   }
-  
+
   /* ================================
    BULK INVOICE PREVIEW + FINALIZE
    (shared across tabs)
    ================================ */
 
   // helper for JSON POST (only define if not already defined on this page)
-  window.postJSON = window.postJSON || (async function(url, body) {
+  window.postJSON = window.postJSON || (async function (url, body) {
     const r = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1099,14 +993,14 @@
     const selectAll = document.getElementById('selectAll');
     if (!selectAll) return;
 
-    selectAll.addEventListener('change', function() {
+    selectAll.addEventListener('change', function () {
       document.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = this.checked);
     });
   });
 
   // Bulk actions must have at least one selected
   const bulkForm = document.getElementById('bulkActionForm');
-  bulkForm?.addEventListener('submit', function(e) {
+  bulkForm?.addEventListener('submit', function (e) {
     const selected = Array.from(document.querySelectorAll('.package-checkbox:checked'));
     if (selected.length === 0) {
       e.preventDefault();
@@ -1154,7 +1048,7 @@
     form.submit();
   });
 
-     // Helper: open invoice HTML in Bootstrap modal
+  // Helper: open invoice HTML in Bootstrap modal
   function openInvoiceModalWithHtml(html) {
     const bodyEl = document.getElementById('invoiceModalBody');
     if (bodyEl) {
@@ -1174,14 +1068,14 @@
     initInlineInvoice();
   }
 
-    // Initialise inline invoice behaviour inside #invoiceModal
+  // Initialise inline invoice behaviour inside #invoiceModal
   function initInlineInvoice() {
     const modalRoot = document.getElementById('invoiceModal');
     if (!modalRoot) return;
 
-    const payOverlay      = modalRoot.querySelector('#inlinePayOverlay');
+    const payOverlay = modalRoot.querySelector('#inlinePayOverlay');
     const discountOverlay = modalRoot.querySelector('#inlineDiscountOverlay');
-    const bdOverlay       = modalRoot.querySelector('#inlineBreakdownOverlay');
+    const bdOverlay = modalRoot.querySelector('#inlineBreakdownOverlay');
 
     // helper show/hide
     const showOverlay = (el) => { if (el) el.classList.remove('d-none'); };
@@ -1217,9 +1111,9 @@
     modalRoot.querySelectorAll('.fa-inline-close').forEach(btn => {
       btn.addEventListener('click', function () {
         const type = this.getAttribute('data-close');
-        if (type === 'pay')      hideOverlay(payOverlay);
+        if (type === 'pay') hideOverlay(payOverlay);
         if (type === 'discount') hideOverlay(discountOverlay);
-        if (type === 'bd')       hideOverlay(bdOverlay);
+        if (type === 'bd') hideOverlay(bdOverlay);
       });
     });
 
@@ -1228,7 +1122,7 @@
       if (!payOverlay) return;
 
       const display = payOverlay.querySelector('#payDisplayInline');
-      const hidden  = payOverlay.querySelector('#payAmountInputInline');
+      const hidden = payOverlay.querySelector('#payAmountInputInline');
       if (!display || !hidden) return;
 
       let current = hidden.value && hidden.value !== '0' ? String(hidden.value) : '0';
@@ -1284,12 +1178,12 @@
 
       // payment method
       const methodInput = payOverlay.querySelector('#payMethodInputInline');
-      const methodList  = payOverlay.querySelector('#paymentMethodListInline');
+      const methodList = payOverlay.querySelector('#paymentMethodListInline');
       if (methodInput && methodList) {
         methodList.querySelectorAll('.payment-method-btn').forEach(btn => {
           btn.onclick = function () {
             methodList.querySelectorAll('.payment-method-btn')
-                      .forEach(b => b.classList.remove('active'));
+              .forEach(b => b.classList.remove('active'));
             this.classList.add('active');
             methodInput.value = this.getAttribute('data-method') || 'Cash';
           };
@@ -1297,7 +1191,7 @@
       }
       // ---------- NEW: "Authorised by" dropdown + other ----------
       const authSelect = payOverlay.querySelector('#authBySelectInline');
-      const authInput  = payOverlay.querySelector('#authByInputInline');
+      const authInput = payOverlay.querySelector('#authByInputInline');
       const authHidden = payOverlay.querySelector('#authByHiddenInline');
 
       if (authSelect && authHidden) {
@@ -1337,17 +1231,17 @@
     function setupDiscountLogic() {
       if (!discountOverlay) return;
 
-      const form     = discountOverlay.querySelector('#inlineDiscountForm');
+      const form = discountOverlay.querySelector('#inlineDiscountForm');
       if (!form) return;
 
-      const balance  = parseFloat(form.getAttribute('data-balance') || '0') || 0;
-      const tabs     = discountOverlay.querySelector('#discountTabsInline');
-      const panePct  = discountOverlay.querySelector('#discountPercentPaneInline');
-      const paneAmt  = discountOverlay.querySelector('#discountAmountPaneInline');
+      const balance = parseFloat(form.getAttribute('data-balance') || '0') || 0;
+      const tabs = discountOverlay.querySelector('#discountTabsInline');
+      const panePct = discountOverlay.querySelector('#discountPercentPaneInline');
+      const paneAmt = discountOverlay.querySelector('#discountAmountPaneInline');
       const pctInput = discountOverlay.querySelector('#discountPercentInputInline');
-      const pctLbl   = discountOverlay.querySelector('#discountPercentAmountInline');
+      const pctLbl = discountOverlay.querySelector('#discountPercentAmountInline');
       const amtInput = discountOverlay.querySelector('#discountAmountInputInline');
-      const hidden   = discountOverlay.querySelector('#discountHiddenAmountInline');
+      const hidden = discountOverlay.querySelector('#discountHiddenAmountInline');
 
       let mode = tabs?.querySelector('.discount-tab.active')?.getAttribute('data-mode') || 'percent';
 
@@ -1362,7 +1256,7 @@
       function recalc() {
         if (!hidden) return;
         if (mode === 'percent') {
-          const pct  = parseFloat(pctInput?.value || '0') || 0;
+          const pct = parseFloat(pctInput?.value || '0') || 0;
           const disc = Math.max(0, balance * pct / 100);
           hidden.value = disc.toFixed(2);
           if (pctLbl) pctLbl.textContent = formatJMD(disc);
@@ -1401,9 +1295,9 @@
     /* ---------- Lightning (charges breakdown) ---------- */
     if (bdOverlay) {
       const ids = [
-        'bd-duty-inline','bd-gct-inline','bd-freight-inline','bd-handling-inline',
-        'bd-scf-inline','bd-envl-inline','bd-caf-inline','bd-stamp-inline',
-        'bd-other-inline','bd-total-inline'
+        'bd-duty-inline', 'bd-gct-inline', 'bd-freight-inline', 'bd-handling-inline',
+        'bd-scf-inline', 'bd-envl-inline', 'bd-caf-inline', 'bd-stamp-inline',
+        'bd-other-inline', 'bd-bad-address-inline', 'bd-total-inline'
       ];
       const setField = (id, val) => {
         const el = bdOverlay.querySelector('#' + id);
@@ -1421,16 +1315,23 @@
             .then(r => { if (!r.ok) throw new Error(); return r.json(); })
             .then(d => {
               const nf = new Intl.NumberFormat();
-              setField('bd-duty-inline',     nf.format(d.duty || 0));
-              setField('bd-gct-inline',      nf.format(d.gct || 0));
-              setField('bd-freight-inline',  nf.format(d.freight || 0));
+              setField('bd-duty-inline', nf.format(d.duty || 0));
+              setField('bd-gct-inline', nf.format(d.gct || 0));
+              setField('bd-freight-inline', nf.format(d.freight || 0));
               setField('bd-handling-inline', nf.format(d.handling || 0));
-              setField('bd-scf-inline',      nf.format(d.scf || 0));
-              setField('bd-envl-inline',     nf.format(d.envl || 0));
-              setField('bd-caf-inline',      nf.format(d.caf || 0));
-              setField('bd-stamp-inline',    nf.format(d.stamp || 0));
-              setField('bd-other-inline',    nf.format(d.other || 0));
-              setField('bd-total-inline',    nf.format(d.total_jmd || 0));
+              setField('bd-scf-inline', nf.format(d.scf || 0));
+              setField('bd-envl-inline', nf.format(d.envl || 0));
+              setField('bd-caf-inline', nf.format(d.caf || 0));
+              setField('bd-stamp-inline', nf.format(d.stamp || 0));
+              setField('bd-other-inline', nf.format(d.other_charges || 0));
+
+              const badAddressFee = Number(d.bad_address_fee || 0);
+              setField(
+                'bd-bad-address-inline',
+                badAddressFee > 0 ? "JMD " + nf.format(badAddressFee) : "—"
+              );
+
+              setField('bd-total-inline', nf.format(d.grand_total || 0));
             })
             .catch(() => ids.forEach(id => setField(id, '—')));
 
@@ -1444,7 +1345,7 @@
   // View a specific existing invoice (using its invoice_id)
   function viewInvoiceById(invoiceId) {
     const url = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1"
-                  .replace('0', String(invoiceId));
+      .replace('0', String(invoiceId));
 
     fetch(url)
       .then(r => {
@@ -1463,7 +1364,7 @@
   // View a customer's current uninvoiced packages as a pro-forma invoice
   function viewInvoiceByUser(userId) {
     const url = "{{ url_for('admin.view_customer_invoice', user_id=0) }}"
-                  .replace('0', String(userId));
+      .replace('0', String(userId));
 
     fetch(url)
       .then(r => {
@@ -1574,24 +1475,24 @@
       // TOTALS
       // ===============================
       const grand = Number(data.grand_total || 0).toFixed(2);
-      const usdToJmd = Number({{ USD_TO_JMD|tojson }});
-      const grandJmd = (Number(data.grand_total || 0) * usdToJmd).toFixed(2);
+      const usdToJmd = Number({{ USD_TO_JMD| tojson }});
+  const grandJmd = (Number(data.grand_total || 0) * usdToJmd).toFixed(2);
 
-      grandTotalEl.textContent = grand;
-      grandTotalTopEl.textContent = `${grand} USD`;
-      grandTotalJmdEl.textContent = `≈ ${grandJmd} JMD`;
+  grandTotalEl.textContent = grand;
+  grandTotalTopEl.textContent = `${grand} USD`;
+  grandTotalJmdEl.textContent = `≈ ${grandJmd} JMD`;
 
-      // ===============================
-      // SHOW MODAL
-      // ===============================
-      const modalEl = document.getElementById('warehouseFinancePreviewModal');
-      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-      modal.show();
+  // ===============================
+  // SHOW MODAL
+  // ===============================
+  const modalEl = document.getElementById('warehouseFinancePreviewModal');
+  const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  modal.show();
 
     } catch (err) {
-      console.error(err);
-      alert("⚠️ Could not load warehouse charges preview.");
-    }
+    console.error(err);
+    alert("⚠️ Could not load warehouse charges preview.");
+  }
   });
 
 
@@ -1717,435 +1618,457 @@
       if (count) count.textContent = `${selected.length} package(s) selected.`;
     });
   }
- 
 
- /* ============================
-   DATATABLE INIT + EPC FILTER
-   (enable arrows like Shipment Log)
-   ============================ */
-document.addEventListener('DOMContentLoaded', function () {
-  if (!window.jQuery || !$.fn.dataTable) {
-    console.warn("DataTables not loaded on this page.");
-    return;
-  }
 
-  // ✅ Hard reset so our options apply (and sorting classes get added)
-  if ($.fn.dataTable.isDataTable('#packagesTable')) {
-    $('#packagesTable').DataTable().destroy();
-  }
+  /* ============================
+    DATATABLE INIT + EPC FILTER
+    (enable arrows like Shipment Log)
+    ============================ */
+  document.addEventListener('DOMContentLoaded', function () {
+    if (!window.jQuery || !$.fn.dataTable) {
+      console.warn("DataTables not loaded on this page.");
+      return;
+    }
 
-  window.packagesDT = $('#packagesTable').DataTable({
-    stateSave: false,
-    paging: false,        // use Flask pagination only
-    searching: false,     // remove search box
-    lengthChange: false,  // remove "Show entries"
-    info: false,          // remove "Showing x to y"
-    ordering: true,
-    order: [[3, 'asc']],
+    // ✅ Hard reset so our options apply (and sorting classes get added)
+    if ($.fn.dataTable.isDataTable('#packagesTable')) {
+      $('#packagesTable').DataTable().destroy();
+    }
 
-    // Disable everything, enable ONLY House AWB (index 3)
-    columnDefs: [
-      { targets: [0,1,2,4,5,6,7,8,9], orderable: false },
+    window.packagesDT = $('#packagesTable').DataTable({
+      stateSave: false,
+      paging: false,        // use Flask pagination only
+      searching: false,     // remove search box
+      lengthChange: false,  // remove "Show entries"
+      info: false,          // remove "Showing x to y"
+      ordering: true,
+      order: [[3, 'asc']],
 
-      {
-        targets: [3], // House AWB column
-        orderable: true,
-        render: function (data, type, row) {
-          const text = $('<div>').html(data || '').text().trim();
+      // Disable everything, enable ONLY House AWB (index 3)
+      columnDefs: [
+        { targets: [0, 1, 2, 4, 5, 6, 7, 8, 9], orderable: false },
 
-          if (type === 'sort' || type === 'type') {
-            const num = parseInt(text.replace(/\D/g, ''), 10);
-            return isNaN(num) ? 0 : num;
+        {
+          targets: [3], // House AWB column
+          orderable: true,
+          render: function (data, type, row) {
+            const text = $('<div>').html(data || '').text().trim();
+
+            if (type === 'sort' || type === 'type') {
+              const num = parseInt(text.replace(/\D/g, ''), 10);
+              return isNaN(num) ? 0 : num;
+            }
+            return data;
           }
-          return data;
         }
-      }
-    ]
+      ]
     });
 
-    var table = window.packagesDT;  
+    var table = window.packagesDT;
 
     // restore state (optional)
     // if (typeof restorePackagesDTState === 'function') restorePackagesDTState();
 
-  // ============================
-  // EPC FILTER
-  // ============================
-  var $headers    = $('#packagesTable thead th');
-  var epcColIndex = $headers.index($headers.filter('[data-col="epc-flag"]'));
+    // ============================
+    // EPC FILTER
+    // ============================
+    var $headers = $('#packagesTable thead th');
+    var epcColIndex = $headers.index($headers.filter('[data-col="epc-flag"]'));
 
-  if (epcColIndex >= 0) {
-    table.column(epcColIndex).visible(false);
+    if (epcColIndex >= 0) {
+      table.column(epcColIndex).visible(false);
 
-    if (!window.__epcFilterInstalled) {
-      $.fn.dataTable.ext.search.push(function (settings, data) {
-        if (settings && settings.nTable !== $('#packagesTable')[0]) return true;
+      if (!window.__epcFilterInstalled) {
+        $.fn.dataTable.ext.search.push(function (settings, data) {
+          if (settings && settings.nTable !== $('#packagesTable')[0]) return true;
 
-        var epcOnly = $('#filterEpcOnly').is(':checked');
-        if (!epcOnly) return true;
+          var epcOnly = $('#filterEpcOnly').is(':checked');
+          if (!epcOnly) return true;
 
-        var cell = (data[epcColIndex] || '').toString().trim();
-        return cell === '1';
-      });
-      window.__epcFilterInstalled = true;
-    }
-
-    var $toggle = $('#filterEpcOnly');
-    var $count  = $('#epcCount');
-
-    function updateCount() {
-      if ($toggle.is(':checked')) {
-        $count.text(table.rows({ search: 'applied' }).count() + ' EPC package(s)').show();
-      } else {
-        $count.hide();
+          var cell = (data[epcColIndex] || '').toString().trim();
+          return cell === '1';
+        });
+        window.__epcFilterInstalled = true;
       }
-    }
 
-    $toggle.off('change.epc').on('change.epc', function () {
-      table.draw();
+      var $toggle = $('#filterEpcOnly');
+      var $count = $('#epcCount');
+
+      function updateCount() {
+        if ($toggle.is(':checked')) {
+          $count.text(table.rows({ search: 'applied' }).count() + ' EPC package(s)').show();
+        } else {
+          $count.hide();
+        }
+      }
+
+      $toggle.off('change.epc').on('change.epc', function () {
+        table.draw();
+        updateCount();
+      });
+
+      if ($toggle.is(':checked')) table.draw();
       updateCount();
+    }
+
+    // ✅ Force header classes immediately
+    table.columns.adjust().draw(false);
+  });
+
+
+  /* ==========================
+     PACKAGE ATTACHMENTS (ADMIN) - NEW MODAL
+     ========================== */
+  (function attachAdminFilesNew() {
+    if (window.__attachAdminFilesNewInstalled) return;
+    window.__attachAdminFilesNewInstalled = true;
+
+    const modalEl = document.getElementById('attachInvoiceModal');
+    if (!modalEl) return;
+
+    const pkgIdInput = document.getElementById('attachPkgId');
+    const pkgLbl = document.getElementById('attachPkgLabel');
+    const pkgValueLbl = document.getElementById('attachPkgValue');
+    const fileInput = document.getElementById('attachFiles');
+    const statusEl = document.getElementById('attachUploadStatus');
+    const uploadBtn = document.getElementById('btnAttachUpload');
+
+    let currentPkgId = null;
+
+    // Open modal: triggered by paperclip icon
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.js-open-attach');
+      if (!btn) return;
+
+      currentPkgId = btn.getAttribute('data-pkg-id') || btn.getAttribute('data-pkg') || '';
+      const itemValue = btn.getAttribute('data-item-value') || '0.00';
+
+      if (pkgIdInput) pkgIdInput.value = currentPkgId;
+      if (pkgLbl) pkgLbl.textContent = currentPkgId || '—';
+      if (pkgValueLbl) pkgValueLbl.textContent = itemValue;
+      if (fileInput) fileInput.value = '';
+      if (statusEl) statusEl.textContent = 'Select a file to upload.';
+
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
     });
 
-    if ($toggle.is(':checked')) table.draw();
-    updateCount();
-  }
+    async function doUpload() {
+      const pkgId = (currentPkgId || pkgIdInput?.value || '').trim();
+      if (!pkgId) { alert('Package id missing.'); return; }
 
-  // ✅ Force header classes immediately
-  table.columns.adjust().draw(false);
-});
+      const files = fileInput?.files;
+      if (!files || !files.length) { alert('Please choose at least one file.'); return; }
 
+      const csrf = (document.getElementById('attachCsrfToken')?.value || '').trim();
 
-/* ==========================
-   PACKAGE ATTACHMENTS (ADMIN) - NEW MODAL
-   ========================== */
-(function attachAdminFilesNew(){
-  if (window.__attachAdminFilesNewInstalled) return;
-  window.__attachAdminFilesNewInstalled = true;
+      const fd = new FormData();
+      if (csrf) fd.append('csrf_token', csrf);
+      for (const f of files) fd.append('attachments', f);
 
-  const modalEl  = document.getElementById('attachInvoiceModal');
-  if (!modalEl) return;
+      if (statusEl) statusEl.textContent = 'Uploading…';
 
-  const pkgIdInput = document.getElementById('attachPkgId');
-  const pkgLbl     = document.getElementById('attachPkgLabel');
-  const pkgValueLbl = document.getElementById('attachPkgValue');
-  const fileInput  = document.getElementById('attachFiles');
-  const statusEl   = document.getElementById('attachUploadStatus');
-  const uploadBtn  = document.getElementById('btnAttachUpload');
+      const url = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}".replace('0', pkgId);
 
-  let currentPkgId = null;
-
-  // Open modal: triggered by paperclip icon
-  document.addEventListener('click', (e) => {
-    const btn = e.target.closest('.js-open-attach');
-    if (!btn) return;
-
-    currentPkgId = btn.getAttribute('data-pkg-id') || btn.getAttribute('data-pkg') || '';
-    const itemValue = btn.getAttribute('data-item-value') || '0.00';
-
-    if (pkgIdInput) pkgIdInput.value = currentPkgId;
-    if (pkgLbl) pkgLbl.textContent = currentPkgId || '—';
-    if (pkgValueLbl) pkgValueLbl.textContent = itemValue;
-    if (fileInput) fileInput.value = '';
-    if (statusEl) statusEl.textContent = 'Select a file to upload.';
-
-    bootstrap.Modal.getOrCreateInstance(modalEl).show();
-  });
-
-  async function doUpload() {
-    const pkgId = (currentPkgId || pkgIdInput?.value || '').trim();
-    if (!pkgId) { alert('Package id missing.'); return; }
-
-    const files = fileInput?.files;
-    if (!files || !files.length) { alert('Please choose at least one file.'); return; }
-
-    const csrf = (document.getElementById('attachCsrfToken')?.value || '').trim();
-
-    const fd = new FormData();
-    if (csrf) fd.append('csrf_token', csrf);
-    for (const f of files) fd.append('attachments', f);
-
-    if (statusEl) statusEl.textContent = 'Uploading…';
-
-    const url = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}".replace('0', pkgId);
-
-    let res, data = {};
-    try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { 
-          'X-Requested-With': 'XMLHttpRequest',
-          ...(csrf ? { 'X-CSRFToken': csrf } : {})
-        },
-        body: fd
-      });
-      try { data = await res.json(); } catch (e) {}
-    } catch (err) {
-      console.error(err);
-      if (statusEl) statusEl.textContent = '';
-      alert('Upload failed (network error).');
-      return;
-    }
-
-    if (!res.ok || !data.success) {
-      if (statusEl) statusEl.textContent = '';
-      alert(data.error || `Upload failed (HTTP ${res.status}).`);
-      return;
-    }
-
-    if (statusEl) statusEl.textContent = 'Uploaded!';
-    bootstrap.Modal.getInstance(modalEl)?.hide();
-
-    savePackagesDTState();
-    setTimeout(() => window.location.reload(), 350);
-  }
-
-  uploadBtn?.addEventListener('click', (e) => {
-    e.preventDefault();
-    doUpload();
-  });
-  fileInput?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      doUpload();
-    }
-  });
-  modalEl.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      doUpload();
-    }
-  });
-  modalEl.addEventListener('hidden.bs.modal', () => {
-    if (statusEl) statusEl.textContent = 'Select a file to upload.';
-    if (fileInput) fileInput.value = '';
-    if (pkgValueLbl) pkgValueLbl.textContent = '0.00';
-  });
-})();
-
-/* =====================================================
-   AUTO-FILL + LOCK USER FIELD + AJAX NAME LOOKUP
-   ===================================================== */
-(function enhancedAutoFillUser(){
-  const modalEl = document.getElementById('createSinglePackageModal');
-  if (!modalEl) return;
-
-  const filterInput = document.querySelector('#filterForm input[name="user_code"]');
-  const modalInput  = document.getElementById('createPkgUserCode');
-  const displayDiv  = document.getElementById('createPkgUserDisplay');
-  const unlockBtn   = document.getElementById('unlockCreatePkgUser');
-
-  const lookupUrl = "{{ url_for('logistics.api_user_lookup') }}";
-
-  function lockField() {
-    modalInput.readOnly = true;
-    modalInput.classList.add('bg-light');
-    unlockBtn.classList.remove('d-none');
-  }
-
-  function unlockField() {
-    modalInput.readOnly = false;
-    modalInput.classList.remove('bg-light');
-    unlockBtn.classList.add('d-none');
-    displayDiv.classList.add('d-none');
-    displayDiv.textContent = '';
-  }
-
-  async function lookupAndShow(q) {
-    const val = (q || '').trim();
-    if (!val) return;
-
-    displayDiv.classList.remove('d-none');
-    displayDiv.textContent = "Looking up customer…";
-
-    try {
-      const res = await fetch(`${lookupUrl}?q=${encodeURIComponent(val)}`, {
-        headers: { "X-Requested-With": "XMLHttpRequest" }
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        displayDiv.textContent = `Using customer: ${val} (lookup error)`;
+      let res, data = {};
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(csrf ? { 'X-CSRFToken': csrf } : {})
+          },
+          body: fd
+        });
+        try { data = await res.json(); } catch (e) { }
+      } catch (err) {
+        console.error(err);
+        if (statusEl) statusEl.textContent = '';
+        alert('Upload failed (network error).');
         return;
       }
 
-      if (!data.found || !data.user) {
-        displayDiv.textContent = `Using customer: ${val} (not found)`;
+      if (!res.ok || !data.success) {
+        if (statusEl) statusEl.textContent = '';
+        alert(data.error || `Upload failed (HTTP ${res.status}).`);
         return;
       }
 
-      const u = data.user;
-      const name = (u.full_name || '').trim();
-      const reg  = (u.registration_number || '').trim();
+      if (statusEl) statusEl.textContent = 'Uploaded!';
+      bootstrap.Modal.getInstance(modalEl)?.hide();
 
-      // Prefer showing reg + name
-      if (reg && name) {
-        displayDiv.textContent = `Using customer: ${reg} — ${name}`;
-      } else if (reg) {
-        displayDiv.textContent = `Using customer: ${reg}`;
-      } else if (name) {
-        displayDiv.textContent = `Using customer: ${val} — ${name}`;
+      savePackagesDTState();
+      setTimeout(() => window.location.reload(), 350);
+    }
+
+    uploadBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      doUpload();
+    });
+    fileInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doUpload();
+      }
+    });
+    modalEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doUpload();
+      }
+    });
+    modalEl.addEventListener('hidden.bs.modal', () => {
+      if (statusEl) statusEl.textContent = 'Select a file to upload.';
+      if (fileInput) fileInput.value = '';
+      if (pkgValueLbl) pkgValueLbl.textContent = '0.00';
+    });
+  })();
+
+  /* =====================================================
+     AUTO-FILL + LOCK USER FIELD + AJAX NAME LOOKUP
+     ===================================================== */
+  (function enhancedAutoFillUser() {
+    const modalEl = document.getElementById('createSinglePackageModal');
+    if (!modalEl) return;
+
+    const filterInput = document.querySelector('#filterForm input[name="user_code"]');
+    const modalInput = document.getElementById('createPkgUserCode');
+    const displayDiv = document.getElementById('createPkgUserDisplay');
+    const unlockBtn = document.getElementById('unlockCreatePkgUser');
+
+    const lookupUrl = "{{ url_for('logistics.api_user_lookup') }}";
+
+    function lockField() {
+      modalInput.readOnly = true;
+      modalInput.classList.add('bg-light');
+      unlockBtn.classList.remove('d-none');
+    }
+
+    function unlockField() {
+      modalInput.readOnly = false;
+      modalInput.classList.remove('bg-light');
+      unlockBtn.classList.add('d-none');
+      displayDiv.classList.add('d-none');
+      displayDiv.textContent = '';
+    }
+
+    async function lookupAndShow(q) {
+      const val = (q || '').trim();
+      if (!val) return;
+
+      displayDiv.classList.remove('d-none');
+      displayDiv.textContent = "Looking up customer…";
+
+      try {
+        const res = await fetch(`${lookupUrl}?q=${encodeURIComponent(val)}`, {
+          headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          displayDiv.textContent = `Using customer: ${val} (lookup error)`;
+          return;
+        }
+
+        if (!data.found || !data.user) {
+          displayDiv.textContent = `Using customer: ${val} (not found)`;
+          return;
+        }
+
+        const u = data.user;
+        const name = (u.full_name || '').trim();
+        const reg = (u.registration_number || '').trim();
+
+        // Prefer showing reg + name
+        if (reg && name) {
+          displayDiv.textContent = `Using customer: ${reg} — ${name}`;
+        } else if (reg) {
+          displayDiv.textContent = `Using customer: ${reg}`;
+        } else if (name) {
+          displayDiv.textContent = `Using customer: ${val} — ${name}`;
+        } else {
+          displayDiv.textContent = `Using customer: ${val}`;
+        }
+
+      } catch (err) {
+        console.error(err);
+        displayDiv.textContent = `Using customer: ${val} (lookup failed)`;
+      }
+    }
+
+    // When modal opens, auto-fill from filter and lock
+    modalEl.addEventListener('show.bs.modal', function () {
+      const filterUserCode = (filterInput?.value || '').trim();
+
+      if (filterUserCode) {
+        modalInput.value = filterUserCode;
+        lockField();
+        lookupAndShow(filterUserCode);
       } else {
-        displayDiv.textContent = `Using customer: ${val}`;
+        modalInput.value = '';
+        unlockField();
       }
-
-    } catch (err) {
-      console.error(err);
-      displayDiv.textContent = `Using customer: ${val} (lookup failed)`;
-    }
-  }
-
-  // When modal opens, auto-fill from filter and lock
-  modalEl.addEventListener('show.bs.modal', function () {
-    const filterUserCode = (filterInput?.value || '').trim();
-
-    if (filterUserCode) {
-      modalInput.value = filterUserCode;
-      lockField();
-      lookupAndShow(filterUserCode);
-    } else {
-      modalInput.value = '';
-      unlockField();
-    }
-  });
-
-  // Pencil unlock
-  unlockBtn?.addEventListener('click', function(){
-    unlockField();
-    modalInput.focus();
-  });
-
-  // If user edits manually after unlocking, do lookup after pause
-  let t = null;
-  modalInput?.addEventListener('input', function(){
-    if (modalInput.readOnly) return; // locked = ignore
-    clearTimeout(t);
-    const v = modalInput.value;
-    t = setTimeout(() => lookupAndShow(v), 450);
-  });
-
-})();
-
-(function moveToShipmentModalLogic(){
-  const modalEl = document.getElementById('moveToShipmentModal');
-  if (!modalEl) return;
-
-  const openBtn = document.getElementById('openMoveToShipmentBtn');
-  const holder  = document.getElementById('moveToShipmentSelectedHolder');
-  const countEl = document.getElementById('moveToShipmentCount');
-
-  const existingPane = document.getElementById('existingShipmentPane');
-  const newPane      = document.getElementById('newShipmentPane');
-
-  function selectedIds(){
-    return Array.from(document.querySelectorAll('.package-checkbox:checked')).map(cb => cb.value);
-  }
-
-  // block opening if none selected
-  openBtn?.addEventListener('click', function (e) {
-    const ids = selectedIds();
-    if (!ids.length) {
-      e.preventDefault();
-      e.stopPropagation();
-      alert("⚠️ Please select at least one package.");
-      const m = bootstrap.Modal.getOrCreateInstance(modalEl);
-      m.hide();
-      return false;
-    }
-  });
-
-  // inject selected IDs when modal shows
-  modalEl.addEventListener('show.bs.modal', function(){
-    const ids = selectedIds();
-    holder.innerHTML = '';
-    ids.forEach(id => {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = 'package_ids';
-      input.value = id;
-      holder.appendChild(input);
     });
-    if (countEl) countEl.textContent = `${ids.length} package(s) selected.`;
-  });
 
-  // toggle panes based on mode
-  modalEl.addEventListener('change', function(e){
-    if (!e.target || e.target.name !== 'mode') return;
-    const mode = e.target.value;
+    // Pencil unlock
+    unlockBtn?.addEventListener('click', function () {
+      unlockField();
+      modalInput.focus();
+    });
 
-    if (mode === 'new') {
-      existingPane?.classList.add('d-none');
-      newPane?.classList.remove('d-none');
-    } else {
-      newPane?.classList.add('d-none');
-      existingPane?.classList.remove('d-none');
+    // If user edits manually after unlocking, do lookup after pause
+    let t = null;
+    modalInput?.addEventListener('input', function () {
+      if (modalInput.readOnly) return; // locked = ignore
+      clearTimeout(t);
+      const v = modalInput.value;
+      t = setTimeout(() => lookupAndShow(v), 450);
+    });
+
+  })();
+
+  (function moveToShipmentModalLogic() {
+    const modalEl = document.getElementById('moveToShipmentModal');
+    if (!modalEl) return;
+
+    const openBtn = document.getElementById('openMoveToShipmentBtn');
+    const holder = document.getElementById('moveToShipmentSelectedHolder');
+    const countEl = document.getElementById('moveToShipmentCount');
+
+    const existingPane = document.getElementById('existingShipmentPane');
+    const newPane = document.getElementById('newShipmentPane');
+
+    function selectedIds() {
+      return Array.from(document.querySelectorAll('.package-checkbox:checked')).map(cb => cb.value);
     }
-  });
-})();
+
+    // block opening if none selected
+    openBtn?.addEventListener('click', function (e) {
+      const ids = selectedIds();
+      if (!ids.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        alert("⚠️ Please select at least one package.");
+        const m = bootstrap.Modal.getOrCreateInstance(modalEl);
+        m.hide();
+        return false;
+      }
+    });
+
+    // inject selected IDs when modal shows
+    modalEl.addEventListener('show.bs.modal', function () {
+      const ids = selectedIds();
+      holder.innerHTML = '';
+      ids.forEach(id => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'package_ids';
+        input.value = id;
+        holder.appendChild(input);
+      });
+      if (countEl) countEl.textContent = `${ids.length} package(s) selected.`;
+    });
+
+    // toggle panes based on mode
+    modalEl.addEventListener('change', function (e) {
+      if (!e.target || e.target.name !== 'mode') return;
+      const mode = e.target.value;
+
+      if (mode === 'new') {
+        existingPane?.classList.add('d-none');
+        newPane?.classList.remove('d-none');
+      } else {
+        newPane?.classList.add('d-none');
+        existingPane?.classList.remove('d-none');
+      }
+    });
+  })();
 </script>
 
 <style>
-.badge-epc{
-  background:#ffc107; color:#000; border:1px solid #4a148c;
-  font-size:.65rem; padding:.20rem .40rem; border-radius:4px;
-}
+  .badge-epc {
+    background: #ffc107;
+    color: #000;
+    border: 1px solid #4a148c;
+    font-size: .65rem;
+    padding: .20rem .40rem;
+    border-radius: 4px;
+  }
 
-.btn-group .btn {
-  border-radius: 0;
-  border-right: 1px solid #ccc;
-}
-.btn-group .btn:last-child {
-  border-right: none;
-}
-.btn-outline-light.text-secondary:hover {
-  background-color: #6f42c1;
-  color: #fff !important;
-}
-/* Center-align all number columns */
-.table td.text-center {
-  vertical-align: middle;
-  font-weight: 500;
-}
+  .btn-group .btn {
+    border-radius: 0;
+    border-right: 1px solid #ccc;
+  }
 
-/* Segmented control look */
-.filter-actions .btn { border-radius: 0; }
-.filter-actions .btn + .btn { margin-left: -1px; } /* remove double border */
-.filter-actions .btn:first-child {
-  border-top-left-radius: .5rem;
-  border-bottom-left-radius: .5rem;
-}
-.filter-actions .btn:last-child {
-  border-top-right-radius: .5rem;
-  border-bottom-right-radius: .5rem;
-}
+  .btn-group .btn:last-child {
+    border-right: none;
+  }
 
-/* Primary purple color */
-.btn-purple {
-  background-color: #4a148c;
-  color: #fff;
-  border: 1px solid #4a148c;
-  transition: background-color 0.2s, transform 0.1s;
-}
-.btn-purple:hover {
-  background-color: #6a1b9a;
-  border-color: #6a1b9a;
-  color: #fff;
-  transform: scale(1.02);
-}
-.border-purple { border-color: #4a148c !important; }
-.text-purple { color: #4a148c !important; }
+  .btn-outline-light.text-secondary:hover {
+    background-color: #6f42c1;
+    color: #fff !important;
+  }
 
-/* Compact pill-style toolbar */
-.action-toolbar {
+  /* Center-align all number columns */
+  .table td.text-center {
+    vertical-align: middle;
+    font-weight: 500;
+  }
+
+  /* Segmented control look */
+  .filter-actions .btn {
+    border-radius: 0;
+  }
+
+  .filter-actions .btn+.btn {
+    margin-left: -1px;
+  }
+
+  /* remove double border */
+  .filter-actions .btn:first-child {
+    border-top-left-radius: .5rem;
+    border-bottom-left-radius: .5rem;
+  }
+
+  .filter-actions .btn:last-child {
+    border-top-right-radius: .5rem;
+    border-bottom-right-radius: .5rem;
+  }
+
+  /* Primary purple color */
+  .btn-purple {
+    background-color: #4a148c;
+    color: #fff;
+    border: 1px solid #4a148c;
+    transition: background-color 0.2s, transform 0.1s;
+  }
+
+  .btn-purple:hover {
+    background-color: #6a1b9a;
+    border-color: #6a1b9a;
+    color: #fff;
+    transform: scale(1.02);
+  }
+
+  .border-purple {
+    border-color: #4a148c !important;
+  }
+
+  .text-purple {
+    color: #4a148c !important;
+  }
+
+  /* Compact pill-style toolbar */
+  .action-toolbar {
     border-radius: 999px;
     background: #ffffff;
     border: 1px solid #e0d4ff;
     padding: 4px 6px;
     gap: 2px;
-}
+  }
 
-/* Base button look */
-.action-toolbar .toolbar-btn {
+  /* Base button look */
+  .action-toolbar .toolbar-btn {
     border: none;
     background: transparent;
     padding: 6px 12px;
@@ -2156,140 +2079,150 @@ document.addEventListener('DOMContentLoaded', function () {
     min-width: 36px;
     cursor: pointer;
     transition: background-color 0.15s ease, color 0.15s ease,
-                box-shadow 0.15s ease, transform 0.05s ease;
+      box-shadow 0.15s ease, transform 0.05s ease;
     color: #4b4b4b;
     font-size: 1.1rem;
-}
+  }
 
-/* Hover & focus */
-.action-toolbar .toolbar-btn:hover,
-.action-toolbar .toolbar-btn:focus-visible {
+  /* Hover & focus */
+  .action-toolbar .toolbar-btn:hover,
+  .action-toolbar .toolbar-btn:focus-visible {
     background-color: #f3e8ff;
     color: #4a148c;
     box-shadow: 0 0 0 1px rgba(106, 27, 154, 0.20);
     outline: none;
-}
+  }
 
-/* Pressed */
-.action-toolbar .toolbar-btn:active {
+  /* Pressed */
+  .action-toolbar .toolbar-btn:active {
     transform: translateY(1px);
-}
+  }
 
-/* EPC highlight button (yellow-ish) */
-.action-toolbar .toolbar-btn-epc {
+  /* EPC highlight button (yellow-ish) */
+  .action-toolbar .toolbar-btn-epc {
     color: #b7791f;
-}
+  }
 
-.action-toolbar .toolbar-btn-epc:hover,
-.action-toolbar .toolbar-btn-epc:focus-visible {
+  .action-toolbar .toolbar-btn-epc:hover,
+  .action-toolbar .toolbar-btn-epc:focus-visible {
     background-color: #fff7e6;
     color: #d97706;
     box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
-}
+  }
 
 
-/* ============================================================
+  /* ============================================================
    ✅ Stacked sort arrows for BOTH tables (Shipment + Packages)
    ============================================================ */
 
-/* Make room + enable positioning */
-#shipmentTable thead th.sorting,
-#shipmentTable thead th.sorting_asc,
-#shipmentTable thead th.sorting_desc,
-#packagesTable thead th.sorting,
-#packagesTable thead th.sorting_asc,
-#packagesTable thead th.sorting_desc {
-  position: relative;
-  padding-right: 22px;
-  cursor: pointer;
+  /* Make room + enable positioning */
+  #shipmentTable thead th.sorting,
+  #shipmentTable thead th.sorting_asc,
+  #shipmentTable thead th.sorting_desc,
+  #packagesTable thead th.sorting,
+  #packagesTable thead th.sorting_asc,
+  #packagesTable thead th.sorting_desc {
+    position: relative;
+    padding-right: 22px;
+    cursor: pointer;
 
-  /* kill DataTables default sort icons (background images / built-ins) */
-  background-image: none !important;
-}
+    /* kill DataTables default sort icons (background images / built-ins) */
+    background-image: none !important;
+  }
 
-/* Base triangles */
-#shipmentTable thead th.sorting::before,
-#shipmentTable thead th.sorting::after,
-#shipmentTable thead th.sorting_asc::before,
-#shipmentTable thead th.sorting_asc::after,
-#shipmentTable thead th.sorting_desc::before,
-#shipmentTable thead th.sorting_desc::after,
-#packagesTable thead th.sorting::before,
-#packagesTable thead th.sorting::after,
-#packagesTable thead th.sorting_asc::before,
-#packagesTable thead th.sorting_asc::after,
-#packagesTable thead th.sorting_desc::before,
-#packagesTable thead th.sorting_desc::after {
-  content: "";
-  position: absolute;
-  right: 8px;
-  width: 0;
-  height: 0;
-  opacity: 0.55;
-}
+  /* Base triangles */
+  #shipmentTable thead th.sorting::before,
+  #shipmentTable thead th.sorting::after,
+  #shipmentTable thead th.sorting_asc::before,
+  #shipmentTable thead th.sorting_asc::after,
+  #shipmentTable thead th.sorting_desc::before,
+  #shipmentTable thead th.sorting_desc::after,
+  #packagesTable thead th.sorting::before,
+  #packagesTable thead th.sorting::after,
+  #packagesTable thead th.sorting_asc::before,
+  #packagesTable thead th.sorting_asc::after,
+  #packagesTable thead th.sorting_desc::before,
+  #packagesTable thead th.sorting_desc::after {
+    content: "";
+    position: absolute;
+    right: 8px;
+    width: 0;
+    height: 0;
+    opacity: 0.55;
+  }
 
-/* ▲ up triangle */
-#shipmentTable thead th.sorting::before,
-#shipmentTable thead th.sorting_asc::before,
-#shipmentTable thead th.sorting_desc::before,
-#packagesTable thead th.sorting::before,
-#packagesTable thead th.sorting_asc::before,
-#packagesTable thead th.sorting_desc::before {
-  top: 38%;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 7px solid rgba(255,255,255,0.95); /* white arrows for dark headers */
-}
+  /* ▲ up triangle */
+  #shipmentTable thead th.sorting::before,
+  #shipmentTable thead th.sorting_asc::before,
+  #shipmentTable thead th.sorting_desc::before,
+  #packagesTable thead th.sorting::before,
+  #packagesTable thead th.sorting_asc::before,
+  #packagesTable thead th.sorting_desc::before {
+    top: 38%;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 7px solid rgba(255, 255, 255, 0.95);
+    /* white arrows for dark headers */
+  }
 
-/* ▼ down triangle */
-#shipmentTable thead th.sorting::after,
-#shipmentTable thead th.sorting_asc::after,
-#shipmentTable thead th.sorting_desc::after,
-#packagesTable thead th.sorting::after,
-#packagesTable thead th.sorting_asc::after,
-#packagesTable thead th.sorting_desc::after {
-  top: 58%;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 7px solid rgba(255,255,255,0.95); /* white arrows for dark headers */
-}
+  /* ▼ down triangle */
+  #shipmentTable thead th.sorting::after,
+  #shipmentTable thead th.sorting_asc::after,
+  #shipmentTable thead th.sorting_desc::after,
+  #packagesTable thead th.sorting::after,
+  #packagesTable thead th.sorting_asc::after,
+  #packagesTable thead th.sorting_desc::after {
+    top: 58%;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid rgba(255, 255, 255, 0.95);
+    /* white arrows for dark headers */
+  }
 
-/* Highlight current direction */
-#shipmentTable thead th.sorting_asc::before,
-#packagesTable thead th.sorting_asc::before { opacity: 1; }
+  /* Highlight current direction */
+  #shipmentTable thead th.sorting_asc::before,
+  #packagesTable thead th.sorting_asc::before {
+    opacity: 1;
+  }
 
-#shipmentTable thead th.sorting_asc::after,
-#packagesTable thead th.sorting_asc::after  { opacity: 0.15; }
+  #shipmentTable thead th.sorting_asc::after,
+  #packagesTable thead th.sorting_asc::after {
+    opacity: 0.15;
+  }
 
-#shipmentTable thead th.sorting_desc::before,
-#packagesTable thead th.sorting_desc::before { opacity: 0.15; }
+  #shipmentTable thead th.sorting_desc::before,
+  #packagesTable thead th.sorting_desc::before {
+    opacity: 0.15;
+  }
 
-#shipmentTable thead th.sorting_desc::after,
-#packagesTable thead th.sorting_desc::after { opacity: 1; }
+  #shipmentTable thead th.sorting_desc::after,
+  #packagesTable thead th.sorting_desc::after {
+    opacity: 1;
+  }
 
-#packagesTable thead th {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  background: #212529 !important;
-  color: #fff !important;
-}
+  #packagesTable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #212529 !important;
+    color: #fff !important;
+  }
 
-#packagesTable tbody tr.row-selected {
-  background-color: #f3e8ff !important;
-}
+  #packagesTable tbody tr.row-selected {
+    background-color: #f3e8ff !important;
+  }
 
-#packagesTable tbody tr:hover {
-  background-color: #faf5ff;
-}
+  #packagesTable tbody tr:hover {
+    background-color: #faf5ff;
+  }
 </style>
 
 <script>
-document.addEventListener("DOMContentLoaded", function () {
-  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
-    bootstrap.Tooltip.getOrCreateInstance(el);
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+      bootstrap.Tooltip.getOrCreateInstance(el);
+    });
   });
-});
 </script>
 
 {% include 'admin/invoices/_proforma_modal_block.html' %}

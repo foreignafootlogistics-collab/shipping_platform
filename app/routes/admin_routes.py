@@ -2772,8 +2772,14 @@ def proforma_invoice_modal(invoice_id):
         if is_subscription_covered:
             freight = 0.0
             handling = 0.0
-            other = 0.0
-            bad_address_fee = 0.0
+            other = float(getattr(p, "other_charges", 0) or 0)
+            bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0)
+
+            if (
+                bool(getattr(p, "epc", False))
+                or bool(getattr(p, "bad_address", False))
+            ) and bad_address_fee <= 0:
+                bad_address_fee = 500.0
 
             if val <= 100:
                 duty = 0.0
@@ -2883,6 +2889,7 @@ def proforma_invoice_modal(invoice_id):
         logo_data_uri=logo_data_uri,
         logo_url=logo_url,
     )
+
 @admin_bp.route("/invoice/save/<int:invoice_id>", methods=["POST"])
 @admin_required
 def save_invoice_notes(invoice_id):

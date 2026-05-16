@@ -611,14 +611,18 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
             if hasattr(p, "bad_address_fee"):
                 p.bad_address_fee = bad_address_fee
 
+            other_charge = float(getattr(p, "other_charges", 0) or 0)
+
+            final_total = other_charge + bad_address_fee
+
             if hasattr(p, "grand_total"):
-                p.grand_total = bad_address_fee
+                p.grand_total = final_total
 
             if hasattr(p, "amount_due"):
-                p.amount_due = bad_address_fee
+                p.amount_due = final_total
 
             if hasattr(p, "outstanding"):
-                p.outstanding = bad_address_fee
+                p.outstanding = final_total
 
             return {
                 "subscription_applied": True,
@@ -656,6 +660,7 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
 
             final_total = (
                 float(getattr(p, "customs_total", 0) or 0)
+                + float(getattr(p, "other_charges", 0) or 0)
                 + bad_address_fee
             )
 
@@ -3982,6 +3987,16 @@ def bulk_shipment_action(shipment_id):
             raw_bad_address = request.form.get(f"bad_address_{p.id}")
             raw_bad_address_fee = request.form.get(f"bad_address_fee_{p.id}")
 
+            raw_other_charge = request.form.get(f"other_{p.id}")
+
+            try:
+                other_charge = float(str(raw_other_charge).strip()) if raw_other_charge not in (None, "", "None") else 0.0
+            except Exception:
+                other_charge = 0.0
+
+            if hasattr(p, "other_charges"):
+                p.other_charges = other_charge
+
             form_bad_address = str(raw_bad_address or "0").strip() in ("1", "true", "True", "yes", "on")
             is_epc = bool(getattr(p, "epc", False))
 
@@ -5882,8 +5897,7 @@ def api_update_package(pkg_id):
             "handling_fee",
             "handling",
             "storage_fee",
-            "freight_total",
-            "other_charges",            
+            "freight_total",                        
             "discount_due",
         ]:
             if hasattr(p, field):
@@ -5918,6 +5932,7 @@ def api_update_package(pkg_id):
             # Recalculate total from remaining customs only
             customs_total = (
                 float(getattr(p, "customs_total", 0) or 0)
+                + float(getattr(p, "other_charges", 0) or 0)
                 + float(getattr(p, "bad_address_fee", 0) or 0)
             )
 

@@ -603,11 +603,19 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
                 if hasattr(p, field):
                     setattr(p, field, 0.0)
 
+            bad_address_fee = 500.0 if bool(
+                getattr(p, "epc", False)
+                or getattr(p, "bad_address", False)
+            ) else 0.0
+
+            if hasattr(p, "bad_address_fee"):
+                p.bad_address_fee = bad_address_fee
+
             if hasattr(p, "grand_total"):
-                p.grand_total = 0.0
+                p.grand_total = bad_address_fee
 
             if hasattr(p, "amount_due"):
-                p.amount_due = 0.0
+                p.amount_due = bad_address_fee
 
             return {
                 "subscription_applied": True,
@@ -635,7 +643,18 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
                 if hasattr(p, field):
                     setattr(p, field, 0.0)
 
-            final_total = float(getattr(p, "customs_total", 0) or 0)
+            bad_address_fee = 500.0 if bool(
+                getattr(p, "epc", False)
+                or getattr(p, "bad_address", False)
+            ) else 0.0
+
+            if hasattr(p, "bad_address_fee"):
+                p.bad_address_fee = bad_address_fee
+
+            final_total = (
+                float(getattr(p, "customs_total", 0) or 0)
+                + bad_address_fee
+            )
 
             if hasattr(p, "grand_total"):
                 p.grand_total = final_total
@@ -5815,12 +5834,23 @@ def api_update_package(pkg_id):
             "handling",
             "storage_fee",
             "freight_total",
-            "other_charges",
-            "bad_address_fee",
+            "other_charges",            
             "discount_due",
         ]:
             if hasattr(p, field):
                 setattr(p, field, 0.0)
+
+            
+            # EPC / bad address fee still applies even for subscription packages
+            is_bad_address = bool(
+                getattr(p, "epc", False)
+                or getattr(p, "bad_address", False)
+            )
+
+            bad_address_fee = 500.0 if is_bad_address else 0.0
+
+            if hasattr(p, "bad_address_fee"):
+                p.bad_address_fee = bad_address_fee
 
         # If value is $100 or less, also remove customs
         if declared_value <= 100:
@@ -5837,7 +5867,10 @@ def api_update_package(pkg_id):
                     setattr(p, field, 0.0)
 
             # Recalculate total from remaining customs only
-            customs_total = float(getattr(p, "customs_total", 0) or 0)
+            customs_total = (
+                float(getattr(p, "customs_total", 0) or 0)
+                + float(getattr(p, "bad_address_fee", 0) or 0)
+            )
 
             if hasattr(p, "grand_total"):
                 p.grand_total = customs_total

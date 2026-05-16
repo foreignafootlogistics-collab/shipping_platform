@@ -4,79 +4,210 @@
 {% block content %}
 
 <style>
-  .text-purple{color:#4a148c!important}
-  .bg-purple{background:#4a148c!important;color:#fff!important}
-  .btn-outline-purple{border:1px solid #4a148c;color:#4a148c}
-  .btn-outline-purple:hover{background:#4a148c;color:#fff}
-  .panel{border:1px solid #e5e5e5;border-radius:.5rem}
-  .icon-left{
-    width:36px;height:36px;border:1px solid #bfb3da;border-radius:.5rem;
-    display:flex;align-items:center;justify-content:center;cursor:pointer;
+  .text-purple {
+    color: #4a148c !important
   }
-  .icon-left i{color:#6c757d}
-  .toolbar .btn{border-radius:0}
-  .table td,.table th{vertical-align:middle}
+
+  .bg-purple {
+    background: #4a148c !important;
+    color: #fff !important
+  }
+
+  .btn-outline-purple {
+    border: 1px solid #4a148c;
+    color: #4a148c
+  }
+
+  .btn-outline-purple:hover {
+    background: #4a148c;
+    color: #fff
+  }
+
+  .panel {
+    border: 1px solid #e5e5e5;
+    border-radius: .5rem
+  }
+
+  .icon-left {
+    width: 36px;
+    height: 36px;
+    border: 1px solid #bfb3da;
+    border-radius: .5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .icon-left i {
+    color: #6c757d
+  }
+
+  .toolbar .btn {
+    border-radius: 0
+  }
+
+  .table td,
+  .table th {
+    vertical-align: middle
+  }
 
   /* ====== PAYMENT MODAL (POS STYLE) ====== */
-  .payment-layout{display:flex;flex-wrap:wrap;gap:1.5rem}
-  .payment-left{flex:1 1 260px}
-  .payment-right{flex:1 1 220px}
+  .payment-layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem
+  }
 
-  .payment-display{
-    border-radius:.5rem;border:1px solid #e0d4ff;background:#f9f5ff;
-    padding:.75rem 1rem;font-size:1.4rem;font-weight:600;color:#4a148c;
-    text-align:right;margin-bottom:.75rem;
+  .payment-left {
+    flex: 1 1 260px
   }
-  .payment-keypad{
-    display:grid;
-    grid-template-columns:repeat(3, minmax(0,1fr));
-    gap:.35rem;margin-bottom:.5rem;
-  }
-  .payment-key-btn{
-    border:1px solid #e0e0e0;border-radius:.35rem;padding:.5rem 0;
-    font-size:1.1rem;background:#fff;cursor:pointer;
-    transition:background-color .1s, transform .05s, box-shadow .1s;
-  }
-  .payment-key-btn:hover{background:#f3e8ff;box-shadow:0 0 0 1px rgba(106,27,154,.15)}
-  .payment-key-btn:active{transform:translateY(1px)}
 
-  .payment-quick-row{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}
-  .payment-quick-btn{
-    flex:1 1 80px;border-radius:999px;border:1px solid #e0d4ff;
-    background:#fdfbff;padding:.35rem .5rem;font-size:.85rem;
-    white-space:nowrap;cursor:pointer;
+  .payment-right {
+    flex: 1 1 220px
   }
-  .payment-quick-btn:hover{background:#f3e8ff;border-color:#4a148c}
 
-  .payment-clear-btn{border-color:#fecaca;color:#b91c1c;background:#fff1f2}
-  .payment-clear-btn:hover{background:#fee2e2}
+  .payment-display {
+    border-radius: .5rem;
+    border: 1px solid #e0d4ff;
+    background: #f9f5ff;
+    padding: .75rem 1rem;
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: #4a148c;
+    text-align: right;
+    margin-bottom: .75rem;
+  }
 
-  .payment-method-list{display:flex;flex-direction:column;gap:.35rem}
-  .payment-method-btn{
-    border-radius:.35rem;border:1px solid #e0e0e0;padding:.35rem .6rem;
-    display:flex;align-items:center;justify-content:space-between;
-    cursor:pointer;background:#fff;font-size:.9rem;
+  .payment-keypad {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .35rem;
+    margin-bottom: .5rem;
   }
-  .payment-method-btn span{display:flex;align-items:center;gap:.4rem}
-  .payment-method-btn.active{
-    border-color:#4a148c;background:#f3e8ff;color:#4a148c;
-    box-shadow:0 0 0 1px rgba(106,27,154,.25);
+
+  .payment-key-btn {
+    border: 1px solid #e0e0e0;
+    border-radius: .35rem;
+    padding: .5rem 0;
+    font-size: 1.1rem;
+    background: #fff;
+    cursor: pointer;
+    transition: background-color .1s, transform .05s, box-shadow .1s;
   }
-  .payment-method-btn i{opacity:.75}
-  .payment-meta small{font-size:.75rem}
+
+  .payment-key-btn:hover {
+    background: #f3e8ff;
+    box-shadow: 0 0 0 1px rgba(106, 27, 154, .15)
+  }
+
+  .payment-key-btn:active {
+    transform: translateY(1px)
+  }
+
+  .payment-quick-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+    margin-bottom: .5rem
+  }
+
+  .payment-quick-btn {
+    flex: 1 1 80px;
+    border-radius: 999px;
+    border: 1px solid #e0d4ff;
+    background: #fdfbff;
+    padding: .35rem .5rem;
+    font-size: .85rem;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .payment-quick-btn:hover {
+    background: #f3e8ff;
+    border-color: #4a148c
+  }
+
+  .payment-clear-btn {
+    border-color: #fecaca;
+    color: #b91c1c;
+    background: #fff1f2
+  }
+
+  .payment-clear-btn:hover {
+    background: #fee2e2
+  }
+
+  .payment-method-list {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem
+  }
+
+  .payment-method-btn {
+    border-radius: .35rem;
+    border: 1px solid #e0e0e0;
+    padding: .35rem .6rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    background: #fff;
+    font-size: .9rem;
+  }
+
+  .payment-method-btn span {
+    display: flex;
+    align-items: center;
+    gap: .4rem
+  }
+
+  .payment-method-btn.active {
+    border-color: #4a148c;
+    background: #f3e8ff;
+    color: #4a148c;
+    box-shadow: 0 0 0 1px rgba(106, 27, 154, .25);
+  }
+
+  .payment-method-btn i {
+    opacity: .75
+  }
+
+  .payment-meta small {
+    font-size: .75rem
+  }
 
   /* ====== DISCOUNT MODAL ====== */
-  .discount-tabs{
-    display:flex;border-radius:.5rem;overflow:hidden;margin-bottom:.75rem;
-    border:1px solid #e0e0e0;
+  .discount-tabs {
+    display: flex;
+    border-radius: .5rem;
+    overflow: hidden;
+    margin-bottom: .75rem;
+    border: 1px solid #e0e0e0;
   }
-  .discount-tab{
-    flex:1 1 0;border:none;padding:.45rem 0;background:#f9fafb;
-    font-weight:500;font-size:.9rem;cursor:pointer;
+
+  .discount-tab {
+    flex: 1 1 0;
+    border: none;
+    padding: .45rem 0;
+    background: #f9fafb;
+    font-weight: 500;
+    font-size: .9rem;
+    cursor: pointer;
   }
-  .discount-tab.active{background:#4a148c;color:#fff}
-  .discount-tab:not(.active){color:#4b5563}
-  .discount-help{font-size:.8rem}
+
+  .discount-tab.active {
+    background: #4a148c;
+    color: #fff
+  }
+
+  .discount-tab:not(.active) {
+    color: #4b5563
+  }
+
+  .discount-help {
+    font-size: .8rem
+  }
 </style>
 
 <div class="container mt-3">
@@ -122,33 +253,23 @@
       </div>
       <div class="d-flex align-items-center gap-2">
 
-        <button class="btn btn-outline-purple"
-                type="button"
-                data-bs-toggle="modal"
-                data-bs-target="#addPaymentModal"
-                title="Add Payment">
+        <button class="btn btn-outline-purple" type="button" data-bs-toggle="modal" data-bs-target="#addPaymentModal"
+          title="Add Payment">
           <i class="bi bi-cash-coin"></i>
         </button>
 
-        <button class="btn btn-outline-purple"
-                type="button"
-                data-bs-toggle="modal"
-                data-bs-target="#addDiscountModal"
-                title="Add Discount">
+        <button class="btn btn-outline-purple" type="button" data-bs-toggle="modal" data-bs-target="#addDiscountModal"
+          title="Add Discount">
           <i class="bi bi-percent"></i>
         </button>
 
         <div class="toolbar d-inline-flex border rounded ms-2">
-          <a class="btn btn-light"
-             href="{{ url_for('admin.view_invoice', invoice_id=invoice.id) }}"
-             title="Refresh">
+          <a class="btn btn-light" href="{{ url_for('admin.view_invoice', invoice_id=invoice.id) }}" title="Refresh">
             <i class="bi bi-arrow-repeat"></i>
           </a>
 
-          <button type="button"
-                  class="btn btn-outline-secondary btn-sm"
-                  title="View Proforma Invoice"
-                  onclick="openProformaInvoice({{ invoice.id }})">
+          <button type="button" class="btn btn-outline-secondary btn-sm" title="View Proforma Invoice"
+            onclick="openProformaInvoice({{ invoice.id }})">
             <i class="bi bi-receipt"></i>
           </button>
         </div>
@@ -159,10 +280,8 @@
       <div class="col-md-6">
         <label class="form-label small text-muted">Description/Notes</label>
         <form method="POST" action="{{ url_for('admin.save_invoice_notes', invoice_id=invoice.id) }}">
-          <textarea name="notes"
-                    class="form-control"
-                    rows="3"
-                    placeholder="Notes...">{{ invoice.description or "" }}</textarea>
+          <textarea name="notes" class="form-control" rows="3"
+            placeholder="Notes...">{{ invoice.description or "" }}</textarea>
           <button type="submit" class="btn btn-sm btn-outline-purple mt-2">
             <i class="bi bi-save"></i> Save
           </button>
@@ -198,52 +317,51 @@
           </tr>
         </thead>
         <tbody>
-        {% for p in invoice.packages %}
+          {% for p in invoice.packages %}
           <tr>
             <td>
-              <div class="icon-left"
-                   data-pkg="{{ p.id }}"
-                   data-bs-toggle="modal"
-                   data-bs-target="#breakdownModal"
-                   title="Charges breakdown">
+              <div class="icon-left" data-pkg="{{ p.id }}" data-bs-toggle="modal" data-bs-target="#breakdownModal"
+                title="Charges breakdown">
                 <i class="bi bi-lightning-charge"></i>
               </div>
-            </td>           
+            </td>
             <td><input type="checkbox"></td>
             <td>{{ p.house_awb or "—" }}</td>
             <td>{{ p.description or "—" }}
               {% if p.subscription_covered %}
-                <div class="mt-1">
-                  {% if p.customs_only_due_to_subscription %}
-                    <span class="badge bg-warning text-dark">
-                      Freight covered — customs charges apply
-                    </span>
-                  {% else %}
-                    <span class="badge bg-success">
-                      Covered by subscription
-                    </span>
-                  {% endif %}
-                </div>
+              <div class="mt-1">
+                {% if p.customs_only_due_to_subscription %}
+                <span class="badge bg-warning text-dark">
+                  Freight covered — customs charges apply
+                </span>
+                {% else %}
+                <span class="badge bg-success">
+                  Covered by subscription
+                </span>
+                {% endif %}
+              </div>
               {% endif %}
             </td>
             <td>{{ p.merchant or "—" }}</td>
             {% set recv = p.received_date or p.date_received %}
             <td>
               {% if recv %}
-                {{ recv.strftime('%d.%m.%Y') }}
+              {{ recv.strftime('%d.%m.%Y') }}
               {% else %}
-                —
+              —
               {% endif %}
             </td>
             <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
             <td class="text-end">${{ "%.2f"|format(p.declared_value or p.value or 0) }}
-</td>
+            </td>
             <td class="text-end">JMD {{ "%.2f"|format(p.bad_address_fee or 0) }}</td>
             <td class="text-end">JMD {{ "%.2f"|format(p.amount_due or 0) }}</td>
           </tr>
-        {% else %}
-          <tr><td colspan="10" class="text-center text-muted py-4">No items.</td></tr>
-        {% endfor %}
+          {% else %}
+          <tr>
+            <td colspan="10" class="text-center text-muted py-4">No items.</td>
+          </tr>
+          {% endfor %}
         </tbody>
       </table>
     </div>
@@ -254,9 +372,8 @@
 <!-- =================== ADD PAYMENT MODAL =================== -->
 <div class="modal fade" id="addPaymentModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
-    <form class="modal-content" method="POST"
-          action="{{ url_for('admin.add_payment', invoice_id=invoice.id) }}"
-          id="addPaymentForm">
+    <form class="modal-content" method="POST" action="{{ url_for('admin.add_payment', invoice_id=invoice.id) }}"
+      id="addPaymentForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <div class="modal-header">
@@ -295,9 +412,7 @@
             </div>
 
             <div class="payment-quick-row">
-              <button type="button"
-                      class="payment-quick-btn payment-clear-btn"
-                      id="payClearBtn">
+              <button type="button" class="payment-quick-btn payment-clear-btn" id="payClearBtn">
                 Clear
               </button>
             </div>
@@ -356,10 +471,8 @@
 <!-- =================== ADD DISCOUNT MODAL =================== -->
 <div class="modal fade" id="addDiscountModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-md modal-dialog-centered">
-    <form class="modal-content" method="POST"
-          action="{{ url_for('admin.add_discount', invoice_id=invoice.id) }}"
-          id="discountForm"
-          data-balance="{{ invoice.amount_due or 0 }}">
+    <form class="modal-content" method="POST" action="{{ url_for('admin.add_discount', invoice_id=invoice.id) }}"
+      id="discountForm" data-balance="{{ invoice.amount_due or 0 }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <div class="modal-header">
@@ -379,8 +492,7 @@
 
         <div id="discountPercentPane">
           <label class="form-label">Discount Percent</label>
-          <input type="number" class="form-control" id="discountPercentInput"
-                 min="0" max="100" step="0.01" value="0">
+          <input type="number" class="form-control" id="discountPercentInput" min="0" max="100" step="0.01" value="0">
           <div class="discount-help text-muted mt-1">
             Applies to current balance (JMD {{ "%.2f"|format(invoice.amount_due or 0) }}).<br>
             Discount amount: <span class="fw-semibold" id="discountPercentAmount">JMD 0.00</span>
@@ -419,17 +531,50 @@
         <div class="table-responsive">
           <table class="table table-sm mb-0">
             <tbody>
-              <tr><th>Duty</th>     <td class="text-end" id="bd-duty">—</td></tr>
-              <tr><th>GCT</th>      <td class="text-end" id="bd-gct">—</td></tr>
-              <tr><th>Freight</th>  <td class="text-end" id="bd-freight">—</td></tr>
-              <tr><th>Handling</th> <td class="text-end" id="bd-handling">—</td></tr>
-              <tr><th>SCF</th>      <td class="text-end" id="bd-scf">—</td></tr>
-              <tr><th>ENVL</th>     <td class="text-end" id="bd-envl">—</td></tr>
-              <tr><th>CAF</th>      <td class="text-end" id="bd-caf">—</td></tr>
-              <tr><th>Stamp</th>    <td class="text-end" id="bd-stamp">—</td></tr>
-              <tr><th>Other Charges</th> <td class="text-end" id="bd-other">—</td></tr>
-              <tr><th>Bad Address Fee</th> <td class="text-end" id="bd-bad-address">—</td></tr>
-              <tr class="table-light"><th>Total</th><td class="text-end fw-bold" id="bd-total">—</td></tr>
+              <tr>
+                <th>Duty</th>
+                <td class="text-end" id="bd-duty">—</td>
+              </tr>
+              <tr>
+                <th>GCT</th>
+                <td class="text-end" id="bd-gct">—</td>
+              </tr>
+              <tr>
+                <th>Freight</th>
+                <td class="text-end" id="bd-freight">—</td>
+              </tr>
+              <tr>
+                <th>Handling</th>
+                <td class="text-end" id="bd-handling">—</td>
+              </tr>
+              <tr>
+                <th>SCF</th>
+                <td class="text-end" id="bd-scf">—</td>
+              </tr>
+              <tr>
+                <th>ENVL</th>
+                <td class="text-end" id="bd-envl">—</td>
+              </tr>
+              <tr>
+                <th>CAF</th>
+                <td class="text-end" id="bd-caf">—</td>
+              </tr>
+              <tr>
+                <th>Stamp</th>
+                <td class="text-end" id="bd-stamp">—</td>
+              </tr>
+              <tr>
+                <th>Other Charges</th>
+                <td class="text-end" id="bd-other">—</td>
+              </tr>
+              <tr>
+                <th>Bad Address Fee</th>
+                <td class="text-end" id="bd-bad-address">—</td>
+              </tr>
+              <tr class="table-light">
+                <th>Total</th>
+                <td class="text-end fw-bold" id="bd-total">—</td>
+              </tr>
             </tbody>
           </table>
           <small class="text-muted">USD→JMD rate: {{ USD_TO_JMD }}</small>
@@ -440,249 +585,254 @@
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", function () {
+  document.addEventListener("DOMContentLoaded", function () {
 
-  // ==========================
-  // PAYMENT: keypad + method
-  // ==========================
-  (function () {
-    const display = document.getElementById("payDisplay");
-    const hidden  = document.getElementById("payAmountInput");
-    if (!display || !hidden) return;
+    // ==========================
+    // PAYMENT: keypad + method
+    // ==========================
+    (function () {
+      const display = document.getElementById("payDisplay");
+      const hidden = document.getElementById("payAmountInput");
+      if (!display || !hidden) return;
 
-    let current = "0";
+      let current = "0";
 
-    function updateDisplay() {
-      let num = parseFloat(current || "0");
-      if (isNaN(num)) num = 0;
-      hidden.value = num.toFixed(2);
-      display.textContent = "JMD " + num.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-    }
-
-    function pushKey(key) {
-      if (key === ".") {
-        if (current.includes(".")) return;
-        current += ".";
-      } else if (key === "00") {
-        if (current === "0") return;
-        current += "00";
-      } else {
-        if (current === "0") current = key;
-        else current += key;
+      function updateDisplay() {
+        let num = parseFloat(current || "0");
+        if (isNaN(num)) num = 0;
+        hidden.value = num.toFixed(2);
+        display.textContent = "JMD " + num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       }
-      updateDisplay();
-    }
 
-    document.querySelectorAll(".payment-key-btn").forEach(btn => {
-      btn.addEventListener("click", () => pushKey(btn.getAttribute("data-key")));
-    });
-
-    document.querySelectorAll(".payment-quick-btn[data-quick]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        current = String(btn.getAttribute("data-quick") || "0");
+      function pushKey(key) {
+        if (key === ".") {
+          if (current.includes(".")) return;
+          current += ".";
+        } else if (key === "00") {
+          if (current === "0") return;
+          current += "00";
+        } else {
+          if (current === "0") current = key;
+          else current += key;
+        }
         updateDisplay();
-      });
-    });
+      }
 
-    const clearBtn = document.getElementById("payClearBtn");
-    if (clearBtn) {
-      clearBtn.addEventListener("click", () => {
-        current = "0";
-        updateDisplay();
+      document.querySelectorAll(".payment-key-btn").forEach(btn => {
+        btn.addEventListener("click", () => pushKey(btn.getAttribute("data-key")));
       });
-    }
 
-    // Method selection
-    const methodInput = document.getElementById("payMethodInput");
-    const methodList  = document.getElementById("paymentMethodList");
-    if (methodInput && methodList) {
-      methodList.querySelectorAll(".payment-method-btn").forEach(btn => {
+      document.querySelectorAll(".payment-quick-btn[data-quick]").forEach(btn => {
         btn.addEventListener("click", () => {
-          methodList.querySelectorAll(".payment-method-btn").forEach(b => b.classList.remove("active"));
-          btn.classList.add("active");
-          methodInput.value = btn.getAttribute("data-method") || "Cash";
+          current = String(btn.getAttribute("data-quick") || "0");
+          updateDisplay();
         });
       });
-    }
 
-    // Reset on modal open
-    const payModalEl = document.getElementById("addPaymentModal");
-    if (payModalEl) {
-      payModalEl.addEventListener("show.bs.modal", () => {
-        current = "0";
-        updateDisplay();
-        if (methodInput) methodInput.value = "Cash";
-        if (methodList) {
-          methodList.querySelectorAll(".payment-method-btn").forEach(b => b.classList.remove("active"));
-          const first = methodList.querySelector('.payment-method-btn[data-method="Cash"]');
-          if (first) first.classList.add("active");
-        }
-      });
-    }
-
-    updateDisplay();
-  })();
-
-
-  // ==========================
-  // DISCOUNT: percent/amount
-  // ==========================
-  (function () {
-    const form = document.getElementById("discountForm");
-    if (!form) return;
-
-    const balance = parseFloat(form.getAttribute("data-balance") || "0") || 0;
-    const tabs    = document.getElementById("discountTabs");
-    const panePct = document.getElementById("discountPercentPane");
-    const paneAmt = document.getElementById("discountAmountPane");
-    const pctInput= document.getElementById("discountPercentInput");
-    const pctLbl  = document.getElementById("discountPercentAmount");
-    const amtInput= document.getElementById("discountAmountInput");
-    const hidden  = document.getElementById("discountHiddenAmount");
-
-    let mode = "percent";
-
-    function formatJMD(v) {
-      const n = parseFloat(v || "0") || 0;
-      return "JMD " + n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-    }
-
-    function recalc() {
-      if (mode === "percent") {
-        const pct = parseFloat(pctInput.value || "0") || 0;
-        const discAmt = Math.max(0, balance * pct / 100);
-        hidden.value = discAmt.toFixed(2);
-        if (pctLbl) pctLbl.textContent = formatJMD(discAmt);
-      } else {
-        const v = parseFloat(amtInput.value || "0") || 0;
-        hidden.value = v.toFixed(2);
+      const clearBtn = document.getElementById("payClearBtn");
+      if (clearBtn) {
+        clearBtn.addEventListener("click", () => {
+          current = "0";
+          updateDisplay();
+        });
       }
-    }
 
-    if (tabs) {
-      tabs.querySelectorAll(".discount-tab").forEach(btn => {
-        btn.addEventListener("click", () => {
-          tabs.querySelectorAll(".discount-tab").forEach(b => b.classList.remove("active"));
-          btn.classList.add("active");
-          mode = btn.getAttribute("data-mode") || "percent";
-          if (mode === "percent") {
-            panePct.classList.remove("d-none");
-            paneAmt.classList.add("d-none");
-          } else {
-            panePct.classList.add("d-none");
-            paneAmt.classList.remove("d-none");
+      // Method selection
+      const methodInput = document.getElementById("payMethodInput");
+      const methodList = document.getElementById("paymentMethodList");
+      if (methodInput && methodList) {
+        methodList.querySelectorAll(".payment-method-btn").forEach(btn => {
+          btn.addEventListener("click", () => {
+            methodList.querySelectorAll(".payment-method-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            methodInput.value = btn.getAttribute("data-method") || "Cash";
+          });
+        });
+      }
+
+      // Reset on modal open
+      const payModalEl = document.getElementById("addPaymentModal");
+      if (payModalEl) {
+        payModalEl.addEventListener("show.bs.modal", () => {
+          current = "0";
+          updateDisplay();
+          if (methodInput) methodInput.value = "Cash";
+          if (methodList) {
+            methodList.querySelectorAll(".payment-method-btn").forEach(b => b.classList.remove("active"));
+            const first = methodList.querySelector('.payment-method-btn[data-method="Cash"]');
+            if (first) first.classList.add("active");
           }
+        });
+      }
+
+      updateDisplay();
+    })();
+
+
+    // ==========================
+    // DISCOUNT: percent/amount
+    // ==========================
+    (function () {
+      const form = document.getElementById("discountForm");
+      if (!form) return;
+
+      const balance = parseFloat(form.getAttribute("data-balance") || "0") || 0;
+      const tabs = document.getElementById("discountTabs");
+      const panePct = document.getElementById("discountPercentPane");
+      const paneAmt = document.getElementById("discountAmountPane");
+      const pctInput = document.getElementById("discountPercentInput");
+      const pctLbl = document.getElementById("discountPercentAmount");
+      const amtInput = document.getElementById("discountAmountInput");
+      const hidden = document.getElementById("discountHiddenAmount");
+
+      let mode = "percent";
+
+      function formatJMD(v) {
+        const n = parseFloat(v || "0") || 0;
+        return "JMD " + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+
+      function recalc() {
+        if (mode === "percent") {
+          const pct = parseFloat(pctInput.value || "0") || 0;
+          const discAmt = Math.max(0, balance * pct / 100);
+          hidden.value = discAmt.toFixed(2);
+          if (pctLbl) pctLbl.textContent = formatJMD(discAmt);
+        } else {
+          const v = parseFloat(amtInput.value || "0") || 0;
+          hidden.value = v.toFixed(2);
+        }
+      }
+
+      if (tabs) {
+        tabs.querySelectorAll(".discount-tab").forEach(btn => {
+          btn.addEventListener("click", () => {
+            tabs.querySelectorAll(".discount-tab").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            mode = btn.getAttribute("data-mode") || "percent";
+            if (mode === "percent") {
+              panePct.classList.remove("d-none");
+              paneAmt.classList.add("d-none");
+            } else {
+              panePct.classList.add("d-none");
+              paneAmt.classList.remove("d-none");
+            }
+            recalc();
+          });
+        });
+      }
+
+      if (pctInput) pctInput.addEventListener("input", recalc);
+      if (amtInput) amtInput.addEventListener("input", recalc);
+
+      const discModalEl = document.getElementById("addDiscountModal");
+      if (discModalEl) {
+        discModalEl.addEventListener("show.bs.modal", () => {
+          mode = "percent";
+          if (pctInput) pctInput.value = "0";
+          if (amtInput) amtInput.value = "0";
+          if (tabs) {
+            tabs.querySelectorAll(".discount-tab").forEach(b => b.classList.remove("active"));
+            const pctTab = tabs.querySelector('.discount-tab[data-mode="percent"]');
+            if (pctTab) pctTab.classList.add("active");
+          }
+          panePct.classList.remove("d-none");
+          paneAmt.classList.add("d-none");
           recalc();
         });
-      });
-    }
-
-    if (pctInput) pctInput.addEventListener("input", recalc);
-    if (amtInput) amtInput.addEventListener("input", recalc);
-
-    const discModalEl = document.getElementById("addDiscountModal");
-    if (discModalEl) {
-      discModalEl.addEventListener("show.bs.modal", () => {
-        mode = "percent";
-        if (pctInput) pctInput.value = "0";
-        if (amtInput) amtInput.value = "0";
-        if (tabs) {
-          tabs.querySelectorAll(".discount-tab").forEach(b => b.classList.remove("active"));
-          const pctTab = tabs.querySelector('.discount-tab[data-mode="percent"]');
-          if (pctTab) pctTab.classList.add("active");
-        }
-        panePct.classList.remove("d-none");
-        paneAmt.classList.add("d-none");
-        recalc();
-      });
-    }
-
-    recalc();
-  })();
-
-
-  // ==========================
-  // BREAKDOWN: lightning click
-  // ==========================
-  document.addEventListener("click", function (e) {
-    const btn = e.target.closest(".icon-left");
-    if (!btn) return;
-
-    const pkgId = btn.getAttribute("data-pkg");
-    if (!pkgId) return;
-
-    const ids = ["bd-duty","bd-gct","bd-freight","bd-handling","bd-scf","bd-envl","bd-caf","bd-stamp","bd-other","bd-bad-address","bd-total"];
-    ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = "…"; });
-
-    fetch("{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace("0", pkgId))
-      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-      .then(d => {
-        const nf = new Intl.NumberFormat();
-        document.getElementById("bd-duty").textContent     = nf.format(d.duty || 0);
-        document.getElementById("bd-gct").textContent      = nf.format(d.gct || 0);
-        document.getElementById("bd-freight").textContent  = nf.format(d.freight || 0);
-        document.getElementById("bd-handling").textContent = nf.format(d.handling || 0);
-        document.getElementById("bd-scf").textContent      = nf.format(d.scf || 0);
-        document.getElementById("bd-envl").textContent     = nf.format(d.envl || 0);
-        document.getElementById("bd-caf").textContent      = nf.format(d.caf || 0);
-        document.getElementById("bd-stamp").textContent    = nf.format(d.stamp || 0);
-        document.getElementById("bd-other").textContent       = nf.format(d.other_charges || 0);
-        document.getElementById("bd-bad-address").textContent = nf.format(d.bad_address_fee || 0);;
-        document.getElementById("bd-total").textContent    = nf.format(d.grand_total || 0);
-      })
-      .catch(() => ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = "—"; }));
-  });
-
-
-  // ==========================
-  // PAYMENT: AJAX submit (only payment form)
-  // ==========================
-  (function () {
-    const form = document.getElementById("addPaymentForm");
-    if (!form) return;
-
-    form.addEventListener("submit", async function (e) {
-      e.preventDefault();
-
-      try {
-        const fd = new FormData(form);
-
-        const resp = await fetch(form.action, {
-          method: "POST",
-          body: fd,
-          headers: { "X-Requested-With": "XMLHttpRequest" }
-        });
-
-        const text = await resp.text();
-        let data = {};
-        try { data = JSON.parse(text); } catch (_) {}
-
-        // Accept either ok:true or success:true
-        const success = (data && (data.ok === true || data.success === true));
-
-        if (!resp.ok || !success) {
-          console.error("Payment response:", text);
-          throw new Error((data && data.error) ? data.error : "Payment not saved.");
-        }
-
-        // close modal
-        const bsModalEl = document.getElementById("addPaymentModal");
-        if (bsModalEl && window.bootstrap) {
-          const modal = bootstrap.Modal.getInstance(bsModalEl);
-          if (modal) modal.hide();
-        }
-
-        // refresh totals
-        window.location.reload();
-
-      } catch (err) {
-        console.error(err);
-        alert(err.message || "Could not add payment.");
       }
-    });
-  })();
 
-});
+      recalc();
+    })();
+
+
+    // ==========================
+    // BREAKDOWN: lightning click
+    // ==========================
+    document.addEventListener("click", function (e) {
+      const btn = e.target.closest(".icon-left");
+      if (!btn) return;
+
+      const pkgId = btn.getAttribute("data-pkg");
+      if (!pkgId) return;
+
+      const ids = ["bd-duty", "bd-gct", "bd-freight", "bd-handling", "bd-scf", "bd-envl", "bd-caf", "bd-stamp", "bd-other", "bd-bad-address", "bd-total"];
+      ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = "…"; });
+
+      fetch("{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace("0", pkgId))
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(d => {
+          const nf = new Intl.NumberFormat();
+          document.getElementById("bd-duty").textContent = nf.format(d.duty || 0);
+          document.getElementById("bd-gct").textContent = nf.format(d.gct || 0);
+          document.getElementById("bd-freight").textContent = nf.format(d.freight || 0);
+          document.getElementById("bd-handling").textContent = nf.format(d.handling || 0);
+          document.getElementById("bd-scf").textContent = nf.format(d.scf || 0);
+          document.getElementById("bd-envl").textContent = nf.format(d.envl || 0);
+          document.getElementById("bd-caf").textContent = nf.format(d.caf || 0);
+          document.getElementById("bd-stamp").textContent = nf.format(d.stamp || 0);
+          document.getElementById("bd-other").textContent = nf.format(d.other_charges || 0);
+          const badAddressFee = Number(d.bad_address_fee || 0);
+
+          document.getElementById("bd-bad-address").textContent =
+            badAddressFee > 0
+              ? "JMD " + nf.format(badAddressFee)
+              : "—";
+          document.getElementById("bd-total").textContent = nf.format(d.grand_total || 0);
+        })
+        .catch(() => ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = "—"; }));
+    });
+
+
+    // ==========================
+    // PAYMENT: AJAX submit (only payment form)
+    // ==========================
+    (function () {
+      const form = document.getElementById("addPaymentForm");
+      if (!form) return;
+
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+
+        try {
+          const fd = new FormData(form);
+
+          const resp = await fetch(form.action, {
+            method: "POST",
+            body: fd,
+            headers: { "X-Requested-With": "XMLHttpRequest" }
+          });
+
+          const text = await resp.text();
+          let data = {};
+          try { data = JSON.parse(text); } catch (_) { }
+
+          // Accept either ok:true or success:true
+          const success = (data && (data.ok === true || data.success === true));
+
+          if (!resp.ok || !success) {
+            console.error("Payment response:", text);
+            throw new Error((data && data.error) ? data.error : "Payment not saved.");
+          }
+
+          // close modal
+          const bsModalEl = document.getElementById("addPaymentModal");
+          if (bsModalEl && window.bootstrap) {
+            const modal = bootstrap.Modal.getInstance(bsModalEl);
+            if (modal) modal.hide();
+          }
+
+          // refresh totals
+          window.location.reload();
+
+        } catch (err) {
+          console.error(err);
+          alert(err.message || "Could not add payment.");
+        }
+      });
+    })();
+
+  });
 </script>
 
 {% include 'admin/invoices/_proforma_modal_block.html' %}

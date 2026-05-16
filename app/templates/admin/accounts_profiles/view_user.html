@@ -3326,10 +3326,19 @@
     // charges breakdown overlay
     if (bdOverlay) {
       const ids = [
-        'bd-duty-inline', 'bd-gct-inline', 'bd-freight-inline', 'bd-handling-inline',
-        'bd-scf-inline', 'bd-envl-inline', 'bd-caf-inline', 'bd-stamp-inline',
-        'bd-other-inline', 'bd-total-inline'
+        'bd-duty-inline',
+        'bd-gct-inline',
+        'bd-freight-inline',
+        'bd-handling-inline',
+        'bd-scf-inline',
+        'bd-envl-inline',
+        'bd-caf-inline',
+        'bd-stamp-inline',
+        'bd-bad-address-inline',
+        'bd-other-inline',
+        'bd-total-inline'
       ];
+
       const setField = (id, val) => {
         const el = bdOverlay.querySelector('#' + id);
         if (el) el.textContent = val;
@@ -3343,9 +3352,13 @@
           ids.forEach(id => setField(id, '…'));
 
           fetch("{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace('0', pkgId))
-            .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+            .then(r => {
+              if (!r.ok) throw new Error();
+              return r.json();
+            })
             .then(d => {
               const nf = new Intl.NumberFormat();
+
               setField('bd-duty-inline', nf.format(d.duty || 0));
               setField('bd-gct-inline', nf.format(d.gct || 0));
               setField('bd-freight-inline', nf.format(d.freight || 0));
@@ -3354,6 +3367,14 @@
               setField('bd-envl-inline', nf.format(d.envl || 0));
               setField('bd-caf-inline', nf.format(d.caf || 0));
               setField('bd-stamp-inline', nf.format(d.stamp || 0));
+
+              setField(
+                'bd-bad-address-inline',
+                (d.bad_address_fee && d.bad_address_fee > 0)
+                  ? nf.format(d.bad_address_fee)
+                  : '—'
+              );
+
               setField('bd-other-inline', nf.format(d.other || 0));
               setField('bd-total-inline', nf.format(d.total_jmd || 0));
             })

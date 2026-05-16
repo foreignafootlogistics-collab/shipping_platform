@@ -126,6 +126,11 @@ def _build_invoice_view_dict(inv):
             getattr(p, "value", getattr(p, "invoice_value", getattr(p, "value_usd", 0)))
         )
 
+        _bad_address_fee = _num(getattr(p, "bad_address_fee", 0))
+
+        if bool(getattr(p, "epc", False)) and _bad_address_fee <= 0:
+            _bad_address_fee = 500.0
+
         if _is_subscription_covered:
             _freight = 0
             _storage = 0
@@ -140,6 +145,7 @@ def _build_invoice_view_dict(inv):
             "value":         _value_usd,
 
             "other_charges": _num(getattr(p, "other_charges", 0)),
+            "bad_address_fee": _bad_address_fee,
             "freight":       _freight,
             "storage":       _storage,
 
@@ -169,13 +175,9 @@ def _build_invoice_view_dict(inv):
         "subtotal": _num(getattr(inv, "subtotal", getattr(inv, "grand_total", 0))),
         "discount_total": _num(getattr(inv, "discount_total", 0)),
         "total_due": _num(getattr(inv, "grand_total", getattr(inv, "amount", 0))),
-        "packages": packages,  
-    
-# Optional:
-        # "branch": "Main Branch",
-        # "staff": "FAFL ADMIN",
-        # "notes": "Thanks for your business!"
+        "packages": packages,
     }
+
     return invoice_dict
 
 def _money(n):
@@ -2396,7 +2398,7 @@ def invoice_breakdown(package_id):
     if is_subscription_covered:
         freight_val = 0.0
         handling_val = 0.0
-        bad_address_val = 0.0
+        bad_address_val = 500.0 if bool(getattr(p, "epc", False) or getattr(p, "bad_address", False)) else 0.0
         other_val = 0.0
 
         if value <= 100:
@@ -2415,7 +2417,7 @@ def invoice_breakdown(package_id):
             stamp_val = float(getattr(p, "stamp", 0) or 0)
 
         customs_total_val = duty_val + gct_val + scf_val + envl_val + caf_val + stamp_val
-        freight_total_val = 0.0
+        freight_total_val = bad_address_val
 
     else:
         ch = calculate_charges(desc, value, weight)

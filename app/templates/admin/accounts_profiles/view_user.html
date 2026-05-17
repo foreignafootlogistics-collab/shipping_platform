@@ -3375,8 +3375,15 @@
                   : '—'
               );
 
-              setField('bd-other-inline', nf.format(d.other || 0));
-              setField('bd-total-inline', nf.format(d.total_jmd || 0));
+              setField(
+                'bd-other-inline',
+                nf.format(d.other_charges || 0)
+              );
+
+              setField(
+                'bd-total-inline',
+                nf.format(d.grand_total || 0)
+              );
             })
             .catch(() => ids.forEach(id => setField(id, '—')));
 

@@ -13,9 +13,9 @@
 {% set _desc = pkg.description if pkg.description is defined else pkg.get('description') %}
 
 {% set _date_received =
-    (pkg.date_any if pkg.date_any is defined else pkg.get('date_any'))
-    or (pkg.date_received if pkg.date_received is defined else pkg.get('date_received'))
-    or (pkg.created_at if pkg.created_at is defined else pkg.get('created_at'))
+(pkg.date_any if pkg.date_any is defined else pkg.get('date_any'))
+or (pkg.date_received if pkg.date_received is defined else pkg.get('date_received'))
+or (pkg.created_at if pkg.created_at is defined else pkg.get('created_at'))
 %}
 
 {% set _weight = pkg.weight if pkg.weight is defined else pkg.get('weight') %}
@@ -26,394 +26,373 @@
 
 {% set _attachments = pkg.attachments if pkg.attachments is defined else pkg.get('attachments') %}
 {% set _epc = pkg.epc if pkg.epc is defined else pkg.get('epc') %}
-{% set _notified_at = pkg.customer_notified_at if pkg.customer_notified_at is defined else pkg.get('customer_notified_at') %}
+{% set _notified_at = pkg.customer_notified_at if pkg.customer_notified_at is defined else
+pkg.get('customer_notified_at') %}
 
 {% set dv = _declared if _declared is not none else (_value if _value is not none else 0) %}
 {% set _invoice_total = pkg.invoice_total if pkg.invoice_total is defined else pkg.get('invoice_total') %}
-{% set _invoice_paid  = pkg.invoice_paid if pkg.invoice_paid is defined else pkg.get('invoice_paid') %}
+{% set _invoice_paid = pkg.invoice_paid if pkg.invoice_paid is defined else pkg.get('invoice_paid') %}
 <tr>
 
-{% if mode == "admin" %}
+  {% if mode == "admin" %}
 
-{# ===================== ADMIN MODE ===================== #}
+  {# ===================== ADMIN MODE ===================== #}
 
-<td>
-  <input type="checkbox"
-         name="package_ids"
-         value="{{ _id }}"
-         class="package-checkbox"
-         form="bulkActionForm">
+  <td>
+    <input type="checkbox" name="package_ids" value="{{ _id }}" class="package-checkbox" form="bulkActionForm">
 
-  <div class="d-flex flex-column align-items-start gap-1 mt-1">
+    <div class="d-flex flex-column align-items-start gap-1 mt-1">
 
-    {# SMALLER CALCULATOR (top) #}
-    {% if _invoice_id %}
-      <a href="#"
-         onclick="viewInvoiceById({{ _invoice_id }}); return false;"
-         class="btn btn-sm btn-outline-purple p-1"
-         title="View Existing Invoice">
+      {# SMALLER CALCULATOR (top) #}
+      {% if _invoice_id %}
+      <a href="#" onclick="viewInvoiceById({{ _invoice_id }}); return false;" class="btn btn-sm btn-outline-purple p-1"
+        title="View Existing Invoice">
         <i class="fas fa-calculator fa-sm"></i>
       </a>
-    {% else %}
-      <a href="#"
-         onclick="viewInvoiceByUser({{ _user_id }}); return false;"
-         class="btn btn-sm btn-outline-purple p-1"
-         title="Preview (Pro-forma)">
+      {% else %}
+      <a href="#" onclick="viewInvoiceByUser({{ _user_id }}); return false;" class="btn btn-sm btn-outline-purple p-1"
+        title="Preview (Pro-forma)">
         <i class="fas fa-calculator fa-sm"></i>
       </a>
-    {% endif %}
+      {% endif %}
 
-    {# NEW: SMALL ATTACH ICON BELOW CALCULATOR #}
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary p-1 js-open-attach"
-            title="Attach Invoice"
-            data-bs-toggle="modal"
-            data-bs-target="#attachInvoiceModal"
-            data-pkg-id="{{ _id }}"
-            data-item-value="{{ '%.2f'|format(dv or 0) }}">
-      <i class="fas fa-paperclip fa-sm"></i>
-    </button>
+      {# NEW: SMALL ATTACH ICON BELOW CALCULATOR #}
+      <button type="button" class="btn btn-sm btn-outline-secondary p-1 js-open-attach" title="Attach Invoice"
+        data-bs-toggle="modal" data-bs-target="#attachInvoiceModal" data-pkg-id="{{ _id }}"
+        data-item-value="{{ '%.2f'|format(dv or 0) }}">
+        <i class="fas fa-paperclip fa-sm"></i>
+      </button>
 
-  </div>
-</td>
+    </div>
+  </td>
 
-<td>
-  <strong>
-    <a href="{{ url_for('accounts_profiles.view_user', id=_user_id) }}"
-       class="text-purple text-decoration-none">
-      {{ _full_name or '-' }}
-    </a>
-  </strong><br>
-  <small class="text-muted">{{ _reg or '-' }}</small>
-</td>
+  <td>
+    <strong>
+      <a href="{{ url_for('accounts_profiles.view_user', id=_user_id) }}" class="text-purple text-decoration-none">
+        {{ _full_name or '-' }}
+      </a>
+    </strong><br>
+    <small class="text-muted">{{ _reg or '-' }}</small>
+  </td>
 
-<td>
-  {% set status = _status %}
-  {% include 'partials/status_vars.html' %}
-  {% include 'partials/status_tracker.html' with context %}
-  <br>
-  <small class="text-muted">{{ _tracking or '-' }}</small>
-  {% if pkg.subscription_covered %}
+  <td>
+    {% set status = _status %}
+    {% include 'partials/status_vars.html' %}
+    {% include 'partials/status_tracker.html' with context %}
+    <br>
+    <small class="text-muted">{{ _tracking or '-' }}</small>
+    {% if pkg.subscription_covered %}
     <div class="mt-1">
       {% if pkg.customs_only_due_to_subscription %}
-        <span class="badge bg-warning text-dark">
-          ⚡ Sub + Customs
-        </span>
+      <span class="badge bg-warning text-dark">
+        ⚡ Sub + Customs
+      </span>
       {% else %}
-        <span class="badge bg-success">
-          ✓ Subscription
-        </span>
+      <span class="badge bg-success">
+        ✓ Subscription
+      </span>
       {% endif %}
     </div>
 
-  {% elif pkg.subscription_applied and pkg.subscription_result == "package_over_plan_limit" %}
+    {% elif pkg.subscription_applied and pkg.subscription_result == "package_over_plan_limit" %}
     <div class="mt-1">
       <span class="badge bg-secondary">
         Over Limit
       </span>
     </div>
 
-  {% elif pkg.subscription_applied and pkg.subscription_result == "subscription_exhausted" %}
+    {% elif pkg.subscription_applied and pkg.subscription_result == "subscription_exhausted" %}
     <div class="mt-1">
       <span class="badge bg-info text-dark">
         Subscriber Rate
       </span>
     </div>
-  {% endif %}
-</td>
+    {% endif %}
+  </td>
 
-<td data-order="{{ (_house or '0')|replace(',', '') }}" class="text-nowrap">
-  {{ _house or '-' }}
-  {% if pkg.subscription_covered %}
-    <span class="ms-1"
-          data-bs-toggle="tooltip"
-          title="Covered by subscription">
+  <td data-order="{{ (_house or '0')|replace(',', '') }}" class="text-nowrap">
+    {{ _house or '-' }}
+    {% if pkg.subscription_covered %}
+    <span class="ms-1" data-bs-toggle="tooltip" title="Covered by subscription">
       <i class="bi bi-patch-check-fill text-success"></i>
-    </span>  
-  {% endif %}
+    </span>
+    {% endif %}
 
-  {# ✅ Notified icon #}
-  {% if _notified_at %}
-    <span class="ms-1"
-          data-bs-toggle="tooltip"
-          title="Customer notified">
+    {# ✅ Notified icon #}
+    {% if _notified_at %}
+    <span class="ms-1" data-bs-toggle="tooltip" title="Customer notified">
       <i class="bi bi-envelope-check-fill text-success"></i>
     </span>
-  {% endif %}
+    {% endif %}
 
-  {% if _epc %}
+    {% if _epc %}
     <span class="badge badge-epc ms-1">
       <i class="bi bi-flag-fill" style="font-size:0.60rem;"></i> EPC
     </span>
-  {% endif %}
-</td>
+    {% endif %}
+  </td>
 
-<td>
-  <div>{{ _desc or '-' }}</div>
+  <td>
+    <div>{{ _desc or '-' }}</div>
 
-  {% if _attachments and (_attachments|length > 0) %}
+    {% if _attachments and (_attachments|length > 0) %}
     <div class="mt-1 d-flex flex-wrap gap-2">
       {% for a in _attachments %}
-        {% set aid = a.id if a.id is defined else a.get('id') %}
-        {% set aname = (a.original_name if a.original_name is defined else a.get('original_name')) %}
-        {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
+      {% set aid = a.id if a.id is defined else a.get('id') %}
+      {% set aname = (a.original_name if a.original_name is defined else a.get('original_name')) %}
+      {% set fname = (a.file_name if a.file_name is defined else a.get('file_name')) %}
 
-        {% if aid %}
-          <div class="d-inline-flex align-items-center gap-1">
-            <a class="btn btn-sm"
-               style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
-               target="_blank"           
-               href="{{ url_for('logistics.admin_view_package_attachment', attachment_id=aid) }}"
-               title="{{ aname or fname }}">
-              <i class="fa-solid fa-file-lines"></i>
-            </a>
-          </div>
-        {% endif %}
+      {% if aid %}
+      <div class="d-inline-flex align-items-center gap-1">
+        <a class="btn btn-sm" style="background:#f5f0fa; border:1px solid #4a148c; color:#4a148c; padding:.2rem .45rem;"
+          target="_blank" href="{{ url_for('logistics.admin_view_package_attachment', attachment_id=aid) }}"
+          title="{{ aname or fname }}">
+          <i class="fa-solid fa-file-lines"></i>
+        </a>
+      </div>
+      {% endif %}
       {% endfor %}
     </div>
-  {% endif %}
-</td>
-
-<td>
-  {% if _date_received %}
-    {% if _date_received.strftime is defined %}
-      {{ _date_received.strftime("%Y-%m-%d") }}
-    {% else %}
-      {{ (_date_received|string)[:10] }}
     {% endif %}
-  {% else %}
-    -
-  {% endif %}
-</td>
+  </td>
 
-<td>
-  {% if _weight is not none %}
+  <td>
+    {% if _date_received %}
+    {% if _date_received.strftime is defined %}
+    {{ _date_received.strftime("%Y-%m-%d") }}
+    {% else %}
+    {{ (_date_received|string)[:10] }}
+    {% endif %}
+    {% else %}
+    -
+    {% endif %}
+  </td>
+
+  <td>
+    {% if _weight is not none %}
     {{ _weight }} ({{ (_weight|float)|round(0,'ceil')|int }})
     <input type="hidden" id="weight_{{ _id }}" value="{{ _weight }}">
-  {% else %}
+    {% else %}
     -
-  {% endif %}
-</td>
+    {% endif %}
+  </td>
 
-<td class="text-center">
-  {{ "%.2f"|format(dv or 0) }}
-</td>
+  <td class="text-center">
+    {{ "%.2f"|format(dv or 0) }}
+  </td>
 
-<td class="text-center">
-  {{ "%.2f"|format(_amount_due if _amount_due is not none else 0) }}
-</td>
+  <td class="text-center">
+    {{ "%.2f"|format(_amount_due if _amount_due is not none else 0) }}
+  </td>
 
-<td class="d-none">{{ 1 if _epc else 0 }}</td>
+  <td class="d-none">{{ 1 if _epc else 0 }}</td>
 
-{% else %}
+  {% else %}
 
-{# ===================== CUSTOMER MODE ===================== #}
+  {# ===================== CUSTOMER MODE ===================== #}
 
-{% set status_l = (_status or '')|lower %}
-{% set lock_docs = (status_l in ['ready for pick up', 'delivered']) %}
-{% set is_paid = (status_l in ['delivered']) %}
-{% set amount_to_show = (_amount_due if _amount_due is not none else 0) %}
-{% set show_amount = (_invoice_id is not none) %}
+  {% set status_l = (_status or '')|lower %}
+  {% set lock_docs = (status_l in ['ready for pick up', 'delivered']) %}
+  {% set is_paid = (status_l in ['delivered']) %}
+  {% set amount_to_show = (_amount_due if _amount_due is not none else 0) %}
+  {% set show_amount = (_invoice_id is not none) %}
 
-{# ---------------- DOCS COLUMN (UPLOAD ONLY) ---------------- #}
-<td class="text-center align-middle">
-  <button type="button"
-          class="btn btn-sm btn-outline-secondary {% if lock_docs %}disabled{% endif %}"
-          data-bs-toggle="modal"
-          data-bs-target="#docsModal{{ _id }}"
-          title="Upload Invoices">
-    <i class="fas {% if lock_docs %}fa-lock{% else %}fa-file-upload{% endif %}"></i>
-  </button>
-</td>
+  {# ---------------- DOCS COLUMN (UPLOAD ONLY) ---------------- #}
+  <td class="text-center align-middle">
+    <button type="button" class="btn btn-sm btn-outline-secondary {% if lock_docs %}disabled{% endif %}"
+      data-bs-toggle="modal" data-bs-target="#docsModal{{ _id }}" title="Upload Invoices">
+      <i class="fas {% if lock_docs %}fa-lock{% else %}fa-file-upload{% endif %}"></i>
+    </button>
+  </td>
 
-{# ---------------- HOUSE AWB / STATUS COLUMN ---------------- #}
-<td class="pkg-cell">
-  {% set status = _status %}
-  {% include "partials/status_vars.html" %}
+  {# ---------------- HOUSE AWB / STATUS COLUMN ---------------- #}
+  <td class="pkg-cell">
+    {% set status = _status %}
+    {% include "partials/status_vars.html" %}
 
-  <strong>{{ _house or "-" }}</strong><br>
+    <strong>{{ _house or "-" }}</strong><br>
 
-  {% include "partials/status_tracker.html" with context %}
+    {% include "partials/status_tracker.html" with context %}
 
-  <!-- 🟣 SUBSCRIPTION BADGE -->
-  {% if pkg.subscription_covered %}
+    <!-- 🟣 SUBSCRIPTION BADGE -->
+    {% if pkg.subscription_covered %}
     <div class="mt-1">
       {% if pkg.customs_only_due_to_subscription %}
-        <span class="badge bg-warning text-dark">
-          ⚡ Sub + Customs
-        </span>
+      <span class="badge bg-warning text-dark">
+        ⚡ Sub + Customs
+      </span>
       {% else %}
-        <span class="badge bg-success">
-          ✓ Subscription
-        </span>
+      <span class="badge bg-success">
+        ✓ Subscription
+      </span>
       {% endif %}
     </div>
 
-  {% elif pkg.subscription_applied and pkg.subscription_result == "package_over_plan_limit" %}
+    {% elif pkg.subscription_applied and pkg.subscription_result == "package_over_plan_limit" %}
     <div class="mt-1">
       <span class="badge bg-secondary">
         Over Limit
       </span>
     </div>
 
-  {% elif pkg.subscription_applied and pkg.subscription_result == "subscription_exhausted" %}
+    {% elif pkg.subscription_applied and pkg.subscription_result == "subscription_exhausted" %}
     <div class="mt-1">
       <span class="badge bg-info text-dark">
         Subscriber Rate
       </span>
     </div>
-  {% endif %}
+    {% endif %}
+    {% if _epc %}
+    <div class="mt-1">
+      <span class="badge bg-primary" data-bs-toggle="tooltip"
+        title="This package arrived without your FAFL number and was manually claimed by our team.">
+        Unknown Package
+      </span>
+    </div>
+    {% endif %}
+    <div class="small text-muted mt-1">
+      VAL: ${{ "%.2f"|format(dv or 0) }}
+    </div>
+  </td>
 
-  <div class="small text-muted mt-1">
-    VAL: ${{ "%.2f"|format(dv or 0) }}
-  </div>
-</td>
+  {# ---------------- DESCRIPTION + ATTACHMENTS COLUMN ---------------- #}
+  <td>
+    {{ _desc or "-" }}
 
-{# ---------------- DESCRIPTION + ATTACHMENTS COLUMN ---------------- #}
-<td>
-  {{ _desc or "-" }}
-
-  {% if _attachments and (_attachments|length > 0) %}
+    {% if _attachments and (_attachments|length > 0) %}
     <div class="small mt-1 d-flex gap-2 flex-wrap">
       {% for a in _attachments %}
-        {% set aid = a.id if a.id is defined else a.get('id') %}
-        {% if aid %}
-          {# Try to detect PDF by name WITHOUT .endswith() #}
-          {% set display_name = ((a.original_name if a.original_name is defined else a.get('original_name')) 
-                                or (a.file_name if a.file_name is defined else a.get('file_name')) 
-                                or '')|string %}
-          {% set lower_name = display_name|lower %}
-          {% set is_pdf = ('.pdf' in lower_name) %}
-          {% set is_img  = ('.jpg' in lower_name) or ('.jpeg' in lower_name) or ('.png' in lower_name) %}
+      {% set aid = a.id if a.id is defined else a.get('id') %}
+      {% if aid %}
+      {# Try to detect PDF by name WITHOUT .endswith() #}
+      {% set display_name = ((a.original_name if a.original_name is defined else a.get('original_name'))
+      or (a.file_name if a.file_name is defined else a.get('file_name'))
+      or '')|string %}
+      {% set lower_name = display_name|lower %}
+      {% set is_pdf = ('.pdf' in lower_name) %}
+      {% set is_img = ('.jpg' in lower_name) or ('.jpeg' in lower_name) or ('.png' in lower_name) %}
 
-          <a class="pkg-attachment"
-             href="{{ url_for('customer.view_package_attachment', attachment_id=aid) }}"
-             target="_blank"
-             rel="noopener"
-             title="{{ display_name or 'Attachment' }}">
-            <i class="fas
+      <a class="pkg-attachment" href="{{ url_for('customer.view_package_attachment', attachment_id=aid) }}"
+        target="_blank" rel="noopener" title="{{ display_name or 'Attachment' }}">
+        <i class="fas
               {{ 'fa-file-pdf' if is_pdf else ('fa-file-image' if is_img else 'fa-file-alt') }}">
-            </i>
+        </i>
 
-          </a>
-        {% endif %}
+      </a>
+      {% endif %}
       {% endfor %}
     </div>
-  {% endif %}
-</td>
-
-{# ---------------- TRACKING COLUMN ---------------- #}
-<td>{{ _tracking or "-" }}</td>
-
-{# ---------------- WEIGHT COLUMN ---------------- #}
-<td class="text-center">
-  {% if _weight is not none %}
-    {{ (_weight|float)|round(0,'ceil')|int }}
-  {% else %}
-    —
-  {% endif %}
-</td>
-
-{# ---------------- DATE RECEIVED COLUMN ---------------- #}
-<td class="text-center">
-  {% if _date_received %}
-    {% if _date_received.strftime is defined %}
-      {{ _date_received.strftime("%Y-%m-%d") }}
-    {% else %}
-      {{ (_date_received|string)[:10] }}
     {% endif %}
-  {% else %}
+  </td>
+
+  {# ---------------- TRACKING COLUMN ---------------- #}
+  <td>{{ _tracking or "-" }}</td>
+
+  {# ---------------- WEIGHT COLUMN ---------------- #}
+  <td class="text-center">
+    {% if _weight is not none %}
+    {{ (_weight|float)|round(0,'ceil')|int }}
+    {% else %}
     —
-  {% endif %}
-</td>
+    {% endif %}
+  </td>
 
-{# ---------------- AMOUNT DUE COLUMN ---------------- #}
-<td class="text-center">
+  {# ---------------- DATE RECEIVED COLUMN ---------------- #}
+  <td class="text-center">
+    {% if _date_received %}
+    {% if _date_received.strftime is defined %}
+    {{ _date_received.strftime("%Y-%m-%d") }}
+    {% else %}
+    {{ (_date_received|string)[:10] }}
+    {% endif %}
+    {% else %}
+    —
+    {% endif %}
+  </td>
 
-  {% set has_invoice = (_invoice_id is not none and _invoice_id != 0) %}
+  {# ---------------- AMOUNT DUE COLUMN ---------------- #}
+  <td class="text-center">
 
-  {# values from fetch_packages_normalized #}
-  {% set inv_total   = pkg.invoice_total if pkg.invoice_total is defined else pkg.get('invoice_total') %}
-  {% set inv_paid    = pkg.invoice_paid_sum if pkg.invoice_paid_sum is defined else pkg.get('invoice_paid_sum') %}
-  {% set inv_balance = pkg.invoice_balance if pkg.invoice_balance is defined else pkg.get('invoice_balance') %}
-  {% set inv_is_paid = pkg.invoice_paid if pkg.invoice_paid is defined else pkg.get('invoice_paid') %}
+    {% set has_invoice = (_invoice_id is not none and _invoice_id != 0) %}
 
-  {# PACKAGE amount (top line) #}
-  {% set package_due = (_amount_due if _amount_due is not none else 0) %}
+    {# values from fetch_packages_normalized #}
+    {% set inv_total = pkg.invoice_total if pkg.invoice_total is defined else pkg.get('invoice_total') %}
+    {% set inv_paid = pkg.invoice_paid_sum if pkg.invoice_paid_sum is defined else pkg.get('invoice_paid_sum') %}
+    {% set inv_balance = pkg.invoice_balance if pkg.invoice_balance is defined else pkg.get('invoice_balance') %}
+    {% set inv_is_paid = pkg.invoice_paid if pkg.invoice_paid is defined else pkg.get('invoice_paid') %}
 
-  {# fallbacks #}
-  {% set inv_total = inv_total if inv_total is not none else package_due %}
-  {% set inv_paid = inv_paid if inv_paid is not none else 0 %}
-  {% set inv_balance = inv_balance if inv_balance is not none else inv_total %}
-  {% set inv_is_paid = true if inv_is_paid else false %}
+    {# PACKAGE amount (top line) #}
+    {% set package_due = (_amount_due if _amount_due is not none else 0) %}
 
-  {# partial paid #}
-  {% set is_partial = (has_invoice and (inv_paid|float > 0) and (inv_balance|float > 0)) %}
+    {# fallbacks #}
+    {% set inv_total = inv_total if inv_total is not none else package_due %}
+    {% set inv_paid = inv_paid if inv_paid is not none else 0 %}
+    {% set inv_balance = inv_balance if inv_balance is not none else inv_total %}
+    {% set inv_is_paid = true if inv_is_paid else false %}
 
-  {# ===================== NOT INVOICED ===================== #}
-  {% if not has_invoice %}
+    {# partial paid #}
+    {% set is_partial = (has_invoice and (inv_paid|float > 0) and (inv_balance|float > 0)) %}
+
+    {# ===================== NOT INVOICED ===================== #}
+    {% if not has_invoice %}
 
     {% if status_l == 'overseas' %}
-      <span class="text-muted small">Awaiting Processing</span>
+    <span class="text-muted small">Awaiting Processing</span>
 
     {% elif status_l == 'received at local port' %}
-      <span class="text-warning small fw-semibold">Processing Charges</span>
+    <span class="text-warning small fw-semibold">Processing Charges</span>
 
     {% else %}
-      &nbsp;  {# blank, no dash #}
+    &nbsp; {# blank, no dash #}
     {% endif %}
 
-  {# ===================== INVOICED ===================== #}
-  {% else %}
+    {# ===================== INVOICED ===================== #}
+    {% else %}
 
     {# READY FOR PICK UP #}
     {% if status_l == 'ready for pick up' %}
-      <div class="fw-semibold text-danger">
-        {{ package_due|jmd }}
-      </div>
+    <div class="fw-semibold text-danger">
+      {{ package_due|jmd }}
+    </div>
 
-      <div class="small text-muted mt-1">
-        Invoice Total {{ (inv_total or 0)|jmd }}
-      </div>
+    <div class="small text-muted mt-1">
+      Invoice Total {{ (inv_total or 0)|jmd }}
+    </div>
 
-      {% if is_partial %}
-        <div class="small text-primary mt-1 fw-semibold">
-          Partial Paid • Paid {{ (inv_paid or 0)|jmd }}
-        </div>
-      {% endif %}
+    {% if is_partial %}
+    <div class="small text-primary mt-1 fw-semibold">
+      Partial Paid • Paid {{ (inv_paid or 0)|jmd }}
+    </div>
+    {% endif %}
 
     {# DELIVERED #}
     {% elif status_l == 'delivered' %}
-      <div class="fw-semibold text-danger">
-        {{ package_due|jmd }}
-      </div>
+    <div class="fw-semibold text-danger">
+      {{ package_due|jmd }}
+    </div>
 
-      <div class="small text-muted mt-1">
-        Invoice Total {{ (inv_total or 0)|jmd }}
-      </div>
+    <div class="small text-muted mt-1">
+      Invoice Total {{ (inv_total or 0)|jmd }}
+    </div>
 
-      {% if inv_is_paid or (inv_balance|float <= 0.00001) %}
-        <div class="mt-1 d-flex justify-content-center">
-          <img
-            src="{{ url_for('static', filename='images/paid-stamp.png') }}"
-            alt="PAID"
-            style="height:36px; opacity:0.85; transform: rotate(-8deg);"
-          >
-        </div>
+    {% if inv_is_paid or (inv_balance|float <= 0.00001) %} <div class="mt-1 d-flex justify-content-center">
+      <img src="{{ url_for('static', filename='images/paid-stamp.png') }}" alt="PAID"
+        style="height:36px; opacity:0.85; transform: rotate(-8deg);">
+      </div>
 
       {% elif is_partial %}
-        <div class="small text-primary mt-1 fw-semibold">
-          Partial Paid • Paid {{ (inv_paid or 0)|jmd }}
-        </div>
+      <div class="small text-primary mt-1 fw-semibold">
+        Partial Paid • Paid {{ (inv_paid or 0)|jmd }}
+      </div>
 
       {% else %}
-        <div class="small text-danger mt-1 fw-semibold">
-          Balance {{ (inv_balance or 0)|jmd }}
-        </div>
+      <div class="small text-danger mt-1 fw-semibold">
+        Balance {{ (inv_balance or 0)|jmd }}
+      </div>
       {% endif %}
 
-    {# OTHER INVOICED STATUSES #}
-    {% else %}
+      {# OTHER INVOICED STATUSES #}
+      {% else %}
       <div class="fw-semibold text-danger">
         {{ package_due|jmd }}
       </div>
@@ -423,15 +402,14 @@
       </div>
 
       {% if is_partial %}
-        <div class="small text-primary mt-1 fw-semibold">
-          Partial Paid • Paid {{ (inv_paid or 0)|jmd }}
-        </div>
+      <div class="small text-primary mt-1 fw-semibold">
+        Partial Paid • Paid {{ (inv_paid or 0)|jmd }}
+      </div>
       {% endif %}
-    {% endif %}
+      {% endif %}
 
+      {% endif %}
+
+  </td>
   {% endif %}
-
-</td>
-{% endif %}
 </tr>
-

@@ -8,28 +8,29 @@
     <div>
       <h2 class="mb-0">🧾 Missing In-Transit Claim</h2>
       <div class="text-muted small">
-        Claims are processed within <b>5–10 business days</b> after investigation is completed.
+        Claims can only be submitted for packages FAFL confirmed as received, but later became missing during
+        processing, transfer, or transit.
+        Investigations typically take <b>5–10 business days</b> after review begins.
         Refunds may be issued as <b>cash</b>, <b>bank transfer</b>, or <b>wallet credit</b>.
       </div>
     </div>
 
-    <a class="btn btn-outline-dark"
-       href="{{ url_for('customer_claims.list_claims') }}">
+    <a class="btn btn-outline-dark" href="{{ url_for('customer_claims.list_claims') }}">
       ← Back
     </a>
   </div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <div class="mb-3">
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
+  {% if messages %}
+  <div class="mb-3">
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+      {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% endwith %}
 
   <div class="row g-3">
@@ -51,13 +52,12 @@
               <select id="claim_package_select" class="form-select">
                 <option value="">-- Select eligible package --</option>
                 {% for pkg in eligible_packages %}
-                  <option value="{{ pkg.id }}"
-                          data-awb="{{ pkg.house_awb or '' }}"
-                          data-tracking="{{ pkg.tracking_number or '' }}">
-                    {{ pkg.house_awb or 'No AWB' }}
-                    {% if pkg.tracking_number %} • {{ pkg.tracking_number }}{% endif %}
-                    {% if pkg.description %} • {{ pkg.description }}{% endif %}
-                  </option>
+                <option value="{{ pkg.id }}" data-awb="{{ pkg.house_awb or '' }}"
+                  data-tracking="{{ pkg.tracking_number or '' }}">
+                  {{ pkg.house_awb or 'No AWB' }}
+                  {% if pkg.tracking_number %} • {{ pkg.tracking_number }}{% endif %}
+                  {% if pkg.description %} • {{ pkg.description }}{% endif %}
+                </option>
                 {% endfor %}
               </select>
               <div class="form-text">
@@ -68,14 +68,16 @@
             <div class="col-md-6">
               {{ form.house_awb.label(class="form-label") }}
               <span class="text-danger">*</span>
-              {{ form.house_awb(class="form-control", placeholder="e.g. FAFL12345", required=True, id="claim_house_awb") }}
+              {{ form.house_awb(class="form-control", placeholder="e.g. FAFL12345", required=True, id="claim_house_awb")
+              }}
               {% for e in form.house_awb.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
             <div class="col-md-6">
               {{ form.tracking_number.label(class="form-label") }}
               <span class="text-danger">*</span>
-              {{ form.tracking_number(class="form-control", placeholder="e.g. 1Z..., AMZ..., SHEIN...", required=True, id="claim_tracking_number") }}
+              {{ form.tracking_number(class="form-control", placeholder="e.g. 1Z..., AMZ..., SHEIN...", required=True,
+              id="claim_tracking_number") }}
               {% for e in form.tracking_number.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
@@ -103,7 +105,8 @@
             <div class="col-12">
               {{ form.description.label(class="form-label") }}
               <span class="text-danger">*</span>
-              {{ form.description(class="form-control", rows="3", placeholder="Explain what happened, where it was last seen, dates, etc.", required=True) }}
+              {{ form.description(class="form-control", rows="3", placeholder="Explain what happened, where it was last
+              seen, dates, etc.", required=True) }}
               {% for e in form.description.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
             </div>
 
@@ -143,8 +146,10 @@
                     <div class="col-md-6">
                       {{ form.bank_account_name.label(class="form-label") }}
                       <span class="text-danger bank-required">*</span>
-                      {{ form.bank_account_name(class="form-control", placeholder="Name on account", id="bank_account_name") }}
-                      {% for e in form.bank_account_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+                      {{ form.bank_account_name(class="form-control", placeholder="Name on account",
+                      id="bank_account_name") }}
+                      {% for e in form.bank_account_name.errors %}<div class="text-danger small">{{ e }}</div>{% endfor
+                      %}
                     </div>
 
                     <div class="col-md-6">
@@ -157,15 +162,18 @@
                     <div class="col-md-6">
                       {{ form.bank_account_number.label(class="form-label") }}
                       <span class="text-danger bank-required">*</span>
-                      {{ form.bank_account_number(class="form-control", placeholder="Account number", id="bank_account_number") }}
-                      {% for e in form.bank_account_number.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+                      {{ form.bank_account_number(class="form-control", placeholder="Account number",
+                      id="bank_account_number") }}
+                      {% for e in form.bank_account_number.errors %}<div class="text-danger small">{{ e }}</div>{%
+                      endfor %}
                     </div>
 
                     <div class="col-md-6">
                       {{ form.bank_account_type.label(class="form-label") }}
                       <span class="text-danger bank-required">*</span>
                       {{ form.bank_account_type(class="form-select", id="bank_account_type") }}
-                      {% for e in form.bank_account_type.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+                      {% for e in form.bank_account_type.errors %}<div class="text-danger small">{{ e }}</div>{% endfor
+                      %}
                     </div>
                   </div>
 
@@ -208,71 +216,79 @@
 </div>
 
 <style>
-  .btn-purple{ background:#4A148C; color:#fff; border:none; }
-  .btn-purple:hover{ opacity:.92; color:#fff; }
+  .btn-purple {
+    background: #4A148C;
+    color: #fff;
+    border: none;
+  }
+
+  .btn-purple:hover {
+    opacity: .92;
+    color: #fff;
+  }
 </style>
 
 <script>
-(function(){
-  const methodSel = document.getElementById("refund_method");
-  const bankFields = document.getElementById("bank_fields");
-  const pkgSelect = document.getElementById("claim_package_select");
-  const awbInput = document.getElementById("claim_house_awb");
-  const trackingInput = document.getElementById("claim_tracking_number");
+  (function () {
+    const methodSel = document.getElementById("refund_method");
+    const bankFields = document.getElementById("bank_fields");
+    const pkgSelect = document.getElementById("claim_package_select");
+    const awbInput = document.getElementById("claim_house_awb");
+    const trackingInput = document.getElementById("claim_tracking_number");
 
-  const bankInputs = [
-    document.getElementById("bank_account_name"),
-    document.getElementById("bank_branch"),
-    document.getElementById("bank_account_number"),
-    document.getElementById("bank_account_type"),
-  ].filter(Boolean);
+    const bankInputs = [
+      document.getElementById("bank_account_name"),
+      document.getElementById("bank_branch"),
+      document.getElementById("bank_account_number"),
+      document.getElementById("bank_account_type"),
+    ].filter(Boolean);
 
-  // little * markers beside bank labels
-  const bankStars = document.querySelectorAll(".bank-required");
+    // little * markers beside bank labels
+    const bankStars = document.querySelectorAll(".bank-required");
 
-  if(!methodSel || !bankFields) return;
+    if (!methodSel || !bankFields) return;
 
-  function setBankRequired(on){
-    bankInputs.forEach(el => {
-      if (on) el.setAttribute("required", "required");
-      else el.removeAttribute("required");
-    });
-    bankStars.forEach(star => {
-      star.style.display = on ? "" : "none";
-    });
-  }
-
-  function sync(){
-    const v = (methodSel.value || "").toLowerCase();
-    const isBank = (v === "bank_transfer");
-    bankFields.style.display = isBank ? "" : "none";
-    setBankRequired(isBank);
-
-    // Optional: if not bank transfer, clear fields to avoid accidental submission confusion
-    if (!isBank) {
-      bankInputs.forEach(el => { try { el.value = ""; } catch(e){} });
+    function setBankRequired(on) {
+      bankInputs.forEach(el => {
+        if (on) el.setAttribute("required", "required");
+        else el.removeAttribute("required");
+      });
+      bankStars.forEach(star => {
+        star.style.display = on ? "" : "none";
+      });
     }
-  }
 
-  function syncPackageSelection(){
-    if (!pkgSelect) return;
+    function sync() {
+      const v = (methodSel.value || "").toLowerCase();
+      const isBank = (v === "bank_transfer");
+      bankFields.style.display = isBank ? "" : "none";
+      setBankRequired(isBank);
 
-    const opt = pkgSelect.options[pkgSelect.selectedIndex];
-    if (!opt) return;
+      // Optional: if not bank transfer, clear fields to avoid accidental submission confusion
+      if (!isBank) {
+        bankInputs.forEach(el => { try { el.value = ""; } catch (e) { } });
+      }
+    }
 
-    const awb = opt.getAttribute("data-awb") || "";
-    const tracking = opt.getAttribute("data-tracking") || "";
+    function syncPackageSelection() {
+      if (!pkgSelect) return;
 
-    if (awbInput) awbInput.value = awb;
-    if (trackingInput) trackingInput.value = tracking;
-  }
+      const opt = pkgSelect.options[pkgSelect.selectedIndex];
+      if (!opt) return;
 
-  if (pkgSelect) {
-    pkgSelect.addEventListener("change", syncPackageSelection);
-  }
+      const awb = opt.getAttribute("data-awb") || "";
+      const tracking = opt.getAttribute("data-tracking") || "";
 
-  methodSel.addEventListener("change", sync);
-  sync();
-})();
+      if (awbInput) awbInput.value = awb;
+      if (trackingInput) trackingInput.value = tracking;
+    }
+
+    if (pkgSelect) {
+      pkgSelect.addEventListener("change", syncPackageSelection);
+    }
+
+    methodSel.addEventListener("change", sync);
+    sync();
+  })();
 </script>
 {% endblock %}

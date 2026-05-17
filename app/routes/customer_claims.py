@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 
 from app.extensions import db
-from app.models import Claim, ClaimAuditLog
+from app.models import Claim, ClaimAuditLog, Package
 from app.forms import ClaimForm
 from app.utils.claims_uploads import upload_claim_file_to_cloudinary
 from app.utils.email_utils import send_claim_submitted_email
@@ -37,7 +37,36 @@ def create_claim():
 
     if form.validate_on_submit():
         try:
-            # ✅ Upload evidence files
+            house_awb = (form.house_awb.data or "").strip()
+            tracking_number = (form.tracking_number.data or "").strip()
+
+            matched_package = (
+                Package.query
+                .filter(Package.user_id == current_user.id)
+                .filter(
+                    db.or_(
+                        Package.house_awb == house_awb,
+                        Package.tracking_number == tracking_number
+                    )
+                )
+                .first()
+            )
+
+            if not matched_package:
+                flash(
+                    "We could not find a package with that House AWB or Tracking Number on your account. "
+                    "Claims can only be submitted for packages already received and added by FAFL.",
+                    "danger"
+                )
+                return redirect(url_for("customer_claims.create_claim"))
+
+            if matched_package.status not in ["Overseas", "Received at Local Port", "Ready for Pick Up"]:
+                flash(
+                    "This package is not eligible for a missing in-transit claim based on its current status.",
+                    "warning"
+                )
+                return redirect(url_for("customer_claims.create_claim"))
+
             invoice_url, invoice_public_id = upload_claim_file_to_cloudinary(
                 form.invoice_file.data, folder="fafl/claims/invoices"
             )
@@ -47,12 +76,11 @@ def create_claim():
 
             case_id = generate_claim_case_id()
 
-            # ✅ Build claim object
             claim = Claim(
                 user_id=current_user.id,
-                case_id=case_id,  # ✅ NEW: case id here
-                house_awb=(form.house_awb.data or "").strip(),
-                tracking_number=((form.tracking_number.data or "").strip() or None),
+                case_id=case_id,
+                house_awb=house_awb,
+                tracking_number=tracking_number or None,
                 item_value_jmd=form.item_value_jmd.data,
                 description=((form.description.data or "").strip() or None),
 
@@ -72,9 +100,8 @@ def create_claim():
             )
 
             db.session.add(claim)
-            db.session.flush()  # ensures claim.id exists
+            db.session.flush()
 
-            # ✅ Audit log
             db.session.add(ClaimAuditLog(
                 claim_id=claim.id,
                 action="created",
@@ -84,7 +111,6 @@ def create_claim():
 
             db.session.commit()
 
-            # ✅ Email (now includes claim.case_id if your template uses it)
             send_claim_submitted_email(
                 user_email=current_user.email,
                 full_name=current_user.full_name,
@@ -92,7 +118,10 @@ def create_claim():
                 recipient_user_id=current_user.id
             )
 
-            flash("Claim submitted. Claims are processed within 5–10 business days after investigation.", "success")
+            flash(
+                "Claim submitted. Claims are reviewed for packages FAFL confirmed as received but later became missing during processing or transit.",
+                "success"
+            )
             return redirect(url_for("customer_claims.view_claim", claim_id=claim.id))
 
         except Exception as e:
@@ -103,7 +132,7 @@ def create_claim():
         Package.query
         .filter(
             Package.user_id == current_user.id,
-            Package.status.in_(["Overseas", "Local Port"])
+            Package.status.in_(["Overseas", "Received at Local Port", "Ready for Pick Up"])
         )
         .order_by(Package.created_at.desc())
         .all()
@@ -114,7 +143,6 @@ def create_claim():
         form=form,
         eligible_packages=eligible_packages
     )
-
 
 @customer_claims_bp.route("/<int:claim_id>", methods=["GET"])
 @login_required

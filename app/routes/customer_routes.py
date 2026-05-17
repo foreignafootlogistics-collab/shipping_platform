@@ -875,7 +875,7 @@ def transactions_all():
 
         payments_list = [
             p for p in (getattr(inv, "payments", None) or [])
-            if getattr(p, "transaction_type", "invoice_payment") == "invoice_payment"
+            if (getattr(p, "transaction_type", "invoice_payment") in ("invoice_payment", "subscription_payment"))
             and getattr(p, "status", "completed") == "completed"
         ]
 

@@ -150,8 +150,22 @@
 
     <div class="col-md-3 mb-3">
       <div class="stat">
-        <h3>{{ total_shipped }}</h3>
-        <span>Total Shipped</span>
+        <h3>
+          JMD {{ "{:,.0f}".format(total_owed or 0) }}
+        </h3>
+
+        <span>Total Owed</span>
+
+        {% if total_owed and total_owed > 0 %}
+        <div class="small mt-1 text-warning">
+          {{ pending_invoice_count }}
+          unpaid invoice{{ '' if pending_invoice_count == 1 else 's' }}
+        </div>
+        {% else %}
+        <div class="small mt-1 text-success">
+          Account Up To Date
+        </div>
+        {% endif %}
       </div>
     </div>
 

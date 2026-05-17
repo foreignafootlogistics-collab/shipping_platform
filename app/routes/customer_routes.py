@@ -274,6 +274,51 @@ def customer_dashboard():
     form.category.choices = [(c, c) for c in CATEGORIES.keys()]
     subscription_summary = get_subscription_summary(current_user.id)
 
+    # --------------------------------
+    # Total Owed (Dashboard)
+    # --------------------------------
+    def _num(x):
+        try:
+            return float(x or 0)
+        except Exception:
+            return 0.0
+
+    customer_invoices = Invoice.query.filter_by(user_id=current_user.id).all()
+
+    total_owed = 0.0
+    pending_invoice_count = 0
+
+    for inv in customer_invoices:
+
+        inv_total = _num(
+            getattr(inv, "grand_total", getattr(inv, "subtotal", 0))
+        )
+
+        payments_list = [
+            p for p in (getattr(inv, "payments", None) or [])
+            if getattr(p, "status", "completed") == "completed"
+            and getattr(
+                p,
+                "transaction_type",
+                "invoice_payment"
+            ) in (
+                "invoice_payment",
+                "subscription_payment",
+                "subscription_upgrade_payment",
+            )
+        ]
+
+        paid_sum = sum(
+            _num(getattr(p, "amount_jmd", 0))
+            for p in payments_list
+        )
+
+        owed = max(inv_total - paid_sum, 0.0)
+
+        if owed > 0:
+            total_owed += owed
+            pending_invoice_count += 1
+
     return render_template(
         'customer/customer_dashboard.html',
         form=form,
@@ -290,6 +335,8 @@ def customer_dashboard():
         referral_code=getattr(user, "referral_code", None),
         ready_packages=ready_packages,
         subscription_summary=subscription_summary,
+        total_owed=total_owed,
+        pending_invoice_count=pending_invoice_count,
     )
 
 

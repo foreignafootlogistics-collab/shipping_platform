@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -34,15 +35,33 @@
       height: 100%;
       width: 250px;
       background-color: #fff;
-      box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+      box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
       transition: left 0.3s ease;
       padding-top: 60px;
       z-index: 1050;
     }
-    .sidebar.show { left: 0; }
-    .sidebar a { display: block; padding: 10px 20px; color: #333; text-decoration: none; }
-    .sidebar a.active { background-color: #4a148c; color: #fff; }
-    .sidebar .logo { max-width: 150px; margin: 10px auto; display: block; }
+
+    .sidebar.show {
+      left: 0;
+    }
+
+    .sidebar a {
+      display: block;
+      padding: 10px 20px;
+      color: #333;
+      text-decoration: none;
+    }
+
+    .sidebar a.active {
+      background-color: #4a148c;
+      color: #fff;
+    }
+
+    .sidebar .logo {
+      max-width: 150px;
+      margin: 10px auto;
+      display: block;
+    }
 
     /* Overlay for mobile sidebar */
     #sidebar-overlay {
@@ -51,11 +70,14 @@
       left: 0;
       height: 100%;
       width: 100%;
-      background: rgba(0,0,0,0.3);
+      background: rgba(0, 0, 0, 0.3);
       z-index: 1040;
       display: none;
     }
-    #sidebar-overlay.show { display: block; }
+
+    #sidebar-overlay.show {
+      display: block;
+    }
 
     .dropdown-menu a.active {
       background-color: #4a148c !important;
@@ -78,11 +100,19 @@
       color: #d1c4e9 !important;
     }
 
-    
+
     @keyframes pulse-badge {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.15); }
-      100% { transform: scale(1); }
+      0% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.15);
+      }
+
+      100% {
+        transform: scale(1);
+      }
     }
 
     .account-alert-badge {
@@ -90,79 +120,85 @@
     }
   </style>
 </head>
+
 <body>
-{% if current_user.is_authenticated %}
+  {% if current_user.is_authenticated %}
   <!-- Mobile Sidebar -->
   <div id="sidebar" class="sidebar d-lg-none">
     <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="logo">
 
     <a href="{{ url_for('customer.customer_dashboard') }}"
-       class="{% if request.endpoint == 'customer.customer_dashboard' %}active{% endif %}">
+      class="{% if request.endpoint == 'customer.customer_dashboard' %}active{% endif %}">
       <i class="fas fa-home"></i> Dashboard
     </a>
 
     <a href="{{ url_for('customer.prealerts_create') }}"
-       class="{% if request.endpoint in ['customer.prealerts_create', 'customer.prealerts_view'] %}active{% endif %}">
+      class="{% if request.endpoint in ['customer.prealerts_create', 'customer.prealerts_view'] %}active{% endif %}">
       <i class="fas fa-truck-loading"></i> Pre-Alert Shipment
     </a>
 
     <a href="{{ url_for('customer.view_packages') }}"
-       class="{% if request.endpoint == 'customer.view_packages' %}active{% endif %}">
+      class="{% if request.endpoint == 'customer.view_packages' %}active{% endif %}">
       <i class="fas fa-box"></i> Packages
     </a>
 
     <a href="{{ url_for('customer.transactions_all') }}"
-       class="{% if request.endpoint == 'customer.transactions_all' %}active{% endif %}">
+      class="{% if request.endpoint == 'customer.transactions_all' %}active{% endif %}">
       <i class="fas fa-wallet"></i> Transactions
     </a>
 
     <a href="{{ url_for('customer.schedule_delivery_overview') }}"
-       class="{% if request.endpoint == 'customer.schedule_delivery_overview' %}active{% endif %}">
+      class="{% if request.endpoint == 'customer.schedule_delivery_overview' %}active{% endif %}">
       <i class="fas fa-calendar-alt"></i> Schedule Delivery
     </a>
 
     <a href="{{ url_for('customer.authorized_pickup_overview') }}"
-       class="{% if request.endpoint == 'customer.authorized_pickup_overview' %}active{% endif %}">
+      class="{% if request.endpoint == 'customer.authorized_pickup_overview' %}active{% endif %}">
       <i class="fas fa-user-check"></i> Authorized Pickup
     </a>
 
     <a href="{{ url_for('customer.referrals') }}"
-       class="{% if request.endpoint == 'customer.referrals' %}active{% endif %}">
+      class="{% if request.endpoint == 'customer.referrals' %}active{% endif %}">
       <i class="fas fa-gift"></i> Refer a Friend
     </a>
 
     <a href="{{ url_for('customer.profile') }}"
-       class="{% if request.endpoint == 'customer.profile' %}active{% endif %}">
+      class="{% if request.endpoint == 'customer.profile' %}active{% endif %}">
       <i class="fas fa-user"></i> Personal Info
     </a>
 
     <a href="{{ url_for('customer.address') }}"
-       class="{% if request.endpoint == 'customer.address' %}active{% endif %}">
+      class="{% if request.endpoint == 'customer.address' %}active{% endif %}">
       <i class="fas fa-map-marker-alt"></i> Delivery Address
     </a>
 
     <a href="{{ url_for('customer.security') }}"
-       class="{% if request.endpoint == 'customer.security' %}active{% endif %}">
+      class="{% if request.endpoint == 'customer.security' %}active{% endif %}">
       <i class="fas fa-lock"></i> Login & Security
+    </a>
+
+    <a href="{{ url_for('customer.customer_subscriptions') }}"
+      class="{% if request.endpoint == 'customer.customer_subscriptions' %}active{% endif %}">
+      <i class="fas fa-layer-group"></i> Subscriptions
     </a>
 
     <!-- ✅ Claims in Mobile Sidebar (kept) -->
     <a href="{{ url_for('customer_claims.list_claims') }}"
-       class="{% if request.endpoint in ['customer_claims.list_claims','customer_claims.create_claim','customer_claims.view_claim'] %}active{% endif %}">
+      class="{% if request.endpoint in ['customer_claims.list_claims','customer_claims.create_claim','customer_claims.view_claim'] %}active{% endif %}">
       <i class="fas fa-file-invoice-dollar"></i> My Claims
       {% if claims_need_more_info_count|default(0) > 0 %}
-        <span class="badge bg-danger ms-2">{{ claims_need_more_info_count }}</span>
+      <span class="badge bg-danger ms-2">{{ claims_need_more_info_count }}</span>
       {% endif %}
     </a>
 
     <a href="{{ url_for('customer_search.list_cases') }}"
-       class="{% if request.endpoint in ['customer_search.list_cases','customer_search.create_search_case','customer_search.view_case'] %}active{% endif %}">
+      class="{% if request.endpoint in ['customer_search.list_cases','customer_search.create_search_case','customer_search.view_case'] %}active{% endif %}">
       <i class="fas fa-search"></i> Search My Package
 
       {% if search_need_more_info_count|default(0) > 0 %}
-        <span class="badge bg-danger ms-2">
-          {{ search_need_more_info_count }}
-        </span>
+      <span class="badge bg-danger ms-2">
+        {{ search_need_more_info_count }}
+      </span>
       {% endif %}
     </a>
 
@@ -189,9 +225,9 @@
           <a class="nav-link position-relative" href="{{ url_for('customer.view_notifications') }}">
             <i class="fas fa-bell fa-lg"></i>
             {% if unread_notifications_count > 0 %}
-              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                {{ unread_notifications_count }}
-              </span>
+            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+              {{ unread_notifications_count }}
+            </span>
             {% endif %}
           </a>
         </li>
@@ -200,9 +236,9 @@
           <a class="nav-link position-relative" href="{{ url_for('customer.view_messages') }}">
             <i class="fas fa-envelope fa-lg"></i>
             {% if unread_messages_count and unread_messages_count > 0 %}
-              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning">
-                {{ unread_messages_count }}
-              </span>
+            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning">
+              {{ unread_messages_count }}
+            </span>
             {% endif %}
           </a>
         </li>
@@ -219,52 +255,52 @@
 
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint == 'customer.customer_dashboard' %}active{% endif %}"
-               href="{{ url_for('customer.customer_dashboard') }}">
+              href="{{ url_for('customer.customer_dashboard') }}">
               Dashboard
             </a>
           </li>
 
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['customer.prealerts_create', 'customer.prealerts_view'] %}active{% endif %}"
-               href="{{ url_for('customer.prealerts_create') }}">
+              href="{{ url_for('customer.prealerts_create') }}">
               Pre-Alert Shipment
             </a>
           </li>
 
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint == 'customer.view_packages' %}active{% endif %}"
-               href="{{ url_for('customer.view_packages') }}">
+              href="{{ url_for('customer.view_packages') }}">
               Packages
             </a>
           </li>
 
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint == 'customer.transactions_all' %}active{% endif %}"
-               href="{{ url_for('customer.transactions_all') }}">
+              href="{{ url_for('customer.transactions_all') }}">
               Transactions
             </a>
           </li>
 
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle {% if request.endpoint in ['customer.schedule_delivery_overview','customer.authorized_pickup_overview'] %}active{% endif %}"
-               href="#" id="deliveryDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+              href="#" id="deliveryDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
               🚚 Delivery
             </a>
             <ul class="dropdown-menu" aria-labelledby="deliveryDropdown">
               <li>
                 <a class="dropdown-item {% if request.endpoint == 'customer.schedule_delivery_overview' %}active{% endif %}"
-                   href="{{ url_for('customer.schedule_delivery_overview') }}">
+                  href="{{ url_for('customer.schedule_delivery_overview') }}">
                   Schedule Delivery
                 </a>
               </li>
               <li>
                 <a class="dropdown-item {% if request.endpoint == 'customer.authorized_pickup_overview' %}active{% endif %}"
-                   href="{{ url_for('customer.authorized_pickup_overview') }}">
+                  href="{{ url_for('customer.authorized_pickup_overview') }}">
                   Authorized Pickup Person
                 </a>
               </li>
             </ul>
-          </li>          
+          </li>
 
           <!-- ✅ Claims moved under Account dropdown ONLY -->
           <li class="nav-item dropdown">
@@ -280,22 +316,19 @@
                   'customer_search.list_cases',
                   'customer_search.create_search_case',
                   'customer_search.view_case'
-               ] %}active{% endif %}"
-               href="#"
-               id="accountDropdown"
-               role="button"
-               data-bs-toggle="dropdown"
-               aria-expanded="false">
+               ] %}active{% endif %}" href="#" id="accountDropdown" role="button" data-bs-toggle="dropdown"
+              aria-expanded="false">
 
               <span class="{% if claims_need_more_info_count|default(0) > 0 %}fw-bold text-warning{% endif %}">
                 Account
               </span>
-              
+
               {% if claims_need_more_info_count|default(0) > 0 %}
-                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger account-alert-badge"
-                      style="font-size: 0.65rem;">
-                  {{ claims_need_more_info_count }}
-                </span>
+              <span
+                class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger account-alert-badge"
+                style="font-size: 0.65rem;">
+                {{ claims_need_more_info_count }}
+              </span>
               {% endif %}
             </a>
 
@@ -303,58 +336,60 @@
 
               <li>
                 <a class="dropdown-item {% if request.endpoint == 'customer.profile' %}active{% endif %}"
-                   href="{{ url_for('customer.profile') }}">
+                  href="{{ url_for('customer.profile') }}">
                   <i class="fas fa-user me-2"></i> Personal Information
                 </a>
               </li>
 
               <li>
                 <a class="dropdown-item {% if request.endpoint == 'customer.address' %}active{% endif %}"
-                   href="{{ url_for('customer.address') }}">
+                  href="{{ url_for('customer.address') }}">
                   <i class="fas fa-map-marker-alt me-2"></i> Delivery Address
                 </a>
               </li>
 
               <li>
                 <a class="dropdown-item {% if request.endpoint == 'customer.security' %}active{% endif %}"
-                   href="{{ url_for('customer.security') }}">
+                  href="{{ url_for('customer.security') }}">
                   <i class="fas fa-lock me-2"></i> Login & Security
                 </a>
               </li>
               <li>
                 <a class="dropdown-item {% if request.endpoint == 'customer.customer_subscriptions' %}active{% endif %}"
-                   href="{{ url_for('customer.customer_subscriptions') }}">
+                  href="{{ url_for('customer.customer_subscriptions') }}">
                   <i class="fas fa-layer-group me-2"></i> Subscriptions
                 </a>
               </li>
-              <li><hr class="dropdown-divider"></li>
+              <li>
+                <hr class="dropdown-divider">
+              </li>
 
               <!-- 🎁 Refer a Friend (Moved Here) -->
               <li>
                 <a class="dropdown-item {% if request.endpoint == 'customer.referrals' %}active{% endif %}"
-                   href="{{ url_for('customer.referrals') }}">
+                  href="{{ url_for('customer.referrals') }}">
                   <i class="fas fa-gift me-2 text-warning"></i> Refer a Friend
                 </a>
               </li>
 
               <li>
                 <a class="dropdown-item {% if request.endpoint in ['customer_claims.list_claims','customer_claims.create_claim','customer_claims.view_claim'] %}active{% endif %}"
-                   href="{{ url_for('customer_claims.list_claims') }}">
+                  href="{{ url_for('customer_claims.list_claims') }}">
                   <i class="fas fa-file-invoice-dollar me-2"></i> My Claims
                   {% if claims_need_more_info_count|default(0) > 0 %}
-                    <span class="badge bg-danger ms-2">{{ claims_need_more_info_count }}</span>
+                  <span class="badge bg-danger ms-2">{{ claims_need_more_info_count }}</span>
                   {% endif %}
                 </a>
               </li>
               <li>
                 <a class="dropdown-item
                    {% if request.endpoint in ['customer_search.list_cases','customer_search.create_search_case','customer_search.view_case'] %}active{% endif %}"
-                   href="{{ url_for('customer_search.list_cases') }}">
+                  href="{{ url_for('customer_search.list_cases') }}">
                   <i class="fas fa-search me-2"></i> Search My Package
                   {% if search_need_more_info_count|default(0) > 0 %}
-                    <span class="badge bg-danger ms-2">
-                      {{ search_need_more_info_count }}
-                    </span>
+                  <span class="badge bg-danger ms-2">
+                    {{ search_need_more_info_count }}
+                  </span>
                   {% endif %}
                 </a>
               </li>
@@ -373,73 +408,74 @@
 
   <!-- Calculator Modal -->
   {% include "calculator_modal.html" %}
-{% endif %}
+  {% endif %}
 
-<!-- Main Content -->
-<div class="main-content">
-  <div class="container-fluid">
-    {% with messages = get_flashed_messages(with_categories=true) %}
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="container-fluid">
+      {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} alert-dismissible fade show mt-3" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-        {% endfor %}
+      {% for category, message in messages %}
+      <div class="alert alert-{{ category }} alert-dismissible fade show mt-3" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endfor %}
       {% endif %}
-    {% endwith %}
-    {% block content %}{% endblock %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </div>
   </div>
-</div>
 
-<!-- Footer -->
-<footer class="footer-bar mt-5 py-3 bg-light border-top">
-  <div class="container text-center">
-    &copy; {{ current_year or 2025 }} Foreign A Foot Logistics Limited. All rights reserved.
-    <a href="{{ url_for('customer.contact') }}">Contact Us</a> |
-    <a href="{{ url_for('customer.terms') }}" target="_blank">Terms & Conditions</a> |
-    <a href="{{ url_for('customer.privacy') }}" target="_blank">Privacy Policy</a>
-  </div>
-</footer>
+  <!-- Footer -->
+  <footer class="footer-bar mt-5 py-3 bg-light border-top">
+    <div class="container text-center">
+      &copy; {{ current_year or 2025 }} Foreign A Foot Logistics Limited. All rights reserved.
+      <a href="{{ url_for('customer.contact') }}">Contact Us</a> |
+      <a href="{{ url_for('customer.terms') }}" target="_blank">Terms & Conditions</a> |
+      <a href="{{ url_for('customer.privacy') }}" target="_blank">Privacy Policy</a>
+    </div>
+  </footer>
 
-<!-- Bootstrap JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<script>
-  // ✅ MUST be global so inline onclick="toggleSidebar()" can call it
-  function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebar-overlay');
-    if (!sidebar || !overlay) return;
+  <script>
+    // ✅ MUST be global so inline onclick="toggleSidebar()" can call it
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebar-overlay');
+      if (!sidebar || !overlay) return;
 
-    sidebar.classList.toggle('show');
-    overlay.classList.toggle('show');
-  }
-
-  document.addEventListener('DOMContentLoaded', function () {
-    // Calculator Modal trigger
-    const openCalcBtn = document.getElementById('openCalculator');
-    if (openCalcBtn) {
-      openCalcBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        const calcModalEl = document.getElementById('calculatorModal');
-        if (calcModalEl) {
-          new bootstrap.Modal(calcModalEl).show();
-        }
-      });
+      sidebar.classList.toggle('show');
+      overlay.classList.toggle('show');
     }
 
-    // Optional: close sidebar when you click any link inside it (mobile UX)
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar) {
-      sidebar.querySelectorAll('a').forEach(a => {
-        a.addEventListener('click', () => {
-          if (sidebar.classList.contains('show')) toggleSidebar();
+    document.addEventListener('DOMContentLoaded', function () {
+      // Calculator Modal trigger
+      const openCalcBtn = document.getElementById('openCalculator');
+      if (openCalcBtn) {
+        openCalcBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          const calcModalEl = document.getElementById('calculatorModal');
+          if (calcModalEl) {
+            new bootstrap.Modal(calcModalEl).show();
+          }
         });
-      });
-    }
-  });
-</script>
+      }
+
+      // Optional: close sidebar when you click any link inside it (mobile UX)
+      const sidebar = document.getElementById('sidebar');
+      if (sidebar) {
+        sidebar.querySelectorAll('a').forEach(a => {
+          a.addEventListener('click', () => {
+            if (sidebar.classList.contains('show')) toggleSidebar();
+          });
+        });
+      }
+    });
+  </script>
 
 </body>
+
 </html>

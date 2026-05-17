@@ -1178,7 +1178,18 @@ def bill_invoice_modal(invoice_id):
         if w < 1 and w_raw > 0:
             w = 1
 
-        freight = float(get_freight(w) or 0)
+        is_subscription_covered = (
+            bool(getattr(p, "subscription_applied", False))
+            and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+        )
+
+        if is_subscription_covered:
+            freight = 0.0
+            handling = 0.0
+        else:
+            freight = _num(getattr(p, "freight_fee", getattr(p, "freight", 0)))
+            handling = _num(getattr(p, "storage_fee", getattr(p, "handling", 0)))
+
         bad_address_fee = _num(getattr(p, "bad_address_fee", 0))
 
         packages.append({
@@ -1187,7 +1198,7 @@ def bill_invoice_modal(invoice_id):
             "weight": w,
             "value": _num(getattr(p, "value", 0)),
             "freight": freight,
-            "handling": _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
+            "handling": handling,
             "other_charges": _num(getattr(p, "other_charges", 0)),
             "bad_address_fee": _num(getattr(p, "bad_address_fee", 0)),
             "duty": _num(getattr(p, "duty", 0)),
@@ -1290,8 +1301,17 @@ def receipt_pdf_inline(payment_id):
     for pkg in pkgs:
         w_raw = _num(getattr(pkg, "weight", 0))
         w_lbs = int(ceil(w_raw))
-        freight = float(get_freight(w_lbs) or 0.0)
-        handling = float(_calc_handling(w_lbs) or 0.0)
+        is_subscription_covered = (
+            bool(getattr(pkg, "subscription_applied", False))
+            and (getattr(pkg, "subscription_result", "") or "") == "subscription_applied"
+        )
+
+        if is_subscription_covered:
+            freight = 0.0
+            handling = 0.0
+        else:
+            freight = _num(getattr(pkg, "freight_fee", getattr(pkg, "freight", 0)))
+            handling = _num(getattr(pkg, "storage_fee", getattr(pkg, "handling", 0)))
 
         packages.append({
             "house_awb": pkg.house_awb or "",
@@ -1430,13 +1450,26 @@ def view_invoice_customer(invoice_id):
 
     packages = []
     for p in pkgs:
+
+        is_subscription_covered = (
+            bool(getattr(p, "subscription_applied", False))
+            and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+        )
+
+        if is_subscription_covered:
+            freight = 0.0
+            storage = 0.0
+        else:
+            freight = _num(getattr(p, "freight_fee", getattr(p, "freight", 0)))
+            storage = _num(getattr(p, "storage_fee", getattr(p, "handling", 0)))
+
         packages.append({
             "house_awb":       p.house_awb or "",
             "description":     p.description or "",
             "weight":          int(math.ceil(_num(getattr(p, "weight", 0)))),
             "value":           _num(getattr(p, "value", getattr(p, "value_usd", 0))),
-            "freight":         _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
-            "storage":         _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
+            "freight":         freight,
+            "storage":         storage,
             "other_charges":   _num(getattr(p, "other_charges", 0)),
             "bad_address_fee": _num(getattr(p, "bad_address_fee", 0)),
             "duty":            _num(getattr(p, "duty", 0)),
@@ -1512,14 +1545,27 @@ def invoice_pdf(invoice_id):
 
     packages = []
     for p in pkgs:
+
+        is_subscription_covered = (
+            bool(getattr(p, "subscription_applied", False))
+            and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+        )
+
+        if is_subscription_covered:
+            freight = 0.0
+            storage = 0.0
+        else:
+            freight = _num(getattr(p, "freight_fee", getattr(p, "freight", 0)))
+            storage = _num(getattr(p, "storage_fee", getattr(p, "handling", 0)))
+
         packages.append({
             "house_awb":       p.house_awb or "",
             "description":     p.description or "",
             "weight":          int(math.ceil(_num(getattr(p, "weight", 0)))),
 
             "value":           _num(getattr(p, "value", getattr(p, "value_usd", 0))),
-            "freight":         _num(getattr(p, "freight_fee", getattr(p, "freight", 0))),
-            "storage":         _num(getattr(p, "storage_fee", getattr(p, "handling", 0))),
+            "freight":         freight,
+            "storage":         storage,
             "other_charges":   _num(getattr(p, "other_charges", 0)),
             "bad_address_fee": _num(getattr(p, "bad_address_fee", 0)),
             "duty":            _num(getattr(p, "duty", 0)),

@@ -14,12 +14,9 @@
     <form method="get" action="{{ url_for('customer.view_packages') }}" class="d-flex align-items-center gap-2">
       <span class="small text-muted mb-0">Show</span>
 
-      <select name="per_page"
-              class="form-select form-select-sm"
-              style="width:110px;"
-              onchange="this.form.submit()">
+      <select name="per_page" class="form-select form-select-sm" style="width:110px;" onchange="this.form.submit()">
         {% for n in [10,25,50,100,500] %}
-          <option value="{{ n }}" {% if per_page|int == n %}selected{% endif %}>{{ n }}</option>
+        <option value="{{ n }}" {% if per_page|int==n %}selected{% endif %}>{{ n }}</option>
         {% endfor %}
       </select>
 
@@ -32,36 +29,40 @@
   </div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      {% endfor %}
-    {% endif %}
+  {% if messages %}
+  {% for category, message in messages %}
+  <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+  {% endif %}
   {% endwith %}
 
   <!-- Filter -->
   <form method="get" action="{{ url_for('customer.view_packages') }}" class="row g-2 mb-3">
     <div class="col-md-3">
-      <input type="text" name="tracking_number" value="{{ tracking_number }}" class="form-control" placeholder="Tracking #">
+      <input type="text" name="tracking_number" value="{{ tracking_number }}" class="form-control"
+        placeholder="Tracking #">
     </div>
 
     <div class="col-md-3">
       <select name="status" class="form-control">
         <option value="">All Status</option>
         <option value="Overseas" {% if status_filter=='Overseas' %}selected{% endif %}>Overseas</option>
-        <option value="Ready for Pick Up" {% if status_filter=='Ready for Pick Up' %}selected{% endif %}>Ready for Pick Up</option>
+        <option value="Received at Local Port" {% if status_filter=='Received at Local Port' %}selected{% endif %}>
+          Received at Local Port</option>
+        <option value="Ready for Pick Up" {% if status_filter=='Ready for Pick Up' %}selected{% endif %}>Ready for Pick
+          Up</option>
         <option value="Delivered" {% if status_filter=='Delivered' %}selected{% endif %}>Delivered</option>
       </select>
     </div>
 
-    <div class="col-md-2">
+    <div class="col-md-2 customer-date-filter">
       <input type="date" name="date_from" value="{{ date_from }}" class="form-control">
     </div>
 
-    <div class="col-md-2">
+    <div class="col-md-2 customer-date-filter">
       <input type="date" name="date_to" value="{{ date_to }}" class="form-control">
     </div>
 
@@ -72,8 +73,7 @@
         Filter
       </button>
 
-      <a href="{{ url_for('customer.view_packages', per_page=per_page) }}"
-         class="btn btn-outline-secondary w-100">
+      <a href="{{ url_for('customer.view_packages', per_page=per_page) }}" class="btn btn-outline-secondary w-100">
         Clear
       </a>
     </div>
@@ -97,7 +97,7 @@
       {% set mode = "customer" %}
       <tbody>
         {% for pkg in packages %}
-          {% include "partials/package_row_shared.html" with context %}
+        {% include "partials/package_row_shared.html" with context %}
         {% endfor %}
       </tbody>
     </table>
@@ -107,12 +107,12 @@
   <nav aria-label="Page navigation">
     <ul class="pagination justify-content-center">
       {% for p in range(1, total_pages + 1) %}
-        <li class="page-item {% if p == page %}active{% endif %}">
-          <a class="page-link"
-             href="?page={{ p }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&tracking_number={{ tracking_number }}&per_page={{ per_page }}">
-            {{ p }}
-          </a>
-        </li>
+      <li class="page-item {% if p == page %}active{% endif %}">
+        <a class="page-link"
+          href="?page={{ p }}&status={{ status_filter }}&date_from={{ date_from }}&date_to={{ date_to }}&tracking_number={{ tracking_number }}&per_page={{ per_page }}">
+          {{ p }}
+        </a>
+      </li>
       {% endfor %}
     </ul>
   </nav>
@@ -123,105 +123,98 @@
      Modals
      ========================= -->
 {% for pkg in packages %}
-  {% set s = (pkg.status or '') %}
-  {% set lock_docs = (s == 'Ready for Pick Up' or s == 'Delivered') %}
+{% set s = (pkg.status or '') %}
+{% set lock_docs = (s == 'Ready for Pick Up' or s == 'Delivered') %}
 
-  <div class="modal fade" id="docsModal{{ pkg.id }}" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-      <div class="modal-content">
+<div class="modal fade" id="docsModal{{ pkg.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
 
-        <form method="POST"
-              enctype="multipart/form-data"
-              action="{{ url_for('customer.package_upload_docs', pkg_id=pkg.id) }}">
-          {{ form.csrf_token }}
+      <form method="POST" enctype="multipart/form-data"
+        action="{{ url_for('customer.package_upload_docs', pkg_id=pkg.id) }}">
+        {{ form.csrf_token }}
 
-          <div class="modal-header">
-            <h5 class="modal-title">Upload Invoices / Declared Value</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-header">
+          <h5 class="modal-title">Upload Invoices / Declared Value</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+
+          {% if lock_docs %}
+          <div class="alert alert-secondary py-2 mb-3">
+            <i class="fas fa-lock me-1"></i>
+            This package is <strong>{{ s }}</strong>, so invoices are locked.
           </div>
+          {% endif %}
 
-          <div class="modal-body">
+          <div class="row g-3">
 
-            {% if lock_docs %}
-              <div class="alert alert-secondary py-2 mb-3">
-                <i class="fas fa-lock me-1"></i>
-                This package is <strong>{{ s }}</strong>, so invoices are locked.
-              </div>
-            {% endif %}
-
-            <div class="row g-3">
-
-              <div class="col-md-6">
-                <label class="form-label">Declared Value (USD)</label>
-                <input class="form-control"
-                       type="number"
-                       name="declared_value"
-                       step="0.01"
-                       min="0"
-                       value="{{ pkg.declared_value if pkg.declared_value is not none else (pkg.value if pkg.value is not none else 0) }}"
-                       {% if lock_docs %}disabled{% endif %}>
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Invoice File 1</label>
-                <input class="form-control" type="file" name="invoice_file_1" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx"
- {% if lock_docs %}disabled{% endif %}>
-
-                <label class="form-label mt-2">Invoice File 2</label>
-                <input class="form-control" type="file" name="invoice_file_2" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
-
-                <label class="form-label mt-2">Invoice File 3</label>
-                <input class="form-control" type="file" name="invoice_file_3" accept=".pdf,.jpg,.jpeg,.png" {% if lock_docs %}disabled{% endif %}>
-              </div>
-
-              <div class="col-12">
-                <div class="fw-semibold mb-2">Existing Attachments</div>
-
-                {% if pkg.attachments and pkg.attachments|length > 0 %}
-                  <div class="d-flex flex-wrap gap-2">
-                    {% for a in pkg.attachments %}
-                      <div class="d-inline-flex align-items-center gap-2">
-
-                        <a class="btn btn-sm btn-outline-secondary"
-                           target="_blank"
-                           rel="noopener"
-                           href="{{ url_for('customer.view_package_attachment', attachment_id=a.id) }}"
-                           title="{{ a.original_name or a.file_name }}">
-                          <i class="fas fa-file-alt me-1"></i> View
-                        </a>
-
-                        <button type="button"
-                                class="btn btn-sm btn-outline-danger"
-                                {% if lock_docs %}disabled{% endif %}
-                                onclick="deleteAttachment('{{ a.id }}', '{{ pkg.id }}')">
-                          <i class="fa-solid fa-xmark"></i>
-                        </button>
-
-                      </div>
-                    {% endfor %}
-                  </div>
-                {% else %}
-                  <div class="text-muted">No attachments yet.</div>
-                {% endif %}
-              </div>
-
+            <div class="col-md-6">
+              <label class="form-label">Declared Value (USD)</label>
+              <input class="form-control" type="number" name="declared_value" step="0.01" min="0"
+                value="{{ pkg.declared_value if pkg.declared_value is not none else (pkg.value if pkg.value is not none else 0) }}"
+                {% if lock_docs %}disabled{% endif %}>
             </div>
+
+            <div class="col-md-6">
+              <label class="form-label">Invoice File 1</label>
+              <input class="form-control" type="file" name="invoice_file_1" accept=".pdf,.jpg,.jpeg,.png,.xls,.xlsx" {%
+                if lock_docs %}disabled{% endif %}>
+
+              <label class="form-label mt-2">Invoice File 2</label>
+              <input class="form-control" type="file" name="invoice_file_2" accept=".pdf,.jpg,.jpeg,.png" {% if
+                lock_docs %}disabled{% endif %}>
+
+              <label class="form-label mt-2">Invoice File 3</label>
+              <input class="form-control" type="file" name="invoice_file_3" accept=".pdf,.jpg,.jpeg,.png" {% if
+                lock_docs %}disabled{% endif %}>
+            </div>
+
+            <div class="col-12">
+              <div class="fw-semibold mb-2">Existing Attachments</div>
+
+              {% if pkg.attachments and pkg.attachments|length > 0 %}
+              <div class="d-flex flex-wrap gap-2">
+                {% for a in pkg.attachments %}
+                <div class="d-inline-flex align-items-center gap-2">
+
+                  <a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener"
+                    href="{{ url_for('customer.view_package_attachment', attachment_id=a.id) }}"
+                    title="{{ a.original_name or a.file_name }}">
+                    <i class="fas fa-file-alt me-1"></i> View
+                  </a>
+
+                  <button type="button" class="btn btn-sm btn-outline-danger" {% if lock_docs %}disabled{% endif %}
+                    onclick="deleteAttachment('{{ a.id }}', '{{ pkg.id }}')">
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+
+                </div>
+                {% endfor %}
+              </div>
+              {% else %}
+              <div class="text-muted">No attachments yet.</div>
+              {% endif %}
+            </div>
+
           </div>
+        </div>
 
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-            <button type="submit" class="btn btn-primary" {% if lock_docs %}disabled{% endif %}>Save</button>
-          </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="submit" class="btn btn-primary" {% if lock_docs %}disabled{% endif %}>Save</button>
+        </div>
 
-        </form>
+      </form>
 
-        <form id="deleteAttachmentForm{{ pkg.id }}" method="POST" style="display:none;">
-          {{ form.csrf_token }}
-        </form>
+      <form id="deleteAttachmentForm{{ pkg.id }}" method="POST" style="display:none;">
+        {{ form.csrf_token }}
+      </form>
 
-      </div>
     </div>
   </div>
+</div>
 {% endfor %}
 
 <script>
@@ -237,30 +230,66 @@
 </script>
 
 <style>
-.pkg-attachment {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  background-color: #f3e5f5;
-  color: #4a148c;
-  border: 1px solid #e1bee7;
-  transition: all 0.15s ease-in-out;
-  text-decoration: none;
-}
-.pkg-attachment i { font-size: 0.95rem; }
-.pkg-attachment:hover {
-  background-color: #4a148c;
-  color: #fff;
-  border-color: #4a148c;
-  transform: translateY(-1px);
-}
-.btn-outline-secondary {
-  --bs-btn-color: #374151;
-  --bs-btn-border-color: #d1d5db;
-}
+  .pkg-attachment {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background-color: #f3e5f5;
+    color: #4a148c;
+    border: 1px solid #e1bee7;
+    transition: all 0.15s ease-in-out;
+    text-decoration: none;
+  }
+
+  .pkg-attachment i {
+    font-size: 0.95rem;
+  }
+
+  .pkg-attachment:hover {
+    background-color: #4a148c;
+    color: #fff;
+    border-color: #4a148c;
+    transform: translateY(-1px);
+  }
+
+  .btn-outline-secondary {
+    --bs-btn-color: #374151;
+    --bs-btn-border-color: #d1d5db;
+  }
+
+  @media (max-width: 768px) {
+    .customer-date-filter {
+      display: none !important;
+    }
+
+    .container.mt-4 form.row.g-2.mb-3 {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 12px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, .05);
+    }
+
+    .container.mt-4 form.row.g-2.mb-3 .form-control,
+    .container.mt-4 form.row.g-2.mb-3 .form-select {
+      height: 44px;
+      font-size: 0.95rem;
+    }
+
+    .container.mt-4 form.row.g-2.mb-3 .col-md-2.d-flex {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px !important;
+    }
+
+    .container.mt-4 form.row.g-2.mb-3 .btn {
+      height: 44px;
+      font-size: 0.95rem;
+    }
+  }
 </style>
 
 {% endblock %}

@@ -376,7 +376,7 @@ pkg.get('customer_notified_at') %}
     </div>
 
     {% if inv_is_paid or (inv_balance|float <= 0.00001) %} <div class="mt-1 d-flex justify-content-center">
-      <img src="{{ url_for('static', filename='images/paid-stamp.png') }}" alt="PAID"
+      <img src="{{ url_for('static', filename='Images/paid_stamp.png') }}" alt="PAID"
         style="height:36px; opacity:0.85; transform: rotate(-8deg);">
       </div>
 

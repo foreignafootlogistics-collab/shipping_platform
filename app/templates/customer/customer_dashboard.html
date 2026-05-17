@@ -32,6 +32,7 @@
             {% endif %}
 
             <form action="{{ url_for('customer.upload_profile_pic') }}" method="POST" enctype="multipart/form-data">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="file" name="profile_pic" accept="image/*" class="form-control form-control-sm mb-2" required>
               <button type="submit" class="btn btn-dashboard w-100">Upload</button>
             </form>

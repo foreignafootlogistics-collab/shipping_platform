@@ -376,14 +376,8 @@ pkg.get('customer_notified_at') %}
     </div>
 
     {% if inv_is_paid or (inv_balance|float <= 0.00001) %} <div class="mt-1 d-flex justify-content-center">
-      <span class="badge bg-success px-3 py-2 shadow-sm" style="
-        font-size:0.78rem;
-        letter-spacing:1px;
-        transform: rotate(-6deg);
-        border:2px solid rgba(255,255,255,.35);
-      ">
-        ✓ PAID
-      </span>
+      <img src="{{ url_for('static', filename='images/paid-stamp.png') }}" alt="PAID"
+        style="height:36px; opacity:0.85; transform: rotate(-8deg);">
       </div>
 
       {% elif is_partial %}

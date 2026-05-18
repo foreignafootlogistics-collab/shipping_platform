@@ -194,7 +194,7 @@
 
               {% if subscription_summary.is_family_plan %}
 
-              {% if subscription_summary.is_owner %}
+              {% if subscription_summary.parent_subscription_id %}
               <span class="badge bg-primary ms-1">
                 Family Owner
               </span>

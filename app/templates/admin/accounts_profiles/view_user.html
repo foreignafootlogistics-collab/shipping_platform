@@ -235,59 +235,6 @@
 
       </div>
 
-      <!-- FAMILY MEMBERS -->
-      {% if subscription_summary and subscription_summary.is_family_plan %}
-      <div class="row g-3 mt-1">
-        <div class="col-lg-4 col-md-6 ms-auto">
-          <div class="border rounded p-3">
-
-            <div class="d-flex justify-content-between align-items-center mb-2">
-              <h6 class="fw-bold mb-0">Family Members</h6>
-            </div>
-
-            <ul class="small mt-1 mb-3 ps-3">
-              {% for m in subscription_summary.members %}
-              <li class="d-flex justify-content-between align-items-center mb-2">
-
-                <span>
-                  {{ m.user.full_name }}
-
-                  {% if m.role == "owner" %}
-                  <span class="badge bg-primary">Owner</span>
-                  {% endif %}
-                </span>
-
-                {% if m.role != "owner" %}
-                <form method="POST" action="{{ url_for('accounts_profiles.remove_subscription_member',
-                               sub_id=subscription_summary.subscription_id,
-                               user_id=m.user.id) }}">
-
-                  <button class="btn btn-sm btn-outline-danger">
-                    Remove
-                  </button>
-                </form>
-                {% endif %}
-              </li>
-              {% endfor %}
-            </ul>
-
-            <form method="POST" action="{{ url_for('accounts_profiles.add_subscription_member',
-                           sub_id=subscription_summary.subscription_id) }}" class="d-flex gap-2">
-
-              <input type="text" name="registration_number" class="form-control form-control-sm"
-                placeholder="Enter Registration #" required>
-
-              <button class="btn btn-sm btn-outline-purple">
-                Add
-              </button>
-
-            </form>
-
-          </div>
-        </div>
-      </div>
-      {% endif %}
-
     </div>
 
     <!-- ATTACHED TABS -->
@@ -1514,41 +1461,117 @@
 
   <div class="modal fade" id="manualSubscriptionModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-      <form class="modal-content" method="POST"
-        action="{{ url_for('accounts_profiles.manual_add_subscription', id=user.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-content">
 
-        <div class="modal-header" style="background:#4a148c;color:white;">
-          <h5 class="modal-title">Add / Change Subscription</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
+        <form method="POST" action="{{ url_for('accounts_profiles.manual_add_subscription', id=user.id) }}">
 
-        <div class="modal-body">
-          <label class="form-label">Plan</label>
-          <select name="plan_id" class="form-select" required>
-            {% for plan in subscription_plans %}
-            <option value="{{ plan.id }}">
-              {{ plan.name }} - US${{ "%.2f"|format(plan.price_usd or 0) }}
-            </option>
-            {% endfor %}
-          </select>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-          <label class="form-label mt-3">Duration</label>
-          <select name="duration_days" class="form-select">
-            <option value="30">30 days</option>
-            <option value="60">60 days</option>
-            <option value="90">90 days</option>
-          </select>
+          <div class="modal-header" style="background:#4a148c;color:white;">
+            <h5 class="modal-title">Add / Change Subscription</h5>
 
-          <div class="alert alert-warning small mt-3 mb-0">
-            This activates the subscription manually. Use this when the customer pays in office/cash.
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
           </div>
-        </div>
 
-        <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Activate Subscription</button>
-        </div>
-      </form>
+          <div class="modal-body">
+
+            <!-- FAMILY MEMBERS -->
+            {% if subscription_summary and subscription_summary.is_family_plan %}
+            <div class="border rounded p-3 mb-4 bg-light">
+
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0">Family Members</h6>
+
+                <span class="badge bg-primary">
+                  {{ subscription_summary.members|length }} Member(s)
+                </span>
+              </div>
+
+              <div class="mb-3">
+
+                {% for m in subscription_summary.members %}
+                <div class="d-flex justify-content-between align-items-center border rounded px-3 py-2 mb-2 bg-white">
+
+                  <div>
+                    <strong>{{ m.user.full_name }}</strong>
+
+                    {% if m.role == "owner" %}
+                    <span class="badge bg-primary ms-2">Owner</span>
+                    {% endif %}
+                  </div>
+
+                  {% if m.role != "owner" %}
+                  <form method="POST" action="{{ url_for('accounts_profiles.remove_subscription_member',
+                                         sub_id=subscription_summary.subscription_id,
+                                         user_id=m.user.id) }}" class="m-0">
+
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <button class="btn btn-sm btn-outline-danger">
+                      Remove
+                    </button>
+                  </form>
+                  {% endif %}
+
+                </div>
+                {% endfor %}
+
+              </div>
+
+              <!-- ADD MEMBER -->
+              <form method="POST" action="{{ url_for('accounts_profiles.add_subscription_member',
+                                     sub_id=subscription_summary.subscription_id) }}">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="d-flex gap-2">
+                  <input type="text" name="registration_number" class="form-control" placeholder="Enter Registration #"
+                    required>
+
+                  <button class="btn btn-outline-purple">
+                    Add
+                  </button>
+                </div>
+              </form>
+
+            </div>
+            {% endif %}
+
+            <!-- SUBSCRIPTION SETTINGS -->
+            <label class="form-label">Plan</label>
+
+            <select name="plan_id" class="form-select" required>
+              {% for plan in subscription_plans %}
+              <option value="{{ plan.id }}">
+                {{ plan.name }} - US${{ "%.2f"|format(plan.price_usd or 0) }}
+              </option>
+              {% endfor %}
+            </select>
+
+            <label class="form-label mt-3">Duration</label>
+
+            <select name="duration_days" class="form-select">
+              <option value="30">30 days</option>
+              <option value="60">60 days</option>
+              <option value="90">90 days</option>
+            </select>
+
+            <div class="alert alert-warning small mt-3 mb-0">
+              This activates the subscription manually.
+              Use this when the customer pays in office/cash.
+            </div>
+
+          </div>
+
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-primary">
+              Activate Subscription
+            </button>
+          </div>
+
+        </form>
+
+      </div>
     </div>
   </div>
 

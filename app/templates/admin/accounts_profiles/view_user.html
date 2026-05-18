@@ -237,50 +237,54 @@
 
       <!-- FAMILY MEMBERS -->
       {% if subscription_summary and subscription_summary.is_family_plan %}
-      <div class="border rounded p-3 mt-3">
+      <div class="row g-3 mt-1">
+        <div class="col-lg-4 col-md-6 ms-auto">
+          <div class="border rounded p-3">
 
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="fw-bold mb-0">Family Members</h6>
-        </div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="fw-bold mb-0">Family Members</h6>
+            </div>
 
-        <ul class="small mt-1 mb-3">
-          {% for m in subscription_summary.members %}
-          <li class="d-flex justify-content-between align-items-center mb-2">
+            <ul class="small mt-1 mb-3 ps-3">
+              {% for m in subscription_summary.members %}
+              <li class="d-flex justify-content-between align-items-center mb-2">
 
-            <span>
-              {{ m.user.full_name }}
+                <span>
+                  {{ m.user.full_name }}
 
-              {% if m.role == "owner" %}
-              <span class="badge bg-primary">Owner</span>
-              {% endif %}
-            </span>
+                  {% if m.role == "owner" %}
+                  <span class="badge bg-primary">Owner</span>
+                  {% endif %}
+                </span>
 
-            {% if m.role != "owner" %}
-            <form method="POST" action="{{ url_for('accounts_profiles.remove_subscription_member',
-                                 sub_id=subscription_summary.subscription_id,
-                                 user_id=m.user.id) }}">
+                {% if m.role != "owner" %}
+                <form method="POST" action="{{ url_for('accounts_profiles.remove_subscription_member',
+                               sub_id=subscription_summary.subscription_id,
+                               user_id=m.user.id) }}">
 
-              <button class="btn btn-sm btn-outline-danger">
-                Remove
+                  <button class="btn btn-sm btn-outline-danger">
+                    Remove
+                  </button>
+                </form>
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+
+            <form method="POST" action="{{ url_for('accounts_profiles.add_subscription_member',
+                           sub_id=subscription_summary.subscription_id) }}" class="d-flex gap-2">
+
+              <input type="text" name="registration_number" class="form-control form-control-sm"
+                placeholder="Enter Registration #" required>
+
+              <button class="btn btn-sm btn-outline-purple">
+                Add
               </button>
+
             </form>
-            {% endif %}
-          </li>
-          {% endfor %}
-        </ul>
 
-        <form method="POST" action="{{ url_for('accounts_profiles.add_subscription_member',
-                             sub_id=subscription_summary.subscription_id) }}" class="d-flex gap-2">
-
-          <input type="text" name="registration_number" class="form-control form-control-sm"
-            placeholder="Enter Registration #" required>
-
-          <button class="btn btn-sm btn-outline-purple">
-            Add
-          </button>
-
-        </form>
-
+          </div>
+        </div>
       </div>
       {% endif %}
 

@@ -2580,15 +2580,23 @@ def upload_profile_pic():
     file = request.files.get('profile_pic')
 
     if file and file.filename:
-        filename = f"{current_user.id}.jpg"
-        folder = _profile_folder()
-        os.makedirs(folder, exist_ok=True)
+        try:
+            from app.utils.cloudinary_storage import upload_package_attachment
 
-        path = os.path.join(folder, filename)
-        file.save(path)
+            file.stream.seek(0)
+            url, public_id, rtype = upload_package_attachment(file)
 
-        current_user.profile_pic = filename
-        db.session.commit()
+            if url:
+                current_user.profile_pic = url
+                db.session.commit()
+                flash("Profile picture updated successfully.", "success")
+            else:
+                flash("Upload failed. Please try again.", "danger")
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.exception("[PROFILE PHOTO UPLOAD] failed")
+            flash(f"Profile picture upload failed: {e}", "danger")
 
     return redirect(url_for('customer.customer_dashboard'))
 

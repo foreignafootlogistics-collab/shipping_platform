@@ -84,23 +84,20 @@
         <!-- Profile Image / Initials -->
         <div class="d-flex align-items-center mb-3">
 
-          {% if user.profile_pic %}
-          <img src="{{ url_for('static', filename='profile_pics/' ~ user.profile_pic) }}" alt="Profile Picture"
-            class="rounded-circle shadow-sm me-3" style="
-             width:80px;
-             height:80px;
-             object-fit:cover;
-             border:3px solid #4a148c;
-           ">
+          {% set pic = (user.profile_pic or user.profile_picture or '')|string %}
+
+          {% if pic %}
+          {% if pic.startswith('http://') or pic.startswith('https://') %}
+          {% set img_src = pic %}
           {% else %}
-          <div class="rounded-circle d-flex align-items-center justify-content-center me-3" style="
-             width:80px;
-             height:80px;
-             font-weight:bold;
-             font-size:2rem;
-             color:#fff;
-             background:#4a148c;
-           ">
+          {% set img_src = url_for('static', filename='profile_pics/' ~ pic) %}
+          {% endif %}
+
+          <img src="{{ img_src }}" alt="Profile Picture" class="rounded-circle shadow-sm me-3"
+            style="width:80px;height:80px;object-fit:cover;border:3px solid #4a148c;">
+          {% else %}
+          <div class="rounded-circle d-flex align-items-center justify-content-center me-3"
+            style="width:80px;height:80px;font-weight:bold;font-size:2rem;color:#fff;background:#4a148c;">
             {{ user.full_name[:1]|upper }}{{ user.full_name.split(' ')[-1][:1]|upper }}
           </div>
           {% endif %}

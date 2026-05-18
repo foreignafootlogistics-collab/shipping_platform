@@ -20,8 +20,15 @@
 
           <div class="profile-avatar text-center">
             {% if profile_picture %}
-            <img src="{{ url_for('static', filename='profile_pics/' + profile_picture) }}" alt="Profile Picture"
-              class="img-fluid rounded-circle mb-2">
+            {% set pic = (profile_picture or '')|string %}
+
+            {% if pic.startswith('http://') or pic.startswith('https://') %}
+            <img src="{{ pic }}" alt="Profile Picture" class="img-fluid rounded-circle mb-2"
+              style="width:100px;height:100px;object-fit:cover;">
+            {% else %}
+            <img src="{{ url_for('static', filename='profile_pics/' ~ pic) }}" alt="Profile Picture"
+              class="img-fluid rounded-circle mb-2" style="width:100px;height:100px;object-fit:cover;">
+            {% endif %}
             {% else %}
             {% set colors = ['#FFEB3B', '#4CAF50'] %}
             {% set color_index = current_user.id % 2 %}

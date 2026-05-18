@@ -187,9 +187,32 @@
             {% if subscription_summary %}
 
             <div class="mb-2">
+
               <span class="badge bg-success">
                 {{ subscription_summary.plan_name }}
               </span>
+
+              {% if subscription_summary.is_family_plan %}
+
+              {% if subscription_summary.is_owner %}
+              <span class="badge bg-primary ms-1">
+                Family Owner
+              </span>
+              {% else %}
+              <span class="badge bg-info text-dark ms-1">
+                Family Member
+              </span>
+
+              {% if subscription_summary.owner_name %}
+              <div class="small text-muted mt-1">
+                Owner: {{ subscription_summary.owner_name }}
+              </div>
+              {% endif %}
+
+              {% endif %}
+
+              {% endif %}
+
             </div>
 
             <div class="small text-muted">

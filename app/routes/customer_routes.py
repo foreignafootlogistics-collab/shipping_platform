@@ -2574,18 +2574,22 @@ def referrals():
 # -----------------------------
 # Profile Picture Upload
 # -----------------------------
-@customer_bp.route('/upload-profile-pic', methods=['POST'])
+@customer_bp.route('/upload_profile_pic', methods=['POST'])
 @login_required
 def upload_profile_pic():
     file = request.files.get('profile_pic')
+
     if file and file.filename:
         filename = f"{current_user.id}.jpg"
         folder = _profile_folder()
         os.makedirs(folder, exist_ok=True)
+
         path = os.path.join(folder, filename)
+        file.save(path)
 
         current_user.profile_pic = filename
         db.session.commit()
+
     return redirect(url_for('customer.customer_dashboard'))
 
 

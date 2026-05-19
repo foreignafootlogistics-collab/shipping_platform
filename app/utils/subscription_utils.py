@@ -210,10 +210,23 @@ def get_subscription_discount_percent(package):
 
     billable_weight = get_billable_weight(package)
 
-    if billable_weight <= subscription.plan.overage_discount_max_weight:
-        return float(subscription.plan.overage_discount_percent or 0)
+    # Subscription exhausted but still within active period
+    discount_percent = float(subscription.plan.overage_discount_percent or 0)
+    max_discount_weight = float(subscription.plan.overage_discount_max_weight or 0)
 
-    return 0
+    # No discount configured
+    if discount_percent <= 0:
+        return 0
+
+    # No overage limit configured
+    if max_discount_weight <= 0:
+        return 0
+
+    # Package too heavy for exhausted-plan discount
+    if billable_weight > max_discount_weight:
+        return 0
+
+    return discount_percent
 
 
 def get_subscription_summary(user_id):

@@ -5,23 +5,46 @@
 {% block content %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 <style>
-  :root { --brand:#4a148c; }
-  .help { font-size:.85rem; color:#6c757d; }
-  .shadow-soft { box-shadow: 0 6px 16px rgba(0,0,0,.05); }
-  .card-hint { background:#f7f4fb; border-left:4px solid var(--brand); }
-  .btn-purple{ background:#4a148c; color:#fff; }
-  .btn-purple:hover{ background:#3b0f70; color:#fff; }
-  .reg-preview-box{
-    background:linear-gradient(135deg,#f5f2fb,#ffffff);
-    border:1px solid #e9dffc;
-    border-radius:14px;
-    padding:18px;
+  :root {
+    --brand: #4a148c;
   }
-  .reg-preview-number{
-    font-size:1.8rem;
-    font-weight:800;
-    color:#4a148c;
-    letter-spacing:.04em;
+
+  .help {
+    font-size: .85rem;
+    color: #6c757d;
+  }
+
+  .shadow-soft {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .05);
+  }
+
+  .card-hint {
+    background: #f7f4fb;
+    border-left: 4px solid var(--brand);
+  }
+
+  .btn-purple {
+    background: #4a148c;
+    color: #fff;
+  }
+
+  .btn-purple:hover {
+    background: #3b0f70;
+    color: #fff;
+  }
+
+  .reg-preview-box {
+    background: linear-gradient(135deg, #f5f2fb, #ffffff);
+    border: 1px solid #e9dffc;
+    border-radius: 14px;
+    padding: 18px;
+  }
+
+  .reg-preview-number {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #4a148c;
+    letter-spacing: .04em;
   }
 </style>
 
@@ -30,20 +53,21 @@
 
   {# Flash messages #}
   {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-      {% endfor %}
-    {% endif %}
+  {% if messages %}
+  {% for category, message in messages %}
+  <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  </div>
+  {% endfor %}
+  {% endif %}
   {% endwith %}
 
   {# Tabs #}
   <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
     <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="company-tab" data-bs-toggle="tab" data-bs-target="#companyInfo" type="button" role="tab">
+      <button class="nav-link active" id="company-tab" data-bs-toggle="tab" data-bs-target="#companyInfo" type="button"
+        role="tab">
         Company Info
       </button>
     </li>
@@ -53,23 +77,32 @@
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="registration-tab" data-bs-toggle="tab" data-bs-target="#registrationSettings" type="button" role="tab">
+      <button class="nav-link" id="registration-tab" data-bs-toggle="tab" data-bs-target="#registrationSettings"
+        type="button" role="tab">
         <i class="bi bi-person-badge me-1"></i> Registration
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="branches-tab" data-bs-toggle="tab" data-bs-target="#branchesLocations" type="button" role="tab">
+      <button class="nav-link" id="branches-tab" data-bs-toggle="tab" data-bs-target="#branchesLocations" type="button"
+        role="tab">
         Branches & Locations
       </button>
     </li>
     <li class="nav-item" role="presentation">
-      <button class="nav-link" id="terms-tab" data-bs-toggle="tab" data-bs-target="#termsServices" type="button" role="tab">
+      <button class="nav-link" id="terms-tab" data-bs-toggle="tab" data-bs-target="#termsServices" type="button"
+        role="tab">
         Terms & Services
       </button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link" id="display-tab" data-bs-toggle="tab" data-bs-target="#display" type="button" role="tab">
         <i class="bi bi-palette me-1"></i> Display & Formats
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="delivery-tab" data-bs-toggle="tab" data-bs-target="#deliverySettings" type="button"
+        role="tab">
+        <i class="bi bi-truck me-1"></i> Delivery Settings
       </button>
     </li>
   </ul>
@@ -90,18 +123,23 @@
 
           <div class="row g-3 align-items-center mb-3">
             <div class="col-auto">
-              <div class="border rounded p-2 bg-white shadow-sm" style="width:140px;height:140px;display:flex;align-items:center;justify-content:center;">
+              <div class="border rounded p-2 bg-white shadow-sm"
+                style="width:140px;height:140px;display:flex;align-items:center;justify-content:center;">
                 {% if settings and settings.logo_path %}
-                  <img id="logoPreview" src="{{ url_for('static', filename=settings.logo_path) }}" alt="Logo" style="max-width:100%;max-height:100%;">
+                <img id="logoPreview" src="{{ url_for('static', filename=settings.logo_path) }}" alt="Logo"
+                  style="max-width:100%;max-height:100%;">
                 {% else %}
-                  <img id="logoPreview" src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="max-width:100%;max-height:100%;">
+                <img id="logoPreview" src="{{ url_for('static', filename='logo.png') }}" alt="Logo"
+                  style="max-width:100%;max-height:100%;">
                 {% endif %}
               </div>
             </div>
             <div class="col">
-              <form method="post" action="{{ url_for('settings.update_logo') }}" enctype="multipart/form-data" class="d-flex gap-2">
+              <form method="post" action="{{ url_for('settings.update_logo') }}" enctype="multipart/form-data"
+                class="d-flex gap-2">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input class="form-control" type="file" name="logo_file" accept=".png,.jpg,.jpeg,.gif,.svg,.webp" id="logoInput">
+                <input class="form-control" type="file" name="logo_file" accept=".png,.jpg,.jpeg,.gif,.svg,.webp"
+                  id="logoInput">
                 <button class="btn btn-outline-primary"><i class="bi bi-upload me-1"></i>Upload Logo</button>
               </form>
               <div class="help mt-1">PNG or SVG recommended. Shown in sidebar, invoices and receipts.</div>
@@ -112,19 +150,24 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="col-md-6">
               <label class="form-label">Company Name</label>
-              <input type="text" class="form-control" name="company_name" value="{{ settings.company_name if settings else '' }}" required>
+              <input type="text" class="form-control" name="company_name"
+                value="{{ settings.company_name if settings else '' }}" required>
             </div>
             <div class="col-md-6">
               <label class="form-label">Contact Email</label>
-              <input type="email" class="form-control" name="company_email" value="{{ settings.company_email if settings else '' }}" required>
+              <input type="email" class="form-control" name="company_email"
+                value="{{ settings.company_email if settings else '' }}" required>
             </div>
             <div class="col-12">
               <label class="form-label">Address</label>
-              <textarea class="form-control" name="company_address" rows="2">{{ settings.company_address if settings else '' }}</textarea>
+              <textarea class="form-control" name="company_address"
+                rows="2">{{ settings.company_address if settings else '' }}</textarea>
             </div>
             <div class="d-flex gap-2">
-              <button type="submit" class="btn btn-primary"><i class="bi bi-check2-circle me-1"></i> Save Company Info</button>
-              <button type="reset" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise me-1"></i> Reset</button>
+              <button type="submit" class="btn btn-primary"><i class="bi bi-check2-circle me-1"></i> Save Company
+                Info</button>
+              <button type="reset" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise me-1"></i>
+                Reset</button>
             </div>
           </form>
         </div>
@@ -137,20 +180,14 @@
           <div class="card-body">
             <div class="mb-3">
               <label class="form-label">Street</label>
-              <input type="text"
-                     name="us_street"
-                     class="form-control"
-                     value="{{ settings.us_street or '' }}"
-                     placeholder="3200 NW 112th Avenue">
+              <input type="text" name="us_street" class="form-control" value="{{ settings.us_street or '' }}"
+                placeholder="3200 NW 112th Avenue">
             </div>
 
             <div class="mb-3">
               <label class="form-label">Suite Prefix (before Reg #)</label>
-              <input type="text"
-                     name="us_suite_prefix"
-                     class="form-control"
-                     value="{{ settings.us_suite_prefix or '' }}"
-                     placeholder="KCDA-FAFL# ">
+              <input type="text" name="us_suite_prefix" class="form-control"
+                value="{{ settings.us_suite_prefix or '' }}" placeholder="KCDA-FAFL# ">
               <small class="text-muted">
                 Example rendering: <code>{{ settings.us_suite_prefix or 'KCDA-FAFL# ' }}{{ '{REG#}' }}</code>
               </small>
@@ -159,27 +196,18 @@
             <div class="row">
               <div class="col-md-4 mb-3">
                 <label class="form-label">City</label>
-                <input type="text"
-                       name="us_city"
-                       class="form-control"
-                       value="{{ settings.us_city or '' }}"
-                       placeholder="Doral">
+                <input type="text" name="us_city" class="form-control" value="{{ settings.us_city or '' }}"
+                  placeholder="Doral">
               </div>
               <div class="col-md-4 mb-3">
                 <label class="form-label">State</label>
-                <input type="text"
-                       name="us_state"
-                       class="form-control"
-                       value="{{ settings.us_state or '' }}"
-                       placeholder="Florida">
+                <input type="text" name="us_state" class="form-control" value="{{ settings.us_state or '' }}"
+                  placeholder="Florida">
               </div>
               <div class="col-md-4 mb-3">
                 <label class="form-label">ZIP</label>
-                <input type="text"
-                       name="us_zip"
-                       class="form-control"
-                       value="{{ settings.us_zip or '' }}"
-                       placeholder="33172">
+                <input type="text" name="us_zip" class="form-control" value="{{ settings.us_zip or '' }}"
+                  placeholder="33172">
               </div>
             </div>
           </div>
@@ -210,18 +238,12 @@
             <!-- Inner tabs: Freight / Customs -->
             <ul class="nav nav-tabs mb-3">
               <li class="nav-item">
-                <button class="nav-link active"
-                        type="button"
-                        data-bs-toggle="tab"
-                        data-bs-target="#tab-freight">
+                <button class="nav-link active" type="button" data-bs-toggle="tab" data-bs-target="#tab-freight">
                   Freight
                 </button>
               </li>
               <li class="nav-item">
-                <button class="nav-link"
-                        type="button"
-                        data-bs-toggle="tab"
-                        data-bs-target="#tab-customs">
+                <button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#tab-customs">
                   Customs/Duty
                 </button>
               </li>
@@ -236,10 +258,8 @@
                     <label class="form-label small">Base Rate (JMD / lb)</label>
                     <div class="input-group input-group-sm">
                       <span class="input-group-text">JMD</span>
-                      <input type="number" step="0.01"
-                             class="form-control"
-                             name="base_rate"
-                             value="{{ settings.base_rate or 0 }}">
+                      <input type="number" step="0.01" class="form-control" name="base_rate"
+                        value="{{ settings.base_rate or 0 }}">
                     </div>
                   </div>
 
@@ -247,46 +267,36 @@
                     <label class="form-label small">Handling Fee (JMD)</label>
                     <div class="input-group input-group-sm">
                       <span class="input-group-text">JMD</span>
-                      <input type="number" step="0.01"
-                             class="form-control"
-                             name="handling_fee"
-                             value="{{ settings.handling_fee or 0 }}">
+                      <input type="number" step="0.01" class="form-control" name="handling_fee"
+                        value="{{ settings.handling_fee or 0 }}">
                     </div>
                   </div>
 
                   <div class="col-md-4">
                     <label class="form-label small">Special Bill freight Below 1lb (JMD)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="special_below_1lb_jmd"
-                           value="{{ settings.special_below_1lb_jmd or 0 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="special_below_1lb_jmd"
+                      value="{{ settings.special_below_1lb_jmd or 0 }}">
                   </div>
 
                   <div class="col-md-4">
                     <label class="form-label small">JMD Charge Per 0.1 lb Below 1lb</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="per_0_1lb_below_1lb_jmd"
-                           value="{{ settings.per_0_1lb_below_1lb_jmd or 0 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="per_0_1lb_below_1lb_jmd"
+                      value="{{ settings.per_0_1lb_below_1lb_jmd or 0 }}">
                   </div>
 
                   <div class="col-md-4">
                     <label class="form-label small">Minimum Billable Weight</label>
-                    <input type="number"
-                           class="form-control form-control-sm"
-                           name="min_billable_weight"
-                           value="{{ settings.min_billable_weight or 1 }}">
+                    <input type="number" class="form-control form-control-sm" name="min_billable_weight"
+                      value="{{ settings.min_billable_weight or 1 }}">
                   </div>
 
                   <div class="col-md-4">
                     <label class="form-label small">Weight Rounding Method</label>
                     <select name="weight_round_method" class="form-select form-select-sm">
-                      <option value="round_up"
-                        {% if settings.weight_round_method == 'round_up' %}selected{% endif %}>
+                      <option value="round_up" {% if settings.weight_round_method=='round_up' %}selected{% endif %}>
                         Always Round Up
                       </option>
-                      <option value="nearest"
-                        {% if settings.weight_round_method == 'nearest' %}selected{% endif %}>
+                      <option value="nearest" {% if settings.weight_round_method=='nearest' %}selected{% endif %}>
                         Nearest Pound
                       </option>
                     </select>
@@ -294,18 +304,14 @@
 
                   <div class="col-md-6">
                     <label class="form-label small">JMD Per Lb rate above 100Lbs</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="per_lb_above_100_jmd"
-                           value="{{ settings.per_lb_above_100_jmd or 0 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="per_lb_above_100_jmd"
+                      value="{{ settings.per_lb_above_100_jmd or 0 }}">
                   </div>
 
                   <div class="col-md-6">
                     <label class="form-label small">JMD Handling Fee above 100Lbs</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="handling_above_100_jmd"
-                           value="{{ settings.handling_above_100_jmd or 0 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="handling_above_100_jmd"
+                      value="{{ settings.handling_above_100_jmd or 0 }}">
                   </div>
                 </div>
 
@@ -324,10 +330,8 @@
                         <td>{{ r.max_weight }}</td>
                         <td>{{ (r.max_weight * 0.454)|round(2) }}</td>
                         <td>
-                          <input type="number" step="0.01"
-                                 class="form-control form-control-sm text-end"
-                                 name="rate_{{ r.max_weight }}"
-                                 value="{{ r.rate or 0 }}">
+                          <input type="number" step="0.01" class="form-control form-control-sm text-end"
+                            name="rate_{{ r.max_weight }}" value="{{ r.rate or 0 }}">
                         </td>
                       </tr>
                       {% endfor %}
@@ -340,10 +344,8 @@
               <div class="tab-pane fade" id="tab-customs">
 
                 <div class="form-check mb-3">
-                  <input class="form-check-input" type="checkbox"
-                         id="customs_enabled"
-                         name="customs_enabled"
-                         {% if settings.customs_enabled %}checked{% endif %}>
+                  <input class="form-check-input" type="checkbox" id="customs_enabled" name="customs_enabled" {% if
+                    settings.customs_enabled %}checked{% endif %}>
                   <label class="form-check-label" for="customs_enabled">
                     Customs Duty Enabled
                   </label>
@@ -352,97 +354,73 @@
                 <div class="row g-3">
                   <div class="col-md-6">
                     <label class="form-label small">Customs Exchange Rate</label>
-                    <input type="number" step="0.0001"
-                           class="form-control form-control-sm"
-                           name="customs_exchange_rate"
-                           value="{{ settings.customs_exchange_rate or settings.usd_to_jmd or 165 }}">
+                    <input type="number" step="0.0001" class="form-control form-control-sm" name="customs_exchange_rate"
+                      value="{{ settings.customs_exchange_rate or settings.usd_to_jmd or 165 }}">
                   </div>
 
                   <div class="col-md-6">
                     <label class="form-label small">Customs Diminimis Point (USD)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="diminis_point_usd"
-                           value="{{ settings.diminis_point_usd or 100 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="diminis_point_usd"
+                      value="{{ settings.diminis_point_usd or 100 }}">
                   </div>
 
                   <div class="col-md-6">
                     <label class="form-label small">GCT 25 (%)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="gct_25_rate"
-                           value="{{ settings.gct_25_rate or 25 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="gct_25_rate"
+                      value="{{ settings.gct_25_rate or 25 }}">
                   </div>
 
                   <div class="col-md-6">
                     <label class="form-label small">GCT 15 (%)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="gct_15_rate"
-                           value="{{ settings.gct_15_rate or 15 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="gct_15_rate"
+                      value="{{ settings.gct_15_rate or 15 }}">
                   </div>
 
                   <div class="col-md-6">
                     <label class="form-label small">Customs CAF Residential (JMD)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="caf_residential_jmd"
-                           value="{{ settings.caf_residential_jmd or 2500 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="caf_residential_jmd"
+                      value="{{ settings.caf_residential_jmd or 2500 }}">
                   </div>
 
                   <div class="col-md-6">
                     <label class="form-label small">Customs CAF Commercial (JMD)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="caf_commercial_jmd"
-                           value="{{ settings.caf_commercial_jmd or 5000 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="caf_commercial_jmd"
+                      value="{{ settings.caf_commercial_jmd or 5000 }}">
                   </div>
 
                   <div class="col-md-6">
                     <label class="form-label small">Default Duty Rate (%)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="default_duty_rate"
-                           value="{{ settings.default_duty_rate or 20 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="default_duty_rate"
+                      value="{{ settings.default_duty_rate or 20 }}">
                   </div>
 
                   <div class="col-md-6">
                     <label class="form-label small">Customs Insurance Rate (%)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="insurance_rate"
-                           value="{{ settings.insurance_rate or 1 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="insurance_rate"
+                      value="{{ settings.insurance_rate or 1 }}">
                   </div>
 
                   <div class="col-md-4">
                     <label class="form-label small">Customs SCF Rate (%)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="scf_rate"
-                           value="{{ settings.scf_rate or 0.3 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="scf_rate"
+                      value="{{ settings.scf_rate or 0.3 }}">
                   </div>
 
                   <div class="col-md-4">
                     <label class="form-label small">Customs ENVL Rate (%)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="envl_rate"
-                           value="{{ settings.envl_rate or 0.5 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="envl_rate"
+                      value="{{ settings.envl_rate or 0.5 }}">
                   </div>
 
                   <div class="col-md-4">
                     <label class="form-label small">Stamp Duty (JMD)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="stamp_duty_jmd"
-                           value="{{ settings.stamp_duty_jmd or 100 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="stamp_duty_jmd"
+                      value="{{ settings.stamp_duty_jmd or 100 }}">
                   </div>
                   <div class="col-md-4">
                     <label class="form-label small">Bad Address Fee (JMD)</label>
-                    <input type="number" step="0.01"
-                           class="form-control form-control-sm"
-                           name="bad_address_fee_jmd"
-                           value="{{ settings.bad_address_fee_jmd or 500 }}">
+                    <input type="number" step="0.01" class="form-control form-control-sm" name="bad_address_fee_jmd"
+                      value="{{ settings.bad_address_fee_jmd or 500 }}">
                     <div class="help mt-1">
                       Applied when a package arrives without a valid registration number and must be manually assigned.
                     </div>
@@ -452,8 +430,7 @@
             </div>
 
             <div class="mt-3 d-flex justify-content-between align-items-center">
-              <a class="btn btn-outline-secondary btn-sm"
-                 href="{{ url_for('admin.view_rates') }}">
+              <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.view_rates') }}">
                 <i class="bi bi-table me-1"></i> View Rate Table
               </a>
 
@@ -474,7 +451,8 @@
           <div class="card card-hint mb-3">
             <div class="card-body py-2">
               <i class="bi bi-person-badge me-2"></i>
-              Control how customer registration numbers are generated. Recommended: do not reuse deleted customer numbers.
+              Control how customer registration numbers are generated. Recommended: do not reuse deleted customer
+              numbers.
             </div>
           </div>
 
@@ -486,52 +464,37 @@
                 <div class="row g-3">
                   <div class="col-md-4">
                     <label class="form-label">Registration Prefix</label>
-                    <input type="text"
-                           id="registrationPrefix"
-                           name="registration_prefix"
-                           class="form-control"
-                           value="{{ settings.registration_prefix or 'FAFL' }}"
-                           placeholder="FAFL">
+                    <input type="text" id="registrationPrefix" name="registration_prefix" class="form-control"
+                      value="{{ settings.registration_prefix or 'FAFL' }}" placeholder="FAFL">
                     <div class="help mt-1">Example: FAFL, FAF, KCD.</div>
                   </div>
 
                   <div class="col-md-4">
                     <label class="form-label">Number Width</label>
-                    <input type="number"
-                           id="registrationWidth"
-                           name="registration_number_width"
-                           class="form-control"
-                           min="1"
-                           max="10"
-                           value="{{ settings.registration_number_width or 5 }}">
+                    <input type="number" id="registrationWidth" name="registration_number_width" class="form-control"
+                      min="1" max="10" value="{{ settings.registration_number_width or 5 }}">
                     <div class="help mt-1">5 keeps numbers like FAFL10001.</div>
                   </div>
 
                   <div class="col-md-4">
                     <label class="form-label">Current Counter Value</label>
-                    <input type="number"
-                           id="registrationCounter"
-                           name="registration_counter_value"
-                           class="form-control"
-                           min="0"
-                           value="{{ registration_counter.value if registration_counter else 10000 }}">
+                    <input type="number" id="registrationCounter" name="registration_counter_value" class="form-control"
+                      min="0" value="{{ registration_counter.value if registration_counter else 10000 }}">
                     <div class="help mt-1">Next customer gets this number + 1.</div>
                   </div>
 
                   <div class="col-md-6">
                     <div class="border rounded p-3 h-100">
                       <div class="form-check">
-                        <input class="form-check-input"
-                               type="checkbox"
-                               name="lock_registration_number"
-                               id="lock_registration_number"
-                               {% if settings.lock_registration_number %}checked{% endif %}>
+                        <input class="form-check-input" type="checkbox" name="lock_registration_number"
+                          id="lock_registration_number" {% if settings.lock_registration_number %}checked{% endif %}>
                         <label class="form-check-label fw-semibold" for="lock_registration_number">
                           Lock registration number after creation
                         </label>
                       </div>
                       <div class="help mt-2">
-                        Recommended ON. Prevents accidental changes after packages, invoices, and emails already reference the customer number.
+                        Recommended ON. Prevents accidental changes after packages, invoices, and emails already
+                        reference the customer number.
                       </div>
                     </div>
                   </div>
@@ -539,17 +502,16 @@
                   <div class="col-md-6">
                     <div class="border rounded p-3 h-100">
                       <div class="form-check">
-                        <input class="form-check-input"
-                               type="checkbox"
-                               name="reuse_deleted_registration_numbers"
-                               id="reuse_deleted_registration_numbers"
-                               {% if settings.reuse_deleted_registration_numbers %}checked{% endif %}>
+                        <input class="form-check-input" type="checkbox" name="reuse_deleted_registration_numbers"
+                          id="reuse_deleted_registration_numbers" {% if settings.reuse_deleted_registration_numbers
+                          %}checked{% endif %}>
                         <label class="form-check-label fw-semibold" for="reuse_deleted_registration_numbers">
                           Allow reuse of deleted numbers
                         </label>
                       </div>
                       <div class="help mt-2 text-danger">
-                        Recommended OFF. Reusing numbers can confuse old packages, invoices, receipts, and warehouse labels.
+                        Recommended OFF. Reusing numbers can confuse old packages, invoices, receipts, and warehouse
+                        labels.
                       </div>
                     </div>
                   </div>
@@ -568,7 +530,8 @@
                 <div class="reg-preview-box h-100">
                   <div class="small text-muted text-uppercase fw-bold mb-2">Next Registration Preview</div>
                   <div id="registrationPreview" class="reg-preview-number">
-                    {{ settings.registration_prefix or 'FAFL' }}{{ "%0*d"|format(settings.registration_number_width or 5, (registration_counter.value + 1) if registration_counter else 10001) }}
+                    {{ settings.registration_prefix or 'FAFL' }}{{ "%0*d"|format(settings.registration_number_width or
+                    5, (registration_counter.value + 1) if registration_counter else 10001) }}
                   </div>
 
                   <hr>
@@ -578,7 +541,9 @@
                     Air Standard<br>
                     Customer Name<br>
                     559 NE 42nd St<br>
-                    <strong><span id="registrationPreviewAddress">{{ settings.registration_prefix or 'FAFL' }}{{ "%0*d"|format(settings.registration_number_width or 5, (registration_counter.value + 1) if registration_counter else 10001) }}</span> A</strong><br>
+                    <strong><span id="registrationPreviewAddress">{{ settings.registration_prefix or 'FAFL' }}{{
+                        "%0*d"|format(settings.registration_number_width or 5, (registration_counter.value + 1) if
+                        registration_counter else 10001) }}</span> A</strong><br>
                     Oakland Park, Florida 33334
                   </div>
 
@@ -616,10 +581,13 @@
           <form method="POST" action="{{ url_for('settings.update_branches') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="form-label">Branches</label>
-            <textarea class="form-control" name="branches" rows="6" placeholder="Kingston HQ — 12 Port Lane, (876) 955-0123&#10;Montego Bay — ...">{{ settings.branches if settings else '' }}</textarea>
+            <textarea class="form-control" name="branches" rows="6"
+              placeholder="Kingston HQ — 12 Port Lane, (876) 955-0123&#10;Montego Bay — ...">{{ settings.branches if settings else '' }}</textarea>
             <div class="d-flex gap-2 mt-3">
-              <button type="submit" class="btn btn-info text-white"><i class="bi bi-check2-circle me-1"></i> Save Branches & Locations</button>
-              <button type="reset" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise me-1"></i> Reset</button>
+              <button type="submit" class="btn btn-info text-white"><i class="bi bi-check2-circle me-1"></i> Save
+                Branches & Locations</button>
+              <button type="reset" class="btn btn-outline-secondary"><i class="bi bi-arrow-counterclockwise me-1"></i>
+                Reset</button>
             </div>
           </form>
         </div>
@@ -636,10 +604,11 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <label class="form-label">Terms & Services</label>
                 <textarea id="termsInput" class="form-control autosize" name="terms" rows="12"
-                          placeholder="Enter your standard shipping terms, payment terms, insurance policy, prohibited items, etc.">{{ settings.terms if settings else '' }}</textarea>
+                  placeholder="Enter your standard shipping terms, payment terms, insurance policy, prohibited items, etc.">{{ settings.terms if settings else '' }}</textarea>
                 <div class="d-flex gap-2 mt-3">
                   <button class="btn btn-primary"><i class="bi bi-check2-circle me-1"></i> Save Terms</button>
-                  <button class="btn btn-outline-secondary" type="reset"><i class="bi bi-arrow-counterclockwise me-1"></i> Reset</button>
+                  <button class="btn btn-outline-secondary" type="reset"><i
+                      class="bi bi-arrow-counterclockwise me-1"></i> Reset</button>
                   <button type="button" id="previewBtn" class="btn btn-outline-dark">
                     <i class="bi bi-eye me-1"></i> Preview
                   </button>
@@ -679,19 +648,19 @@
             <div class="col-md-3">
               <label class="form-label">Currency Code</label>
               <input type="text" class="form-control" name="currency_code"
-                     value="{{ settings.currency_code if settings else 'USD' }}" placeholder="USD / JMD">
+                value="{{ settings.currency_code if settings else 'USD' }}" placeholder="USD / JMD">
             </div>
             <div class="col-md-3">
               <label class="form-label">Currency Symbol</label>
               <input type="text" class="form-control" name="currency_symbol"
-                     value="{{ settings.currency_symbol if settings else '$' }}" placeholder="$ / J$">
+                value="{{ settings.currency_symbol if settings else '$' }}" placeholder="$ / J$">
             </div>
             <div class="col-md-3">
               <label class="form-label">USD → JMD Rate</label>
               <div class="input-group">
                 <span class="input-group-text">1 USD =</span>
                 <input type="number" step="0.0001" class="form-control" name="usd_to_jmd"
-                       value="{{ settings.usd_to_jmd if settings else 155 }}">
+                  value="{{ settings.usd_to_jmd if settings else 155 }}">
                 <span class="input-group-text">JMD</span>
               </div>
               <div class="help mt-1">Used by toggles on dashboards (display only).</div>
@@ -699,13 +668,181 @@
             <div class="col-md-3">
               <label class="form-label">Date Format</label>
               <input type="text" class="form-control" name="date_format"
-                     value="{{ settings.date_format if settings else '%Y-%m-%d' }}" placeholder="%Y-%m-%d">
+                value="{{ settings.date_format if settings else '%Y-%m-%d' }}" placeholder="%Y-%m-%d">
               <div class="help mt-1">Python/strftime format (e.g., %d %b %Y).</div>
             </div>
 
             <div class="d-flex gap-2 mt-2">
               <button class="btn btn-primary"><i class="bi bi-check2-circle me-1"></i> Save Display</button>
             </div>
+          </form>
+
+        </div>
+      </div>
+    </div>
+    {# -------------- Delivery Settings -------------- #}
+    <div class="tab-pane fade" id="deliverySettings" role="tabpanel" aria-labelledby="delivery-tab">
+
+      <div class="card shadow-soft mb-4">
+        <div class="card-body">
+
+          <div class="card card-hint mb-3">
+            <div class="card-body py-2">
+              <i class="bi bi-truck me-2"></i>
+              Configure dispatch origins, delivery pricing,
+              free delivery days, and operational limits.
+            </div>
+          </div>
+
+          <form method="POST" action="{{ url_for('settings.update_delivery_settings') }}">
+
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="row g-3">
+
+              <!-- Kingston -->
+              <div class="col-md-6">
+                <label class="form-label">
+                  Kingston Dispatch Address
+                </label>
+
+                <textarea class="form-control" name="kingston_dispatch_address"
+                  rows="2">{{ settings.kingston_dispatch_address or '' }}</textarea>
+              </div>
+
+              <!-- STC -->
+              <div class="col-md-6">
+                <label class="form-label">
+                  St. Catherine Dispatch Address
+                </label>
+
+                <textarea class="form-control" name="stc_dispatch_address"
+                  rows="2">{{ settings.stc_dispatch_address or '' }}</textarea>
+              </div>
+
+              <!-- Branch Names -->
+              <div class="col-md-6">
+                <label class="form-label">
+                  Kingston Branch Name
+                </label>
+
+                <input type="text" class="form-control" name="kingston_delivery_branch_name"
+                  value="{{ settings.kingston_delivery_branch_name or '' }}">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">
+                  St. Catherine Branch Name
+                </label>
+
+                <input type="text" class="form-control" name="stc_delivery_branch_name"
+                  value="{{ settings.stc_delivery_branch_name or '' }}">
+              </div>
+
+              <!-- Pricing -->
+              <div class="col-md-4">
+                <label class="form-label">
+                  Base KM
+                </label>
+
+                <input type="number" step="0.1" class="form-control" name="delivery_base_km"
+                  value="{{ settings.delivery_base_km or 10 }}">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">
+                  Base Delivery Fee (JMD)
+                </label>
+
+                <input type="number" step="0.01" class="form-control" name="delivery_base_fee_jmd"
+                  value="{{ settings.delivery_base_fee_jmd or 1000 }}">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">
+                  Per KM Fee After Base (JMD)
+                </label>
+
+                <input type="number" step="0.01" class="form-control" name="delivery_per_km_jmd"
+                  value="{{ settings.delivery_per_km_jmd or 100 }}">
+              </div>
+
+              <!-- Free Days -->
+              <div class="col-md-6">
+                <label class="form-label">
+                  Kingston Free Delivery Days
+                </label>
+
+                <input type="text" class="form-control" name="kingston_free_delivery_days"
+                  value="{{ settings.kingston_free_delivery_days or '' }}" placeholder="Tuesday,Thursday">
+
+                <div class="help mt-1">
+                  Separate days with commas.
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">
+                  St. Catherine Free Delivery Days
+                </label>
+
+                <input type="text" class="form-control" name="stc_free_delivery_days"
+                  value="{{ settings.stc_free_delivery_days or '' }}" placeholder="Friday">
+              </div>
+
+              <!-- Limits -->
+              <div class="col-md-4">
+                <label class="form-label">
+                  Max Delivery Distance (KM)
+                </label>
+
+                <input type="number" step="0.1" class="form-control" name="max_delivery_distance_km"
+                  value="{{ settings.max_delivery_distance_km or 35 }}">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">
+                  Saturday Delivery Fee
+                </label>
+
+                <input type="number" step="0.01" class="form-control" name="saturday_delivery_fee_jmd"
+                  value="{{ settings.saturday_delivery_fee_jmd or 1000 }}">
+              </div>
+
+              <div class="col-md-4 d-flex align-items-end">
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" name="allow_saturday_delivery"
+                    id="allow_saturday_delivery" {% if settings.allow_saturday_delivery %}checked{% endif %}>
+
+                  <label class="form-check-label" for="allow_saturday_delivery">
+                    Allow Saturday Delivery
+                  </label>
+                </div>
+              </div>
+
+              <!-- Google -->
+              <div class="col-12">
+                <label class="form-label">
+                  Google Maps API Key
+                </label>
+
+                <input type="text" class="form-control" name="google_maps_api_key"
+                  value="{{ settings.google_maps_api_key or '' }}">
+
+                <div class="help mt-1">
+                  Used for distance calculations and address validation.
+                </div>
+              </div>
+
+            </div>
+
+            <div class="mt-4">
+              <button type="submit" class="btn btn-purple">
+                <i class="bi bi-check2-circle me-1"></i>
+                Save Delivery Settings
+              </button>
+            </div>
+
           </form>
 
         </div>
@@ -764,27 +901,27 @@
   updateRegistrationPreview();
 
   // Terms live preview (naive; for admin only)
-  const termsInput  = document.getElementById('termsInput');
-  const termsPreview= document.getElementById('termsPreview');
-  const previewBtn  = document.getElementById('previewBtn');
-  function renderTerms(){ if(termsPreview && termsInput){ termsPreview.innerHTML = termsInput.value; } }
-  if (previewBtn){ previewBtn.addEventListener('click', renderTerms); }
+  const termsInput = document.getElementById('termsInput');
+  const termsPreview = document.getElementById('termsPreview');
+  const previewBtn = document.getElementById('previewBtn');
+  function renderTerms() { if (termsPreview && termsInput) { termsPreview.innerHTML = termsInput.value; } }
+  if (previewBtn) { previewBtn.addEventListener('click', renderTerms); }
   renderTerms();
 
   // (Optional) remember active tab
-  const key='faf_settings_tab';
+  const key = 'faf_settings_tab';
   const tabs = document.querySelectorAll('#settingsTabs button[data-bs-toggle="tab"]');
-  tabs.forEach(btn=>{
+  tabs.forEach(btn => {
     btn.addEventListener('shown.bs.tab', e => localStorage.setItem(key, e.target.getAttribute('data-bs-target')));
   });
   const saved = localStorage.getItem(key);
-  if(saved){
+  if (saved) {
     const t = document.querySelector(`#settingsTabs button[data-bs-target="${saved}"]`);
-    if(t){ new bootstrap.Tab(t).show(); }
+    if (t) { new bootstrap.Tab(t).show(); }
   }
 
   // Autosize textareas
-  function autosize(el){ el.style.height='auto'; el.style.height = (el.scrollHeight)+'px'; }
-  document.querySelectorAll('.autosize').forEach(t=>{ autosize(t); t.addEventListener('input',()=>autosize(t)); });
+  function autosize(el) { el.style.height = 'auto'; el.style.height = (el.scrollHeight) + 'px'; }
+  document.querySelectorAll('.autosize').forEach(t => { autosize(t); t.addEventListener('input', () => autosize(t)); });
 </script>
 {% endblock %}

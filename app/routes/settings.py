@@ -281,6 +281,104 @@ def update_branches():
 
     return redirect(url_for('settings.manage_settings'))
 
+# -----------------------------
+# UPDATE DELIVERY SETTINGS
+# -----------------------------
+@settings_bp.route('/update-delivery-settings', methods=['POST'])
+@admin_required
+def update_delivery_settings():
+
+    def f(name, default=0.0):
+        raw = request.form.get(name, "").strip()
+
+        if raw == "":
+            return default
+
+        try:
+            return float(raw)
+        except ValueError:
+            return default
+
+    try:
+        settings = _get_settings_row()
+
+        if not settings:
+            flash("Settings row not found.", "danger")
+            return redirect(url_for('settings.manage_settings'))
+
+        settings.kingston_dispatch_address = request.form.get(
+            'kingston_dispatch_address'
+        )
+
+        settings.stc_dispatch_address = request.form.get(
+            'stc_dispatch_address'
+        )
+
+        settings.kingston_delivery_branch_name = request.form.get(
+            'kingston_delivery_branch_name'
+        )
+
+        settings.stc_delivery_branch_name = request.form.get(
+            'stc_delivery_branch_name'
+        )
+
+        settings.delivery_base_km = f(
+            'delivery_base_km',
+            10
+        )
+
+        settings.delivery_base_fee_jmd = f(
+            'delivery_base_fee_jmd',
+            1000
+        )
+
+        settings.delivery_per_km_jmd = f(
+            'delivery_per_km_jmd',
+            100
+        )
+
+        settings.kingston_free_delivery_days = request.form.get(
+            'kingston_free_delivery_days'
+        )
+
+        settings.stc_free_delivery_days = request.form.get(
+            'stc_free_delivery_days'
+        )
+
+        settings.max_delivery_distance_km = f(
+            'max_delivery_distance_km',
+            35
+        )
+
+        settings.saturday_delivery_fee_jmd = f(
+            'saturday_delivery_fee_jmd',
+            1000
+        )
+
+        settings.allow_saturday_delivery = (
+            'allow_saturday_delivery' in request.form
+        )
+
+        settings.google_maps_api_key = request.form.get(
+            'google_maps_api_key'
+        )
+
+        db.session.commit()
+
+        flash(
+            "Delivery settings updated successfully.",
+            "success"
+        )
+
+    except Exception as e:
+        db.session.rollback()
+
+        flash(
+            f"Error updating delivery settings: {e}",
+            "danger"
+        )
+
+    return redirect(url_for('settings.manage_settings'))
 
 # -----------------------------
 # UPDATE TERMS & SERVICES

@@ -834,6 +834,50 @@ class ScheduledDelivery(db.Model):
 
     # ✅ ADD THIS
     area_zone = db.Column(db.String(30), nullable=False, default="kgn_core", index=True)
+    # -----------------------------
+    # Distance / Map Tracking
+    # -----------------------------
+    delivery_parish = db.Column(db.String(100), nullable=True, index=True)
+
+    delivery_branch = db.Column(
+        db.String(100),
+        nullable=True,
+        index=True
+    )
+    # Kingston Dispatch | Gregory Park Branch
+
+    distance_km = db.Column(db.Float, nullable=True)
+
+    estimated_drive_minutes = db.Column(db.Integer, nullable=True)
+
+    delivery_type = db.Column(
+        db.String(30),
+        nullable=False,
+        default="free_route",
+        index=True
+    )
+    # free_route | express | special_request
+
+    is_free_delivery = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False
+    )
+
+    delivery_latitude = db.Column(db.Float, nullable=True)
+    delivery_longitude = db.Column(db.Float, nullable=True)
+
+    google_place_id = db.Column(db.String(255), nullable=True)
+
+    delivery_risk_status = db.Column(
+        db.String(20),
+        nullable=False,
+        default="safe",
+        index=True
+    )
+    # safe | caution | restricted | blocked
+
+    delivery_notes = db.Column(db.Text, nullable=True)
 
     direction = db.Column(db.String(255))
     mobile_number = db.Column(db.String(50))
@@ -1333,6 +1377,78 @@ class Settings(db.Model):
     us_city         = db.Column(db.String(100))
     us_state        = db.Column(db.String(100))
     us_zip          = db.Column(db.String(20))
+
+    # -----------------------------
+    # Delivery Settings
+    # -----------------------------
+
+    kingston_dispatch_address = db.Column(
+        db.String(255),
+        default="4 Park Boulevard, Kingston 5, Jamaica"
+    )
+
+    stc_dispatch_address = db.Column(
+        db.String(255),
+        default="Unit 7, Lot C22, Cedar Manor, Gregory Park, St. Catherine, Jamaica"
+    )
+
+    kingston_delivery_branch_name = db.Column(
+        db.String(100),
+        default="Kingston Dispatch"
+    )
+
+    stc_delivery_branch_name = db.Column(
+        db.String(100),
+        default="Gregory Park Branch"
+    )
+
+    delivery_base_km = db.Column(
+        db.Float,
+        default=10.0
+    )
+
+    delivery_base_fee_jmd = db.Column(
+        db.Numeric(10,2),
+        default=1000
+    )
+
+    delivery_per_km_jmd = db.Column(
+        db.Numeric(10,2),
+        default=100
+    )
+
+    google_maps_api_key = db.Column(
+        db.String(255),
+        nullable=True
+    )
+
+    # Free delivery days
+    kingston_free_delivery_days = db.Column(
+        db.String(50),
+        default="Tuesday,Thursday"
+    )
+
+    stc_free_delivery_days = db.Column(
+        db.String(50),
+        default="Friday"
+    )
+
+    # Delivery operational limits
+    max_delivery_distance_km = db.Column(
+        db.Float,
+        default=35.0
+    )
+
+    allow_saturday_delivery = db.Column(
+        db.Boolean,
+        default=True
+    )
+
+    saturday_delivery_fee_jmd = db.Column(
+        db.Numeric(10,2),
+        default=1000
+    )
+    
 
     # Registration number settings
     registration_prefix = db.Column(db.String(20), default="FAFL")

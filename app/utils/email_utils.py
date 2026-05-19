@@ -1022,6 +1022,128 @@ def send_overseas_received_email(to_email, full_name, reg_number, packages, reci
     )
 
 
+def send_epc_package_claimed_email(to_email, full_name, reg_number, packages, recipient_user_id=None):
+    """
+    Sends a special notice when a package was claimed/assigned from unknown/EPC
+    because it arrived without the customer's FAFL#.
+    """
+    subject = f"Package Claimed Without FAFL Number - FAFL #{reg_number}"
+
+    rows_html = []
+    plain_lines = [
+        f"Hi {full_name},",
+        "",
+        "The package(s) below arrived at our overseas warehouse without your FAFL customer number attached to the shipping label/address.",
+        "",
+        "Package Details:",
+    ]
+
+    for p in packages:
+        house = getattr(p, "house_awb", None) if not isinstance(p, dict) else p.get("house_awb")
+        weight = getattr(p, "weight", 0) if not isinstance(p, dict) else p.get("weight", 0)
+        tracking = getattr(p, "tracking_number", None) if not isinstance(p, dict) else p.get("tracking_number")
+        desc = getattr(p, "description", None) if not isinstance(p, dict) else p.get("description")
+        rounded = ceil(weight or 0)
+
+        rows_html.append(f"""
+<tr>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+    {house or '-'}
+  </td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; text-align:center; white-space:nowrap;">
+    {rounded}
+  </td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+    {tracking or '-'}
+  </td>
+  <td style="padding:6px 6px; font-size:11.5px; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+    {desc or '-'}
+  </td>
+</tr>
+""")
+
+        plain_lines.append(
+            f"- House AWB: {house or '-'}, "
+            f"Weight: {rounded} lb, "
+            f"Tracking #: {tracking or '-'}, "
+            f"Description: {desc or '-'}"
+        )
+
+    plain_lines += [
+        "",
+        "Because the package did not include your FAFL#, it was placed with other unidentified packages instead of being automatically assigned to your account.",
+        "",
+        "The package has now been claimed to your account within our system. However, the warehouse team must manually search for the package among other unidentified packages, relabel it with your FAFL customer number, and then reprocess it.",
+        "",
+        "This manual search and relabeling process may delay the package’s shipping time.",
+        "",
+        "To help avoid delays in the future, please ensure your FAFL number is always included on the shipping address exactly as shown in your customer dashboard.",
+        "",
+        "Thank you for your understanding and for shipping with Foreign A Foot Logistics Limited.",
+    ]
+
+    plain_body = "\n".join(plain_lines)
+
+    html_body = f"""
+<p style="margin:0 0 10px 0;">Hi {full_name},</p>
+
+<p style="margin:0 0 14px 0;">
+  The package(s) below arrived at our overseas warehouse without your FAFL customer number attached to the shipping label/address.
+</p>
+
+<table cellpadding="0" cellspacing="0" width="100%"
+       style="border-collapse:collapse; width:100%; table-layout:fixed;">
+  <thead>
+    <tr style="background:#f5f2fb; color:#4a148c;">
+      <th width="22%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+        House AWB
+      </th>
+      <th width="14%" style="padding:6px 6px; font-size:11.5px; text-align:center; border:1px solid #eee; white-space:nowrap;">
+        Wt
+      </th>
+      <th width="28%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+        Tracking #
+      </th>
+      <th width="36%" style="padding:6px 6px; font-size:11.5px; text-align:left; border:1px solid #eee; word-break:break-word; overflow-wrap:anywhere;">
+        Description
+      </th>
+    </tr>
+  </thead>
+  <tbody>
+    {''.join(rows_html)}
+  </tbody>
+</table>
+
+<p style="margin:16px 0 0 0;">
+  Because the package did not include your FAFL#, it was placed with other unidentified packages instead of being automatically assigned to your account.
+</p>
+
+<p style="margin:12px 0 0 0;">
+  The package has now been claimed to your account within our system. However, the warehouse team must manually search for the package among other unidentified packages, relabel it with your FAFL customer number, and then reprocess it.
+</p>
+
+<p style="margin:12px 0 0 0;">
+  <strong>This manual search and relabeling process may delay the package’s shipping time.</strong>
+</p>
+
+<p style="margin:12px 0 0 0;">
+  To help avoid delays in the future, please ensure your FAFL number is always included on the shipping address exactly as shown in your customer dashboard.
+</p>
+
+<p style="margin:12px 0 0 0;">
+  Thank you for your understanding and for shipping with Foreign A Foot Logistics Limited.
+</p>
+""".strip()
+
+    return send_email(
+        to_email=to_email,
+        subject=subject,
+        plain_body=plain_body,
+        html_body=html_body,
+        recipient_user_id=recipient_user_id,
+        reply_to=EMAIL_FROM or EMAIL_ADDRESS,
+    )
+
 # ==========================================================
 #  INVOICE EMAIL (INLINE HTML DESIGN — LIGHT BACKGROUND)
 # ==========================================================

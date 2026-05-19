@@ -2841,13 +2841,38 @@ def email_selected_packages():
             skipped_packages += len(pkgs_all)
             continue
 
-        ok = email_utils.send_overseas_received_email(
-            to_email=user.email,
-            full_name=(user.full_name or ""),
-            reg_number=(user.registration_number or ""),
-            packages=pkgs_to_send,
-            recipient_user_id=user.id,  # optional
-        )
+        regular_pkgs = [
+            p for p in pkgs_to_send
+            if not bool(getattr(p, "epc", False))
+        ]
+
+        epc_pkgs = [
+            p for p in pkgs_to_send
+            if bool(getattr(p, "epc", False))
+        ]
+
+        ok_regular = True
+        ok_epc = True
+
+        if regular_pkgs:
+            ok_regular = email_utils.send_overseas_received_email(
+                to_email=user.email,
+                full_name=(user.full_name or ""),
+                reg_number=(user.registration_number or ""),
+                packages=regular_pkgs,
+                recipient_user_id=user.id,
+            )
+
+        if epc_pkgs:
+            ok_epc = email_utils.send_epc_package_claimed_email(
+                to_email=user.email,
+                full_name=(user.full_name or ""),
+                reg_number=(user.registration_number or ""),
+                packages=epc_pkgs,
+                recipient_user_id=user.id,
+            )
+
+        ok = ok_regular and ok_epc
 
         if ok:
             # ✅ stamp only what was sent
@@ -2862,13 +2887,15 @@ def email_selected_packages():
                     f"- {p.tracking_number or ''} | {p.house_awb or ''} | {p.description or ''} | {p.weight or 0} lb"
                 )
 
-            subject = "Packages received overseas"
+            subject = "Package update from FAFL"
+
             body = (
                 f"Hi {user.full_name or ''},\n\n"
-                "Your package(s) have been received overseas and are now being prepared for shipment to Jamaica:\n\n"
+                "Your selected package(s) have been updated:\n\n"
                 + "\n".join(pkg_lines) +
-                "\n\nLog in to your account to track updates.\n"
-                "— Foreign a Foot Logistics Limited"
+                "\n\nIf any package was claimed without your FAFL#, it may require manual warehouse search, relabeling, and reprocessing, which may delay shipping time.\n\n"
+                "Log in to your account to track updates.\n"
+                "— Foreign A Foot Logistics Limited"
             )
             _log_in_app_message(user.id, subject, body)
 

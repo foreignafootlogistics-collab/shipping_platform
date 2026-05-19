@@ -1243,6 +1243,22 @@ def view_user(id):
         user_claims = []
 
     subscription_summary = get_subscription_summary(id)
+
+    if subscription_summary and subscription_summary.get("is_family_plan"):
+        owner_member = next(
+            (m for m in subscription_summary.get("members", []) if getattr(m, "role", None) == "owner"),
+            None
+        )
+
+        subscription_summary["is_owner"] = bool(
+            owner_member and owner_member.user and owner_member.user.id == id
+        )
+
+        subscription_summary["owner_name"] = (
+            owner_member.user.full_name
+            if owner_member and owner_member.user
+            else None
+        )
     subscription_plans = SubscriptionPlan.query.filter_by(is_active=True).order_by(SubscriptionPlan.price_usd.asc()).all()
     pending_subscription = (
         Subscription.query

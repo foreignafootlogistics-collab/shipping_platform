@@ -194,7 +194,7 @@
 
               {% if subscription_summary.is_family_plan %}
 
-              {% if subscription_summary.parent_subscription_id %}
+              {% if subscription_summary.is_owner %}
               <span class="badge bg-primary ms-1">
                 Family Owner
               </span>
@@ -208,7 +208,6 @@
                 Owner: {{ subscription_summary.owner_name }}
               </div>
               {% endif %}
-
               {% endif %}
 
               {% endif %}

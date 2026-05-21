@@ -416,6 +416,13 @@
 
                   <strong>{{ pkg.house_awb or '-' }}</strong><br>
                   {% include 'partials/status_tracker.html' with context %}
+                  {% if pkg.epc or pkg.bad_address %}
+                  <div class="mt-1">
+                    <span class="badge bg-info text-dark">
+                      Unknown / EPC
+                    </span>
+                  </div>
+                  {% endif %}
                   {% if pkg.subscription_applied %}
 
                   {% if pkg.subscription_result == "subscription_applied" %}

@@ -971,6 +971,8 @@ def view_user(id):
                 "amount_due": amt_due,
                 "invoice_file": getattr(p, "invoice_file", None),
                 "attachments": attachments,
+                "epc": getattr(p, "epc", 0),
+                "bad_address": getattr(p, "bad_address", False),
                 "subscription_applied": getattr(p, "subscription_applied", False),
                 "subscription_result": getattr(p, "subscription_result", None),
                 "customs_total": getattr(p, "customs_total", 0),

@@ -51,6 +51,7 @@ from app.utils import email_utils, update_wallet
 from app.utils.wallet import process_first_shipment_bonus
 from app.utils.subscription_utils import apply_subscription_usage
 from app.utils.subscription_utils import get_subscription_discount_percent
+from app.utils.delivery_engine import build_delivery_details
 
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
@@ -6162,38 +6163,141 @@ def api_scheduled_delivery_alerts():
 @logistics_bp.route("/scheduled_deliveries/pdf")
 @admin_required()
 def scheduled_deliveries_pdf():
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    from reportlab.lib.pagesizes import landscape, letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Table,
+        TableStyle,
+        Paragraph,
+        Spacer
+    )
+
     start_date = request.args.get("start_date")
     end_date = request.args.get("end_date")
     status = request.args.get("status")
 
     q = ScheduledDelivery.query
+
+    q = q.filter(
+        ScheduledDelivery.status.in_([
+            "Scheduled",
+            "Out for Delivery",
+            "Pending",
+            "Delivery Attempted"
+        ])
+    )
+
     if start_date:
         q = q.filter(
             ScheduledDelivery.scheduled_date
             >= datetime.strptime(start_date, "%Y-%m-%d").date()
         )
+
     if end_date:
         q = q.filter(
             ScheduledDelivery.scheduled_date
             <= datetime.strptime(end_date, "%Y-%m-%d").date()
         )
+
     if status:
         q = q.filter(ScheduledDelivery.status == status)
 
     deliveries = (
-        q.order_by(ScheduledDelivery.scheduled_date.desc(), ScheduledDelivery.id.desc())
+        q.order_by(
+            ScheduledDelivery.scheduled_date.asc(),
+            ScheduledDelivery.id.asc()
+        )
         .all()
     )
 
     buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-    y = height - 50
 
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, y, "Scheduled Deliveries Report")
-    y -= 25
-    p.setFont("Helvetica", 10)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(letter),
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=28,
+        bottomMargin=24,
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "ManifestTitle",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=15,
+        leading=17,
+        spaceAfter=6,
+    )
+
+    small_style = ParagraphStyle(
+        "Small",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=7,
+        leading=8,
+    )
+
+    small_center = ParagraphStyle(
+        "SmallCenter",
+        parent=small_style,
+        alignment=TA_CENTER,
+    )
+
+    header_style = ParagraphStyle(
+        "Header",
+        parent=small_center,
+        fontName="Helvetica-Bold",
+        textColor=colors.white,
+    )
+
+    story = []
+
+    story.append(
+        Paragraph(
+            "Scheduled Deliveries Dispatch Manifest",
+            title_style
+        )
+    )
+
+    date_label = "All Dates"
+
+    if start_date and end_date and start_date == end_date:
+        date_label = start_date
+    elif start_date or end_date:
+        date_label = f"{start_date or '—'} to {end_date or '—'}"
+
+    story.append(
+        Paragraph(
+            (
+                f"Delivery Date: {date_label} | "
+                f"Delivery Window: 9:00 AM - 5:00 PM | "
+                f"Total Deliveries: {len(deliveries)}"
+            ),
+            small_style
+        )
+    )
+
+    story.append(Spacer(1, 10))
+
+    data = [[
+        Paragraph("Customer / Phone", header_style),
+        Paragraph("Address / Receiver", header_style),
+        Paragraph("Coverage", header_style),
+        Paragraph("Delivery Fee", header_style),
+        Paragraph("Pkg Balance", header_style),
+        Paragraph("Pkgs", header_style),
+        Paragraph("Payment", header_style),
+        Paragraph("Customer Signature", header_style),
+    ]]
+
+    total_delivery_fees = 0.0
+    total_package_balances = 0.0
 
     for d in deliveries:
         cust = (
@@ -6202,54 +6306,197 @@ def scheduled_deliveries_pdf():
             else (d.user.email if d.user else "N/A")
         )
 
-        inv = d.invoice_number or f"#{d.id}"
-        fee = f"{d.fee_currency or 'JMD'} {float(d.delivery_fee or 0):.2f}"
-
-        # ✅ time range display (fallback to legacy scheduled_time)
-        if getattr(d, "scheduled_time_from", None) and getattr(d, "scheduled_time_to", None):
-            tdisp = f"{d.scheduled_time_from} - {d.scheduled_time_to}"
-        else:
-            tdisp = d.scheduled_time or ""
-
-        # ✅ package count for handoff
-        pkg_count = (
-            Package.query
-            .filter(Package.scheduled_delivery_id == d.id)
-            .count()
-        )
-
-        # ✅ phone for driver (prefer delivery mobile, fallback to user fields)
-        phone = ""
-        if getattr(d, "mobile_number", None):
-            phone = d.mobile_number
-        elif d.user:
-            phone = (
+        phone = (
+            getattr(d, "mobile_number", None)
+            or (
                 getattr(d.user, "phone", None)
                 or getattr(d.user, "mobile", None)
                 or getattr(d.user, "mobile_number", None)
                 or ""
+                if d.user else ""
             )
-
-        line = (
-            f"{inv} | {d.scheduled_date} {tdisp} | {d.location} | "
-            f"{d.person_receiving or ''} | {cust} | Phone: {phone or '—'} | "
-            f"Pkgs: {pkg_count} | {fee} | {d.fee_status or 'Unpaid'}"
         )
 
-        p.drawString(50, y, line[:110])
-        y -= 14
+        customer_text = (
+            f"{cust}<br/>"
+            f"Phone: {phone or '—'}"
+        )
 
-        if y < 50:
-            p.showPage()
-            y = height - 50
-            p.setFont("Helvetica", 10)
+        address_parts = [
+            d.location or "",
+            d.direction or "",
+            f"Receiving: {d.person_receiving or '—'}",
+            f"Receiver Phone: {d.mobile_number or phone or '—'}",
+        ]
 
-    p.save()
+        address_text = "<br/>".join(
+            x for x in address_parts if x
+        )
+
+        assigned_packages = (
+            Package.query
+            .filter(Package.scheduled_delivery_id == d.id)
+            .all()
+        )
+
+        pkg_count = len(assigned_packages)
+
+        package_balance = sum(
+            float(p.amount_due or 0)
+            for p in assigned_packages
+        )
+
+        delivery_fee_amount = float(d.delivery_fee or 0)
+
+        total_delivery_fees += delivery_fee_amount
+        total_package_balances += package_balance
+
+        fee_text = (
+            f"{d.fee_currency or 'JMD'} "
+            f"{delivery_fee_amount:,.2f}"
+        )
+
+        package_balance_text = (
+            f"JMD {package_balance:,.2f}"
+        )
+
+        if getattr(d, "is_free_delivery", False):
+            coverage = "Core / Free"
+        elif getattr(d, "delivery_type", "") == "admin_review":
+            coverage = "Manual Review"
+        elif getattr(d, "delivery_type", "") == "extended":
+            coverage = "Extended"
+        elif getattr(d, "delivery_type", "") == "express":
+            coverage = "Express"
+        else:
+            coverage = getattr(d, "delivery_type", None) or "—"
+
+        if getattr(d, "distance_km", None):
+            coverage = (
+                f"{coverage}<br/>"
+                f"{float(d.distance_km):.2f} KM"
+            )
+
+        payment_method = ""
+
+        data.append([
+            Paragraph(str(customer_text), small_style),
+            Paragraph(address_text or "—", small_style),
+            Paragraph(str(coverage), small_style),
+            Paragraph(str(fee_text), small_style),
+            Paragraph(str(package_balance_text), small_style),
+            Paragraph(str(pkg_count), small_center),
+            Paragraph(str(payment_method), small_style),
+            Paragraph("", small_style),
+        ])
+
+    table = Table(
+        data,
+        repeatRows=1,
+        colWidths=[
+            110,   # Customer / Phone
+            230,   # Address / Receiver
+            70,    # Coverage
+            65,    # Delivery Fee
+            70,    # Package Balance
+            30,    # Pkgs
+            70,    # Payment
+            105,   # Signature
+        ],
+    )
+
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4A148C")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 7),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.grey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
+            colors.white,
+            colors.HexColor("#F8F9FA")
+        ]),
+
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+    ]))
+
+    story.append(table)
+
+    expected_total = (
+        total_delivery_fees
+        + total_package_balances
+    )
+
+    story.append(Spacer(1, 12))
+
+    totals_table = Table(
+        [[
+            Paragraph(
+                (
+                    f"<b>Total Delivery Fees:</b> "
+                    f"JMD {total_delivery_fees:,.2f}"
+                ),
+                small_style
+            ),
+            Paragraph(
+                (
+                    f"<b>Total Package Balances:</b> "
+                    f"JMD {total_package_balances:,.2f}"
+                ),
+                small_style
+            ),
+            Paragraph(
+                (
+                    f"<b>Expected Route Collection:</b> "
+                    f"JMD {expected_total:,.2f}"
+                ),
+                small_style
+            ),
+        ]],
+        colWidths=[180, 220, 220]
+    )
+
+    totals_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
+        ("BOX", (0, 0), (-1, -1), 1, colors.lightgrey),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+
+    story.append(totals_table)
+
+    story.append(Spacer(1, 14))
+
+    story.append(
+        Paragraph(
+            (
+                "Driver Name: ____________________________    "
+                "Driver Signature: ____________________________    "
+                "Date: __________________"
+            ),
+            small_style
+        )
+    )
+
+    doc.build(story)
+
     buffer.seek(0)
+
     return send_file(
         buffer,
         as_attachment=True,
-        download_name="scheduled_deliveries.pdf",
+        download_name="scheduled_deliveries_manifest.pdf",
         mimetype="application/pdf",
     )
 
@@ -6259,100 +6506,57 @@ def add_scheduled_delivery():
     form = ScheduledDeliveryForm()
     users = User.query.order_by(User.full_name.asc()).all()
 
-    # -----------------------------
-    # ✅ Helper: detect zone from location string
-    # -----------------------------
-    def detect_area_zone(loc: str) -> str:
-        s = (loc or "").lower()
-
-        # Kingston core keywords
-        kgn_core_keys = [
-            "new kingston", "half way tree", "halfway tree", "hwt",
-            "cross road", "crossroads", "downtown", "kingston 5", "kingston 10"
-        ]
-
-        # Portmore / Spanish Town core keywords
-        pm_core_keys = [
-            "portmore", "pricesmart", "price smart", "spanish town hospital", "spanish town"
-        ]
-
-        if any(k in s for k in kgn_core_keys):
-            return "kgn_core"
-
-        if any(k in s for k in pm_core_keys):
-            # ⚠️ this treats “portmore/spanish town” as core by default if it matches keywords
-            return "pm_core"
-
-        # If it mentions Portmore/Spanish Town but not the “core” markers you want,
-        # you can push it to outside.
-        if "portmore" in s or "spanish town" in s:
-            return "pm_outside"
-
-        # Default catch-all
-        return "kgn_outside"
-
-    # -----------------------------
-    # ✅ Helper: fee rules + day restrictions
-    # -----------------------------
-    def compute_fee_and_rules(zone: str, d: date) -> tuple[bool, str, str]:
-        """
-        Returns: (ok, message, fee_str)
-        - ok=False means not allowed to schedule
-        - fee_str is "1000.00" or "1500.00" or "0.00"
-        """
-        # Python weekday: Monday=0 ... Sunday=6
-        wd = d.weekday()
-
-        # Kingston Core: FREE Tue (1) & Thu (3)
-        if zone == "kgn_core":
-            if wd in (1, 3):
-                return True, "", "0.00"
-            if wd == 5:  # Saturday
-                # core sat is 1000
-                return True, "", "1000.00"
-            # other days core default 1000
-            return True, "", "1000.00"
-
-        # Kingston Outside: ONLY Saturday, fee 1500 (your “extended”)
-        if zone == "kgn_outside":
-            if wd != 5:
-                return False, "Outside Kingston delivery is only available on Saturday.", "0.00"
-            return True, "", "1500.00"
-
-        # Portmore Core: FREE Wed (2) & Fri (4)
-        if zone == "pm_core":
-            if wd in (2, 4):
-                return True, "", "0.00"
-            if wd == 5:  # Saturday
-                return True, "", "1000.00"
-            # other days not free → you said Saturday for paid/outside,
-            # but for core you might still allow 1000 on other days. If you DON’T want that, block it:
-            return False, "Portmore/Spanish Town deliveries are free on Wed/Fri for core areas, otherwise scheduled on Saturday.", "0.00"
-
-        # Portmore Outside: ONLY Saturday, fee 1500
-        if zone == "pm_outside":
-            if wd != 5:
-                return False, "Outside Portmore/Spanish Town delivery is only available on Saturday.", "0.00"
-            return True, "", "1500.00"
-
-        # fallback
-        return True, "", "1000.00"
-
     if form.validate_on_submit():
-        t_from = "09:00"
-        t_to   = "17:00"
+        from decimal import Decimal
 
-        # ✅ Determine zone + fee
-        zone = detect_area_zone(form.location.data)
-        ok, msg, fee_str = compute_fee_and_rules(zone, form.date.data)
+        settings = Settings.query.get(1)
 
-        if not ok:
-            flash(msg, "warning")
+        if not settings:
+            flash("Delivery settings are not configured.", "danger")
             return redirect(url_for('logistics.add_scheduled_delivery'))
 
-        # fee as Decimal
-        from decimal import Decimal
-        fee_amount = Decimal(fee_str)
+        t_from = "09:00"
+        t_to = "17:00"
+
+        delivery_parish = (
+            request.form.get("delivery_parish")
+            or "Kingston"
+        ).strip()
+
+        location = (form.location.data or "").strip()
+
+        distance_result = calculate_real_distance(
+            parish=delivery_parish,
+            destination_address=location,
+            settings=settings
+        )
+
+        if not distance_result.get("success"):
+            flash(
+                f"Could not calculate delivery distance: "
+                f"{distance_result.get('error', 'Unknown error')}",
+                "danger"
+            )
+            return redirect(url_for('logistics.add_scheduled_delivery'))
+
+        distance_km = float(distance_result.get("distance_km") or 0)
+
+        delivery_details = build_delivery_details(
+            parish=delivery_parish,
+            distance_km=distance_km,
+            scheduled_date=form.date.data,
+            settings=settings
+        )
+
+        if not delivery_details["allowed"]:
+            flash(
+                f"Delivery exceeds max distance of "
+                f"{delivery_details['max_distance']} KM.",
+                "warning"
+            )
+            return redirect(url_for('logistics.add_scheduled_delivery'))
+
+        fee_amount = Decimal(str(delivery_details["delivery_fee"]))
 
         new_delivery = ScheduledDelivery(
             user_id=form.user_id.data,
@@ -6362,18 +6566,27 @@ def add_scheduled_delivery():
             scheduled_time_to=t_to,
             scheduled_time="09:00 - 17:00",
 
-            location=form.location.data,
+            location=location,
             direction=form.direction.data,
             mobile_number=form.mobile_number.data,
             person_receiving=form.person_receiving.data,
 
-            # ✅ NEW:
-            area_zone=zone,
+            area_zone="dynamic",
+            delivery_parish=delivery_parish,
+            delivery_branch=delivery_details["delivery_branch"],
+            distance_km=distance_km,
+            estimated_drive_minutes=None,
+            delivery_type=delivery_details["delivery_type"],
+            is_free_delivery=delivery_details["is_free_delivery"],
+            delivery_risk_status="safe",
 
-            # ✅ fee based on rules
             delivery_fee=fee_amount,
             fee_currency=DELIVERY_FEE_CURRENCY,
-            fee_status=("Paid" if fee_amount == Decimal("0.00") else "Unpaid"),
+            fee_status=(
+                "Waived"
+                if fee_amount == Decimal("0.00")
+                else "Unpaid"
+            ),
         )
 
         db.session.add(new_delivery)
@@ -6394,53 +6607,228 @@ def add_scheduled_delivery():
         fee_currency=DELIVERY_FEE_CURRENCY
     )
 
-@logistics_bp.route("/scheduled-deliveries/<int:delivery_id>", methods=["GET"])
+
+@logistics_bp.route("/scheduled_deliveries/<int:delivery_id>")
 @admin_required()
 def scheduled_delivery_view(delivery_id):
-    d = ScheduledDelivery.query.get_or_404(delivery_id)
 
-    assigned_packages = (
-        Package.query
-        .filter(Package.scheduled_delivery_id == d.id)
-        .order_by(Package.created_at.desc())
-        .all()
+    delivery = ScheduledDelivery.query.get_or_404(
+        delivery_id
     )
 
+    # ---------------------------------------
+    # Eligible packages
+    # Only packages for THIS customer
+    # and not already assigned elsewhere
+    # ---------------------------------------
     eligible_packages = (
         Package.query
         .filter(
-            Package.user_id == d.user_id,
-            Package.scheduled_delivery_id.is_(None),
-            func.lower(func.trim(Package.status)) == "ready for pick up",
+            Package.user_id == delivery.user_id
         )
-        .order_by(Package.created_at.desc())
+        .filter(
+            or_(
+                Package.scheduled_delivery_id.is_(None),
+                Package.scheduled_delivery_id == delivery.id
+            )
+        )
+        .filter(
+            Package.status.in_([
+                "Ready for Pick Up",
+                "Out for Delivery"
+            ])
+        )
+        .order_by(
+            Package.id.desc()
+        )
         .all()
     )
 
+    # ---------------------------------------
+    # Already assigned packages
+    # ---------------------------------------
+    assigned_packages = (
+        Package.query
+        .filter(
+            Package.scheduled_delivery_id == delivery.id
+        )
+        .order_by(
+            Package.id.desc()
+        )
+        .all()
+    )
+
+    # ---------------------------------------
+    # Package stats
+    # ---------------------------------------
+    total_packages = len(assigned_packages)
+
+    total_weight = sum(
+        float(p.weight or 0)
+        for p in assigned_packages
+    )
+
+    # ---------------------------------------
+    # Delivery status helpers
+    # ---------------------------------------
+    delivery_status = (
+        delivery.status or "Scheduled"
+    )
+
+    is_completed = (
+        delivery_status == "Delivered"
+    )
+
+    is_attempted = (
+        delivery_status == "Delivery Attempted"
+    )
+
+    has_pending_reschedule = (
+        delivery.reschedule_status == "pending"
+    )
+
+    # ---------------------------------------
+    # Timeline helper
+    # ---------------------------------------
+    timeline_steps = {
+        "scheduled": delivery_status in [
+            "Scheduled",
+            "Out for Delivery",
+            "Delivery Attempted",
+            "Delivered"
+        ],
+
+        "out_for_delivery": delivery_status in [
+            "Out for Delivery",
+            "Delivered"
+        ],
+
+        "attempted": delivery_status == (
+            "Delivery Attempted"
+        ),
+
+        "delivered": delivery_status == (
+            "Delivered"
+        )
+    }
+
     return render_template(
         "admin/logistics/scheduled_delivery_view.html",
-        delivery=d,
+
+        delivery=delivery,
+
+        eligible_packages=eligible_packages,
+
         assigned_packages=assigned_packages,
-        eligible_packages=eligible_packages
+
+        total_packages=total_packages,
+
+        total_weight=total_weight,
+
+        delivery_status=delivery_status,
+
+        is_completed=is_completed,
+
+        is_attempted=is_attempted,
+
+        has_pending_reschedule=has_pending_reschedule,
+
+        timeline_steps=timeline_steps
+    )
+
+@logistics_bp.route(
+    "/scheduled-deliveries/<int:delivery_id>/approve-reschedule",
+    methods=["POST"]
+)
+@admin_required()
+def approve_delivery_reschedule(delivery_id):
+    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
+
+    if delivery.reschedule_status != "pending":
+        flash("There is no pending reschedule request for this delivery.", "warning")
+        return redirect(
+            url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id)
+        )
+
+    if not delivery.requested_new_date:
+        flash("Requested new date is missing.", "danger")
+        return redirect(
+            url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id)
+        )
+
+    delivery.scheduled_date = delivery.requested_new_date
+    delivery.reschedule_requested = False
+    delivery.reschedule_status = "approved"
+    delivery.reschedule_reason = delivery.reschedule_reason
+    delivery.reschedule_requested_at = delivery.reschedule_requested_at
+
+    if delivery.status == "Delivery Attempted":
+        delivery.status = "Scheduled"
+
+    db.session.commit()
+
+    flash("Reschedule request approved and delivery date updated.", "success")
+    return redirect(
+        url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id)
+    )
+
+
+@logistics_bp.route(
+    "/scheduled-deliveries/<int:delivery_id>/deny-reschedule",
+    methods=["POST"]
+)
+@admin_required()
+def deny_delivery_reschedule(delivery_id):
+    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
+
+    if delivery.reschedule_status != "pending":
+        flash("There is no pending reschedule request for this delivery.", "warning")
+        return redirect(
+            url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id)
+        )
+
+    delivery.reschedule_requested = False
+    delivery.reschedule_status = "denied"
+
+    db.session.commit()
+
+    flash("Reschedule request denied. Original delivery date was kept.", "warning")
+    return redirect(
+        url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id)
     )
 
 
 @logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/set-status/<status>", methods=["POST"])
 @admin_required()
 def scheduled_delivery_set_status(delivery_id, status):
-    allowed = {"Scheduled", "Out for Delivery", "Delivered", "Cancelled"}
+    from datetime import datetime, timezone
+
+    allowed = {
+        "Scheduled",
+        "Out for Delivery",
+        "Delivered",
+        "Delivery Attempted",
+        "Cancelled"
+    }
+
     if status not in allowed:
         flash("Invalid status", "danger")
         return redirect(url_for("logistics.view_scheduled_deliveries"))
 
     d = ScheduledDelivery.query.get_or_404(delivery_id)
-    d.status = status
 
     linked_pkgs = (
         Package.query
         .filter(Package.scheduled_delivery_id == d.id)
         .all()
     )
+
+    d.status = status
+
+    if status == "Delivered":
+        d.delivered_at = datetime.now(timezone.utc)
+    else:
+        d.delivered_at = None
 
     if status == "Out for Delivery":
         for p in linked_pkgs:
@@ -6454,10 +6842,28 @@ def scheduled_delivery_set_status(delivery_id, status):
             if ps != "detained":
                 p.status = "Delivered"
 
-    db.session.commit()
-    flash(f"Delivery {d.invoice_number or f'#{d.id}'} updated to '{status}'", "success")
-    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=d.id))
+    elif status == "Delivery Attempted":
+        for p in linked_pkgs:
+            ps = (p.status or "").strip().lower()
+            if ps not in ("delivered", "detained"):
+                p.status = "Ready for Pick Up"
 
+    elif status == "Scheduled":
+        for p in linked_pkgs:
+            ps = (p.status or "").strip().lower()
+            if ps not in ("delivered", "detained"):
+                p.status = "Ready for Pick Up"
+
+    db.session.commit()
+
+    flash(
+        f"Delivery {d.invoice_number or f'#{d.id}'} updated to '{status}'",
+        "success"
+    )
+
+    return redirect(
+        url_for("logistics.scheduled_delivery_view", delivery_id=d.id)
+    )
 
 @logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/assign-packages", methods=["POST"])
 @admin_required()

@@ -8,7 +8,11 @@
     border-color: #4a148c;
     color: #fff;
   }
-  .btn-purple:hover { filter: brightness(.95); color: #fff; }
+
+  .btn-purple:hover {
+    filter: brightness(.95);
+    color: #fff;
+  }
 
   .pill {
     display: inline-flex;
@@ -21,16 +25,56 @@
     border: 1px solid transparent;
     white-space: nowrap;
   }
-  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
-  .pill-paid { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
-  .pill-paid .dot { background: #10b981; }
-  .pill-unpaid { background: #fffbeb; color: #92400e; border-color: #fde68a; }
-  .pill-unpaid .dot { background: #f59e0b; }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    display: inline-block;
+  }
+
+  .pill-paid {
+    background: #ecfdf5;
+    color: #065f46;
+    border-color: #a7f3d0;
+  }
+
+  .pill-paid .dot {
+    background: #10b981;
+  }
+
+  .pill-unpaid {
+    background: #fffbeb;
+    color: #92400e;
+    border-color: #fde68a;
+  }
+
+  .pill-unpaid .dot {
+    background: #f59e0b;
+  }
+
+  .soft-card {
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 10px 24px rgba(17, 24, 39, .08);
+  }
+
+  .info-label {
+    font-size: .78rem;
+    color: #6b7280;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+  }
+
+  .info-value {
+    font-weight: 700;
+    color: #111827;
+  }
 </style>
 
 <div class="container-fluid">
 
-  <!-- Header -->
   <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
     <div>
       <h3 class="mb-1">
@@ -42,17 +86,25 @@
         Delivery ID: <strong>#{{ delivery.id }}</strong>
 
         {% if delivery.invoice_number %}
-          <span class="ms-2">| Invoice: <strong>{{ delivery.invoice_number }}</strong></span>
+        <span class="ms-2">| Invoice: <strong>{{ delivery.invoice_number }}</strong></span>
         {% endif %}
 
-        {% if delivery.status %}
-          <span class="badge ms-2
-            {% if delivery.status|lower == 'delivered' %} bg-success
-            {% elif delivery.status|lower in ['cancelled','canceled'] %} bg-danger
-            {% elif delivery.status|lower in ['out for delivery','in progress'] %} bg-warning text-dark
-            {% else %} bg-secondary {% endif %}">
-            {{ delivery.status }}
-          </span>
+        {% set current_status = delivery.status or "Scheduled" %}
+
+        {% if current_status == "Delivered" %}
+        <span class="badge bg-success ms-2">Delivered</span>
+        {% elif current_status == "Out for Delivery" %}
+        <span class="badge bg-warning text-dark ms-2">Out for Delivery</span>
+        {% elif current_status == "Delivery Attempted" %}
+        <span class="badge bg-warning text-dark ms-2">Delivery Attempted</span>
+        {% elif current_status in ["Cancelled", "Canceled"] %}
+        <span class="badge bg-danger ms-2">Cancelled</span>
+        {% else %}
+        <span class="badge bg-secondary ms-2">{{ current_status }}</span>
+        {% endif %}
+
+        {% if delivery.reschedule_status == "pending" %}
+        <span class="badge bg-warning text-dark ms-2">Reschedule Pending</span>
         {% endif %}
       </div>
     </div>
@@ -62,68 +114,77 @@
         <i class="fas fa-arrow-left me-1"></i> Back
       </a>
 
-      {# Fee buttons #}
       {% set fs = (delivery.fee_status or "Unpaid")|lower %}
-      {% if fs != "paid" %}
-        <form method="post"
-              action="{{ url_for('logistics.scheduled_delivery_mark_paid', delivery_id=delivery.id) }}"
-              class="m-0"
-              onsubmit="return confirm('Mark delivery fee as PAID?');">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-sm btn-success">
-            <i class="fas fa-check me-1"></i> Mark Fee Paid
-          </button>
-        </form>
-      {% else %}
-        <form method="post"
-              action="{{ url_for('logistics.scheduled_delivery_mark_unpaid', delivery_id=delivery.id) }}"
-              class="m-0"
-              onsubmit="return confirm('Mark delivery fee as UNPAID?');">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button class="btn btn-sm btn-outline-secondary">
-            <i class="fas fa-undo me-1"></i> Mark Fee Unpaid
-          </button>
-        </form>
+
+      {% if fs != "paid" and fs != "waived" %}
+      <form method="post" action="{{ url_for('logistics.scheduled_delivery_mark_paid', delivery_id=delivery.id) }}"
+        class="m-0" onsubmit="return confirm('Mark delivery fee as PAID?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-success">
+          <i class="fas fa-check me-1"></i> Mark Fee Paid
+        </button>
+      </form>
+      {% elif fs == "paid" %}
+      <form method="post" action="{{ url_for('logistics.scheduled_delivery_mark_unpaid', delivery_id=delivery.id) }}"
+        class="m-0" onsubmit="return confirm('Mark delivery fee as UNPAID?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-undo me-1"></i> Mark Fee Unpaid
+        </button>
+      </form>
       {% endif %}
     </div>
   </div>
 
+  {% if delivery.reschedule_status == "pending" %}
+  <div class="alert alert-warning soft-card">
+    <strong>Customer requested a reschedule.</strong><br>
+    Requested Date:
+    <strong>
+      {{ delivery.requested_new_date.strftime("%Y-%m-%d") if delivery.requested_new_date else "—" }}
+    </strong>
+    <br>
+    Reason: {{ delivery.reschedule_reason or "—" }}
+  </div>
+  {% endif %}
+
   <div class="row g-3">
 
-    <!-- Left: Delivery Info -->
     <div class="col-lg-5">
 
-      <!-- Invoice / Fee card -->
-      <div class="card shadow-sm border-0 mb-3">
+      <div class="card soft-card mb-3">
         <div class="card-header bg-white d-flex justify-content-between align-items-center">
           <h6 class="mb-0">
             <i class="fas fa-receipt me-2 text-muted"></i>Delivery Invoice
           </h6>
 
           {% if fs == "paid" %}
-            <span class="pill pill-paid"><span class="dot"></span>Paid</span>
+          <span class="pill pill-paid"><span class="dot"></span>Paid</span>
+          {% elif fs == "waived" %}
+          <span class="pill pill-paid"><span class="dot"></span>Waived</span>
           {% else %}
-            <span class="pill pill-unpaid"><span class="dot"></span>Unpaid</span>
+          <span class="pill pill-unpaid"><span class="dot"></span>Unpaid</span>
           {% endif %}
         </div>
 
         <div class="card-body">
           <div class="row g-3">
             <div class="col-6">
-              <div class="text-muted small">Invoice #</div>
-              <div class="fw-semibold">{{ delivery.invoice_number or "—" }}</div>
+              <div class="info-label">Invoice #</div>
+              <div class="info-value">{{ delivery.invoice_number or "—" }}</div>
             </div>
 
             <div class="col-6 text-end">
-              <div class="text-muted small">Amount</div>
+              <div class="info-label">Amount</div>
               <div class="fw-bold">
-                {{ delivery.fee_currency or "JMD" }} {{ "%.2f"|format(delivery.delivery_fee or 0) }}
+                {{ delivery.fee_currency or "JMD" }}
+                {{ "%.2f"|format(delivery.delivery_fee or 0) }}
               </div>
             </div>
 
             <div class="col-12">
-              <div class="text-muted small">Paid At</div>
-              <div class="fw-semibold">
+              <div class="info-label">Paid At</div>
+              <div class="info-value">
                 {{ delivery.paid_at.strftime("%Y-%m-%d %H:%M") if delivery.paid_at else "—" }}
               </div>
             </div>
@@ -131,8 +192,7 @@
         </div>
       </div>
 
-      <!-- Delivery Details -->
-      <div class="card shadow-sm border-0">
+      <div class="card soft-card">
         <div class="card-header bg-white">
           <h6 class="mb-0">
             <i class="fas fa-info-circle me-2 text-muted"></i>Delivery Details
@@ -141,29 +201,28 @@
 
         <div class="card-body">
           <div class="row g-3">
+
             <div class="col-6">
-              <div class="text-muted small">Date</div>
-              <div class="fw-semibold">
+              <div class="info-label">Date</div>
+              <div class="info-value">
                 {{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "—" }}
               </div>
             </div>
 
             <div class="col-6">
-              <div class="text-muted small">Time</div>
-
-              {# ✅ TIME RANGE DISPLAY (NEW) #}
-              <div class="fw-semibold">
+              <div class="info-label">Time</div>
+              <div class="info-value">
                 {% if delivery.scheduled_time_from and delivery.scheduled_time_to %}
-                  {{ delivery.scheduled_time_from }} - {{ delivery.scheduled_time_to }}
+                {{ delivery.scheduled_time_from }} - {{ delivery.scheduled_time_to }}
                 {% else %}
-                  {{ delivery.scheduled_time or "—" }}
+                {{ delivery.scheduled_time or "—" }}
                 {% endif %}
               </div>
             </div>
 
             <div class="col-12">
-              <div class="text-muted small">Customer</div>
-              <div class="fw-semibold">
+              <div class="info-label">Customer</div>
+              <div class="info-value">
                 {{ delivery.user.full_name if delivery.user else "N/A" }}
               </div>
               <div class="text-muted small">
@@ -172,25 +231,117 @@
             </div>
 
             <div class="col-12">
-              <div class="text-muted small">Location</div>
-              <div class="fw-semibold">{{ delivery.location or "—" }}</div>
+              <div class="info-label">Location</div>
+              <div class="info-value">{{ delivery.location or "—" }}</div>
 
               {% if delivery.direction %}
-                <div class="text-muted small mt-1">
-                  <i class="fas fa-location-arrow me-1"></i>{{ delivery.direction }}
-                </div>
+              <div class="text-muted small mt-1">
+                <i class="fas fa-location-arrow me-1"></i>{{ delivery.direction }}
+              </div>
               {% endif %}
             </div>
 
             <div class="col-6">
-              <div class="text-muted small">Person Receiving</div>
-              <div class="fw-semibold">{{ delivery.person_receiving or "—" }}</div>
+              <div class="info-label">Person Receiving</div>
+              <div class="info-value">{{ delivery.person_receiving or "—" }}</div>
             </div>
 
             <div class="col-6">
-              <div class="text-muted small">Mobile</div>
-              <div class="fw-semibold">{{ delivery.mobile_number or "—" }}</div>
+              <div class="info-label">Mobile</div>
+              <div class="info-value">{{ delivery.mobile_number or "—" }}</div>
             </div>
+
+            <div class="col-6">
+              <div class="info-label">Delivery Parish</div>
+              <div class="info-value">{{ delivery.delivery_parish or "—" }}</div>
+            </div>
+
+            <div class="col-6">
+              <div class="info-label">Dispatch Branch</div>
+              <div class="info-value">{{ delivery.delivery_branch or "—" }}</div>
+            </div>
+
+            <div class="col-6">
+              <div class="info-label">Distance</div>
+              <div class="info-value">
+                {% if delivery.distance_km %}
+                {{ "%.2f"|format(delivery.distance_km) }} KM
+                {% else %}
+                —
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="col-6">
+              <div class="info-label">Delivery Type</div>
+
+              {% if delivery.delivery_type == "free_route" %}
+              <span class="badge bg-success">Free Route</span>
+              {% elif delivery.delivery_type == "admin_review" %}
+              <span class="badge bg-danger">Manual Review</span>
+              {% elif delivery.delivery_type == "extended" %}
+              <span class="badge bg-primary">Extended Zone</span>
+              {% elif delivery.delivery_type == "express" %}
+              <span class="badge bg-info text-dark">Express</span>
+              {% else %}
+              <span class="badge bg-secondary">{{ delivery.delivery_type or "—" }}</span>
+              {% endif %}
+            </div>
+
+            <div class="col-6">
+              <div class="info-label">Coverage</div>
+
+              {% if delivery.is_free_delivery %}
+              <span class="badge bg-success">Core Delivery Zone</span>
+              {% else %}
+              <span class="badge bg-primary">Extended Delivery Zone</span>
+              {% endif %}
+            </div>
+
+            <div class="col-6">
+              <div class="info-label">Risk Status</div>
+
+              {% if delivery.delivery_risk_status == "unsafe" %}
+              <span class="badge bg-danger">Unsafe Area</span>
+              {% elif delivery.delivery_risk_status == "review" %}
+              <span class="badge bg-warning text-dark">Needs Review</span>
+              {% else %}
+              <span class="badge bg-success">Safe Area</span>
+              {% endif %}
+            </div>
+
+            {% if delivery.delivered_at %}
+            <div class="col-12">
+              <div class="info-label">Delivered At</div>
+              <div class="info-value">
+                {{ delivery.delivered_at.strftime("%Y-%m-%d %I:%M %p UTC") }}
+              </div>
+            </div>
+            {% endif %}
+
+            {% if delivery.reschedule_status and delivery.reschedule_status != "none" %}
+            <div class="col-12">
+              <div class="info-label">Reschedule Status</div>
+
+              {% if delivery.reschedule_status == "pending" %}
+              <span class="badge bg-warning text-dark">Pending</span>
+              {% elif delivery.reschedule_status == "approved" %}
+              <span class="badge bg-success">Approved</span>
+              {% elif delivery.reschedule_status == "denied" %}
+              <span class="badge bg-danger">Denied</span>
+              {% else %}
+              <span class="badge bg-secondary">{{ delivery.reschedule_status }}</span>
+              {% endif %}
+
+              {% if delivery.requested_new_date %}
+              <div class="small text-muted mt-1">
+                Requested Date:
+                {{ delivery.requested_new_date.strftime("%Y-%m-%d") }}
+              </div>
+              {% endif %}
+            </div>
+            {% endif %}
+
           </div>
 
           <hr class="my-3">
@@ -204,9 +355,114 @@
         </div>
       </div>
 
-      <!-- Packages -->
-      <div class="card shadow-sm mt-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="card soft-card mt-4">
+        <div class="card-header bg-white">
+          <h6 class="mb-0">
+            <i class="fas fa-truck-loading me-2 text-muted"></i>
+            Delivery Operations
+          </h6>
+        </div>
+
+        <div class="card-body">
+
+          <div class="mb-4">
+            <div class="small text-muted mb-2">
+              Update Delivery Status
+            </div>
+
+            <div class="d-flex flex-wrap gap-2">
+
+              <form method="post"
+                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Scheduled') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-outline-secondary btn-sm">
+                  Scheduled
+                </button>
+              </form>
+
+              <form method="post"
+                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Out for Delivery') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-warning btn-sm">
+                  Out for Delivery
+                </button>
+              </form>
+
+              <form method="post"
+                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Delivery Attempted') }}"
+                onsubmit="return confirm('Mark this delivery as attempted?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-outline-warning btn-sm">
+                  Delivery Attempted
+                </button>
+              </form>
+
+              <form method="post"
+                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Delivered') }}"
+                onsubmit="return confirm('Mark delivery as completed?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-success btn-sm">
+                  Delivered
+                </button>
+              </form>
+
+              <form method="post"
+                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Cancelled') }}"
+                onsubmit="return confirm('Cancel this delivery?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-danger btn-sm">
+                  Cancelled
+                </button>
+              </form>
+
+            </div>
+          </div>
+
+          {% if delivery.reschedule_status == "pending" %}
+          <hr>
+
+          <div class="alert alert-warning mb-3">
+            <strong>Reschedule Request Pending</strong><br>
+
+            Requested New Date:
+            <strong>
+              {{ delivery.requested_new_date.strftime("%Y-%m-%d") if delivery.requested_new_date else "—" }}
+            </strong>
+
+            <br>
+
+            Reason:
+            {{ delivery.reschedule_reason or "—" }}
+          </div>
+
+          <div class="d-flex gap-2">
+
+            <form method="post" action="{{ url_for('logistics.approve_delivery_reschedule', delivery_id=delivery.id) }}"
+              onsubmit="return confirm('Approve reschedule request?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+              <button class="btn btn-success btn-sm">
+                Approve Reschedule
+              </button>
+            </form>
+
+            <form method="post" action="{{ url_for('logistics.deny_delivery_reschedule', delivery_id=delivery.id) }}"
+              onsubmit="return confirm('Deny reschedule request?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+              <button class="btn btn-outline-danger btn-sm">
+                Deny Request
+              </button>
+            </form>
+
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+
+      <div class="card soft-card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center bg-white">
           <h5 class="mb-0">Linked Packages</h5>
           <span class="text-muted small">
             {{ delivery.user.full_name if delivery.user else "" }}
@@ -215,9 +471,8 @@
 
         <div class="card-body">
 
-          <!-- Assign packages -->
           <form method="post"
-                action="{{ url_for('logistics.scheduled_delivery_assign_packages', delivery_id=delivery.id) }}">
+            action="{{ url_for('logistics.scheduled_delivery_assign_packages', delivery_id=delivery.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <div class="row g-2 align-items-end">
@@ -226,12 +481,12 @@
 
                 <select class="form-select" name="package_ids" multiple size="8">
                   {% for p in eligible_packages %}
-                    <option value="{{ p.id }}">
-                      {{ p.tracking_number or 'No Tracking' }} |
-                      {{ p.description or '' }} |
-                      {{ p.weight or 0 }} lb |
-                      Status: {{ p.status or '' }}
-                    </option>
+                  <option value="{{ p.id }}">
+                    {{ p.tracking_number or 'No Tracking' }} |
+                    {{ p.description or '' }} |
+                    {{ p.weight or 0 }} lb |
+                    Status: {{ p.status or '' }}
+                  </option>
                   {% endfor %}
                 </select>
 
@@ -250,42 +505,44 @@
 
           <hr class="my-4">
 
-          <!-- Already linked -->
           <div class="table-responsive">
             <table class="table table-bordered table-striped align-middle">
               <thead class="table-dark">
                 <tr>
                   <th>Tracking #</th>
                   <th>Description</th>
-                  <th>Weight</th>
+                  <th>Billable Weight</th>
                   <th>Status</th>
                   <th style="width: 140px;">Action</th>
                 </tr>
               </thead>
+
               <tbody>
                 {% for p in assigned_packages %}
-                  <tr>
-                    <td>{{ p.tracking_number or '' }}</td>
-                    <td>{{ p.description or '' }}</td>
-                    <td>{{ p.weight or 0 }}</td>
-                    <td>{{ p.status or '' }}</td>
-                    <td>
-                      <form method="post"
-                            action="{{ url_for('logistics.scheduled_delivery_unassign_package', delivery_id=delivery.id, package_id=p.id) }}"
-                            onsubmit="return confirm('Unassign this package from delivery?');">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button class="btn btn-outline-danger btn-sm w-100">Unassign</button>
-                      </form>
-                    </td>
-                  </tr>
+                <tr>
+                  <td>{{ p.tracking_number or '' }}</td>
+                  <td>{{ p.description or '' }}</td>
+                  <td>{{ ((p.weight or 0)|round(0, 'ceil'))|int }} lb</td>
+                  <td>{{ p.status or '' }}</td>
+                  <td>
+                    <form method="post"
+                      action="{{ url_for('logistics.scheduled_delivery_unassign_package', delivery_id=delivery.id, package_id=p.id) }}"
+                      onsubmit="return confirm('Unassign this package from delivery?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button class="btn btn-outline-danger btn-sm w-100">
+                        Unassign
+                      </button>
+                    </form>
+                  </td>
+                </tr>
                 {% endfor %}
 
                 {% if assigned_packages|length == 0 %}
-                  <tr>
-                    <td colspan="5" class="text-center text-muted py-4">
-                      No packages linked yet.
-                    </td>
-                  </tr>
+                <tr>
+                  <td colspan="5" class="text-center text-muted py-4">
+                    No packages linked yet.
+                  </td>
+                </tr>
                 {% endif %}
               </tbody>
             </table>
@@ -294,23 +551,7 @@
         </div>
       </div>
 
-      <!-- Nice “next actions” card -->
-      <div class="card shadow-sm border-0 mt-3">
-        <div class="card-body">
-          <h6 class="mb-2">
-            <i class="fas fa-bolt me-2 text-warning"></i>Next Actions
-          </h6>
-          <ul class="mb-0 small text-muted">
-            <li>Assign packages for this customer</li>
-            <li>Mark fee paid once collected</li>
-            <li>Update status: Scheduled → Out for Delivery → Delivered</li>
-          </ul>
-        </div>
-      </div>
-
     </div>
-
-    {# If you later want a right-side column, keep your layout ready #}
 
   </div>
 

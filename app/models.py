@@ -893,6 +893,35 @@ class ScheduledDelivery(db.Model):
     fee_currency = db.Column(db.String(10), nullable=False, default="JMD")
     fee_status = db.Column(db.String(20), nullable=False, default="Unpaid")
     paid_at = db.Column(db.DateTime)
+    delivered_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True
+    )
+
+    reschedule_requested = db.Column(
+        db.Boolean,
+        default=False
+    )
+
+    reschedule_requested_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True
+    )
+
+    requested_new_date = db.Column(
+        db.Date,
+        nullable=True
+    )
+
+    reschedule_reason = db.Column(
+        db.Text,
+        nullable=True
+    )
+
+    reschedule_status = db.Column(
+        db.String(30),
+        default="none"
+    )
 
     user = db.relationship('User', back_populates='scheduled_deliveries')
     packages = db.relationship(

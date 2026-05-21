@@ -3,39 +3,55 @@
 
 {% block content %}
 <style>
-  .btn-purple{
-    background:#4a148c;
-    border-color:#4a148c;
-    color:#fff;
+  .btn-purple {
+    background: #4a148c;
+    border-color: #4a148c;
+    color: #fff;
   }
-  .btn-purple:hover{ filter:brightness(.95); color:#fff; }
+
+  .btn-purple:hover {
+    filter: brightness(.95);
+    color: #fff;
+  }
+
+  .estimate-card {
+    border-radius: 14px;
+  }
 </style>
 
 <div class="container mt-4">
   <h2>🚚 Add Scheduled Delivery</h2>
+
   <p class="text-muted mb-3">
-    Create a delivery request for a customer. The delivery request fee is fixed and will be billed automatically.
+    Create a delivery request for a customer. Delivery fee is calculated using Google Maps distance, parish, free
+    delivery days, and coverage rules.
   </p>
 
   <form method="POST" action="{{ url_for('logistics.add_scheduled_delivery') }}">
     {{ form.hidden_tag() }}
 
+    <div class="alert alert-info small" style="border-radius:14px;">
+      Enter the full delivery address, including street/road name, house or lot number if available, community, parish,
+      and Jamaica.
+      Receiver name and mobile number are required.
+    </div>
+
     <div class="row g-3">
-      <div class="col-md-4">
+      <div class="col-md-5">
         <label class="form-label">Customer</label>
         <select name="user_id" class="form-select" required>
           <option value="">-- Select Customer --</option>
           {% for user in users %}
-            <option value="{{ user.id }}">
-              {{ user.full_name }} ({{ user.registration_number or user.email }})
-            </option>
+          <option value="{{ user.id }}">
+            {{ user.full_name }} ({{ user.registration_number or user.email }})
+          </option>
           {% endfor %}
         </select>
       </div>
 
-      <div class="col-md-2">
+      <div class="col-md-3">
         <label class="form-label">Date</label>
-        <input type="date" name="date" class="form-control" required>
+        <input type="date" name="date" id="deliveryDate" class="form-control" required>
       </div>
 
       <div class="col-md-4">
@@ -44,45 +60,332 @@
         <small class="text-muted">Deliveries are done within this window.</small>
       </div>
 
-      <div class="col-md-4">
-        <label class="form-label">Location</label>
-        <input type="text" name="location" class="form-control" required>
-      </div>
-
       <div class="col-md-6">
-        <label class="form-label">Directions</label>
-        <input type="text" name="direction" class="form-control">
+        <label class="form-label">Location / Full Address</label>
+        <input type="text" name="location" id="deliveryLocation" class="form-control"
+          placeholder="Example: 12 Hope Road, Kingston 6, Jamaica" required>
+
+        <div class="form-text text-muted">
+          Include house/lot number, street/road, community, parish, Jamaica.
+        </div>
+
+        <div id="addressWarning" class="form-text text-danger fw-semibold" style="display:none;">
+          Please enter a more complete address with street/road and house/lot number if available.
+        </div>
       </div>
 
       <div class="col-md-3">
-        <label class="form-label">Mobile #</label>
-        <input type="text" name="mobile_number" class="form-control">
+        <label class="form-label">Delivery Parish</label>
+        <select name="delivery_parish" id="deliveryParish" class="form-select" required>
+          <option value="">-- Select Parish --</option>
+          <option value="Kingston">Kingston</option>
+          <option value="St. Catherine">St. Catherine</option>
+        </select>
+        <small class="text-muted">Used to choose dispatch branch and free-day rules.</small>
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Delivery Coverage</label>
+        <div>
+          <span id="deliveryCoverageText" class="badge bg-secondary">
+            Enter address to calculate coverage.
+          </span>
+        </div>
+        <small class="text-muted">
+          Coverage is calculated automatically.
+        </small>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Directions / Landmark</label>
+        <input type="text" name="direction" id="deliveryDirections" class="form-control"
+          placeholder="Gate color, landmark, apartment, etc.">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label">Receiver Mobile #</label>
+        <input type="text" name="mobile_number" id="deliveryMobile" class="form-control" placeholder="876-000-0000"
+          required>
+        <small class="text-muted">Required.</small>
       </div>
 
       <div class="col-md-3">
         <label class="form-label">Person Receiving</label>
-        <input type="text" name="person_receiving" class="form-control">
+        <input type="text" name="person_receiving" id="deliveryPerson" class="form-control" placeholder="Full name"
+          required>
+        <small class="text-muted">Required.</small>
+      </div>
+
+      <div class="col-md-12">
+        <div id="deliveryEstimateBox" class="alert alert-info estimate-card" style="display:none;">
+          <div class="fw-bold mb-1">
+            Delivery Estimate
+          </div>
+          <div id="deliveryEstimateText">
+            Calculating...
+          </div>
+        </div>
       </div>
 
       <div class="col-md-4">
-        <label class="form-label">Delivery Fee</label>
-        <input type="text"
-               class="form-control"
-               value="{{ fee_currency }} {{ '%.2f'|format(delivery_fee|float) }}"
-               readonly>
-        <small class="text-muted">This fee is automatically applied and will show on the delivery invoice.</small>
+        <label class="form-label">Estimated Delivery Fee</label>
+        <input type="text" id="deliveryFeePreview" class="form-control"
+          value="{{ fee_currency }} {{ '%.2f'|format(delivery_fee|float) }}" readonly>
+        <small class="text-muted">
+          Final fee is calculated on save using Google Maps distance.
+        </small>
       </div>
     </div>
 
+    <div id="scheduleDeliveryMsg" class="alert alert-danger mt-3" style="display:none;"></div>
+
     <div class="mt-4">
-      <button type="submit" class="btn btn-purple">
+      <button type="submit" class="btn btn-purple" id="saveScheduleDelivery">
         ✅ Add Scheduled Delivery
       </button>
-      <a href="{{ url_for('logistics.view_scheduled_deliveries') }}"
-         class="btn btn-secondary ms-2">
+
+      <a href="{{ url_for('logistics.view_scheduled_deliveries') }}" class="btn btn-secondary ms-2">
         Cancel
       </a>
     </div>
   </form>
 </div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const dateEl = document.getElementById("deliveryDate");
+    const parishEl = document.getElementById("deliveryParish");
+    const addrEl = document.getElementById("deliveryLocation");
+    const addressWarning = document.getElementById("addressWarning");
+    const estimateBox = document.getElementById("deliveryEstimateBox");
+    const estimateText = document.getElementById("deliveryEstimateText");
+    const coverageText = document.getElementById("deliveryCoverageText");
+    const feePreview = document.getElementById("deliveryFeePreview");
+    const msgEl = document.getElementById("scheduleDeliveryMsg");
+    const saveBtn = document.getElementById("saveScheduleDelivery");
+
+    function showMsg(text) {
+      if (!msgEl) return;
+      msgEl.textContent = text || "";
+      msgEl.style.display = text ? "block" : "none";
+    }
+
+    function formatMoney(n) {
+      return Number(n || 0).toFixed(2);
+    }
+
+    function setFeePreview(amount) {
+      if (!feePreview) return;
+      feePreview.value = `{{ fee_currency }} ${formatMoney(amount)}`;
+    }
+
+    function getCoverageLabel(data) {
+      if (data.is_free_delivery) return "Core Delivery Zone";
+      if (data.delivery_type === "admin_review") return "Manual Review Area";
+      return "Extended Delivery Zone";
+    }
+
+    function isAddressDetailedEnough(address) {
+      const a = (address || "").trim().toLowerCase();
+
+      if (a.length < 12) return false;
+
+      const hasNumber = /\d/.test(a);
+
+      const roadWords = [
+        "road", "rd", "street", "st", "avenue", "ave", "drive", "dr",
+        "lane", "ln", "close", "circle", "terrace", "way", "boulevard",
+        "blvd", "heights", "scheme", "estate", "village", "lot", "apt",
+        "apartment", "unit", "district", "main road"
+      ];
+
+      const hasRoadWord = roadWords.some(word => a.includes(word));
+
+      return hasNumber || hasRoadWord;
+    }
+
+    function validateAddressSoft() {
+      const location = (addrEl?.value || "").trim();
+
+      if (!location) {
+        if (addressWarning) addressWarning.style.display = "none";
+        return false;
+      }
+
+      const ok = isAddressDetailedEnough(location);
+
+      if (addressWarning) {
+        addressWarning.style.display = ok ? "none" : "block";
+      }
+
+      return ok;
+    }
+
+    async function calculateDeliveryEstimate() {
+      const schedule_date = (dateEl?.value || "").trim();
+      const location = (addrEl?.value || "").trim();
+      const delivery_parish = (parishEl?.value || "").trim();
+
+      const csrfToken = "{{ csrf_token() }}";
+
+      validateAddressSoft();
+
+      if (!schedule_date || !location || !delivery_parish) {
+        if (estimateBox) estimateBox.style.display = "none";
+
+        if (coverageText) {
+          coverageText.textContent = "Enter address to calculate coverage.";
+          coverageText.className = "badge bg-secondary";
+        }
+
+        return;
+      }
+
+      if (estimateBox) estimateBox.style.display = "block";
+      if (estimateText) estimateText.textContent = "Calculating delivery estimate...";
+
+      try {
+        const res = await fetch("{{ url_for('customer.schedule_delivery_estimate') }}", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken
+          },
+          body: JSON.stringify({
+            schedule_date,
+            location,
+            delivery_parish
+          })
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok || !data.success) {
+          if (estimateText) {
+            estimateText.textContent = data.message || "Could not calculate delivery estimate.";
+          }
+
+          if (coverageText) {
+            coverageText.textContent = "Could not calculate coverage.";
+            coverageText.className = "badge bg-danger";
+          }
+
+          return;
+        }
+
+        setFeePreview(data.delivery_fee);
+
+        const coverageLabel = getCoverageLabel(data);
+
+        if (coverageText) {
+          coverageText.textContent = coverageLabel;
+
+          if (data.delivery_type === "admin_review") {
+            coverageText.className = "badge bg-danger";
+          } else if (data.is_free_delivery) {
+            coverageText.className = "badge bg-success";
+          } else {
+            coverageText.className = "badge bg-primary";
+          }
+        }
+
+        if (estimateText) {
+          estimateText.innerHTML = `
+            Distance:
+            <strong>${data.distance_km} KM</strong><br>
+
+            Estimated drive time:
+            <strong>${data.duration_text || "—"}</strong><br>
+
+            Delivery branch:
+            <strong>${data.delivery_branch || "—"}</strong><br>
+
+            Delivery type:
+            <strong>${data.is_free_delivery ? "Free delivery" : "Paid delivery"}</strong><br>
+
+            Coverage zone:
+            <strong>${coverageLabel}</strong><br>
+
+            ${data.delivery_type === "admin_review"
+              ? `
+                  <div class="mt-2 text-danger fw-semibold">
+                    Delivery requires manual review.
+                    Final pricing may need admin confirmation.
+                  </div>
+                `
+              : `
+                  Estimated delivery fee:
+                  <strong>
+                    JMD ${Number(data.delivery_fee || 0).toFixed(2)}
+                  </strong>
+                `
+            }
+          `;
+        }
+      } catch (err) {
+        console.error("Estimate error:", err);
+
+        if (estimateText) {
+          estimateText.textContent = "Network error while calculating estimate.";
+        }
+
+        if (coverageText) {
+          coverageText.textContent = "Could not calculate coverage.";
+          coverageText.className = "badge bg-danger";
+        }
+      }
+    }
+
+    dateEl?.addEventListener("change", calculateDeliveryEstimate);
+    parishEl?.addEventListener("change", calculateDeliveryEstimate);
+    addrEl?.addEventListener("blur", calculateDeliveryEstimate);
+    addrEl?.addEventListener("input", validateAddressSoft);
+
+    saveBtn?.closest("form")?.addEventListener("submit", (e) => {
+      showMsg("");
+
+      const scheduleDate = (dateEl?.value || "").trim();
+      const address = (addrEl?.value || "").trim();
+      const parish = (parishEl?.value || "").trim();
+      const mobile = (document.getElementById("deliveryMobile")?.value || "").trim();
+      const person = (document.getElementById("deliveryPerson")?.value || "").trim();
+
+      if (!scheduleDate) {
+        e.preventDefault();
+        showMsg("Please select a delivery date.");
+        return;
+      }
+
+      if (!address) {
+        e.preventDefault();
+        showMsg("Please enter the delivery address.");
+        return;
+      }
+
+      if (!isAddressDetailedEnough(address)) {
+        e.preventDefault();
+        showMsg("Please enter a more accurate address, including street/road name and house or lot number if available.");
+        return;
+      }
+
+      if (!parish) {
+        e.preventDefault();
+        showMsg("Please select a delivery parish.");
+        return;
+      }
+
+      if (!mobile) {
+        e.preventDefault();
+        showMsg("Please enter the receiver's mobile number.");
+        return;
+      }
+
+      if (!person) {
+        e.preventDefault();
+        showMsg("Please enter the person receiving the package.");
+        return;
+      }
+    });
+  });
+</script>
 {% endblock %}

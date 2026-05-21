@@ -71,6 +71,8 @@ from flask_mail import Message as MailMessage
 from sqlalchemy.orm import selectinload
 from app.utils.cloudinary_storage import serve_prealert_invoice_file
 from decimal import Decimal
+from app.utils.delivery_engine import build_delivery_details
+from app.utils.delivery_engine import calculate_real_distance
 
 customer_bp = Blueprint('customer', __name__, template_folder='templates/customer')
 
@@ -2282,179 +2284,224 @@ def schedule_delivery_overview():
         fee_currency=DELIVERY_FEE_CURRENCY
     )
 
+@customer_bp.route("/schedule-delivery/<int:delivery_id>")
+@login_required
+def schedule_delivery_detail(delivery_id):
+    delivery = ScheduledDelivery.query.filter_by(
+        id=delivery_id,
+        user_id=current_user.id
+    ).first_or_404()
+
+    packages = Package.query.filter_by(
+        scheduled_delivery_id=delivery.id,
+        user_id=current_user.id
+    ).order_by(Package.id.desc()).all()
+
+    return render_template(
+        "customer/schedule_delivery_detail.html",
+        delivery=delivery,
+        packages=packages
+    )
+
 
 @customer_bp.route('/schedule-delivery/add', methods=['POST'])
 @login_required
 def schedule_delivery_add():
     data = request.get_json(silent=True) or {}
 
-    return jsonify({
-        "success": False,
-        "message": "Customer delivery scheduling is temporarily disabled. Please contact support."
-    }), 403
+    schedule_date = (
+        data.get("schedule_date")
+        or data.get("date")
+        or ""
+    ).strip()
 
-    schedule_date = (data.get("schedule_date") or data.get("date") or "").strip()
-    location      = (data.get("location") or "").strip()
+    location = (
+        data.get("location")
+        or ""
+    ).strip()
 
-    # ✅ NEW: area zone (required)
-    area_zone = (data.get("area_zone") or "").strip()
+    area_zone = (
+        data.get("area_zone")
+        or "dynamic"
+    ).strip()
+
+    delivery_parish = (
+        data.get("delivery_parish")
+        or ""
+    ).strip()
 
     t_from = "09:00"
-    t_to   = "17:00"
+    t_to = "17:00"
+
     scheduled_time_str = "09:00 - 17:00"
 
     current_app.logger.info(
-        "[schedule_delivery_add] keys=%s date=%s location=%s area_zone=%s fixed_time=09:00-17:00",
-        list(data.keys()), schedule_date, location, area_zone
+        "[schedule_delivery_add] "
+        "keys=%s date=%s location=%s "
+        "parish=%s area_zone=%s",
+        list(data.keys()),
+        schedule_date,
+        location,
+        delivery_parish,
+        area_zone
     )
 
-    if (not schedule_date) or (not location) or (not area_zone):
+    if (
+        not schedule_date
+        or not location
+        or not delivery_parish
+    ):
         return jsonify({
             "success": False,
-            "message": "Missing required fields: schedule_date, location, area_zone.",
+            "message": (
+                "Missing required fields: "
+                "schedule_date, location, "
+                "delivery_parish."
+            ),
             "received_keys": list(data.keys()),
         }), 400
 
-    # ---- Parse date (YYYY-MM-DD or MM/DD/YYYY) ----
+    # -----------------------------------
+    # Parse date
+    # -----------------------------------
     d = None
+
     for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
         try:
-            d = datetime.strptime(schedule_date, fmt).date()
+            d = datetime.strptime(
+                schedule_date,
+                fmt
+            ).date()
+
             break
+
         except Exception:
             pass
+
     if not d:
-        return jsonify({"success": False, "message": f"Invalid date format: {schedule_date}"}), 400
-
-    # ---- Parse time helpers ----
-    def _parse_time_to_24h_str(s: str):
-        s = (s or "").strip()
-        if not s:
-            return None
-        for fmt in ("%H:%M", "%I:%M %p"):
-            try:
-                t_obj = datetime.strptime(s, fmt).time()
-                return t_obj.strftime("%H:%M")  # always store "14:30"
-            except Exception:
-                continue
-        return None
-
-    # ✅ Decide if we’re using range or legacy single time
-    t_from = _parse_time_to_24h_str(time_from_in)
-    t_to   = _parse_time_to_24h_str(time_to_in)
-
-    # If user only sent the old single time, keep that behavior
-    if not (t_from and t_to) and schedule_time_single:
-        t_single = _parse_time_to_24h_str(schedule_time_single)
-        if not t_single:
-            return jsonify({"success": False, "message": f"Invalid time format: {schedule_time_single}"}), 400
-
-        # store legacy only
-        t_from = None
-        t_to = None
-        scheduled_time_str = t_single
-    else:
-        # range path
-        if not t_from or not t_to:
-            return jsonify({
-                "success": False,
-                "message": "Invalid time range. Please use HH:MM or HH:MM AM/PM for Time From and Time To."
-            }), 400
-
-        # ✅ validate from < to
-        try:
-            tf_dt = datetime.strptime(t_from, "%H:%M")
-            tt_dt = datetime.strptime(t_to, "%H:%M")
-            if tt_dt <= tf_dt:
-                return jsonify({"success": False, "message": "Time To must be after Time From."}), 400
-        except Exception:
-            pass
-
-        scheduled_time_str = f"{t_from} - {t_to}"  # fallback display
-
-    # ==========================================================
-    # ✅ DELIVERY RULES (day + zone)
-    # Zones:
-    #   kgn_core, kgn_outside, pm_core, pm_outside
-    #
-    # Days:
-    #   Tue/Thu: Kingston core FREE only
-    #   Wed/Fri: Portmore/SpanishTown core FREE only
-    #   Sat: Core=1000, Outside=1500 (both routes)
-    #   Other days: not allowed
-    # ==========================================================
-    allowed_zones = {"kgn_core", "kgn_outside", "pm_core", "pm_outside"}
-    if area_zone not in allowed_zones:
-        return jsonify({"success": False, "message": "Invalid delivery area selected."}), 400
-
-    dow = d.weekday()  # Mon=0 ... Sun=6
-    is_tue = (dow == 1)
-    is_wed = (dow == 2)
-    is_thu = (dow == 3)
-    is_fri = (dow == 4)
-    is_sat = (dow == 5)
-
-    # default outcome
-    fee_amt = Decimal("1000.00")
-    fee_status = "Unpaid"
-
-    if is_sat:
-        # Saturday: paid
-        if area_zone.endswith("_outside"):
-            fee_amt = Decimal("1500.00")
-        else:
-            fee_amt = Decimal("1000.00")
-        fee_status = "Unpaid"
-
-    elif is_tue or is_thu:
-        # Tue/Thu: Kingston core FREE only
-        if area_zone != "kgn_core":
-            return jsonify({
-                "success": False,
-                "message": "On Tue/Thu we only deliver FREE within Kingston Core. Outside areas are Saturday only."
-            }), 400
-        fee_amt = Decimal("0.00")
-        fee_status = "Waived"
-
-    elif is_wed or is_fri:
-        # Wed/Fri: Portmore/SpanishTown core FREE only
-        if area_zone != "pm_core":
-            return jsonify({
-                "success": False,
-                "message": "On Wed/Fri we only deliver FREE within Portmore/Spanish Town Core. Outside areas are Saturday only."
-            }), 400
-        fee_amt = Decimal("0.00")
-        fee_status = "Waived"
-
-    else:
         return jsonify({
             "success": False,
-            "message": "Delivery is available Tue/Thu (Kingston), Wed/Fri (Portmore/Spanish Town), or Saturday."
+            "message": (
+                f"Invalid date format: "
+                f"{schedule_date}"
+            )
         }), 400
 
     try:
+        settings = Settings.query.get(1)
+
+        if not settings:
+            return jsonify({
+                "success": False,
+                "message": (
+                    "Delivery settings are not "
+                    "configured."
+                )
+            }), 500
+
+        # -----------------------------------
+        # REAL GOOGLE MAPS DISTANCE
+        # -----------------------------------
+        distance_result = calculate_real_distance(
+            parish=delivery_parish,
+            destination_address=location,
+            settings=settings
+        )
+
+        if not distance_result.get("success"):
+            return jsonify({
+                "success": False,
+                "message": (
+                    distance_result.get(
+                        "error",
+                        "Distance calculation failed."
+                    )
+                )
+            }), 400
+
+        distance_km = float(
+            distance_result.get("distance_km") or 0
+        )
+
+        delivery_details = build_delivery_details(
+            parish=delivery_parish,
+            distance_km=distance_km,
+            scheduled_date=d,
+            settings=settings
+        )
+
+        if not delivery_details["allowed"]:
+            return jsonify({
+                "success": False,
+                "message": (
+                    f"Delivery exceeds max "
+                    f"distance of "
+                    f"{delivery_details['max_distance']} KM."
+                )
+            }), 400
+
+        fee_amt = Decimal(
+            str(delivery_details["delivery_fee"])
+        )
+
+        fee_status = (
+            "Waived"
+            if fee_amt == Decimal("0.00")
+            else "Unpaid"
+        )
+
         new_delivery = ScheduledDelivery(
             user_id=current_user.id,
+
             scheduled_date=d,
 
-            # ✅ store zone
-            area_zone=area_zone,
+            area_zone=area_zone or "dynamic",
 
-            # ✅ range fields
+            delivery_parish=delivery_parish,
+
+            delivery_branch=delivery_details[
+                "delivery_branch"
+            ],
+
+            distance_km=distance_km,
+
+            delivery_type=delivery_details[
+                "delivery_type"
+            ],
+
+            is_free_delivery=delivery_details[
+                "is_free_delivery"
+            ],
+
+            delivery_risk_status="safe",
+
             scheduled_time_from=t_from,
             scheduled_time_to=t_to,
-
-            # ✅ legacy field
             scheduled_time=scheduled_time_str,
 
             location=location,
-            direction=(data.get("direction") or data.get("directions") or "").strip(),
-            mobile_number=(data.get("mobile_number") or data.get("mobile") or "").strip(),
-            person_receiving=(data.get("person_receiving") or "").strip(),
 
-            # ✅ fee rules applied here
+            direction=(
+                data.get("direction")
+                or data.get("directions")
+                or ""
+            ).strip(),
+
+            mobile_number=(
+                data.get("mobile_number")
+                or data.get("mobile")
+                or ""
+            ).strip(),
+
+            person_receiving=(
+                data.get("person_receiving")
+                or ""
+            ).strip(),
+
             delivery_fee=fee_amt,
+
             fee_currency=DELIVERY_FEE_CURRENCY,
+
             fee_status=fee_status,
         )
 
@@ -2462,35 +2509,212 @@ def schedule_delivery_add():
         db.session.commit()
 
         year = datetime.utcnow().year
-        new_delivery.invoice_number = f"DEL-{year}-{new_delivery.id:06d}"
+
+        new_delivery.invoice_number = (
+            f"DEL-{year}-{new_delivery.id:06d}"
+        )
+
         db.session.commit()
 
         return jsonify({
             "success": True,
             "message": "Scheduled successfully",
+
             "delivery": {
                 "id": new_delivery.id,
-                "invoice_number": new_delivery.invoice_number,
-                "scheduled_date": new_delivery.scheduled_date.isoformat(),
 
-                "scheduled_time": new_delivery.scheduled_time or "",
-                "scheduled_time_from": new_delivery.scheduled_time_from or "",
-                "scheduled_time_to": new_delivery.scheduled_time_to or "",
+                "invoice_number":
+                    new_delivery.invoice_number,
 
-                "location": new_delivery.location,
-                "area_zone": new_delivery.area_zone,
+                "scheduled_date":
+                    new_delivery
+                    .scheduled_date
+                    .isoformat(),
 
-                "person_receiving": new_delivery.person_receiving or "",
-                "delivery_fee": str(new_delivery.delivery_fee or fee_amt),
-                "fee_currency": new_delivery.fee_currency or DELIVERY_FEE_CURRENCY,
-                "fee_status": new_delivery.fee_status or fee_status,
+                "scheduled_time":
+                    new_delivery.scheduled_time or "",
+
+                "scheduled_time_from":
+                    new_delivery.scheduled_time_from or "",
+
+                "scheduled_time_to":
+                    new_delivery.scheduled_time_to or "",
+
+                "location":
+                    new_delivery.location,
+
+                "area_zone":
+                    new_delivery.area_zone,
+
+                "delivery_parish":
+                    new_delivery.delivery_parish,
+
+                "delivery_branch":
+                    new_delivery.delivery_branch,
+
+                "distance_km":
+                    new_delivery.distance_km,
+
+                "delivery_type":
+                    new_delivery.delivery_type,
+
+                "is_free_delivery":
+                    new_delivery.is_free_delivery,
+
+                "person_receiving":
+                    new_delivery.person_receiving or "",
+
+                "delivery_fee":
+                    str(
+                        new_delivery.delivery_fee
+                        or fee_amt
+                    ),
+
+                "fee_currency":
+                    (
+                        new_delivery.fee_currency
+                        or DELIVERY_FEE_CURRENCY
+                    ),
+
+                "fee_status":
+                    new_delivery.fee_status
+                    or fee_status,
             }
         }), 200
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.exception("schedule_delivery_add failed")
-        return jsonify({"success": False, "message": f"{type(e).__name__}: {str(e)}"}), 500
+
+        current_app.logger.exception(
+            "schedule_delivery_add failed"
+        )
+
+        return jsonify({
+            "success": False,
+            "message":
+                f"{type(e).__name__}: {str(e)}"
+        }), 500
+
+@customer_bp.route(
+    "/schedule-delivery/<int:delivery_id>/request-reschedule",
+    methods=["POST"]
+)
+@login_required
+def request_delivery_reschedule(delivery_id):
+
+    from datetime import datetime, timezone, timedelta
+
+    delivery = ScheduledDelivery.query.filter_by(
+        id=delivery_id,
+        user_id=current_user.id
+    ).first_or_404()
+
+    # ---------------------------------------
+    # Only allow certain statuses
+    # ---------------------------------------
+    allowed_statuses = ["Scheduled", "Pending"]
+
+    if (delivery.status or "") not in allowed_statuses:
+        return jsonify({
+            "success": False,
+            "message": (
+                "This delivery can no longer "
+                "be rescheduled."
+            )
+        }), 400
+
+    # ---------------------------------------
+    # Cutoff:
+    # 8 PM day before delivery
+    # ---------------------------------------
+    if delivery.scheduled_date:
+
+        cutoff = datetime.combine(
+            delivery.scheduled_date - timedelta(days=1),
+            datetime.min.time()
+        ).replace(
+            hour=20,
+            minute=0,
+            second=0,
+            tzinfo=timezone.utc
+        )
+
+        now_utc = datetime.now(timezone.utc)
+
+        if now_utc > cutoff:
+            return jsonify({
+                "success": False,
+                "message": (
+                    "Reschedule requests must be "
+                    "submitted before 8 PM the "
+                    "day before delivery."
+                )
+            }), 400
+
+    new_date_raw = (
+        request.form.get("requested_new_date")
+        or ""
+    ).strip()
+
+    reason = (
+        request.form.get("reason")
+        or ""
+    ).strip()
+
+    if not new_date_raw:
+        return jsonify({
+            "success": False,
+            "message": "Please select a new date."
+        }), 400
+
+    if not reason:
+        return jsonify({
+            "success": False,
+            "message": "Please provide a reason."
+        }), 400
+
+    try:
+        requested_new_date = datetime.strptime(
+            new_date_raw,
+            "%Y-%m-%d"
+        ).date()
+    except Exception:
+        return jsonify({
+            "success": False,
+            "message": "Invalid date."
+        }), 400
+
+    if requested_new_date <= date.today():
+        return jsonify({
+            "success": False,
+            "message": (
+                "Requested date must be "
+                "a future date."
+            )
+        }), 400
+
+    delivery.reschedule_requested = True
+    delivery.reschedule_requested_at = (
+        datetime.now(timezone.utc)
+    )
+
+    delivery.requested_new_date = (
+        requested_new_date
+    )
+
+    delivery.reschedule_reason = reason
+
+    delivery.reschedule_status = "pending"
+
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": (
+            "Reschedule request submitted."
+        )
+    })
+
 
 @customer_bp.route('/schedule-delivery/<int:delivery_id>/cancel', methods=['POST'])
 @login_required
@@ -2505,6 +2729,119 @@ def schedule_delivery_cancel(delivery_id):
     db.session.commit()
     return jsonify({"success": True, "message": "Delivery cancelled."}), 200
 
+
+@customer_bp.route(
+    "/schedule-delivery/estimate",
+    methods=["POST"]
+)
+@login_required
+def schedule_delivery_estimate():
+
+    data = request.get_json(silent=True) or {}
+
+    parish = (
+        data.get("delivery_parish")
+        or ""
+    ).strip()
+
+    address = (
+        data.get("location")
+        or ""
+    ).strip()
+
+    schedule_date = (
+        data.get("schedule_date")
+        or ""
+    ).strip()
+
+    if not parish or not address:
+        return jsonify({
+            "success": False,
+            "message": "Parish and address required."
+        }), 400
+
+    settings = Settings.query.get(1)
+
+    if not settings:
+        return jsonify({
+            "success": False,
+            "message": "Delivery settings missing."
+        }), 500
+
+    # -----------------------------------------
+    # REAL GOOGLE MAPS DISTANCE
+    # -----------------------------------------
+    distance_result = calculate_real_distance(
+        parish=parish,
+        destination_address=address,
+        settings=settings
+    )
+
+    if not distance_result["success"]:
+        return jsonify({
+            "success": False,
+            "message": distance_result.get(
+                "error",
+                "Distance calculation failed."
+            )
+        }), 400
+
+    distance_km = distance_result["distance_km"]
+
+    # -----------------------------------------
+    # Parse Date
+    # -----------------------------------------
+    try:
+        delivery_date = datetime.strptime(
+            schedule_date,
+            "%Y-%m-%d"
+        ).date()
+    except Exception:
+        delivery_date = datetime.utcnow().date()
+
+    # -----------------------------------------
+    # DELIVERY ENGINE
+    # -----------------------------------------
+    delivery_details = build_delivery_details(
+        parish=parish,
+        distance_km=distance_km,
+        scheduled_date=delivery_date,
+        settings=settings
+    )
+
+    return jsonify({
+        "success": True,
+
+        "distance_km": distance_km,
+
+        "duration_text": distance_result.get(
+            "duration_text"
+        ),
+
+        "delivery_fee": delivery_details[
+            "delivery_fee"
+        ],
+
+        "delivery_type": delivery_details[
+            "delivery_type"
+        ],
+
+        "is_free_delivery": delivery_details[
+            "is_free_delivery"
+        ],
+
+        "delivery_branch": delivery_details[
+            "delivery_branch"
+        ],
+
+        "allowed": delivery_details[
+            "allowed"
+        ],
+
+        "max_distance": delivery_details[
+            "max_distance"
+        ],
+    })
 
 @customer_bp.route("/schedule-delivery/<int:delivery_id>/invoice", methods=["GET"])
 @login_required

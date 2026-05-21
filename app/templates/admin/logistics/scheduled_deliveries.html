@@ -4,524 +4,601 @@
 
 {% block content %}
 
-{# ------------------------------------------------------------
-   Helpers
-   ------------------------------------------------------------ #}
-{% macro fmt_time(t) -%}
-  {# t may be:
-     - "14:30"
-     - datetime.time
-     - None
-  #}
-  {% if not t %}
-    —
-  {% else %}
-    {% set s = (t|string).strip() %}
-    {% if ':' in s %}
-      {% set hh = s.split(':')[0]|int %}
-      {% set mm = s.split(':')[1]|int %}
-      {% set ap = 'AM' if hh < 12 else 'PM' %}
-      {% set h12 = hh % 12 %}
-      {% if h12 == 0 %}{% set h12 = 12 %}{% endif %}
-      {{ h12 }}:{% if mm < 10 %}0{% endif %}{{ mm }} {{ ap }}
-    {% else %}
-      {{ s }}
-    {% endif %}
-  {% endif %}
-{%- endmacro %}
-
 <style>
-  /* ====== FAFL Scheduled Deliveries polish ====== */
-  .sd-card{
-    border:0;
-    border-radius:16px;
-    overflow:hidden;
-    box-shadow: 0 10px 25px rgba(17,24,39,.08);
+  .sd-card {
+    border: 0;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 10px 25px rgba(17, 24, 39, .08);
   }
-  .sd-header{
+
+  .sd-header {
     background: #4a148c;
-    color:#fff;
+    color: #fff;
     padding: 16px 18px;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:12px;
-  }
-  .sd-header h4{
-    margin:0;
-    font-weight:700;
-    letter-spacing:.2px;
-    display:flex;
-    align-items:center;
-    gap:10px;
-  }
-  .sd-header .sub{
-    opacity:.9;
-    font-size:.9rem;
-    margin-top:2px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
   }
 
-  .sd-filters{
-    background:#fff;
+  .sd-header h4 {
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: .2px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .sd-header .sub {
+    opacity: .9;
+    font-size: .9rem;
+    margin-top: 2px;
+  }
+
+  .sd-filters {
+    background: #fff;
     padding: 14px 18px;
-    border-bottom:1px solid #eef2f7;
+    border-bottom: 1px solid #eef2f7;
   }
-  .sd-filters .form-label{
-    font-size:.82rem;
-    color:#6b7280;
-    margin-bottom:4px;
+
+  .sd-filters .form-label {
+    font-size: .82rem;
+    color: #6b7280;
+    margin-bottom: 4px;
   }
+
   .sd-filters .form-control,
-  .sd-filters .form-select{
-    border-radius:10px;
+  .sd-filters .form-select {
+    border-radius: 10px;
   }
 
-  .btn-purple{
-    background:#4a148c;
-    border-color:#4a148c;
-    color:#fff;
-    border-radius:10px;
+  .btn-purple {
+    background: #4a148c;
+    border-color: #4a148c;
+    color: #fff;
+    border-radius: 10px;
   }
-  .btn-purple:hover{ filter:brightness(.95); color:#fff; }
-  .btn-soft{ border-radius:10px; }
 
-  .sd-table-wrap{
+  .btn-purple:hover {
+    filter: brightness(.95);
+    color: #fff;
+  }
+
+  .btn-soft {
+    border-radius: 10px;
+  }
+
+  .sd-table-wrap {
     padding: 16px 18px 18px 18px;
-    background:#fff;
+    background: #fff;
   }
 
-  table.dataTable thead th{
-    background:#111827 !important;
-    color:#fff !important;
-    border-bottom:0 !important;
-    font-weight:600;
-  }
-  table.dataTable tbody td{ vertical-align:middle; }
-
-  .sd-pill{
-    display:inline-flex;
-    align-items:center;
-    gap:8px;
-    padding:6px 10px;
-    border-radius:999px;
-    font-size:.82rem;
-    font-weight:600;
-    border:1px solid transparent;
-    white-space:nowrap;
-  }
-  .dot{ width:8px; height:8px; border-radius:999px; display:inline-block; }
-
-  .pill-scheduled{ background:#eef2ff; color:#3730a3; border-color:#c7d2fe; }
-  .pill-scheduled .dot{ background:#3730a3; }
-
-  .pill-out{ background:#fff7ed; color:#9a3412; border-color:#fed7aa; }
-  .pill-out .dot{ background:#f97316; }
-
-  .pill-delivered{ background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
-  .pill-delivered .dot{ background:#10b981; }
-
-  .pill-cancelled{ background:#fef2f2; color:#991b1b; border-color:#fecaca; }
-  .pill-cancelled .dot{ background:#ef4444; }
-
-  .fee-badge{
-    display:inline-flex;
-    align-items:center;
-    gap:8px;
-    padding:6px 10px;
-    border-radius:999px;
-    font-size:.82rem;
-    font-weight:700;
-    border:1px solid transparent;
-    white-space:nowrap;
-  }
-  .fee-unpaid{ background:#fffbeb; color:#92400e; border-color:#fde68a; }
-  .fee-paid{ background:#ecfdf5; color:#065f46; border-color:#a7f3d0; }
-  .fee-unpaid .dot{ background:#f59e0b; }
-  .fee-paid .dot{ background:#10b981; }
-
-  /* keep action button neat */
-  .sd-actions{ white-space:nowrap; }
-  .sd-actions .dropdown-toggle{
-    border-radius:10px;
-    padding:6px 10px;
-    font-weight:700;
-  }
-  .dropdown-menu{ border-radius:12px; }
-  .dropdown-item{ font-weight:600; }
-
-  /* make the datatable search look nicer */
-  .dataTables_filter input{
-    border-radius:10px !important;
-    border:1px solid #e5e7eb !important;
-    padding:.35rem .6rem !important;
-  }
-  .dataTables_length select{
-    border-radius:10px !important;
-    border:1px solid #e5e7eb !important;
-    padding:.25rem .5rem !important;
+  table.dataTable thead th {
+    background: #111827 !important;
+    color: #fff !important;
+    border-bottom: 0 !important;
+    font-weight: 600;
   }
 
-  /* ✅ SUMMARY CARDS: force 1-row + swipe on mobile */
-  .sd-summary-row{
-    display:flex;
-    gap:12px;
-    flex-wrap:nowrap;
-    overflow-x:auto;
+  table.dataTable tbody td {
+    vertical-align: middle;
+  }
+
+  .sd-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: .82rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    display: inline-block;
+  }
+
+  .pill-scheduled {
+    background: #eef2ff;
+    color: #3730a3;
+    border-color: #c7d2fe;
+  }
+
+  .pill-scheduled .dot {
+    background: #3730a3;
+  }
+
+  .pill-out {
+    background: #fff7ed;
+    color: #9a3412;
+    border-color: #fed7aa;
+  }
+
+  .pill-out .dot {
+    background: #f97316;
+  }
+
+  .pill-delivered {
+    background: #ecfdf5;
+    color: #065f46;
+    border-color: #a7f3d0;
+  }
+
+  .pill-delivered .dot {
+    background: #10b981;
+  }
+
+  .pill-cancelled {
+    background: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
+  }
+
+  .pill-cancelled .dot {
+    background: #ef4444;
+  }
+
+  .fee-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: .82rem;
+    font-weight: 700;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+
+  .fee-unpaid {
+    background: #fffbeb;
+    color: #92400e;
+    border-color: #fde68a;
+  }
+
+  .fee-paid {
+    background: #ecfdf5;
+    color: #065f46;
+    border-color: #a7f3d0;
+  }
+
+  .fee-unpaid .dot {
+    background: #f59e0b;
+  }
+
+  .fee-paid .dot {
+    background: #10b981;
+  }
+
+  .dataTables_filter input {
+    border-radius: 10px !important;
+    border: 1px solid #e5e7eb !important;
+    padding: .35rem .6rem !important;
+  }
+
+  .dataTables_length select {
+    border-radius: 10px !important;
+    border: 1px solid #e5e7eb !important;
+    padding: .25rem .5rem !important;
+  }
+
+  .sd-summary-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
     padding-bottom: 6px;
     -webkit-overflow-scrolling: touch;
   }
-  .sd-summary-row::-webkit-scrollbar{ height: 8px; }
-  .sd-summary-row::-webkit-scrollbar-thumb{ background: rgba(17,24,39,.18); border-radius: 999px; }
-  .sd-summary-row::-webkit-scrollbar-track{ background: transparent; }
 
-  /* ✅ Each card width so 4 can sit in one line */
-  .sd-summary-card{
+  .sd-summary-card {
     flex: 0 0 260px;
-    border-radius:14px;
+    border-radius: 14px;
   }
 
-  /* On very wide screens, make them fit without scroll */
-  @media (min-width: 1200px){
-    .sd-summary-card{ flex-basis: calc((100% - 36px) / 4); }
+  @media (min-width:1200px) {
+    .sd-summary-card {
+      flex-basis: calc((100% - 36px) / 4);
+    }
   }
 </style>
 
 <div class="container mt-4">
+
   <div class="sd-card">
 
-    <!-- Top header -->
     <div class="sd-header">
+
       <div>
         <h4>
-          <span style="font-size:1.1rem;">🚚</span>
+          🚚
           All Scheduled Deliveries
         </h4>
-        <div class="sub">Manage delivery requests, update status, mark delivery fee paid, and export reports.</div>
+
+        <div class="sub">
+          Manage delivery requests and export reports.
+        </div>
       </div>
 
       <div class="d-flex gap-2">
-        <a class="btn btn-light btn-soft"
-           href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+
+        <a class="btn btn-light btn-soft" href="{{ url_for('logistics.view_scheduled_deliveries') }}">
           Reset
         </a>
+
         <a href="{{ url_for('logistics.scheduled_deliveries_pdf', start_date=start_date, end_date=end_date) }}"
-           class="btn btn-dark btn-soft">
+          class="btn btn-dark btn-soft">
           Download PDF
         </a>
+
       </div>
     </div>
 
-    <!-- Summary cards -->
+    <!-- SUMMARY -->
     <div class="px-3 pt-3">
+
       <div class="sd-summary-row">
 
-        <!-- Today -->
         <div class="card shadow-sm border-0 sd-summary-card">
           <div class="card-body py-2 d-flex align-items-center justify-content-between">
             <div>
               <div class="small text-muted fw-semibold">Today</div>
               <div class="fs-5 fw-bold">{{ sd_today_count|default(0) }}</div>
             </div>
+
             <div class="fs-4">📅</div>
           </div>
         </div>
 
-        <!-- Tomorrow -->
         <div class="card shadow-sm border-0 sd-summary-card">
           <div class="card-body py-2 d-flex align-items-center justify-content-between">
             <div>
               <div class="small text-muted fw-semibold">Tomorrow</div>
               <div class="fs-5 fw-bold">{{ sd_tomorrow_count|default(0) }}</div>
             </div>
+
             <div class="fs-4">⏭️</div>
           </div>
         </div>
 
-        <!-- Pending -->
         <div class="card shadow-sm border-0 sd-summary-card">
           <div class="card-body py-2 d-flex align-items-center justify-content-between">
             <div>
               <div class="small text-muted fw-semibold">Pending</div>
               <div class="fs-5 fw-bold">{{ sd_pending_total|default(0) }}</div>
             </div>
+
             <div class="fs-4">🕒</div>
           </div>
         </div>
 
-        <!-- Overdue -->
         <div class="card shadow-sm border border-danger sd-summary-card">
           <div class="card-body py-2 d-flex align-items-center justify-content-between">
             <div>
               <div class="small text-danger fw-semibold">Overdue</div>
               <div class="fs-5 fw-bold text-danger">{{ sd_overdue_count|default(0) }}</div>
             </div>
+
             <div class="fs-4">⚠️</div>
           </div>
         </div>
 
       </div>
+
     </div>
 
-    <!-- Filters -->
+    <!-- FILTERS -->
     <div class="sd-filters">
+
       <form class="row g-3 align-items-end" method="get">
-        <div class="col-12 col-md-3 col-lg-3">
+
+        <div class="col-12 col-md-3">
           <label class="form-label">Start date</label>
+
           <input type="date" name="start_date" class="form-control" value="{{ start_date or '' }}">
         </div>
 
-        <div class="col-12 col-md-3 col-lg-3">
+        <div class="col-12 col-md-3">
           <label class="form-label">End date</label>
+
           <input type="date" name="end_date" class="form-control" value="{{ end_date or '' }}">
         </div>
 
-        <div class="col-12 col-md-2 col-lg-2">
+        <div class="col-12 col-md-2">
           <label class="form-label">Status</label>
+
           <select name="status" class="form-select">
-            <option value="" {% if not status %}selected{% endif %}>All</option>
-            <option value="Scheduled" {% if status == "Scheduled" %}selected{% endif %}>Scheduled</option>
-            <option value="Out for Delivery" {% if status == "Out for Delivery" %}selected{% endif %}>Out for Delivery</option>
-            <option value="Delivered" {% if status == "Delivered" %}selected{% endif %}>Delivered</option>
-            <option value="Cancelled" {% if status == "Cancelled" %}selected{% endif %}>Cancelled</option>
+
+            <option value="" {% if not status %}selected{% endif %}>
+              All
+            </option>
+
+            <option value="Scheduled" {% if status=="Scheduled" %}selected{% endif %}>
+              Scheduled
+            </option>
+
+            <option value="Out for Delivery" {% if status=="Out for Delivery" %}selected{% endif %}>
+              Out for Delivery
+            </option>
+
+            <option value="Delivery Attempted" {% if status=="Delivery Attempted" %}selected{% endif %}>
+              Delivery Attempted
+            </option>
+
+            <option value="Delivered" {% if status=="Delivered" %}selected{% endif %}>
+              Delivered
+            </option>
+
+            <option value="Cancelled" {% if status=="Cancelled" %}selected{% endif %}>
+              Cancelled
+            </option>
+
           </select>
         </div>
 
-        {# ✅ NEW: Zone filter #}
-        <div class="col-12 col-md-2 col-lg-2">
+        <div class="col-12 col-md-2">
           <label class="form-label">Zone</label>
+
           <select name="area_zone" class="form-select">
-            <option value="" {% if not area_zone %}selected{% endif %}>All</option>
-            <option value="kgn_core" {% if area_zone == "kgn_core" %}selected{% endif %}>Kingston Core</option>
-            <option value="kgn_outside" {% if area_zone == "kgn_outside" %}selected{% endif %}>Kingston Outside</option>
-            <option value="pm_core" {% if area_zone == "pm_core" %}selected{% endif %}>Portmore Core</option>
-            <option value="pm_outside" {% if area_zone == "pm_outside" %}selected{% endif %}>Portmore Outside</option>
+
+            <option value="" {% if not area_zone %}selected{% endif %}>
+              All
+            </option>
+
+            <option value="kgn_core" {% if area_zone=="kgn_core" %}selected{% endif %}>
+              Kingston Core
+            </option>
+
+            <option value="kgn_outside" {% if area_zone=="kgn_outside" %}selected{% endif %}>
+              Kingston Outside
+            </option>
+
+            <option value="pm_core" {% if area_zone=="pm_core" %}selected{% endif %}>
+              Portmore Core
+            </option>
+
+            <option value="pm_outside" {% if area_zone=="pm_outside" %}selected{% endif %}>
+              Portmore Outside
+            </option>
+
           </select>
         </div>
 
-        <div class="col-12 col-md-2 col-lg-2 d-flex gap-2">
-          <button type="submit" class="btn btn-purple w-100">Filter</button>
+        <div class="col-12 col-md-2 d-flex gap-2">
+
+          <button type="submit" class="btn btn-purple w-100">
+            Filter
+          </button>
+
           <a class="btn btn-outline-secondary w-100 btn-soft"
-             href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+            href="{{ url_for('logistics.view_scheduled_deliveries') }}">
             Clear
           </a>
+
         </div>
+
       </form>
+
     </div>
 
-    <!-- Table -->
+    <!-- TABLE -->
     <div class="sd-table-wrap">
+
       <div class="table-responsive">
+
         <table class="table table-striped table-bordered align-middle" id="allScheduledDeliveriesTable">
+
           <thead>
             <tr>
+
               <th style="min-width:140px;">Invoice #</th>
-              <th style="min-width:110px;">Date</th>
-              <th style="min-width:160px;">Time</th>
 
-              {# ✅ NEW: Zone column #}
-              <th style="min-width:170px;">Zone</th>
+              <th style="min-width:120px;">Date</th>
 
-              <th style="min-width:130px;">Location</th>
-              <th style="min-width:140px;">Directions</th>
-              <th style="min-width:110px;">Mobile #</th>
-              <th style="min-width:170px;">Person Receiving</th>
-              <th style="min-width:130px;">Status</th>
               <th style="min-width:160px;">Customer</th>
-              <th style="min-width:150px;">Delivery Fee</th>
+
+              <th style="min-width:150px;">Zone</th>
+
+              <th style="min-width:150px;">Location</th>
+
+              <th style="min-width:140px;">Directions</th>
+
+              <th style="min-width:110px;">Mobile #</th>
+
+              <th style="min-width:170px;">Person Receiving</th>
+
+              <th style="min-width:150px;">Status</th>
+
+              <th style="min-width:130px;">Delivery Fee</th>
+
               <th style="min-width:130px;">Fee Status</th>
-              <th style="min-width:170px;">Actions</th>
+
             </tr>
           </thead>
 
           <tbody>
+
             {% for d in deliveries %}
-              {% set d_status = (d.status or "Scheduled") %}
-              {% set fee_status = (d.fee_status or "Unpaid") %}
-              {% set done = d_status in ["Delivered", "Cancelled"] %}
 
-              {% set _today = today if today is defined else none %}
-              {% set is_overdue = (not done) and d.scheduled_date and _today and (d.scheduled_date < _today) %}
-              {% set is_today = (not done) and d.scheduled_date and _today and (d.scheduled_date == _today) %}
+            {% set d_status = (d.status or "Scheduled") %}
+            {% set fee_status = (d.fee_status or "Unpaid") %}
+            {% set done = d_status in ["Delivered", "Cancelled"] %}
 
-              <tr class="{% if is_overdue %}table-danger{% elif is_today %}table-warning{% endif %}">
-                <td class="fw-semibold">{{ d.invoice_number or "—" }}</td>
-                <td>{{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}</td>
+            {% set _today = today if today is defined else none %}
 
-                <td class="text-nowrap">
-                  {# ✅ Fixed delivery window for ALL scheduled deliveries #}
-                  9:00 AM - 5:00 PM
+            {% set is_overdue = (
+            (not done)
+            and d.scheduled_date
+            and _today
+            and (d.scheduled_date < _today) ) %} {% set is_today=( (not done) and d.scheduled_date and _today and
+              (d.scheduled_date==_today) ) %} <tr
+              class="{% if is_overdue %}table-danger{% elif is_today %}table-warning{% endif %}">
 
-                  {% if d.scheduled_time_from and d.scheduled_time_to %}
-                    {{ fmt_time(d.scheduled_time_from) }} - {{ fmt_time(d.scheduled_time_to) }}
-                  {% elif d.scheduled_time %}
-                    {{ d.scheduled_time }}
-                  {% else %}
-                    9:00 AM - 5:00 PM
-                  {% endif %}
-                </td>
+              <td class="fw-semibold">
 
-                {# ✅ Zone display #}
-                <td class="text-nowrap">
-                  {% set z = (d.area_zone or '') %}
-                  {% if z == 'kgn_core' %}
-                    <span class="badge bg-dark">Kingston Core</span>
-                  {% elif z == 'kgn_outside' %}
-                    <span class="badge bg-secondary">Kingston Outside</span>
-                  {% elif z == 'pm_core' %}
-                    <span class="badge bg-primary">Portmore Core</span>
-                  {% elif z == 'pm_outside' %}
-                    <span class="badge bg-info text-dark">Portmore Outside</span>
-                  {% else %}
-                    <span class="badge bg-light text-dark">—</span>
-                  {% endif %}
-                </td>
+                <a href="{{ url_for('logistics.scheduled_delivery_view', delivery_id=d.id) }}"
+                  class="text-decoration-none fw-bold">
 
-                <td>{{ d.location or "" }}</td>
-                <td>{{ d.direction or "" }}</td>
-                <td>{{ d.mobile_number or "" }}</td>
-                <td>{{ d.person_receiving or "" }}</td>
+                  {{ d.invoice_number or "DEL-" ~ d.id }}
 
-                <td>
-                  {% if d_status == "Scheduled" %}
-                    <span class="sd-pill pill-scheduled"><span class="dot"></span>Scheduled</span>
-                  {% elif d_status == "Out for Delivery" %}
-                    <span class="sd-pill pill-out"><span class="dot"></span>Out for Delivery</span>
-                  {% elif d_status == "Delivered" %}
-                    <span class="sd-pill pill-delivered"><span class="dot"></span>Delivered</span>
-                  {% elif d_status == "Cancelled" %}
-                    <span class="sd-pill pill-cancelled"><span class="dot"></span>Cancelled</span>
-                  {% else %}
-                    <span class="sd-pill pill-scheduled"><span class="dot"></span>{{ d_status }}</span>
-                  {% endif %}
+                </a>
 
-                  {% if is_overdue %}
-                    <span class="badge bg-danger ms-2">Overdue</span>
-                  {% elif is_today %}
-                    <span class="badge bg-warning text-dark ms-2">Today</span>
-                  {% endif %}
-                </td>
+              </td>
 
-                <td>
-                  {{ d.user.full_name or d.user.email if d.user else "N/A" }}
-                </td>
+              <td>
+                {{ d.scheduled_date.strftime("%Y-%m-%d") if d.scheduled_date else "" }}
+              </td>
 
-                <td class="text-nowrap">
-                  {{ d.fee_currency or "JMD" }} {{ "%.2f"|format(d.delivery_fee or 0) }}
-                </td>
+              <td>
+                {{ d.user.full_name or d.user.email if d.user else "N/A" }}
+              </td>
 
-                <td>
-                  {% if fee_status|lower == "paid" %}
-                    <span class="fee-badge fee-paid"><span class="dot"></span>Paid</span>
-                  {% else %}
-                    <span class="fee-badge fee-unpaid"><span class="dot"></span>Unpaid</span>
-                  {% endif %}
-                </td>
+              <td class="text-nowrap">
 
-                <td class="sd-actions">
-                  <div class="dropdown">
-                    <button class="btn btn-sm btn-outline-dark dropdown-toggle"
-                            type="button"
-                            data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                      Manage
-                    </button>
+                {% set z = (d.area_zone or '') %}
 
-                    <ul class="dropdown-menu shadow-sm">
+                {% if z == 'kgn_core' %}
+                <span class="badge bg-dark">Kingston Core</span>
 
-                      <li>
-                        <a class="dropdown-item"
-                           href="{{ url_for('logistics.scheduled_delivery_view', delivery_id=d.id) }}">
-                          <i class="fas fa-eye me-2 text-primary"></i>View Details
-                        </a>
-                      </li>
+                {% elif z == 'kgn_outside' %}
+                <span class="badge bg-secondary">Kingston Outside</span>
 
-                      <li><hr class="dropdown-divider"></li>
+                {% elif z == 'pm_core' %}
+                <span class="badge bg-primary">Portmore Core</span>
 
-                      {% if (d.fee_status or "Unpaid")|lower != "paid" %}
-                        <li>
-                          <form method="post"
-                                action="{{ url_for('logistics.scheduled_delivery_mark_paid', delivery_id=d.id) }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="dropdown-item text-success">
-                              <i class="fas fa-check-circle me-2"></i>Mark Fee Paid
-                            </button>
-                          </form>
-                        </li>
-                      {% else %}
-                        <li>
-                          <form method="post"
-                                action="{{ url_for('logistics.scheduled_delivery_mark_unpaid', delivery_id=d.id) }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="dropdown-item text-warning">
-                              <i class="fas fa-undo me-2"></i>Mark Fee Unpaid
-                            </button>
-                          </form>
-                        </li>
-                      {% endif %}
+                {% elif z == 'pm_outside' %}
+                <span class="badge bg-info text-dark">Portmore Outside</span>
 
-                      <li><hr class="dropdown-divider"></li>
+                {% else %}
+                <span class="badge bg-light text-dark">—</span>
 
-                      {% if d_status == "Scheduled" %}
-                        <li>
-                          <form method="post"
-                                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Out for Delivery') }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="dropdown-item text-warning">
-                              <i class="fas fa-truck me-2"></i>Out for Delivery
-                            </button>
-                          </form>
-                        </li>
-                      {% endif %}
+                {% endif %}
 
-                      {% if d_status == "Out for Delivery" %}
-                        <li>
-                          <form method="post"
-                                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Delivered') }}">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="dropdown-item text-success">
-                              <i class="fas fa-check me-2"></i>Mark Delivered
-                            </button>
-                          </form>
-                        </li>
-                      {% endif %}
+              </td>
 
-                      {% if d_status in ["Scheduled", "Out for Delivery"] %}
-                        <li>
-                          <form method="post"
-                                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=d.id, status='Cancelled') }}"
-                                onsubmit="return confirm('Cancel this delivery?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="dropdown-item text-danger">
-                              <i class="fas fa-times me-2"></i>Cancel Delivery
-                            </button>
-                          </form>
-                        </li>
-                      {% endif %}
+              <td>{{ d.location or "" }}</td>
 
-                    </ul>
-                  </div>
-                </td>
+              <td>{{ d.direction or "" }}</td>
+
+              <td>{{ d.mobile_number or "" }}</td>
+
+              <td>{{ d.person_receiving or "" }}</td>
+
+              <td>
+
+                {% if d_status == "Scheduled" %}
+
+                <span class="sd-pill pill-scheduled">
+                  <span class="dot"></span>
+                  Scheduled
+                </span>
+
+                {% elif d_status == "Out for Delivery" %}
+
+                <span class="sd-pill pill-out">
+                  <span class="dot"></span>
+                  Out for Delivery
+                </span>
+
+                {% elif d_status == "Delivery Attempted" %}
+
+                <span class="sd-pill pill-out">
+                  <span class="dot"></span>
+                  Delivery Attempted
+                </span>
+
+                {% elif d_status == "Delivered" %}
+
+                <span class="sd-pill pill-delivered">
+                  <span class="dot"></span>
+                  Delivered
+                </span>
+
+                {% elif d_status == "Cancelled" %}
+
+                <span class="sd-pill pill-cancelled">
+                  <span class="dot"></span>
+                  Cancelled
+                </span>
+
+                {% else %}
+
+                <span class="sd-pill pill-scheduled">
+                  <span class="dot"></span>
+                  {{ d_status }}
+                </span>
+
+                {% endif %}
+
+                {% if is_overdue %}
+                <span class="badge bg-danger ms-2">Overdue</span>
+
+                {% elif is_today %}
+                <span class="badge bg-warning text-dark ms-2">Today</span>
+
+                {% endif %}
+
+              </td>
+
+              <td class="text-nowrap">
+                {{ d.fee_currency or "JMD" }}
+                {{ "%.2f"|format(d.delivery_fee or 0) }}
+              </td>
+
+              <td>
+
+                {% if fee_status|lower == "paid" %}
+
+                <span class="fee-badge fee-paid">
+                  <span class="dot"></span>
+                  Paid
+                </span>
+
+                {% else %}
+
+                <span class="fee-badge fee-unpaid">
+                  <span class="dot"></span>
+                  Unpaid
+                </span>
+
+                {% endif %}
+
+              </td>
 
               </tr>
-            {% endfor %}
+
+              {% endfor %}
+
           </tbody>
 
         </table>
+
       </div>
+
     </div>
 
   </div>
+
 </div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
   $(document).ready(function () {
+
     $('#allScheduledDeliveriesTable').DataTable({
-      order: [[1, 'desc']],
+      order: [[0, 'desc']],
       pageLength: 25
-      // NOTE: remove responsive:true unless you included the responsive extension JS/CSS
     });
+
   });
 </script>
 {% endblock %}

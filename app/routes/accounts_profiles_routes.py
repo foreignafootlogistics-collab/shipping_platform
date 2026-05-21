@@ -34,6 +34,7 @@ from app.calculator_data import CATEGORIES
 from app.utils.time import to_jamaica
 from app.utils.messages import make_thread_key
 from app.utils.subscription_utils import get_subscription_summary
+from app.utils import next_registration_number
 
 # Models (these exist in your file)
 from app.models import (
@@ -331,7 +332,7 @@ def add_user():
         flash("Email or TRN already exists.", "danger")
         return redirect(url_for('accounts_profiles.manage_users'))
 
-    reg_no = f"FAFL{_current_max_fafl_number() + 1}"
+    reg_no = next_registration_number()
 
     # store as bytes (LargeBinary)
     hashed = bcrypt.hashpw(raw_password.encode('utf-8'), bcrypt.gensalt())
@@ -417,8 +418,7 @@ def upload_users():
 
     df['_date_iso'] = df['Date Registered'].apply(to_iso)
 
-    current_max = _current_max_fafl_number()
-    next_num = current_max + 1
+    
 
     session_rows = []
     preview_rows = []
@@ -439,8 +439,7 @@ def upload_users():
             assigned_reg = exist.registration_number or "(keep)"
             will_update = True
         else:
-            assigned_reg = f"FAFL{next_num}"
-            next_num += 1
+            assigned_reg = next_registration_number()
             will_update = False
 
         session_rows.append({

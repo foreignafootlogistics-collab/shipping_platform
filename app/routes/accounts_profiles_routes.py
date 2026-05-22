@@ -1635,22 +1635,29 @@ def delete_account(id: int):
         flash("User not found.", "danger")
         return redirect(url_for('accounts_profiles.manage_users'))
 
-    # ✅ where to go back to (from ?next=...)
     raw_next = request.args.get("next") or request.form.get("next")
     next_url = raw_next if _is_safe_next_url(raw_next) else url_for("accounts_profiles.manage_users")
 
     if request.method == 'POST':
+        user_name = user.full_name or "user"
+
         try:
+            DBMessage.query.filter(
+                (DBMessage.recipient_id == user.id) |
+                (DBMessage.sender_id == user.id)
+            ).delete(synchronize_session=False)
+
             db.session.delete(user)
             db.session.commit()
-            flash(f"Account for {user.full_name or 'user'} has been deleted.", "success")
+
+            flash(f"Account for {user_name} has been deleted.", "success")
+
         except Exception as e:
             db.session.rollback()
             flash(f"Failed to delete account: {e}", "danger")
 
         return redirect(next_url)
 
-    # ✅ include next so the confirm form can POST it back
     return render_template(
         'admin/accounts_profiles/delete_account.html',
         user={"id": user.id, "full_name": user.full_name or ''},

@@ -67,10 +67,10 @@ def _log_in_app_message(recipient_id: int, subject: str, body: str):
 def register():
     form = RegisterForm()
     flash(
-    "New registrations are temporarily disabled while we perform maintenance.",
-    "warning",
-)
-return redirect(url_for("auth.login"))
+        "New registrations are temporarily disabled while we perform maintenance.",
+        "warning",
+    )
+    return redirect(url_for("auth.login"))
 
     # Try to get referral code from URL query param on GET
     referrer_code = None

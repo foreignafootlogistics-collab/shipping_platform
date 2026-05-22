@@ -299,78 +299,79 @@
   </form>
 
   <!-- Users Table -->
-  <div class="modern-table-wrapper table-responsive">
-    <table class="table table-hover align-middle mb-0 modern-users-table">
-      <thead class="modern-table-head">
-        <tr>
-          <th>Name</th>
-          <th>
-            Reg #
-            <a href="#" id="regSortLink" class="reg-sort ms-1"></a>
-          </th>
-          <th>Email</th>
-          <th>Mobile</th>
-          <th>Date Registered</th>
-          <th>Unpaid Invoices</th>
-        </tr>
-      </thead>
+  <div class="modern-table-wrapper">
+    <div class="table-responsive mobile-table-scroll">
+      <table class="table table-hover align-middle mb-0 modern-users-table">
+        <thead class="modern-table-head">
+          <tr>
+            <th>Name</th>
+            <th>
+              Reg #
+              <a href="#" id="regSortLink" class="reg-sort ms-1"></a>
+            </th>
+            <th>Email</th>
+            <th>Mobile</th>
+            <th>Date Registered</th>
+            <th>Unpaid Invoices</th>
+          </tr>
+        </thead>
 
-      <tbody>
-        {% if users %}
-        {% for user in users %}
-        <tr>
-          <td>
-            <a href="{{ url_for('accounts_profiles.view_user',
+        <tbody>
+          {% if users %}
+          {% for user in users %}
+          <tr>
+            <td>
+              <a href="{{ url_for('accounts_profiles.view_user',
                                     id=user.id,
                                     next=url_for('accounts_profiles.manage_users',
                                                  page=page,
                                                  search=search,
                                                  sort=sort_by,
                                                  unpaid_only=('1' if unpaid_only else None))) }}"
-              class="modern-user-link">
+                class="modern-user-link">
 
-              <div class="user-info-cell">
+                <div class="user-info-cell">
 
-                <div class="user-avatar">
-                  {{ user.full_name[:1] if user.full_name else 'U' }}
-                </div>
-
-                <div>
-                  <div class="user-name">
-                    {{ user.full_name }}
+                  <div class="user-avatar">
+                    {{ user.full_name[:1] if user.full_name else 'U' }}
                   </div>
+
+                  <div>
+                    <div class="user-name">
+                      {{ user.full_name }}
+                    </div>
+                  </div>
+
                 </div>
 
-              </div>
+              </a>
+            </td>
 
-            </a>
-          </td>
+            <td>{{ user.registration_number or 'None' }}</td>
+            <td>{{ user.email }}</td>
+            <td>{{ user.mobile or 'None' }}</td>
+            <td>{{ user.date_registered[:10] if user.date_registered else 'N/A' }}</td>
 
-          <td>{{ user.registration_number or 'None' }}</td>
-          <td>{{ user.email }}</td>
-          <td>{{ user.mobile or 'None' }}</td>
-          <td>{{ user.date_registered[:10] if user.date_registered else 'N/A' }}</td>
-
-          <td>
-            {% if user.unpaid_count > 0 %}
-            <span class="badge unpaid-badge-danger">{{ user.unpaid_count }}</span>
-            {% else %}
-            <span class="badge unpaid-badge-success">0</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-        {% else %}
-        <tr>
-          <td colspan="6" class="text-center py-5 text-muted">
-            <i class="fas fa-users fa-2x mb-2 d-block"></i>
-            No users found.
-          </td>
-        </tr>
-        {% endif %}
-      </tbody>
-    </table>
-
+            <td>
+              {% if user.unpaid_count > 0 %}
+              <span class="badge unpaid-badge-danger">{{ user.unpaid_count }}</span>
+              {% else %}
+              <span class="badge unpaid-badge-success">0</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+          {% else %}
+          <tr>
+            <td colspan="6" class="text-center py-5 text-muted">
+              <i class="fas fa-users fa-2x mb-2 d-block"></i>
+              No users found.
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
     <!-- Table Footer / Pagination Area -->
     <div class="modern-table-footer">
       <div class="text-muted small">
@@ -885,6 +886,79 @@
 
     .manage-title {
       font-size: 1.6rem;
+    }
+
+  }
+
+  /* =========================================
+MOBILE TABLE FIX
+========================================= */
+
+  .mobile-table-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+
+  .modern-users-table {
+    min-width: 980px;
+  }
+
+  .modern-users-table th,
+  .modern-users-table td {
+    white-space: nowrap;
+  }
+
+  /* =========================================
+MOBILE RESPONSIVE
+========================================= */
+
+  @media (max-width: 768px) {
+
+    .manage-users-page.container {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+
+    .manage-header,
+    .modern-toolbar,
+    .modern-search-bar,
+    .modern-table-footer {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .header-user-count {
+      margin-top: 16px;
+    }
+
+    .toolbar-left,
+    .toolbar-right,
+    .modern-filters {
+      width: 100%;
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .modern-btn-primary,
+    .modern-btn-outline,
+    .modern-export-btn,
+    .modern-filter-btn,
+    .modern-clear-btn {
+      width: 100%;
+    }
+
+    .search-wrapper {
+      width: 100%;
+    }
+
+    .manage-title {
+      font-size: 1.6rem;
+    }
+
+    .modern-users-table {
+      min-width: 980px;
     }
 
   }

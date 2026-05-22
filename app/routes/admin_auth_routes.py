@@ -1,6 +1,10 @@
 # app/routes/admin_auth_routes.py
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
 from flask_login import login_user, logout_user, login_required, current_user
+from app.extensions import limiter, db
+from datetime import datetime
+from app.utils.time import to_jamaica
+
 from sqlalchemy.orm import load_only
 from app.models import User
 from app.forms import AdminLoginForm
@@ -8,7 +12,16 @@ from functools import wraps
 import bcrypt
 from werkzeug.security import check_password_hash
 
+
 admin_auth_bp = Blueprint('admin_auth', __name__, url_prefix='/admin_auth')
+
+def _client_ip():
+    return (
+        request.headers.get("CF-Connecting-IP")
+        or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.remote_addr
+        or "unknown"
+    )
 
 def require_role(*roles):
     """
@@ -125,40 +138,80 @@ def _verify_password(stored_pw, provided_plain: str) -> bool:
     return False
 
 @admin_auth_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per 15 minutes")
 def admin_login():
     # Already logged in as an admin-type user?
     if current_user.is_authenticated and getattr(current_user, 'is_admin', False):
         return redirect(url_for('admin.dashboard'))
 
     form = AdminLoginForm()
+
     if form.validate_on_submit():
-        email = (form.email.data or "").strip()
+        email = (form.email.data or "").strip().lower()
         password_plain = form.password.data or ""
+
+        login_time = to_jamaica(datetime.utcnow())
+        client_ip = _client_ip()
+        user_agent = request.headers.get("User-Agent")
 
         try:
             admin = (
-                User.query.options(load_only(User.id, User.email, User.password, User.role, User.is_admin, User.is_superadmin))
+                User.query.options(
+                    load_only(
+                        User.id,
+                        User.email,
+                        User.password,
+                        User.role,
+                        User.is_admin,
+                        User.is_superadmin,
+                    )
+                )
                 .filter(User.email == email, User.is_admin == True)
                 .first()
             )
 
-
             if not admin or not admin.password:
+                current_app.logger.warning(
+                    f"[ADMIN LOGIN FAILED] time={login_time} | email={email} | IP={client_ip} | UA={user_agent} | reason=admin_not_found"
+                )
                 flash("Invalid email or password.", "danger")
                 return render_template('auth/admin_login.html', form=form)
 
             if _verify_password(admin.password, password_plain):
-                login_user(admin, remember=False)  # pass the model instance
+                login_user(admin, remember=False)
+
                 session['admin_id'] = admin.id
                 session['role'] = 'admin'
+
+                try:
+                    admin.last_login = datetime.utcnow()
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+                    current_app.logger.warning(
+                        f"[ADMIN LOGIN WARNING] time={login_time} | admin_id={admin.id} | email={admin.email} | could_not_update_last_login={e}"
+                    )
+
+                current_app.logger.warning(
+                    f"[ADMIN LOGIN SUCCESS] time={login_time} | admin_id={admin.id} | email={admin.email} | IP={client_ip} | UA={user_agent}"
+                )
+
                 return redirect(url_for('admin.dashboard'))
 
+            current_app.logger.warning(
+                f"[ADMIN LOGIN FAILED] time={login_time} | email={email} | IP={client_ip} | UA={user_agent} | reason=bad_password"
+            )
             flash("Invalid email or password.", "danger")
+
         except Exception as e:
-            # Temporary: surface the real error to help us finish the migration
-            flash(f"Login error: {e}", "danger")
+            current_app.logger.exception(
+                f"[ADMIN LOGIN ERROR] time={login_time} | email={email} | IP={client_ip} | error={e}"
+            )
+            flash("Login error. Please try again.", "danger")
 
     return render_template('auth/admin_login.html', form=form)
+
+
 
 @admin_auth_bp.route('/logout')
 @admin_required

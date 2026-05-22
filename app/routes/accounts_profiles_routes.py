@@ -190,15 +190,14 @@ def manage_users():
     date_from   = request.args.get('date_from')
     date_to     = request.args.get('date_to')
 
-    # ✅ NEW: unpaid-only filter flag (checkbox sends unpaid_only=1)
     unpaid_only = (request.args.get('unpaid_only') == '1')
 
     upload_form  = UploadUsersForm()
     confirm_form = ConfirmUploadForm()
 
-    # Load preview token (large payload on disk)
     preview_token = session.get('preview_users_token')
     excel_preview = None
+
     if preview_token:
         blob = _load_user_preview_blob(preview_token)
         if blob:
@@ -207,7 +206,52 @@ def manage_users():
             session.pop('preview_users_token', None)
 
     # ---------------------------------------------------------
-    # Build base query (User)
+    # ✅ Metrics for stats cards
+    # ---------------------------------------------------------
+    total_users = User.query.count()
+
+    active_users = 0
+    new_this_month = 0
+    users_with_unpaid_invoices = 0
+
+    try:
+        if hasattr(User, "last_login"):
+            active_users = User.query.filter(User.last_login.isnot(None)).count()
+        else:
+            active_users = total_users
+    except Exception:
+        db.session.rollback()
+        active_users = 0
+
+    try:
+        today = datetime.utcnow().date()
+        first_day_this_month = today.replace(day=1).strftime("%Y-%m-%d")
+
+        new_this_month = (
+            User.query
+            .filter(User.date_registered >= first_day_this_month)
+            .count()
+        )
+    except Exception:
+        db.session.rollback()
+        new_this_month = 0
+
+    try:
+        users_with_unpaid_invoices = (
+            db.session.query(Invoice.user_id)
+            .filter(
+                Invoice.user_id.isnot(None),
+                func.lower(Invoice.status).in_(('pending', 'unpaid', 'issued', 'partial'))
+            )
+            .group_by(Invoice.user_id)
+            .count()
+        )
+    except Exception:
+        db.session.rollback()
+        users_with_unpaid_invoices = 0
+
+    # ---------------------------------------------------------
+    # Build base query
     # ---------------------------------------------------------
     q = User.query
 
@@ -220,23 +264,26 @@ def manage_users():
             User.address.ilike(like)
         ))
 
-    # Filter by date_registered (string in your model)
     if date_from:
         q = q.filter(User.date_registered >= date_from)
+
     if date_to:
         q = q.filter(User.date_registered <= date_to)
 
     # ---------------------------------------------------------
-    # ✅ NEW: Unpaid-only filter (users with at least 1 unpaid/pending invoice)
-    #     We apply this BEFORE pagination so page counts are correct.
+    # Unpaid-only filter
     # ---------------------------------------------------------
     if unpaid_only:
         unpaid_user_ids_subq = (
             db.session.query(Invoice.user_id)
-            .filter(func.lower(Invoice.status).in_(('pending', 'unpaid')))
+            .filter(
+                Invoice.user_id.isnot(None),
+                func.lower(Invoice.status).in_(('pending', 'unpaid', 'issued', 'partial'))
+            )
             .group_by(Invoice.user_id)
             .subquery()
         )
+
         q = q.filter(User.id.in_(unpaid_user_ids_subq))
 
     # ---------------------------------------------------------
@@ -247,7 +294,6 @@ def manage_users():
     elif sort_by == 'alphabetical_desc':
         q = q.order_by(User.registration_number.desc())
     else:
-        # prefer date_registered, then created_at, then id
         if hasattr(User, 'date_registered'):
             q = q.order_by(User.date_registered.desc(), User.id.desc())
         elif hasattr(User, 'created_at'):
@@ -255,30 +301,34 @@ def manage_users():
         else:
             q = q.order_by(User.id.desc())
 
-    pagination  = q.paginate(page=page, per_page=per_page, error_out=False)
-    user_ids    = [u.id for u in pagination.items]
+    pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+    user_ids = [u.id for u in pagination.items]
 
     # ---------------------------------------------------------
-    # unpaid_count per user: invoices with status in ('pending','unpaid')
+    # unpaid_count per user
     # ---------------------------------------------------------
     unpaid_map = {uid: 0 for uid in user_ids}
+
     if user_ids:
         try:
             sub = (
                 db.session.query(Invoice.user_id, func.count(Invoice.id))
                 .filter(
                     Invoice.user_id.in_(user_ids),
-                    func.lower(Invoice.status).in_(('pending', 'unpaid'))
+                    func.lower(Invoice.status).in_(('pending', 'unpaid', 'issued', 'partial'))
                 )
                 .group_by(Invoice.user_id)
                 .all()
             )
+
             for uid, cnt in sub:
                 unpaid_map[uid] = int(cnt or 0)
+
         except Exception:
             db.session.rollback()
 
     users = []
+
     for u in pagination.items:
         users.append({
             "id": u.id,
@@ -303,12 +353,17 @@ def manage_users():
         sort_by=sort_by,
         date_from=date_from,
         date_to=date_to,
-        unpaid_only=unpaid_only,  # ✅ NEW: so checkbox stays checked + links preserve it
+        unpaid_only=unpaid_only,
         form=upload_form,
         confirm_form=confirm_form,
-        excel_preview=excel_preview
-    )
+        excel_preview=excel_preview,
 
+        # ✅ Real database metrics for stats cards
+        total_users=total_users,
+        active_users=active_users,
+        users_with_unpaid_invoices=users_with_unpaid_invoices,
+        new_this_month=new_this_month
+    )
 
 # -------------------------
 # Add User

@@ -54,7 +54,8 @@
 
       <form method="POST" action="{{ url_for('auth.register') }}">
         {{ form.hidden_tag() }}
-        <div style="position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden;">
+        <div aria-hidden="true"
+          style="position:absolute; left:-9999px; top:auto; width:1px; height:1px; overflow:hidden;">
           <label for="company_website">Company Website</label>
           <input type="text" id="company_website" name="company_website" tabindex="-1" autocomplete="off">
         </div>

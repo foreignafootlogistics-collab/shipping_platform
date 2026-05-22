@@ -1071,7 +1071,7 @@ def transactions_all():
     # DATE FILTER
     # ======================================================
     if days in (7, 30):
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         rows = [r for r in rows if (r.get("date") or datetime.utcnow()) >= cutoff]
 
     # ======================================================
@@ -3590,7 +3590,7 @@ def api_customer_transactions():
     )
 
     def _dt(x):
-        return x or datetime.utcnow()
+        return x or datetime.now(timezone.utc)
 
     def _num(x):
         try:

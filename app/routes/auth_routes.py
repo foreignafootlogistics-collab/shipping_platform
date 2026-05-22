@@ -69,6 +69,13 @@ def _log_in_app_message(recipient_id: int, subject: str, body: str):
 def register():
     form = RegisterForm()
 
+    client_ip = (
+        request.headers.get("CF-Connecting-IP")
+        or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.remote_addr
+        or "unknown"
+    )
+
     # Try to get referral code from URL query param on GET
     referrer_code = None
     if request.method == "GET":
@@ -88,7 +95,10 @@ def register():
 
         honeypot = (request.form.get("company_website") or "").strip()
         if honeypot:
-            flash("Registration could not be completed. Please try again.", "danger")
+            current_app.logger.warning(
+                f"[REGISTER BLOCKED] Honeypot triggered | IP={client_ip} | UA={request.headers.get('User-Agent')}"
+            )
+            flash("Registration could not be completed. Please try again.", "danger"))
             return render_template(
                 "auth/register.html",
                 form=form,
@@ -114,6 +124,9 @@ def register():
         verification_result = verification.json()
 
         if not verification_result.get("success"):
+            current_app.logger.warning(
+                f"[REGISTER BLOCKED] Turnstile failed | IP={client_ip} | UA={request.headers.get('User-Agent')} | result={verification_result}"
+            )
             flash("Security verification failed. Please try again.", "danger")
 
             return render_template(

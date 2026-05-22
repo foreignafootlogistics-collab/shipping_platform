@@ -254,7 +254,7 @@ def _get_unpaid_user_rows(search=None, date_from=None, date_to=None):
             func.coalesce(func.sum(owed_expr), 0).label("unpaid_total"),
         )
         .outerjoin(pay_sum, pay_sum.c.inv_id == Invoice.id)
-        .filter(func.lower(Invoice.status).in_(("pending", "unpaid", "issued")))
+        .filter(func.lower(Invoice.status).in_(("pending", "unpaid", "issued", "partial")))
         .group_by(Invoice.user_id)
     )
 

@@ -2,6 +2,8 @@
 from datetime import datetime
 
 import bcrypt
+import requests
+import os
 from flask import (
     Blueprint,
     render_template,
@@ -10,7 +12,7 @@ from flask import (
     session,
     flash,
     current_app,
-    request,
+    request,    
 )
 from flask_login import login_user, current_user, logout_user
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
@@ -59,18 +61,12 @@ def _log_in_app_message(recipient_id: int, subject: str, body: str):
     )
     db.session.add(msg)
 
-
 # ------------------------
 # Register
 # ------------------------
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
     form = RegisterForm()
-    flash(
-        "New registrations are temporarily disabled while we perform maintenance.",
-        "warning",
-    )
-    return redirect(url_for("auth.login"))
 
     # Try to get referral code from URL query param on GET
     referrer_code = None
@@ -88,6 +84,34 @@ def register():
         print("form.errors =", form.errors)
 
     if is_valid_submit:
+
+        # -------------------------
+        # Cloudflare Turnstile Verification
+        # -------------------------
+        turnstile_response = request.form.get("cf-turnstile-response")
+
+        secret_key = os.getenv("TURNSTILE_SECRET_KEY")
+
+        verification = requests.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data={
+                "secret": secret_key,
+                "response": turnstile_response,
+                "remoteip": request.remote_addr,
+            },
+        )
+
+        verification_result = verification.json()
+
+        if not verification_result.get("success"):
+            flash("Security verification failed. Please try again.", "danger")
+
+            return render_template(
+                "auth/register.html",
+                form=form,
+                turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY"),
+            )
+
         # --- Check if user agreed to Terms & Privacy Policy ---
         terms_checked = request.form.get("termsCheck")
         if not terms_checked:
@@ -95,7 +119,12 @@ def register():
                 "You must agree to the Terms & Conditions and Privacy Policy to register.",
                 "danger",
             )
-            return render_template("auth/register.html", form=form)
+
+            return render_template(
+                "auth/register.html",
+                form=form,
+                turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY"),
+            )
 
         full_name = (form.full_name.data or "").strip()
         email = (form.email.data or "").strip().lower()
@@ -117,16 +146,30 @@ def register():
         # --- Duplicate checks ---
         if User.query.filter_by(email=email).first():
             flash("Email already exists.", "danger")
-            return render_template("auth/register.html", form=form)
+
+            return render_template(
+                "auth/register.html",
+                form=form,
+                turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY"),
+            )
 
         if User.query.filter_by(trn=trn).first():
             flash("TRN already exists.", "danger")
-            return render_template("auth/register.html", form=form)
+
+            return render_template(
+                "auth/register.html",
+                form=form,
+                turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY"),
+            )
 
         # --- Resolve referrer (if any) ---
         referrer_id = None
+
         if referrer_code:
-            ref_user = User.query.filter_by(referral_code=referrer_code).first()
+            ref_user = User.query.filter_by(
+                referral_code=referrer_code
+            ).first()
+
             if ref_user:
                 referrer_id = ref_user.id
             else:
@@ -135,11 +178,15 @@ def register():
 
         # --- Generate a unique referral code for this new user ---
         new_ref_code = User.generate_referral_code()
+
         for _ in range(10):
-            if not User.query.filter_by(referral_code=new_ref_code).first():
+            if not User.query.filter_by(
+                referral_code=new_ref_code
+            ).first():
                 break
+
             new_ref_code = User.generate_referral_code()
-        
+
         # --- Create the user record ---
         user = User(
             full_name=full_name,
@@ -159,16 +206,38 @@ def register():
         try:
             db.session.add(user)
             db.session.commit()
+
         except IntegrityError as e:
             db.session.rollback()
+
             print(f"IntegrityError during registration: {e}")
-            flash("An unexpected database error occurred.", "danger")
-            return render_template("auth/register.html", form=form)
+
+            flash(
+                "An unexpected database error occurred.",
+                "danger"
+            )
+
+            return render_template(
+                "auth/register.html",
+                form=form,
+                turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY"),
+            )
+
         except Exception as e:
             db.session.rollback()
+
             print(f"Unexpected registration error: {e}")
-            flash("An unexpected error occurred while creating your account.", "danger")
-            return render_template("auth/register.html", form=form)
+
+            flash(
+                "An unexpected error occurred while creating your account.",
+                "danger"
+            )
+
+            return render_template(
+                "auth/register.html",
+                form=form,
+                turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY"),
+            )
 
         user_id = user.id
 
@@ -176,6 +245,7 @@ def register():
         # Log welcome message in-app
         # -------------------------
         welcome_subject = "Welcome to FAFL Courier"
+
         welcome_body = (
             f"Hi {full_name},\n\n"
             f"Welcome to Foreign A Foot Logistics!\n\n"
@@ -185,8 +255,14 @@ def register():
         )
 
         try:
-            _log_in_app_message(user.id, welcome_subject, welcome_body)
+            _log_in_app_message(
+                user.id,
+                welcome_subject,
+                welcome_body
+            )
+
             db.session.commit()
+
         except Exception as e:
             db.session.rollback()
             print(f"Error logging welcome message: {e}")
@@ -195,6 +271,7 @@ def register():
         if referrer_code and referrer_id:
             try:
                 apply_referral_bonus(user_id, referrer_code)
+
             except Exception as e:
                 print(f"Error applying referral bonus: {e}")
 
@@ -205,6 +282,7 @@ def register():
                 full_name=full_name,
                 reg_number=registration_number,
             )
+
         except Exception as e:
             print(f"Error sending welcome email: {e}")
 
@@ -215,6 +293,7 @@ def register():
                 full_name=full_name,
                 recipient_user_id=user_id
             )
+
         except Exception as e:
             print(f"Error sending tax exemption email: {e}")
 
@@ -225,15 +304,20 @@ def register():
         try:
             user.last_login = datetime.utcnow()
             db.session.commit()
+
         except Exception as e:
             db.session.rollback()
             print(f"Error updating last_login: {e}")
 
         flash("Registration successful! Welcome aboard.", "success")
+
         return redirect(url_for("customer.customer_dashboard"))
 
-    return render_template("auth/register.html", form=form)
-
+    return render_template(
+        "auth/register.html",
+        form=form,
+        turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY"),
+    )
 
 # ------------------------
 # Login

@@ -1,130 +1,129 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Register - Foreign A Foot Logistics</title>
 
   <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Merriweather&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Merriweather&display=swap"
+    rel="stylesheet" />
 
   <!-- Shared CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/register.css') }}">
 </head>
+
 <body>
 
-<div class="main-container">
+  <div class="main-container">
 
-  <!-- LEFT IMAGE -->
-  <div class="image-side">
-    <img src="{{ url_for('static', filename='shipping_box.png') }}" alt="Shipping Box" />
-  </div>
+    <!-- LEFT IMAGE -->
+    <div class="image-side">
+      <img src="{{ url_for('static', filename='shipping_box.png') }}" alt="Shipping Box" />
+    </div>
 
-  <!-- RIGHT FORM -->
-  <div class="form-side">
-    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="logo" />
-    <p class="slogan">Delivering the world to you!</p>
+    <!-- RIGHT FORM -->
+    <div class="form-side">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="logo" />
+      <p class="slogan">Delivering the world to you!</p>
 
-    <h2>Register</h2>
+      <h2>Register</h2>
 
-    <!-- FLASH MESSAGES -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
+      <!-- FLASH MESSAGES -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
+      {% for category, message in messages %}
+      <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
       {% endif %}
-    {% endwith %}
+      {% endwith %}
 
-    <!-- WTForms ERRORS -->
-    {% if form.errors %}
+      <!-- WTForms ERRORS -->
+      {% if form.errors %}
       <div class="alert alert-danger">
         <ul style="margin: 0; padding-left: 18px;">
           {% for field, errors in form.errors.items() %}
-            {% for error in errors %}
-              <li>{{ error }}</li>
-            {% endfor %}
+          {% for error in errors %}
+          <li>{{ error }}</li>
+          {% endfor %}
           {% endfor %}
         </ul>
       </div>
-    {% endif %}
+      {% endif %}
 
-    <form method="POST" action="{{ url_for('auth.register') }}">
-      {{ form.hidden_tag() }}
+      <form method="POST" action="{{ url_for('auth.register') }}">
+        {{ form.hidden_tag() }}
 
-      <!-- FULL NAME -->
-      <label for="full_name">Full Name</label>
-      {{ form.full_name(class="form-control", id="full_name", placeholder="Your Full Name") }}
+        <!-- FULL NAME -->
+        <label for="full_name">Full Name</label>
+        {{ form.full_name(class="form-control", id="full_name", placeholder="Your Full Name") }}
 
-      <!-- EMAIL -->
-      <label for="email">Email Address</label>
-      {{ form.email(class="form-control", id="email", placeholder="you@example.com") }}
+        <!-- EMAIL -->
+        <label for="email">Email Address</label>
+        {{ form.email(class="form-control", id="email", placeholder="you@example.com") }}
 
-      <!-- MOBILE -->
-      <label for="mobile">Phone Number</label>
-      {{ form.mobile(class="form-control", id="mobile", placeholder="8760000000") }}
+        <!-- MOBILE -->
+        <label for="mobile">Phone Number</label>
+        {{ form.mobile(class="form-control", id="mobile", placeholder="8760000000") }}
 
-      <!-- TRN -->
-      <label for="trn">TRN</label>
-      {{ form.trn(class="form-control", id="trn", placeholder="Tax Registration Number") }}
+        <!-- TRN -->
+        <label for="trn">TRN</label>
+        {{ form.trn(class="form-control", id="trn", placeholder="Tax Registration Number") }}
 
-      <!-- PASSWORD -->
-      <label for="register-password">Password</label>
-      {{ form.password(class="form-control", id="register-password", placeholder="Create Password") }}
+        <!-- PASSWORD -->
+        <label for="register-password">Password</label>
+        {{ form.password(class="form-control", id="register-password", placeholder="Create Password") }}
 
-      <!-- CONFIRM PASSWORD -->
-      <label for="confirm-password">Confirm Password</label>
-      {{ form.confirm(class="form-control", id="confirm-password", placeholder="Confirm Password") }}
+        <!-- CONFIRM PASSWORD -->
+        <label for="confirm-password">Confirm Password</label>
+        {{ form.confirm(class="form-control", id="confirm-password", placeholder="Confirm Password") }}
 
-      <!-- REFERRAL -->
-      <label for="referrer_code">Referral Code (Optional)</label>
-      {{ form.referrer_code(class="form-control", id="referrer_code", placeholder="Enter referral code if any") }}
+        <!-- REFERRAL -->
+        <label for="referrer_code">Referral Code (Optional)</label>
+        {{ form.referrer_code(class="form-control", id="referrer_code", placeholder="Enter referral code if any") }}
 
-      <!-- SHOW PASSWORD -->
-      <label class="show-password">
-        <input
-          type="checkbox"
-          onclick="togglePassword('register-password'); togglePassword('confirm-password');"
-        />
-        Show Password
-      </label>
-
-      <!-- TERMS -->
-      <div class="form-check my-3">
-        <input
-          class="form-check-input"
-          type="checkbox"
-          id="termsCheck"
-          name="termsCheck"
-          required
-        >
-        <label class="form-check-label" for="termsCheck">
-          I agree to the
-          <a href="{{ url_for('customer.terms') }}" target="_blank">Terms & Conditions</a>
-          and
-          <a href="{{ url_for('customer.privacy') }}" target="_blank">Privacy Policy</a>
+        <!-- SHOW PASSWORD -->
+        <label class="show-password">
+          <input type="checkbox" onclick="togglePassword('register-password'); togglePassword('confirm-password');" />
+          Show Password
         </label>
+
+        <!-- TERMS -->
+        <div class="form-check my-3">
+          <input class="form-check-input" type="checkbox" id="termsCheck" name="termsCheck" required>
+          <label class="form-check-label" for="termsCheck">
+            I agree to the
+            <a href="{{ url_for('customer.terms') }}" target="_blank">Terms & Conditions</a>
+            and
+            <a href="{{ url_for('customer.privacy') }}" target="_blank">Privacy Policy</a>
+          </label>
+        </div>
+        <!-- CLOUDFLARE TURNSTILE -->
+        <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" style="margin: 16px 0;">
+        </div>
+
+        <!-- SUBMIT -->
+        <button type="submit">Register</button>
+      </form>
+
+      <!-- LOGIN LINK -->
+      <div class="links">
+        <a href="{{ url_for('auth.login') }}">Already have an account? Login</a>
       </div>
 
-      <!-- SUBMIT -->
-      <button type="submit">Register</button>
-    </form>
-
-    <!-- LOGIN LINK -->
-    <div class="links">
-      <a href="{{ url_for('auth.login') }}">Already have an account? Login</a>
     </div>
-
   </div>
-</div>
 
-<script>
-  function togglePassword(id) {
-    const input = document.getElementById(id);
-    if (!input) return;
-    input.type = input.type === 'password' ? 'text' : 'password';
-  }
-</script>
+  <script>
+    function togglePassword(id) {
+      const input = document.getElementById(id);
+      if (!input) return;
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+  </script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
 </body>
+
 </html>

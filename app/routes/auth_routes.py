@@ -18,7 +18,7 @@ from flask_login import login_user, current_user, logout_user
 from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 from sqlalchemy.exc import IntegrityError
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.forms import RegisterForm, LoginForm
 from app.utils import email_utils
 from app.utils import next_registration_number
@@ -65,6 +65,7 @@ def _log_in_app_message(recipient_id: int, subject: str, body: str):
 # Register
 # ------------------------
 @auth_bp.route("/register", methods=["GET", "POST"])
+@limiter.limit("3 per hour")
 def register():
     form = RegisterForm()
 
@@ -84,6 +85,15 @@ def register():
         print("form.errors =", form.errors)
 
     if is_valid_submit:
+
+        honeypot = (request.form.get("company_website") or "").strip()
+        if honeypot:
+            flash("Registration could not be completed. Please try again.", "danger")
+            return render_template(
+                "auth/register.html",
+                form=form,
+                turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY"),
+            )
 
         # -------------------------
         # Cloudflare Turnstile Verification
@@ -146,6 +156,15 @@ def register():
         # --- Duplicate checks ---
         if User.query.filter_by(email=email).first():
             flash("Email already exists.", "danger")
+
+            return render_template(
+                "auth/register.html",
+                form=form,
+                turnstile_site_key=os.getenv("TURNSTILE_SITE_KEY"),
+            )
+
+        if User.query.filter_by(mobile=mobile).first():
+            flash("Phone number already exists.", "danger")
 
             return render_template(
                 "auth/register.html",

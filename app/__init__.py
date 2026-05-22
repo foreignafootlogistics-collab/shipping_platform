@@ -14,7 +14,7 @@ from pathlib import Path
 from . import config as cfg
 from .config import PROFILE_UPLOAD_FOLDER
 from .forms import CalculatorForm, AdminCalculatorForm
-from .extensions import db, csrf
+from .extensions import db, csrf, limiter
 from flask_cors import CORS
 
 
@@ -165,6 +165,7 @@ def create_app():
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
+    limiter.init_app(app)
     try:
         mail.init_app(app)
     except Exception:

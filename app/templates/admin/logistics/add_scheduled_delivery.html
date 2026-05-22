@@ -19,7 +19,7 @@
   }
 </style>
 
-<div class="container mt-4">
+<div class="container-fluid mt-4 px-4">
   <h2>🚚 Add Scheduled Delivery</h2>
 
   <p class="text-muted mb-3">
@@ -129,11 +129,29 @@
 
       <div class="col-md-4">
         <label class="form-label">Estimated Delivery Fee</label>
-        <input type="text" id="deliveryFeePreview" class="form-control"
+
+        <input type="text" id="deliveryFeePreview" class="form-control fw-bold"
           value="{{ fee_currency }} {{ '%.2f'|format(delivery_fee|float) }}" readonly>
+
         <small class="text-muted">
           Final fee is calculated on save using Google Maps distance.
         </small>
+      </div>
+
+      <div class="col-md-8">
+        <label class="form-label">Delivery Estimate</label>
+
+        <div id="deliveryEstimateBox" class="alert alert-info mb-0" style="display:none; border-radius:14px;">
+
+          <div class="fw-bold mb-1">
+            Delivery Estimate
+          </div>
+
+          <div id="deliveryEstimateText">
+            Calculating...
+          </div>
+
+        </div>
       </div>
     </div>
 
@@ -180,8 +198,33 @@
     }
 
     function getCoverageLabel(data) {
-      if (data.is_free_delivery) return "Core Delivery Zone";
-      if (data.delivery_type === "admin_review") return "Manual Review Area";
+
+      const zone = (data.area_zone || "").toLowerCase();
+
+      if (zone === "kgn_core") {
+        return "Kingston Core";
+      }
+
+      if (zone === "kgn_outside") {
+        return "Kingston Outside";
+      }
+
+      if (zone === "pm_core") {
+        return "Portmore Core";
+      }
+
+      if (zone === "pm_outside") {
+        return "Portmore Outside";
+      }
+
+      if (data.delivery_type === "admin_review") {
+        return "Manual Review Area";
+      }
+
+      if (data.is_free_delivery) {
+        return "Core Delivery Zone";
+      }
+
       return "Extended Delivery Zone";
     }
 
@@ -280,11 +323,25 @@
         if (coverageText) {
           coverageText.textContent = coverageLabel;
 
-          if (data.delivery_type === "admin_review") {
+          if (data.area_zone === "kgn_core") {
+            coverageText.className = "badge bg-dark";
+          }
+          else if (data.area_zone === "kgn_outside") {
+            coverageText.className = "badge bg-secondary";
+          }
+          else if (data.area_zone === "pm_core") {
+            coverageText.className = "badge bg-primary";
+          }
+          else if (data.area_zone === "pm_outside") {
+            coverageText.className = "badge bg-info text-dark";
+          }
+          else if (data.delivery_type === "admin_review") {
             coverageText.className = "badge bg-danger";
-          } else if (data.is_free_delivery) {
+          }
+          else if (data.is_free_delivery) {
             coverageText.className = "badge bg-success";
-          } else {
+          }
+          else {
             coverageText.className = "badge bg-primary";
           }
         }

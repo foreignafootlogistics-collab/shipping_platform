@@ -210,7 +210,7 @@
   }
 </style>
 
-<div class="container mt-4">
+<div class="container-fluid mt-4 px-4">
 
   <div class="sd-card">
 
@@ -228,6 +228,10 @@
       </div>
 
       <div class="d-flex gap-2">
+
+        <a class="btn btn-success btn-soft" href="{{ url_for('logistics.add_scheduled_delivery') }}">
+          + Add Delivery
+        </a>
 
         <a class="btn btn-light btn-soft" href="{{ url_for('logistics.view_scheduled_deliveries') }}">
           Reset

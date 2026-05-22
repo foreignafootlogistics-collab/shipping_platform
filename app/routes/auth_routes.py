@@ -98,7 +98,7 @@ def register():
             current_app.logger.warning(
                 f"[REGISTER BLOCKED] Honeypot triggered | IP={client_ip} | UA={request.headers.get('User-Agent')}"
             )
-            flash("Registration could not be completed. Please try again.", "danger"))
+            flash("Registration could not be completed. Please try again.", "danger")
             return render_template(
                 "auth/register.html",
                 form=form,

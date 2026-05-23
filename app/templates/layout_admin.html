@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <title>{% block title %}Admin Dashboard{% endblock %} - Foreign A Foot Logistics</title>
 
-  <!-- Favicon (your logo in the browser tab) -->
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
-  <link rel="apple-touch-icon" href="{{ url_for('static', filename='logo.png') }}">
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
+
+  <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon.png') }}">
 
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -32,501 +36,495 @@
 
 <body>
 
-<div class="container-fluid">
-  <div class="row">
+  <div class="container-fluid">
+    <div class="row">
 
-    <!-- Sidebar -->
-    <nav id="adminSidebar" class="col-md-2 d-md-block sidebar collapse p-3" style="background-color: #4a148c;">
-      <div class="text-center mb-4 text-white">
-        {% set settings_logo = settings.logo_path if (settings is defined and settings and settings.logo_path) else 'logo.png' %}
-        <img src="{{ url_for('static', filename=settings_logo) }}"
-             alt="Foreign A Foot Logo"
-             class="img-fluid mb-2"
-             style="max-height: 200px;">
+      <!-- Sidebar -->
+      <nav id="adminSidebar" class="col-md-2 d-md-block sidebar collapse p-3" style="background-color: #4a148c;">
+        <div class="text-center mb-4 text-white">
+          {% set settings_logo = settings.logo_path if (settings is defined and settings and settings.logo_path) else
+          'logo.png' %}
+          <img src="{{ url_for('static', filename=settings_logo) }}" alt="Foreign A Foot Logo" class="img-fluid mb-2"
+            style="max-height: 200px;">
 
-        <h5 class="mt-1">Foreign A Foot Logistics</h5>
-        <hr style="border-color: rgba(255,255,255,0.3);">
-      </div>
-
-      <div class="accordion" id="sidebarAccordion">
-
-        <!-- Dashboard -->
-        <div class="accordion-item border-0">
-          <h2 class="accordion-header">
-            <a href="{{ url_for('admin.dashboard') }}"
-               class="nav-link text-white {% if request.path == url_for('admin.dashboard') %}active{% endif %}">
-              <i class="fas fa-tachometer-alt me-2"></i> Dashboard
-            </a>
-          </h2>
+          <h5 class="mt-1">Foreign A Foot Logistics</h5>
+          <hr style="border-color: rgba(255,255,255,0.3);">
         </div>
 
-        {# ---- Accounts & Profiles (accordion) ---- #}
-        {# ✅ Include admin_claims paths too since Claims is moved under Accounts #}
-        {% set is_accounts = (request.blueprint in ['accounts_profiles','admin_claims'])
-                             or request.path.startswith('/accounts')
-                             or request.path.startswith('/admin/claims') 
-                             or request.path.startswith('/admin/package-search') %}
-        <div class="accordion-item border-0">
-          <h2 class="accordion-header" id="headingAccounts">
-            <!-- ✅ UPDATED: badge on the accordion button -->
-            <button
-              class="accordion-button {{ '' if is_accounts else 'collapsed' }} text-white position-relative"
-              type="button"
-              data-bs-toggle="collapse"
-              data-bs-target="#collapseAccounts"
-              aria-expanded="{{ 'true' if is_accounts else 'false' }}"
-              aria-controls="collapseAccounts"
-              style="background-color:#4a148c;"
-            >
-              <i class="fas fa-users me-2"></i> Accounts & Profiles
+        <div class="accordion" id="sidebarAccordion">
 
-              {% if claims_submitted_count|default(0) > 0 %}
+          <!-- Dashboard -->
+          <div class="accordion-item border-0">
+            <h2 class="accordion-header">
+              <a href="{{ url_for('admin.dashboard') }}"
+                class="nav-link text-white {% if request.path == url_for('admin.dashboard') %}active{% endif %}">
+                <i class="fas fa-tachometer-alt me-2"></i> Dashboard
+              </a>
+            </h2>
+          </div>
+
+          {# ---- Accounts & Profiles (accordion) ---- #}
+          {# ✅ Include admin_claims paths too since Claims is moved under Accounts #}
+          {% set is_accounts = (request.blueprint in ['accounts_profiles','admin_claims'])
+          or request.path.startswith('/accounts')
+          or request.path.startswith('/admin/claims')
+          or request.path.startswith('/admin/package-search') %}
+          <div class="accordion-item border-0">
+            <h2 class="accordion-header" id="headingAccounts">
+              <!-- ✅ UPDATED: badge on the accordion button -->
+              <button class="accordion-button {{ '' if is_accounts else 'collapsed' }} text-white position-relative"
+                type="button" data-bs-toggle="collapse" data-bs-target="#collapseAccounts"
+                aria-expanded="{{ 'true' if is_accounts else 'false' }}" aria-controls="collapseAccounts"
+                style="background-color:#4a148c;">
+                <i class="fas fa-users me-2"></i> Accounts & Profiles
+
+                {% if claims_submitted_count|default(0) > 0 %}
                 <span class="position-absolute top-50 end-0 translate-middle-y badge rounded-pill bg-danger me-3">
                   {{ claims_submitted_count }}
                 </span>
-              {% endif %}
-            </button>
-          </h2>
+                {% endif %}
+              </button>
+            </h2>
 
-          <div id="collapseAccounts"
-               class="accordion-collapse collapse {{ 'show' if is_accounts else '' }}"
-               aria-labelledby="headingAccounts"
-               data-bs-parent="#sidebarAccordion">
-            <div class="accordion-body p-0">
-              <ul class="nav flex-column ms-3">
+            <div id="collapseAccounts" class="accordion-collapse collapse {{ 'show' if is_accounts else '' }}"
+              aria-labelledby="headingAccounts" data-bs-parent="#sidebarAccordion">
+              <div class="accordion-body p-0">
+                <ul class="nav flex-column ms-3">
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'accounts_profiles.manage_users' else '' }}"
-                     href="{{ url_for('accounts_profiles.manage_users') }}">
-                    <i class="bi bi-people me-2"></i> Manage Users
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'accounts_profiles.manage_users' else '' }}"
+                      href="{{ url_for('accounts_profiles.manage_users') }}">
+                      <i class="bi bi-people me-2"></i> Manage Users
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'accounts_profiles.admin_subscriptions' else '' }}"
-                     href="{{ url_for('accounts_profiles.admin_subscriptions') }}">
-                    <i class="bi bi-card-checklist me-2"></i> Subscriptions
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'accounts_profiles.admin_subscriptions' else '' }}"
+                      href="{{ url_for('accounts_profiles.admin_subscriptions') }}">
+                      <i class="bi bi-card-checklist me-2"></i> Subscriptions
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'admin.register_admin' else '' }}"
-                     href="{{ url_for('admin.register_admin') }}">
-                    <i class="bi bi-person-plus me-2"></i> Register Admin
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'admin.register_admin' else '' }}"
+                      href="{{ url_for('admin.register_admin') }}">
+                      <i class="bi bi-person-plus me-2"></i> Register Admin
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint in ['admin.messages','admin.view_message'] else '' }}"
-                     href="{{ url_for('admin.messages') }}">
-                    <i class="bi bi-chat-dots me-2"></i> Messages
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint in ['admin.messages','admin.view_message'] else '' }}"
+                      href="{{ url_for('admin.messages') }}">
+                      <i class="bi bi-chat-dots me-2"></i> Messages
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_notifications' else '' }}"
-                     href="{{ url_for('admin.view_notifications') }}">
-                    <i class="bi bi-bell me-2"></i> Notifications
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'admin.view_notifications' else '' }}"
+                      href="{{ url_for('admin.view_notifications') }}">
+                      <i class="bi bi-bell me-2"></i> Notifications
+                    </a>
+                  </li>
 
-                <!-- ✅ NEW: Claims moved under Accounts -->
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.blueprint in ['admin_claims'] or request.path.startswith('/admin/claims') else '' }}"
-                     href="{{ url_for('admin_claims.queue', status='submitted') }}">
-                    <i class="bi bi-clipboard-check me-2"></i> Claims
-                    {% if claims_submitted_count|default(0) > 0 %}
+                  <!-- ✅ NEW: Claims moved under Accounts -->
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.blueprint in ['admin_claims'] or request.path.startswith('/admin/claims') else '' }}"
+                      href="{{ url_for('admin_claims.queue', status='submitted') }}">
+                      <i class="bi bi-clipboard-check me-2"></i> Claims
+                      {% if claims_submitted_count|default(0) > 0 %}
                       <span class="badge bg-danger ms-2">{{ claims_submitted_count }}</span>
-                    {% endif %}
-                  </a>
-                </li>
-                <li class="nav-item">
-                  <a class="nav-link
+                      {% endif %}
+                    </a>
+                  </li>
+                  <li class="nav-item">
+                    <a class="nav-link
                      {{ 'active' if request.blueprint == 'admin_search'
                         or request.path.startswith('/admin/search') else '' }}"
-                     href="{{ url_for('admin_search.queue', status='submitted') }}">
-                    <i class="bi bi-search me-2"></i> Package Search
-                    {% if search_submitted_unread_count|default(0) > 0 %}
+                      href="{{ url_for('admin_search.queue', status='submitted') }}">
+                      <i class="bi bi-search me-2"></i> Package Search
+                      {% if search_submitted_unread_count|default(0) > 0 %}
                       <span class="badge bg-danger ms-2">
                         {{ search_submitted_unread_count }}
                       </span>
-                    {% endif %} 
-                  </a>
-                </li>
+                      {% endif %}
+                    </a>
+                  </li>
 
-              </ul>
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
 
-        {# ---- Logistics (accordion) ---- #}
-        {% set is_logistics = request.blueprint == 'logistics' or '/logistics' in request.path %}
-        {% set tab = request.args.get('tab', '') %}
-        <div class="accordion-item border-0">
-          <h2 class="accordion-header" id="headingLogistics">
-            <button
-              class="accordion-button {{ '' if is_logistics else 'collapsed' }} text-white"
-              type="button"
-              data-bs-toggle="collapse"
-              data-bs-target="#collapseLogistics"
-              aria-expanded="{{ 'true' if is_logistics else 'false' }}"
-              aria-controls="collapseLogistics"
-              style="background-color:#4a148c;"
-            >
-              <i class="fas fa-truck me-2"></i> Logistics
-            </button>
-          </h2>
+          {# ---- Logistics (accordion) ---- #}
+          {% set is_logistics = request.blueprint == 'logistics' or '/logistics' in request.path %}
+          {% set tab = request.args.get('tab', '') %}
+          <div class="accordion-item border-0">
+            <h2 class="accordion-header" id="headingLogistics">
+              <button class="accordion-button {{ '' if is_logistics else 'collapsed' }} text-white" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapseLogistics"
+                aria-expanded="{{ 'true' if is_logistics else 'false' }}" aria-controls="collapseLogistics"
+                style="background-color:#4a148c;">
+                <i class="fas fa-truck me-2"></i> Logistics
+              </button>
+            </h2>
 
-          <div id="collapseLogistics"
-               class="accordion-collapse collapse {{ 'show' if is_logistics else '' }}"
-               aria-labelledby="headingLogistics"
-               data-bs-parent="#sidebarAccordion">
-            <div class="accordion-body p-0">
-              <ul class="nav flex-column ms-3">
+            <div id="collapseLogistics" class="accordion-collapse collapse {{ 'show' if is_logistics else '' }}"
+              aria-labelledby="headingLogistics" data-bs-parent="#sidebarAccordion">
+              <div class="accordion-body p-0">
+                <ul class="nav flex-column ms-3">
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and (tab=='' or tab is none) else '' }}"
-                     href="{{ url_for('logistics.logistics_dashboard') }}">
-                    <i class="bi bi-speedometer2 me-2"></i> Logistics Dashboard
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and (tab=='' or tab is none) else '' }}"
+                      href="{{ url_for('logistics.logistics_dashboard') }}">
+                      <i class="bi bi-speedometer2 me-2"></i> Logistics Dashboard
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='prealerts' else '' }}"
-                     href="{{ url_for('logistics.logistics_dashboard', tab='prealerts') }}">
-                    <i class="bi bi-bell-fill me-2"></i> Pre-Alerts
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='prealerts' else '' }}"
+                      href="{{ url_for('logistics.logistics_dashboard', tab='prealerts') }}">
+                      <i class="bi bi-bell-fill me-2"></i> Pre-Alerts
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='view_packages' else '' }}"
-                     href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}">
-                    <i class="bi bi-box-seam me-2"></i> View Packages
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='view_packages' else '' }}"
+                      href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}">
+                      <i class="bi bi-box-seam me-2"></i> View Packages
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='shipmentLog' else '' }}"
-                     href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog') }}">
-                    <i class="bi bi-list-check me-2"></i> Shipment Log
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='shipmentLog' else '' }}"
+                      href="{{ url_for('logistics.logistics_dashboard', tab='shipmentLog') }}">
+                      <i class="bi bi-list-check me-2"></i> Shipment Log
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='uploadPackages' else '' }}"
-                     href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
-                    <span><i class="bi bi-upload me-2"></i> Upload Packages</span>
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'logistics.logistics_dashboard' and tab=='uploadPackages' else '' }}"
+                      href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
+                      <span><i class="bi bi-upload me-2"></i> Upload Packages</span>
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'logistics.view_scheduled_deliveries' else '' }}"
-                     href="{{ url_for('logistics.view_scheduled_deliveries') }}">
-                    <i class="bi bi-truck me-2"></i>Scheduled Deliveries
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'logistics.view_scheduled_deliveries' else '' }}"
+                      href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+                      <i class="bi bi-truck me-2"></i>Scheduled Deliveries
 
-                    {% set _sd_badge = (sd_today_count|default(0) + sd_overdue_count|default(0)) %}
-                    {% if _sd_badge > 0 %}
+                      {% set _sd_badge = (sd_today_count|default(0) + sd_overdue_count|default(0)) %}
+                      {% if _sd_badge > 0 %}
                       <span class="badge bg-danger ms-2">{{ _sd_badge }}</span>
-                    {% endif %}
-                  </a>
-                </li>
+                      {% endif %}
+                    </a>
+                  </li>
 
-              </ul>
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
 
-        {# ---- POS ---- #}
-        {% set is_pos = request.blueprint == 'admin_pos' or request.path.startswith('/admin/pos') %}
-        <div class="accordion-item border-0">
-          <h2 class="accordion-header">
-            <a href="{{ url_for('admin_pos.index') }}"
-               class="nav-link text-white {% if is_pos %}active{% endif %}">
-              <i class="bi bi-credit-card me-2"></i> POS
-            </a>
-            <a href="{{ url_for('admin_pos.daily_sales') }}" class="nav-link text-white ms-3">
-              <i class="bi bi-cash-stack me-2"></i> Daily Sales
-            </a>
-            <a href="{{ url_for('admin_pos.closeouts') }}" class="nav-link text-white ms-3">
-              <i class="bi bi-clipboard-data me-2"></i> Closeout History
-            </a>
-          </h2>
-        </div>
+          {# ---- POS (accordion) ---- #}
+          {% set is_pos = request.blueprint == 'admin_pos' or request.path.startswith('/admin/pos') %}
+          <div class="accordion-item border-0">
+            <h2 class="accordion-header" id="headingPOS">
+              <button class="accordion-button {{ '' if is_pos else 'collapsed' }} text-white" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapsePOS"
+                aria-expanded="{{ 'true' if is_pos else 'false' }}" aria-controls="collapsePOS"
+                style="background-color:#4a148c;">
+                <i class="bi bi-credit-card me-2"></i> POS
+              </button>
+            </h2>
 
-        {# ---- Finance (accordion) ---- #}
-        {% set is_finance = request.blueprint == 'finance' or request.path.startswith('/finance') %}
-        <div class="accordion-item border-0">
-          <h2 class="accordion-header" id="headingFinance">
-            <button
-              class="accordion-button {{ '' if is_finance else 'collapsed' }} text-white"
-              type="button"
-              data-bs-toggle="collapse"
-              data-bs-target="#collapseFinance"
-              aria-expanded="{{ 'true' if is_finance else 'false' }}"
-              aria-controls="collapseFinance"
-              style="background-color:#4a148c;"
-            >
-              <i class="fas fa-money-bill-wave me-2"></i> Finance
-            </button>
-          </h2>
+            <div id="collapsePOS" class="accordion-collapse collapse {{ 'show' if is_pos else '' }}"
+              aria-labelledby="headingPOS" data-bs-parent="#sidebarAccordion">
+              <div class="accordion-body p-0">
+                <ul class="nav flex-column ms-3">
 
-          <div id="collapseFinance"
-               class="accordion-collapse collapse {{ 'show' if is_finance else '' }}"
-               aria-labelledby="headingFinance"
-               data-bs-parent="#sidebarAccordion">
-            <div class="accordion-body p-0">
-              <ul class="nav flex-column ms-3">
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'admin_pos.index' else '' }}"
+                      href="{{ url_for('admin_pos.index') }}">
+                      <i class="bi bi-credit-card-2-front me-2"></i> POS Checkout
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'finance.finance_dashboard' else '' }}"
-                     href="{{ url_for('finance.finance_dashboard') }}">
-                    <i class="bi bi-speedometer2 me-2"></i> Finance Dashboard
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'admin_pos.daily_sales' else '' }}"
+                      href="{{ url_for('admin_pos.daily_sales') }}">
+                      <i class="bi bi-cash-stack me-2"></i> Daily Sales
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'finance.unpaid_invoices' else '' }}"
-                     href="{{ url_for('finance.unpaid_invoices') }}">
-                    <i class="bi bi-clock-history me-2"></i> Unpaid / Issued Invoices
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'admin_pos.closeouts' else '' }}"
+                      href="{{ url_for('admin_pos.closeouts') }}">
+                      <i class="bi bi-clipboard-data me-2"></i> Closeout History
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_income' else '' }}"
-                     href="{{ url_for('finance.monthly_income') }}">
-                    <i class="bi bi-graph-up-arrow me-2"></i> Monthly Income
-                  </a>
-                </li>
-
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint in ['finance.monthly_expenses','finance.view_expenses'] else '' }}"
-                     href="{{ url_for('finance.monthly_expenses') }}">
-                    <span><i class="bi bi-cash-stack me-2"></i> Monthly Expenses</span>
-                  </a>
-                </li>
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint in ['finance.payroll_dashboard', 'finance.create_payroll', 'finance.add_user_to_payroll'] else '' }}"
-                     href="{{ url_for('finance.payroll_dashboard') }}">
-                    <i class="bi bi-person-badge me-2"></i> Payroll
-                  </a>
-                </li>
-
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_profit_loss' else '' }}"
-                     href="{{ url_for('finance.monthly_profit_loss') }}">
-                    <i class="bi bi-balance-scale me-2"></i> Profit / Loss
-                  </a>
-                </li>
-
-              </ul>
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
 
-        {# ---- Analytics & Insights (accordion) ---- #}
-        {% set is_analytics = request.blueprint == 'analytics' or request.path.startswith('/analytics') %}
-        <div class="accordion-item border-0">
-          <h2 class="accordion-header" id="headingAnalytics">
-            <button
-              class="accordion-button {{ '' if is_analytics else 'collapsed' }} text-white"
-              type="button"
-              data-bs-toggle="collapse"
-              data-bs-target="#collapseAnalytics"
-              aria-expanded="{{ 'true' if is_analytics else 'false' }}"
-              aria-controls="collapseAnalytics"
-              style="background-color:#4a148c;"
-            >
-              <i class="fas fa-chart-line me-2"></i> Analytics &amp; Insights
-            </button>
-          </h2>
+          {# ---- Finance (accordion) ---- #}
+          {% set is_finance = request.blueprint == 'finance' or request.path.startswith('/finance') %}
+          <div class="accordion-item border-0">
+            <h2 class="accordion-header" id="headingFinance">
+              <button class="accordion-button {{ '' if is_finance else 'collapsed' }} text-white" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapseFinance"
+                aria-expanded="{{ 'true' if is_finance else 'false' }}" aria-controls="collapseFinance"
+                style="background-color:#4a148c;">
+                <i class="fas fa-money-bill-wave me-2"></i> Finance
+              </button>
+            </h2>
 
-          <div id="collapseAnalytics"
-               class="accordion-collapse collapse {{ 'show' if is_analytics else '' }}"
-               aria-labelledby="headingAnalytics"
-               data-bs-parent="#sidebarAccordion">
-            <div class="accordion-body p-0">
-              <ul class="nav flex-column ms-3">
+            <div id="collapseFinance" class="accordion-collapse collapse {{ 'show' if is_finance else '' }}"
+              aria-labelledby="headingFinance" data-bs-parent="#sidebarAccordion">
+              <div class="accordion-body p-0">
+                <ul class="nav flex-column ms-3">
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.daily_stats' else '' }}"
-                     href="{{ url_for('analytics.daily_stats') }}">
-                    <i class="bi bi-graph-up me-2"></i> Daily Stats
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'finance.finance_dashboard' else '' }}"
+                      href="{{ url_for('finance.finance_dashboard') }}">
+                      <i class="bi bi-speedometer2 me-2"></i> Finance Dashboard
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.customer_retention' else '' }}"
-                     href="{{ url_for('analytics.customer_retention') }}">
-                    <i class="bi bi-arrow-repeat me-2"></i> Customer Retention
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'finance.unpaid_invoices' else '' }}"
+                      href="{{ url_for('finance.unpaid_invoices') }}">
+                      <i class="bi bi-clock-history me-2"></i> Unpaid / Issued Invoices
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.package_breakdown' else '' }}"
-                     href="{{ url_for('analytics.package_breakdown') }}">
-                    <i class="bi bi-box-seam me-2"></i> Package Breakdown
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_income' else '' }}"
+                      href="{{ url_for('finance.monthly_income') }}">
+                      <i class="bi bi-graph-up-arrow me-2"></i> Monthly Income
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.shipment_performance' else '' }}"
-                     href="{{ url_for('analytics.shipment_performance') }}">
-                    <i class="bi bi-truck me-2"></i> Shipment Performance
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint in ['finance.monthly_expenses','finance.view_expenses'] else '' }}"
+                      href="{{ url_for('finance.monthly_expenses') }}">
+                      <span><i class="bi bi-cash-stack me-2"></i> Monthly Expenses</span>
+                    </a>
+                  </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint in ['finance.payroll_dashboard', 'finance.create_payroll', 'finance.add_user_to_payroll'] else '' }}"
+                      href="{{ url_for('finance.payroll_dashboard') }}">
+                      <i class="bi bi-person-badge me-2"></i> Payroll
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.customer_segments' else '' }}"
-                     href="{{ url_for('analytics.customer_segments') }}">
-                    <i class="bi bi-people me-2"></i> Customer Segments
-                  </a>
-                </li>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'finance.monthly_profit_loss' else '' }}"
+                      href="{{ url_for('finance.monthly_profit_loss') }}">
+                      <i class="bi bi-balance-scale me-2"></i> Profit / Loss
+                    </a>
+                  </li>
 
-                <li class="nav-item">
-                  <a class="nav-link {{ 'active' if request.endpoint == 'analytics.referral_leaderboard' else '' }}"
-                     href="{{ url_for('analytics.referral_leaderboard') }}">
-                    <i class="fas fa-user-friends me-2"></i> Referral Leaderboard
-                  </a>
-                </li>
-
-              </ul>
+                </ul>
+              </div>
             </div>
           </div>
-        </div>
 
-        <!-- Settings -->
-        <div class="accordion-item border-0">
-          <h2 class="accordion-header" id="headingSettings">
-            <button class="accordion-button {% if request.path == url_for('settings.manage_settings') %}text-warning{% else %}collapsed text-white{% endif %}"
-                    type="button"
-                    data-bs-toggle="collapse"
-                    data-bs-target="#collapseSettings"
-                    aria-expanded="{{ 'true' if request.path == url_for('settings.manage_settings') else 'false' }}"
-                    aria-controls="collapseSettings"
-                    style="background-color:#4a148c;"
-            >
-              <i class="fas fa-cogs me-2"></i> Settings
-            </button>
-          </h2>
+          {# ---- Analytics & Insights (accordion) ---- #}
+          {% set is_analytics = request.blueprint == 'analytics' or request.path.startswith('/analytics') %}
+          <div class="accordion-item border-0">
+            <h2 class="accordion-header" id="headingAnalytics">
+              <button class="accordion-button {{ '' if is_analytics else 'collapsed' }} text-white" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapseAnalytics"
+                aria-expanded="{{ 'true' if is_analytics else 'false' }}" aria-controls="collapseAnalytics"
+                style="background-color:#4a148c;">
+                <i class="fas fa-chart-line me-2"></i> Analytics &amp; Insights
+              </button>
+            </h2>
 
-          <div id="collapseSettings"
-               class="accordion-collapse collapse {% if request.path == url_for('settings.manage_settings') %}show{% endif %}"
-               aria-labelledby="headingSettings"
-               data-bs-parent="#sidebarAccordion">
-            <div class="accordion-body p-0">
-              <ul class="nav flex-column ms-3">
-                <li class="nav-item">
-                  <a href="{{ url_for('settings.manage_settings') }}"
-                     class="nav-link {% if request.path == url_for('settings.manage_settings') %}active{% endif %}">
-                    Manage Settings
-                  </a>
-                </li>
+            <div id="collapseAnalytics" class="accordion-collapse collapse {{ 'show' if is_analytics else '' }}"
+              aria-labelledby="headingAnalytics" data-bs-parent="#sidebarAccordion">
+              <div class="accordion-body p-0">
+                <ul class="nav flex-column ms-3">
 
-                {% if current_user.is_authenticated and current_user.is_superadmin %}
-                <li class="nav-item">
-                  <a href="{{ url_for('admin.manage_admins') }}"
-                     class="nav-link {% if request.path == url_for('admin.manage_admins') %}active{% endif %}">
-                    Manage Admins
-                  </a>
-                </li>
-                {% endif %}
-              </ul>
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'analytics.daily_stats' else '' }}"
+                      href="{{ url_for('analytics.daily_stats') }}">
+                      <i class="bi bi-graph-up me-2"></i> Daily Stats
+                    </a>
+                  </li>
+
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'analytics.customer_retention' else '' }}"
+                      href="{{ url_for('analytics.customer_retention') }}">
+                      <i class="bi bi-arrow-repeat me-2"></i> Customer Retention
+                    </a>
+                  </li>
+
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'analytics.package_breakdown' else '' }}"
+                      href="{{ url_for('analytics.package_breakdown') }}">
+                      <i class="bi bi-box-seam me-2"></i> Package Breakdown
+                    </a>
+                  </li>
+
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'analytics.shipment_performance' else '' }}"
+                      href="{{ url_for('analytics.shipment_performance') }}">
+                      <i class="bi bi-truck me-2"></i> Shipment Performance
+                    </a>
+                  </li>
+
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'analytics.customer_segments' else '' }}"
+                      href="{{ url_for('analytics.customer_segments') }}">
+                      <i class="bi bi-people me-2"></i> Customer Segments
+                    </a>
+                  </li>
+
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'analytics.referral_leaderboard' else '' }}"
+                      href="{{ url_for('analytics.referral_leaderboard') }}">
+                      <i class="fas fa-user-friends me-2"></i> Referral Leaderboard
+                    </a>
+                  </li>
+
+                </ul>
+              </div>
             </div>
           </div>
+
+          <!-- Settings -->
+          <div class="accordion-item border-0">
+            <h2 class="accordion-header" id="headingSettings">
+              <button
+                class="accordion-button {% if request.path == url_for('settings.manage_settings') %}text-warning{% else %}collapsed text-white{% endif %}"
+                type="button" data-bs-toggle="collapse" data-bs-target="#collapseSettings"
+                aria-expanded="{{ 'true' if request.path == url_for('settings.manage_settings') else 'false' }}"
+                aria-controls="collapseSettings" style="background-color:#4a148c;">
+                <i class="fas fa-cogs me-2"></i> Settings
+              </button>
+            </h2>
+
+            <div id="collapseSettings"
+              class="accordion-collapse collapse {% if request.path == url_for('settings.manage_settings') %}show{% endif %}"
+              aria-labelledby="headingSettings" data-bs-parent="#sidebarAccordion">
+              <div class="accordion-body p-0">
+                <ul class="nav flex-column ms-3">
+                  <li class="nav-item">
+                    <a href="{{ url_for('settings.manage_settings') }}"
+                      class="nav-link {% if request.path == url_for('settings.manage_settings') %}active{% endif %}">
+                      Manage Settings
+                    </a>
+                  </li>
+
+                  {% if current_user.is_authenticated and current_user.is_superadmin %}
+                  <li class="nav-item">
+                    <a href="{{ url_for('admin.manage_admins') }}"
+                      class="nav-link {% if request.path == url_for('admin.manage_admins') %}active{% endif %}">
+                      Manage Admins
+                    </a>
+                  </li>
+                  {% endif %}
+                </ul>
+              </div>
+            </div>
+          </div>
+
         </div>
+      </nav>
 
-      </div>
-    </nav>
+      <!-- Main content -->
+      <main class="col-md-10 ms-sm-auto px-md-4 py-4 content">
 
-    <!-- Main content -->
-    <main class="col-md-10 ms-sm-auto px-md-4 py-4 content">
+        <!-- Top Bar (FIXED: icons grouped, not spread out) -->
+        <div class="d-flex align-items-center mb-4">
 
-      <!-- Top Bar (FIXED: icons grouped, not spread out) -->
-      <div class="d-flex align-items-center mb-4">
+          <!-- ☰ Mobile sidebar toggle -->
+          <button class="btn btn-outline-secondary d-md-none" type="button" data-bs-toggle="collapse"
+            data-bs-target="#adminSidebar" aria-controls="adminSidebar" aria-expanded="false"
+            aria-label="Toggle navigation">
+            <i class="fas fa-bars"></i>
+          </button>
 
-        <!-- ☰ Mobile sidebar toggle -->
-        <button
-          class="btn btn-outline-secondary d-md-none"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#adminSidebar"
-          aria-controls="adminSidebar"
-          aria-expanded="false"
-          aria-label="Toggle navigation"
-        >
-          <i class="fas fa-bars"></i>
-        </button>
+          <!-- Right side: icons + profile -->
+          <div class="d-flex align-items-center ms-auto gap-3">
 
-        <!-- Right side: icons + profile -->
-        <div class="d-flex align-items-center ms-auto gap-3">
-
-          <!-- Notifications -->
-          <a href="{{ url_for('admin.view_notifications') }}" class="position-relative text-dark" title="Broadcast Notifications">
-            <i class="fas fa-bell fa-lg"></i>
-            {% if unread_broadcast_count|default(0) > 0 %}
+            <!-- Notifications -->
+            <a href="{{ url_for('admin.view_notifications') }}" class="position-relative text-dark"
+              title="Broadcast Notifications">
+              <i class="fas fa-bell fa-lg"></i>
+              {% if unread_broadcast_count|default(0) > 0 %}
               <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill"
-                    style="background:#FACC15; color:#111827; font-weight:700;">
+                style="background:#FACC15; color:#111827; font-weight:700;">
                 <!-- ✅ FIXED: show unread_broadcast_count (not unread_notifications_count) -->
                 {{ unread_broadcast_count }}
               </span>
-            {% endif %}
-          </a>
+              {% endif %}
+            </a>
 
-          <!-- Messages -->
-          <a href="{{ url_for('admin.messages') }}" class="position-relative text-dark">
-            <i class="fas fa-envelope fa-lg"></i>
-            {% if unread_messages_count|default(0) > 0 %}
+            <!-- Messages -->
+            <a href="{{ url_for('admin.messages') }}" class="position-relative text-dark">
+              <i class="fas fa-envelope fa-lg"></i>
+              {% if unread_messages_count|default(0) > 0 %}
               <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill"
-                    style="background:#4A148C; color:#fff; font-weight:700;">
+                style="background:#4A148C; color:#fff; font-weight:700;">
                 {{ unread_messages_count }}
               </span>
-            {% endif %}
-          </a>
+              {% endif %}
+            </a>
 
-          {# Optional: keep or remove this claims icon since it's now under Accounts #}
-          <!-- Claims -->
-          <a href="{{ url_for('admin_claims.queue', status='submitted') }}" class="position-relative text-dark" title="Claims">
-            <i class="bi bi-clipboard-check fs-4"></i>
-            {% set accounts_badge =
-               (claims_submitted_count|default(0) +
-                search_submitted_unread_count|default(0)) %}
+            {# Optional: keep or remove this claims icon since it's now under Accounts #}
+            <!-- Claims -->
+            <a href="{{ url_for('admin_claims.queue', status='submitted') }}" class="position-relative text-dark"
+              title="Claims">
+              <i class="bi bi-clipboard-check fs-4"></i>
+              {% set accounts_badge =
+              (claims_submitted_count|default(0) +
+              search_submitted_unread_count|default(0)) %}
 
-            {% if accounts_badge > 0 %}
+              {% if accounts_badge > 0 %}
               <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
                 {{ accounts_badge }}
               </span>
-            {% endif %}
-          </a>
-
-          <!-- Calculator -->
-          <a href="#" class="text-dark" data-bs-toggle="modal" data-bs-target="#adminCalculatorModal" title="Calculator">
-            <i class="fas fa-calculator fa-lg"></i>
-          </a>
-
-          <!-- Admin profile dropdown -->
-          <div class="dropdown">
-            <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle"
-               id="adminDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-              <img src="{{ url_for('static', filename='admin_profile.png') }}" alt="Admin Profile" class="admin-profile-img">
-              <span class="ms-2 text-dark fw-semibold">Admin</span>
+              {% endif %}
             </a>
-            <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="adminDropdown">
-              <li><a class="dropdown-item" href="{{ url_for('admin.admin_profile') }}"><i class="fas fa-user me-2"></i>Profile</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('admin_auth.admin_logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
-            </ul>
+
+            <!-- Calculator -->
+            <a href="#" class="text-dark" data-bs-toggle="modal" data-bs-target="#adminCalculatorModal"
+              title="Calculator">
+              <i class="fas fa-calculator fa-lg"></i>
+            </a>
+
+            <!-- Admin profile dropdown -->
+            <div class="dropdown">
+              <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle" id="adminDropdown"
+                data-bs-toggle="dropdown" aria-expanded="false">
+                <img src="{{ url_for('static', filename='admin_profile.png') }}" alt="Admin Profile"
+                  class="admin-profile-img">
+                <span class="ms-2 text-dark fw-semibold">Admin</span>
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="adminDropdown">
+                <li><a class="dropdown-item" href="{{ url_for('admin.admin_profile') }}"><i
+                      class="fas fa-user me-2"></i>Profile</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('admin_auth.admin_logout') }}"><i
+                      class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+              </ul>
+            </div>
+
           </div>
-
         </div>
-      </div>
 
-      {% if (sd_today_count|default(0) > 0) or (sd_tomorrow_count|default(0) > 0) or (sd_overdue_count|default(0) > 0) %}
+        {% if (sd_today_count|default(0) > 0) or (sd_tomorrow_count|default(0) > 0) or (sd_overdue_count|default(0) > 0)
+        %}
         <div class="alert py-2 px-3 mb-3 shadow-sm d-flex flex-wrap align-items-center justify-content-between"
-             style="background:#fff3cd; border:1px solid #ffe69c;">
+          style="background:#fff3cd; border:1px solid #ffe69c;">
           <div class="fw-bold">
             <i class="bi bi-truck me-1"></i>
             Scheduled Deliveries Alert
             {% if sd_overdue_count|default(0) > 0 %}
-              <span class="badge bg-danger ms-2">Overdue: {{ sd_overdue_count }}</span>
+            <span class="badge bg-danger ms-2">Overdue: {{ sd_overdue_count }}</span>
             {% endif %}
           </div>
 
@@ -538,140 +536,139 @@
               Tomorrow: {{ sd_tomorrow_count|default(0) }}
             </span>
 
-            <a class="btn btn-sm btn-dark"
-               href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+            <a class="btn btn-sm btn-dark" href="{{ url_for('logistics.view_scheduled_deliveries') }}">
               View Scheduled Deliveries
             </a>
           </div>
         </div>
-      {% endif %}
+        {% endif %}
 
-      {% include 'admin/admin_calculator_modal.html' %}
+        {% include 'admin/admin_calculator_modal.html' %}
 
-      {% block content %}{% endblock %}
-    </main>
+        {% block content %}{% endblock %}
+      </main>
+    </div>
   </div>
-</div>
 
-<!-- Wallet Modal -->
-<div class="modal fade" id="walletModal" tabindex="-1" aria-labelledby="walletModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="walletModalLabel">Edit Wallet</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body" id="walletModalBody">
-        <!-- AJAX-loaded form will appear here -->
+  <!-- Wallet Modal -->
+  <div class="modal fade" id="walletModal" tabindex="-1" aria-labelledby="walletModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="walletModalLabel">Edit Wallet</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="walletModalBody">
+          <!-- AJAX-loaded form will appear here -->
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.html5.min.js"></script>
-<script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.print.min.js"></script>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.print.min.js"></script>
 
-<!-- Bootstrap JS Bundle -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Bootstrap JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- CSRF helper -->
-<script>
-function getCSRFToken() {
-  return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-}
-</script>
-
-<!-- ✅ GLOBAL scripts that must always run (NOT inside a block) -->
-<script>
-document.addEventListener("submit", async function (e) {
-  const form = e.target;
-  if (!(form instanceof HTMLFormElement)) return;
-
-  const action = form.getAttribute("action") || "";
-  const isPaymentForm =
-    form.id === "addPaymentForm" ||
-    action.includes("/invoice/add-payment/");
-
-  // ✅ IMPORTANT: do NOT touch non-payment forms
-  if (!isPaymentForm) return;
-
-  // ✅ Only payment forms are prevented + handled via fetch
-  e.preventDefault();
-
-  try {
-    const fd = new FormData(form);
-
-    const resp = await fetch(action, {
-      method: "POST",
-      body: fd,
-      headers: {
-        "X-Requested-With": "XMLHttpRequest",
-        "Accept": "application/json",
-        // ✅ CSRF header (if your CSRFProtect checks this)
-        "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || ""
-      },
-      credentials: "same-origin"
-    });
-
-    const ct = (resp.headers.get("content-type") || "").toLowerCase();
-    const data = ct.includes("application/json")
-      ? await resp.json()
-      : { ok: false, error: await resp.text() };
-
-    if (!resp.ok || data.ok !== true) {
-      console.error("❌ Payment failed:", data);
-      alert(data.error || "Payment failed.");
-      return;
+  <!-- CSRF helper -->
+  <script>
+    function getCSRFToken() {
+      return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
     }
+  </script>
 
-    const modalEl = document.getElementById("addPaymentModal");
-    if (modalEl && window.bootstrap) {
-      const inst = bootstrap.Modal.getInstance(modalEl);
-      if (inst) inst.hide();
-    }
+  <!-- ✅ GLOBAL scripts that must always run (NOT inside a block) -->
+  <script>
+    document.addEventListener("submit", async function (e) {
+      const form = e.target;
+      if (!(form instanceof HTMLFormElement)) return;
 
-    window.location.reload();
-  } catch (err) {
-    console.error(err);
-    alert(err.message || "Could not add payment.");
-  }
-}, true);
-</script>
+      const action = form.getAttribute("action") || "";
+      const isPaymentForm =
+        form.id === "addPaymentForm" ||
+        action.includes("/invoice/add-payment/");
 
-<script>
-(function scheduledDeliveryPolling(){
-  const endpoint = "{{ url_for('logistics.api_scheduled_delivery_alerts') }}";
-  const storageKey = "fafl_last_sd_latest_id";
+      // ✅ IMPORTANT: do NOT touch non-payment forms
+      if (!isPaymentForm) return;
 
-  async function check() {
-    try {
-      const resp = await fetch(endpoint, {
-        method: "GET",
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-        credentials: "same-origin",
-        cache: "no-store"
-      });
+      // ✅ Only payment forms are prevented + handled via fetch
+      e.preventDefault();
 
-      // If endpoint is protected by roles and returns 403/401, just stop quietly
-      if (!resp.ok) return;
+      try {
+        const fd = new FormData(form);
 
-      const data = await resp.json();
-      if (!data || data.ok !== true) return;
+        const resp = await fetch(action, {
+          method: "POST",
+          body: fd,
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json",
+            // ✅ CSRF header (if your CSRFProtect checks this)
+            "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.content || ""
+          },
+          credentials: "same-origin"
+        });
 
-      // ---- Detect "new scheduled delivery" ----
-      const lastSeen = localStorage.getItem(storageKey);
-      const latestId = (data.latest_id || "").toString();
+        const ct = (resp.headers.get("content-type") || "").toLowerCase();
+        const data = ct.includes("application/json")
+          ? await resp.json()
+          : { ok: false, error: await resp.text() };
 
-      if (latestId && lastSeen && latestId !== lastSeen) {
-        // show toast
-        const toastEl = document.getElementById("scheduledDeliveryToast");
-        const bodyEl  = document.getElementById("scheduledDeliveryToastBody");
+        if (!resp.ok || data.ok !== true) {
+          console.error("❌ Payment failed:", data);
+          alert(data.error || "Payment failed.");
+          return;
+        }
 
-        if (bodyEl) {
-          bodyEl.innerHTML = `
+        const modalEl = document.getElementById("addPaymentModal");
+        if (modalEl && window.bootstrap) {
+          const inst = bootstrap.Modal.getInstance(modalEl);
+          if (inst) inst.hide();
+        }
+
+        window.location.reload();
+      } catch (err) {
+        console.error(err);
+        alert(err.message || "Could not add payment.");
+      }
+    }, true);
+  </script>
+
+  <script>
+    (function scheduledDeliveryPolling() {
+      const endpoint = "{{ url_for('logistics.api_scheduled_delivery_alerts') }}";
+      const storageKey = "fafl_last_sd_latest_id";
+
+      async function check() {
+        try {
+          const resp = await fetch(endpoint, {
+            method: "GET",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            credentials: "same-origin",
+            cache: "no-store"
+          });
+
+          // If endpoint is protected by roles and returns 403/401, just stop quietly
+          if (!resp.ok) return;
+
+          const data = await resp.json();
+          if (!data || data.ok !== true) return;
+
+          // ---- Detect "new scheduled delivery" ----
+          const lastSeen = localStorage.getItem(storageKey);
+          const latestId = (data.latest_id || "").toString();
+
+          if (latestId && lastSeen && latestId !== lastSeen) {
+            // show toast
+            const toastEl = document.getElementById("scheduledDeliveryToast");
+            const bodyEl = document.getElementById("scheduledDeliveryToastBody");
+
+            if (bodyEl) {
+              bodyEl.innerHTML = `
             🚚 <b>New Scheduled Delivery Created!</b>
             <div class="mt-1 small opacity-75">
               Delivery <b>${data.latest_invoice || ("#" + data.latest_id)}</b> has been added.
@@ -689,63 +686,63 @@ document.addEventListener("submit", async function (e) {
               </a>
             </div>
           `;
-        }
+            }
 
-        if (toastEl && window.bootstrap) {
-          const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
-          toast.show();
+            if (toastEl && window.bootstrap) {
+              const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+              toast.show();
+            }
+          }
+
+          // Save latestId (first run sets baseline)
+          if (latestId) localStorage.setItem(storageKey, latestId);
+
+        } catch (e) {
+          // silent fail (don’t spam console in production)
         }
       }
 
-      // Save latestId (first run sets baseline)
-      if (latestId) localStorage.setItem(storageKey, latestId);
+      // Run immediately + every 60 seconds
+      document.addEventListener("DOMContentLoaded", function () {
+        check();
+        setInterval(check, 60000);
+      });
+    })();
+  </script>
 
-    } catch (e) {
-      // silent fail (don’t spam console in production)
-    }
-  }
-
-  // Run immediately + every 60 seconds
-  document.addEventListener("DOMContentLoaded", function(){
-    check();
-    setInterval(check, 60000);
-  });
-})();
-</script>
-
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  document.querySelectorAll('.open-wallet-modal').forEach(btn => {
-    btn.addEventListener('click', function (e) {
-      e.preventDefault();
-      const userId = this.getAttribute('data-user-id');
-
-      fetch(`/admin/wallet/${userId}/edit`, {
-        headers: { "X-Requested-With": "XMLHttpRequest" }
-      })
-      .then(res => res.text())
-      .then(html => {
-        const body = document.getElementById('walletModalBody');
-        if (!body) return;
-
-        body.innerHTML = html;
-
-        const form = body.querySelector('form');
-        if (!form) return;
-
-        form.addEventListener('submit', function (e) {
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      document.querySelectorAll('.open-wallet-modal').forEach(btn => {
+        btn.addEventListener('click', function (e) {
           e.preventDefault();
-          const formData = new FormData(this);
+          const userId = this.getAttribute('data-user-id');
 
-          fetch(this.action, {
-            method: 'POST',
-            body: formData,
+          fetch(`/admin/wallet/${userId}/edit`, {
             headers: { "X-Requested-With": "XMLHttpRequest" }
           })
-          .then(res => res.json())
-          .then(data => {
-            if (data.success) {
-              const btn = document.querySelector(\`.open-wallet-modal[data-user-id="\${userId}"]\`);
+            .then(res => res.text())
+            .then(html => {
+              const body = document.getElementById('walletModalBody');
+              if (!body) return;
+
+              body.innerHTML = html;
+
+              const form = body.querySelector('form');
+              if (!form) return;
+
+              form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+
+                fetch(this.action, {
+                  method: 'POST',
+                  body: formData,
+                  headers: { "X-Requested-With": "XMLHttpRequest" }
+                })
+                  .then(res => res.json())
+                  .then(data => {
+                    if (data.success) {
+                      const btn = document.querySelector(\`.open-wallet-modal[data-user-id="\${userId}"]\`);
               if (btn) btn.innerHTML = \`Wallet: $\${Number(data.new_balance || 0).toFixed(2)}\`;
 
               const modal = bootstrap.Modal.getInstance(document.getElementById('walletModal'));
@@ -761,28 +758,31 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 });
-</script>
+  </script>
 
-<!-- Scheduled Delivery Toast -->
-<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 2000;">
-  <div id="scheduledDeliveryToast" class="toast align-items-center text-bg-dark border-0" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="d-flex">
-      <div class="toast-body" id="scheduledDeliveryToastBody">
-        🚚 New scheduled delivery created.
+  <!-- Scheduled Delivery Toast -->
+  <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 2000;">
+    <div id="scheduledDeliveryToast" class="toast align-items-center text-bg-dark border-0" role="alert"
+      aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body" id="scheduledDeliveryToastBody">
+          🚚 New scheduled delivery created.
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+          aria-label="Close"></button>
       </div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
     </div>
   </div>
-</div>
 
-{% include 'admin/invoices/_proforma_modal_block.html' %}
+  {% include 'admin/invoices/_proforma_modal_block.html' %}
 
-<!-- ✅ Page-specific scripts will go here -->
-{% block scripts %}{% endblock %}
+  <!-- ✅ Page-specific scripts will go here -->
+  {% block scripts %}{% endblock %}
 
-<footer class="text-center py-3 mt-4" style="background-color: #4a148c; color: #fff;">
-  <small>&copy; {{ current_year }} Foreign A Foot Logistics. All rights reserved.</small>
-</footer>
+  <footer class="text-center py-3 mt-4" style="background-color: #4a148c; color: #fff;">
+    <small>&copy; {{ current_year }} Foreign A Foot Logistics. All rights reserved.</small>
+  </footer>
 
 </body>
+
 </html>

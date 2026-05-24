@@ -2,181 +2,717 @@
 {% block title %}Subscriptions{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container mt-4 subscriptions-page">
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="subscriptions-header mb-3">
     <div>
-      <h3 class="mb-0" style="color:#4a148c;">All Subscriptions</h3>
-      <small class="text-muted">View, filter, and activate customer subscription payments.</small>
+      <h3 class="mb-1">All Subscriptions</h3>
+      <small>View, filter, upgrade, and activate customer subscription payments.</small>
     </div>
 
-    <form method="POST"
-          action="{{ url_for('accounts_profiles.bulk_activate_subscriptions') }}"
-          onsubmit="return confirm('Activate selected pending subscriptions and record payment?');">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      
-      <button type="submit"
-              formaction="{{ url_for('accounts_profiles.bulk_activate_subscriptions') }}"
-              class="btn btn-success btn-sm"
-              title="Activate Selected">
+    <a href="{{ url_for('accounts_profiles.admin_subscriptions',
+                        status=status_filter,
+                        search=search,
+                        created=created_filter,
+                        per_page=per_page) }}" class="btn export-btn">
+      <i class="bi bi-download me-1"></i> Export
+    </a>
+  </div>
+
+  <form id="bulkSubForm" method="POST" action="{{ url_for('accounts_profiles.bulk_activate_subscriptions') }}"
+    onsubmit="return confirm('Apply this bulk action to selected subscriptions?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+
+  <div class="subscription-topbar mb-4">
+    <div class="subscription-tabs">
+      <a class="subscription-tab {% if not status_filter %}active-all{% endif %}"
+        href="{{ url_for('accounts_profiles.admin_subscriptions', search=search, created=created_filter, per_page=per_page) }}">
+        All <span>{{ counts.all }}</span>
+      </a>
+
+      <a class="subscription-tab {% if status_filter == 'pending_payment' %}active-pending{% endif %}"
+        href="{{ url_for('accounts_profiles.admin_subscriptions', status='pending_payment', search=search, created=created_filter, per_page=per_page) }}">
+        Pending <span>{{ counts.pending_payment }}</span>
+      </a>
+
+      <a class="subscription-tab {% if status_filter == 'active' %}active-active{% endif %}"
+        href="{{ url_for('accounts_profiles.admin_subscriptions', status='active', search=search, created=created_filter, per_page=per_page) }}">
+        Active <span>{{ counts.active }}</span>
+      </a>
+
+      <a class="subscription-tab {% if status_filter == 'expired' %}active-expired{% endif %}"
+        href="{{ url_for('accounts_profiles.admin_subscriptions', status='expired', search=search, created=created_filter, per_page=per_page) }}">
+        Expired <span>{{ counts.expired }}</span>
+      </a>
+    </div>
+
+    <div class="subscription-actions">
+      <button type="submit" form="bulkSubForm"
+        formaction="{{ url_for('accounts_profiles.bulk_activate_subscriptions') }}"
+        class="btn btn-success btn-sm action-btn" title="Activate Selected">
         <i class="bi bi-check-circle"></i>
       </button>
 
-      <button type="submit"
-              formaction="{{ url_for('accounts_profiles.bulk_cancel_pending_subscriptions') }}"
-              class="btn btn-outline-danger btn-sm"
-              title="Cancel Pending"
-              onclick="return confirm('Cancel selected pending subscriptions?');">
+      <button type="submit" form="bulkSubForm"
+        formaction="{{ url_for('accounts_profiles.bulk_cancel_pending_subscriptions') }}"
+        class="btn btn-outline-danger btn-sm action-btn" title="Cancel Pending"
+        onclick="return confirm('Cancel selected pending subscriptions?');">
         <i class="bi bi-x-circle"></i>
       </button>
 
-      <button type="submit"
-              formaction="{{ url_for('accounts_profiles.bulk_refund_unused_subscriptions') }}"
-              class="btn btn-outline-warning btn-sm"
-              title="Refund Unused"
-              onclick="return confirm('Cancel and refund selected unused subscriptions?');">
+      <button type="submit" form="bulkSubForm"
+        formaction="{{ url_for('accounts_profiles.bulk_refund_unused_subscriptions') }}"
+        class="btn btn-warning btn-sm action-btn" title="Refund Unused"
+        onclick="return confirm('Cancel and refund selected unused subscriptions?');">
         <i class="bi bi-arrow-counterclockwise"></i>
       </button>
 
-      <button type="submit"
-              formaction="{{ url_for('accounts_profiles.bulk_override_cancel_subscriptions') }}"
-              class="btn btn-danger btn-sm"
-              title="Override Cancel"
-              onclick="return confirm('Override cancel selected subscriptions?');">
+      <button type="submit" form="bulkSubForm"
+        formaction="{{ url_for('accounts_profiles.bulk_override_cancel_subscriptions') }}"
+        class="btn btn-danger btn-sm action-btn" title="Override Cancel"
+        onclick="return confirm('Override cancel selected subscriptions?');">
         <i class="bi bi-exclamation-triangle"></i>
       </button>
 
-      <select name="new_plan_id"
-              class="form-select form-select-sm d-inline-block"
-              style="width:180px;">
+      <select name="new_plan_id" form="bulkSubForm" class="form-select form-select-sm upgrade-select">
         <option value="">Upgrade to...</option>
         {% for plan in plans %}
-          <option value="{{ plan.id }}">
-            {{ plan.name }} — US${{ "%.2f"|format(plan.price_usd or 0) }}
-          </option>
+        <option value="{{ plan.id }}">
+          {{ plan.name }} — US${{ "%.2f"|format(plan.price_usd or 0) }}
+        </option>
         {% endfor %}
       </select>
 
-      <button type="submit"
-              formaction="{{ url_for('accounts_profiles.bulk_upgrade_subscriptions') }}"
-              class="btn btn-primary btn-sm"
-              onclick="return confirm('Upgrade selected active subscriptions and record difference payment?');"
-              title="Upgrade selected">
+      <button type="submit" form="bulkSubForm"
+        formaction="{{ url_for('accounts_profiles.bulk_upgrade_subscriptions') }}"
+        class="btn btn-primary btn-sm action-btn"
+        onclick="return confirm('Upgrade selected active subscriptions and record difference payment?');"
+        title="Upgrade selected">
         <i class="bi bi-arrow-up-circle"></i>
       </button>
+    </div>
   </div>
 
-  <!-- Filter Tabs -->
-  <div class="mb-3 d-flex flex-wrap gap-2">
-    <a class="btn btn-sm {% if not status_filter %}btn-dark{% else %}btn-outline-dark{% endif %}"
-       href="{{ url_for('accounts_profiles.admin_subscriptions') }}">
-      All
-      <span class="badge bg-light text-dark ms-1">{{ counts.all }}</span>
+  <form method="GET" class="subscription-searchbar mb-3">
+    {% if status_filter %}
+    <input type="hidden" name="status" value="{{ status_filter }}">
+    {% endif %}
+
+    <input type="hidden" name="per_page" value="{{ per_page }}">
+
+    <div class="search-box">
+      <i class="bi bi-search"></i>
+      <input type="text" name="search" value="{{ search }}" class="form-control"
+        placeholder="Search by customer, email, reg #, or plan...">
+    </div>
+
+    <select name="created" class="form-select created-select">
+      <option value="">Created: All Time</option>
+      <option value="today" {% if created_filter=="today" %}selected{% endif %}>Created Today</option>
+      <option value="7_days" {% if created_filter=="7_days" %}selected{% endif %}>Last 7 Days</option>
+      <option value="30_days" {% if created_filter=="30_days" %}selected{% endif %}>Last 30 Days</option>
+    </select>
+
+    <select name="sort" class="form-select sort-select">
+      <option value="newest" {% if sort_by=="newest" or not sort_by %}selected{% endif %}>Sort by: Newest First</option>
+      <option value="oldest" {% if sort_by=="oldest" %}selected{% endif %}>Sort by: Oldest First</option>
+      <option value="customer_asc" {% if sort_by=="customer_asc" %}selected{% endif %}>Sort by: Customer A-Z</option>
+      <option value="customer_desc" {% if sort_by=="customer_desc" %}selected{% endif %}>Sort by: Customer Z-A</option>
+      <option value="amount_desc" {% if sort_by=="amount_desc" %}selected{% endif %}>Sort by: Highest Amount</option>
+      <option value="amount_asc" {% if sort_by=="amount_asc" %}selected{% endif %}>Sort by: Lowest Amount</option>
+    </select>
+
+    <button type="submit" class="btn filter-btn">
+      <i class="bi bi-funnel me-1"></i> Filter
+    </button>
+
+    <a href="{{ url_for('accounts_profiles.admin_subscriptions') }}" class="btn clear-btn">
+      Clear
     </a>
-
-    <a class="btn btn-sm {% if status_filter == 'pending_payment' %}btn-warning{% else %}btn-outline-warning{% endif %}"
-       href="{{ url_for('accounts_profiles.admin_subscriptions', status='pending_payment') }}">
-      Pending
-      <span class="badge bg-light text-dark ms-1">{{ counts.pending_payment }}</span>
-    </a>
-
-    <a class="btn btn-sm {% if status_filter == 'active' %}btn-success{% else %}btn-outline-success{% endif %}"
-       href="{{ url_for('accounts_profiles.admin_subscriptions', status='active') }}">
-      Active
-      <span class="badge bg-light text-dark ms-1">{{ counts.active }}</span>
-    </a>
-
-    <a class="btn btn-sm {% if status_filter == 'expired' %}btn-secondary{% else %}btn-outline-secondary{% endif %}"
-       href="{{ url_for('accounts_profiles.admin_subscriptions', status='expired') }}">
-      Expired
-      <span class="badge bg-light text-dark ms-1">{{ counts.expired }}</span>
-    </a>
-  </div>
-
-  <table class="table table-striped mt-3 align-middle">
-    <thead class="table-dark">
-      <tr>
-        <th class="text-center" style="width:40px;">
-          <input type="checkbox" id="selectAllSubs">
-        </th>
-        <th>Customer</th>
-        <th>Plan</th>
-        <th>Status</th>
-        <th>Amount</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-
-    <tbody>
-      {% for s in subscriptions %}
-      <tr>
-        <td class="text-center">
-          <input type="checkbox"
-                 name="subscription_ids"
-                 value="{{ s.id }}"
-                 class="sub-check">
-        </td>
-
-        <td>
-          <a href="{{ url_for('accounts_profiles.view_user', id=s.user_id) }}"
-             class="fw-semibold text-decoration-none">
-            {{ s.user.full_name }}
-          </a><br>
-          <small>{{ s.user.registration_number }} • {{ s.user.email }}</small>
-        </td>
-
-        <td>{{ s.plan.name }}</td>
-
-        <td>
-          {% if s.status == "active" %}
-            <span class="badge bg-success">Active</span>
-          {% elif s.status == "pending_payment" %}
-            <span class="badge bg-warning text-dark">Pending Payment</span>
-          {% elif s.status == "expired" %}
-            <span class="badge bg-secondary">Expired</span>
-          {% else %}
-            <span class="badge bg-secondary">{{ s.status }}</span>
-          {% endif %}
-        </td>
-
-        <td>
-          US${{ "%.2f"|format(s.plan.price_usd or 0) }}<br>
-          <small class="text-muted">
-            JMD ${{ "%.2f"|format((s.plan.price_usd or 0) * 162) }}
-          </small>
-        </td>
-
-        <td>
-          {% if s.created_at %}
-            {{ s.created_at.strftime("%Y-%m-%d") if s.created_at.strftime is defined else s.created_at }}
-          {% else %}
-            —
-          {% endif %}
-        </td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="6" class="text-center text-muted py-4">
-          No subscriptions found.
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
   </form>
+
+  <div class="subscription-table-card">
+    <div class="table-responsive subscription-table-scroll">
+
+      <table class="table align-middle mb-0 subscription-table">
+        <thead>
+          <tr>
+            <th class="text-center check-col">
+              <input type="checkbox" id="selectAllSubs">
+            </th>
+            <th>Customer</th>
+            <th>Plan</th>
+            <th>Status</th>
+            <th>Amount</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for s in subscriptions %}
+          <tr>
+            <td class="text-center">
+              <input type="checkbox" name="subscription_ids" value="{{ s.id }}" class="sub-check" form="bulkSubForm">
+            </td>
+
+            <td>
+              <div class="customer-cell">
+                <div class="customer-avatar">
+                  {{ s.user.full_name[:1] if s.user and s.user.full_name else 'U' }}
+                </div>
+
+                <div>
+                  <a href="{{ url_for('accounts_profiles.view_user', id=s.user_id) }}" class="customer-name">
+                    {{ s.user.full_name }}
+                  </a>
+
+                  <div class="customer-meta">
+                    {{ s.user.registration_number }} • {{ s.user.email }}
+                  </div>
+                </div>
+              </div>
+            </td>
+
+            <td>
+              <div class="plan-name">
+                {{ s.plan.name }}
+                <span class="plan-upgrade-icon">
+                  <i class="bi bi-arrow-up-right"></i>
+                </span>
+              </div>
+
+              {% set used_packages = s.usage.packages_used if s.usage and s.usage.packages_used is not none else 0 %}
+              {% set package_limit = s.plan.package_limit if s.plan.package_limit is defined and s.plan.package_limit
+              else 0 %}
+
+              {% if package_limit %}
+              <small class="text-muted">{{ used_packages }}/{{ package_limit }} packages</small>
+              {% else %}
+              <small class="text-muted">{{ used_packages }} packages used</small>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if s.status == "active" %}
+              <span class="status-badge status-active">Active</span>
+              {% if s.end_date %}
+              <div class="status-note">
+                Renews {{ to_jamaica(s.end_date).strftime("%Y-%m-%d") if to_jamaica is defined else
+                s.end_date.strftime("%Y-%m-%d") }}
+              </div>
+              {% endif %}
+              {% elif s.status == "pending_payment" %}
+              <span class="status-badge status-pending">Pending Payment</span>
+              <div class="status-note">Payment processing</div>
+              {% elif s.status == "expired" %}
+              <span class="status-badge status-expired">Expired</span>
+              {% if s.end_date %}
+              <div class="status-note">
+                Expired on {{ to_jamaica(s.end_date).strftime("%Y-%m-%d") if to_jamaica is defined else
+                s.end_date.strftime("%Y-%m-%d") }}
+              </div>
+              {% endif %}
+              {% elif s.status == "exhausted" %}
+              <span class="status-badge status-exhausted">Exhausted</span>
+              {% else %}
+              <span class="status-badge status-expired">{{ s.status }}</span>
+              {% endif %}
+            </td>
+
+            <td>
+              <div class="amount-main">
+                US${{ "%.2f"|format(s.plan.price_usd or 0) }}
+              </div>
+              <small class="text-muted">
+                JMD ${{ "%.2f"|format((s.plan.price_usd or 0) * 162) }}
+              </small>
+            </td>
+
+            <td>
+              {% if s.created_at %}
+              <div class="created-date">
+                {{ to_jamaica(s.created_at).strftime("%Y-%m-%d") if to_jamaica is defined else
+                s.created_at.strftime("%Y-%m-%d") }}
+              </div>
+              {% else %}
+              —
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="text-center text-muted py-5">
+              <i class="bi bi-credit-card-2-front fs-2 d-block mb-2"></i>
+              No subscriptions found.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+    </div>
+
+    <div class="table-footer">
+      <div class="results-text">
+        Showing {{ start_index }} to {{ end_index }} of {{ total_results }} results
+      </div>
+
+      <div class="footer-controls">
+        <select class="form-select footer-per-page-select" id="footerPerPage">
+          <option value="10" {% if per_page==10 %}selected{% endif %}>10 per page</option>
+          <option value="25" {% if per_page==25 %}selected{% endif %}>25 per page</option>
+          <option value="50" {% if per_page==50 %}selected{% endif %}>50 per page</option>
+          <option value="100" {% if per_page==100 %}selected{% endif %}>100 per page</option>
+        </select>
+
+        <nav>
+          <ul class="pagination mb-0">
+            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('accounts_profiles.admin_subscriptions',
+                                  page=page-1 if page > 1 else 1,
+                                  per_page=per_page,
+                                  status=status_filter,
+                                  search=search,
+                                  created=created_filter,
+                                  sort=sort_by) }}">
+                <i class="bi bi-chevron-left"></i>
+              </a>
+            </li>
+
+            <li class="page-item active">
+              <span class="page-link">{{ page }}</span>
+            </li>
+
+            <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('accounts_profiles.admin_subscriptions',
+                                  page=page+1 if page < total_pages else total_pages,
+                                  per_page=per_page,
+                                  status=status_filter,
+                                  search=search,
+                                  created=created_filter,
+                                  sort=sort_by) }}">
+                <i class="bi bi-chevron-right"></i>
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </div>
+
+  </div>
+
 </div>
 
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const selectAll = document.getElementById("selectAllSubs");
-  if (!selectAll) return;
+<style>
+  body {
+    background: #f6f8fb;
+  }
 
-  selectAll.addEventListener("change", function () {
-    document.querySelectorAll(".sub-check").forEach(cb => {
-      cb.checked = selectAll.checked;
-    });
+  .subscriptions-page.container {
+    max-width: 100%;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .subscriptions-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .subscriptions-header h3 {
+    color: #4a148c;
+    font-weight: 800;
+    font-size: 2rem;
+  }
+
+  .subscriptions-header small {
+    color: #6b7280;
+    font-size: 0.95rem;
+  }
+
+  .export-btn {
+    background: #4a148c;
+    color: white;
+    border-radius: 10px;
+    padding: 9px 16px;
+    font-weight: 700;
+  }
+
+  .export-btn:hover {
+    background: #6a1b9a;
+    color: white;
+  }
+
+  .subscription-topbar {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+  }
+
+  .subscription-tabs,
+  .subscription-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .subscription-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 15px;
+    border-radius: 9px;
+    border: 1px solid #d7dce3;
+    color: #374151;
+    background: white;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 0.92rem;
+  }
+
+  .subscription-tab span {
+    background: #f3f4f6;
+    color: #111827;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+  }
+
+  .subscription-tab.active-all {
+    background: #111827;
+    border-color: #111827;
+    color: white;
+  }
+
+  .subscription-tab.active-pending {
+    border-color: #f59e0b;
+    color: #d97706;
+    background: #fffbeb;
+  }
+
+  .subscription-tab.active-active {
+    border-color: #16a34a;
+    color: #15803d;
+    background: #f0fdf4;
+  }
+
+  .subscription-tab.active-expired {
+    border-color: #6b7280;
+    color: #4b5563;
+    background: #f9fafb;
+  }
+
+  .action-btn {
+    border-radius: 9px;
+    min-width: 38px;
+    height: 38px;
+  }
+
+  .upgrade-select {
+    width: 180px;
+    border-radius: 10px;
+    height: 38px;
+  }
+
+  .subscription-searchbar {
+    display: grid;
+    grid-template-columns: minmax(280px, 520px) 260px minmax(220px, 300px) auto auto;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .search-box {
+    position: relative;
+  }
+
+  .search-box i {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #9ca3af;
+  }
+
+  .search-box input {
+    height: 48px;
+    border-radius: 12px;
+    padding-left: 44px;
+    border: 1px solid #d7dce3;
+  }
+
+  .created-select,
+  .sort-select {
+    height: 48px;
+    border-radius: 12px;
+    border: 1px solid #d7dce3;
+    font-weight: 600;
+  }
+
+  .filter-btn {
+    background: #4a148c;
+    color: white;
+    border-radius: 12px;
+    height: 48px;
+    font-weight: 700;
+    padding: 0 18px;
+  }
+
+  .filter-btn:hover {
+    background: #6a1b9a;
+    color: white;
+  }
+
+  .clear-btn {
+    border: 1px solid #d7dce3;
+    border-radius: 12px;
+    height: 48px;
+    font-weight: 700;
+    padding: 11px 18px;
+    background: white;
+  }
+
+  .subscription-table-card {
+    background: white;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+  }
+
+  .subscription-table-scroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+
+  .subscription-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 980px;
+  }
+
+  .subscription-table thead th {
+    background: #111827;
+    color: white;
+    padding: 16px 18px;
+    font-weight: 800;
+    border: none;
+    white-space: nowrap;
+  }
+
+  .subscription-table tbody td {
+    padding: 17px 18px;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  .subscription-table tbody tr:hover {
+    background: #faf5ff;
+  }
+
+  .check-col {
+    width: 46px;
+  }
+
+  .customer-cell {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .customer-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #f3e8ff;
+    color: #4a148c;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+
+  .customer-name {
+    color: #2563eb;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .customer-name:hover {
+    color: #4a148c;
+    text-decoration: underline;
+  }
+
+  .customer-meta {
+    color: #4b5563;
+    font-size: 0.88rem;
+    margin-top: 2px;
+  }
+
+  .plan-name,
+  .amount-main,
+  .created-date {
+    font-weight: 800;
+    color: #111827;
+  }
+
+  .plan-upgrade-icon {
+    color: #4a148c;
+    margin-left: 6px;
+    font-size: 0.9rem;
+  }
+
+  .status-badge {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 7px;
+    font-size: 0.78rem;
+    font-weight: 800;
+  }
+
+  .status-active {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #86efac;
+  }
+
+  .status-pending {
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #f59e0b;
+  }
+
+  .status-expired {
+    background: #f3f4f6;
+    color: #4b5563;
+    border: 1px solid #9ca3af;
+  }
+
+  .status-exhausted {
+    background: #ede9fe;
+    color: #5b21b6;
+    border: 1px solid #8b5cf6;
+  }
+
+  .status-note {
+    color: #4b5563;
+    font-size: 0.84rem;
+    margin-top: 5px;
+  }
+
+  .table-footer {
+    padding: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .results-text {
+    color: #6b7280;
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .footer-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .footer-per-page-select {
+    width: 150px;
+    height: 44px;
+    border-radius: 12px;
+    font-weight: 600;
+  }
+
+  .pagination .page-link {
+    color: #4a148c;
+    border-radius: 10px;
+    margin: 0 4px;
+    min-width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pagination .page-item.active .page-link {
+    background: #4a148c;
+    border-color: #4a148c;
+    color: white;
+  }
+
+  @media (max-width: 992px) {
+    .subscription-searchbar {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .subscriptions-page.container {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+
+    .subscriptions-header,
+    .subscription-topbar,
+    .table-footer,
+    .footer-controls {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .subscription-tabs,
+    .subscription-actions,
+    .upgrade-select,
+    .export-btn,
+    .footer-per-page-select {
+      width: 100%;
+    }
+
+    .subscriptions-header h3 {
+      font-size: 1.6rem;
+    }
+  }
+</style>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const selectAll = document.getElementById("selectAllSubs");
+    if (selectAll) {
+      selectAll.addEventListener("change", function () {
+        document.querySelectorAll(".sub-check").forEach(cb => {
+          cb.checked = selectAll.checked;
+        });
+      });
+    }
+
+    const footerPerPage = document.getElementById("footerPerPage");
+    if (footerPerPage) {
+      footerPerPage.addEventListener("change", function () {
+        const url = new URL(window.location.href);
+        url.searchParams.set("per_page", this.value);
+        url.searchParams.set("page", "1");
+        window.location.href = url.toString();
+      });
+    }
   });
-});
 </script>
 {% endblock %}

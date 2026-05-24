@@ -1960,6 +1960,14 @@ def manual_add_subscription(id):
 @admin_required
 def admin_subscriptions():
     status_filter = (request.args.get("status") or "").strip()
+    search = (request.args.get("search") or "").strip()
+    created_filter = (request.args.get("created") or "").strip()
+    sort_by = (request.args.get("sort") or "newest").strip()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+
+    if per_page not in [10, 25, 50, 100]:
+        per_page = 10
 
     base_q = (
         Subscription.query
@@ -1972,7 +1980,45 @@ def admin_subscriptions():
     if status_filter:
         q = q.filter(Subscription.status == status_filter)
 
-    subscriptions = q.order_by(Subscription.created_at.desc()).all()
+    if search:
+        like = f"%{search}%"
+        q = q.filter(or_(
+            User.full_name.ilike(like),
+            User.email.ilike(like),
+            User.registration_number.ilike(like),
+            SubscriptionPlan.name.ilike(like),
+        ))
+
+    today = datetime.utcnow().date()
+
+    if created_filter == "today":
+        q = q.filter(func.date(Subscription.created_at) == today)
+
+    elif created_filter == "7_days":
+        start_date = today - timedelta(days=7)
+        q = q.filter(func.date(Subscription.created_at) >= start_date)
+
+    elif created_filter == "30_days":
+        start_date = today - timedelta(days=30)
+        q = q.filter(func.date(Subscription.created_at) >= start_date)
+
+    if sort_by == "oldest":
+        q = q.order_by(Subscription.created_at.asc())
+    elif sort_by == "customer_asc":
+        q = q.order_by(User.full_name.asc())
+    elif sort_by == "customer_desc":
+        q = q.order_by(User.full_name.desc())
+    elif sort_by == "amount_desc":
+        q = q.order_by(SubscriptionPlan.price_usd.desc())
+    elif sort_by == "amount_asc":
+        q = q.order_by(SubscriptionPlan.price_usd.asc())
+    else:
+        q = q.order_by(Subscription.created_at.desc())
+
+
+    pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+
+    subscriptions = pagination.items
 
     counts = {
         "all": Subscription.query.count(),
@@ -1984,18 +2030,27 @@ def admin_subscriptions():
 
     plans = (
         SubscriptionPlan.query
-       .filter_by(is_active=True)
+        .filter_by(is_active=True)
         .order_by(SubscriptionPlan.price_usd.asc())
         .all()
     )
-
 
     return render_template(
         "admin/accounts_profiles/subscriptions.html",
         subscriptions=subscriptions,
         status_filter=status_filter,
+        search=search,
+        created_filter=created_filter,
+        sort_by=sort_by,
         counts=counts,
         plans=plans,
+        page=page,
+        per_page=per_page,
+        total_pages=max(pagination.pages or 1, 1),
+        total_results=pagination.total,
+        start_index=((page - 1) * per_page) + 1 if pagination.total else 0,
+        end_index=min(page * per_page, pagination.total),
+        to_jamaica=to_jamaica
     )
 
 @accounts_bp.route("/subscriptions/bulk-activate", methods=["POST"])

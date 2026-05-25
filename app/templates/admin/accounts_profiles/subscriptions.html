@@ -75,6 +75,15 @@
         <i class="bi bi-exclamation-triangle"></i>
       </button>
 
+      <input type="text" name="waiver_reason" form="bulkSubForm"
+        class="form-control form-control-sm waiver-reason-input" placeholder="Waiver reason">
+
+      <button type="submit" form="bulkSubForm" formaction="{{ url_for('accounts_profiles.bulk_waive_subscriptions') }}"
+        class="btn btn-waive btn-sm action-btn" title="Activate as Complimentary / Waived"
+        onclick="return confirm('Activate selected pending subscription(s) as complimentary/free?');">
+        <i class="bi bi-gift"></i>
+      </button>
+
       <select name="new_plan_id" form="bulkSubForm" class="form-select form-select-sm upgrade-select">
         <option value="">Upgrade to...</option>
         {% for plan in plans %}
@@ -713,6 +722,23 @@
 
     .subscriptions-header h3 {
       font-size: 1.6rem;
+    }
+
+    .waiver-reason-input {
+      width: 170px;
+      height: 38px;
+      border-radius: 10px;
+    }
+
+    .btn-waive {
+      background: #7e22ce;
+      color: white;
+      border: 1px solid #7e22ce;
+    }
+
+    .btn-waive:hover {
+      background: #6b21a8;
+      color: white;
     }
 
   }

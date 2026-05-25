@@ -17,8 +17,8 @@
     </div>
 
     <div class="header-user-count">
-      <span>{{ users|length }}</span>
-      <small>Users Showing</small>
+      <span>{{ users_with_unpaid_invoices }}</span>
+      <small>Users Owing</small>
     </div>
   </div>
 
@@ -34,58 +34,6 @@
   {% endif %}
   {% endwith %}
 
-  <!-- Stats Cards -->
-  <div class="row g-3 mb-4">
-
-    <div class="col-md-3">
-      <div class="stats-card">
-        <div class="stats-icon purple">
-          <i class="fas fa-users"></i>
-        </div>
-        <div>
-          <h4>{{ total_users }}</h4>
-          <p>Total Users</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-md-3">
-      <div class="stats-card">
-        <div class="stats-icon green">
-          <i class="fas fa-user-check"></i>
-        </div>
-        <div>
-          <h4>{{ active_users }}</h4>
-          <p>Active Users</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-md-3">
-      <div class="stats-card">
-        <div class="stats-icon orange">
-          <i class="fas fa-file-invoice-dollar"></i>
-        </div>
-        <div>
-          <h4>{{ users_with_unpaid_invoices }}</h4>
-          <p>Users with Unpaid Invoices</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-md-3">
-      <div class="stats-card">
-        <div class="stats-icon blue">
-          <i class="fas fa-user-plus"></i>
-        </div>
-        <div>
-          <h4>{{ new_this_month }}</h4>
-          <p>New This Month</p>
-        </div>
-      </div>
-    </div>
-
-  </div>
 
   <!-- Modern Toolbar -->
   <div class="modern-toolbar mb-4">

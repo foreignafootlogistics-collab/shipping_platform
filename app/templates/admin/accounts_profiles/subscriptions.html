@@ -239,6 +239,18 @@
                   {{ s.waiver_reason }}
                 </div>
                 {% endif %}
+
+                {% if s.waived_by_admin %}
+                <div class="status-note">
+                  By {{ s.waived_by_admin.full_name }}
+                </div>
+                {% endif %}
+
+                {% if s.waived_at %}
+                <div class="status-note">
+                  {{ to_jamaica(s.waived_at).strftime("%Y-%m-%d %I:%M %p") }}
+                </div>
+                {% endif %}
               </div>
               {% endif %}
             </td>

@@ -207,15 +207,20 @@
               <div class="status-note">Payment processing</div>
               {% elif s.status == "expired" %}
               <span class="status-badge status-expired">Expired</span>
+
               {% if s.end_date %}
               <div class="status-note">
                 Expired on {{ to_jamaica(s.end_date).strftime("%Y-%m-%d") if to_jamaica is defined else
                 s.end_date.strftime("%Y-%m-%d") }}
               </div>
+              {% endif %}
+
               {% elif s.status == "exhausted" %}
               <span class="status-badge status-exhausted">Exhausted</span>
+
               {% else %}
               <span class="status-badge status-expired">{{ s.status }}</span>
+
               {% endif %}
 
               {% if s.is_admin_waived %}

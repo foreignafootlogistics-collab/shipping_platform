@@ -172,8 +172,27 @@ class Subscription(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    is_admin_waived = db.Column(db.Boolean, default=False)
+    waiver_reason = db.Column(db.Text)
+    waived_at = db.Column(db.DateTime)
+    waived_by_admin_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True
+    )
+
     # Relationships
-    user = db.relationship("User", backref=db.backref("subscriptions", lazy=True))
+    user = db.relationship(
+        "User",
+        foreign_keys=[user_id],
+        backref=db.backref("subscriptions", lazy=True)
+    )
+
+    waived_by_admin = db.relationship(
+        "User",
+        foreign_keys=[waived_by_admin_id]
+    )
+
     plan = db.relationship("SubscriptionPlan", back_populates="subscriptions")
 
     usage = db.relationship(

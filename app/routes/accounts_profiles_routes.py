@@ -2231,6 +2231,94 @@ def add_subscription_member(sub_id):
     flash(f"{user.full_name} added to family plan.", "success")
     return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
 
+
+@accounts_bp.route("/subscriptions/bulk-waive", methods=["POST"])
+@admin_required
+def bulk_waive_subscriptions():
+    subscription_ids = request.form.getlist("subscription_ids")
+    reason = (request.form.get("waiver_reason") or "").strip()
+
+    subscription_ids = [int(x) for x in subscription_ids if str(x).isdigit()]
+
+    if not subscription_ids:
+        flash("No subscriptions selected.", "warning")
+        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+    if not reason:
+        flash("Please enter a reason for waiving the subscription charge.", "warning")
+        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+    waived_count = 0
+
+    for sub_id in subscription_ids:
+        sub = Subscription.query.get(sub_id)
+
+        if not sub or sub.status != "pending_payment":
+            continue
+
+        plan = sub.plan
+        user = sub.user
+
+        old_active = (
+            Subscription.query
+            .filter(
+                Subscription.user_id == sub.user_id,
+                Subscription.status.in_(["active", "exhausted"]),
+                Subscription.id != sub.id
+            )
+            .all()
+        )
+
+        for old in old_active:
+            old.status = "expired"
+
+        sub.status = "active"
+        sub.start_date = datetime.utcnow()
+        sub.end_date = datetime.utcnow() + timedelta(days=30)
+
+        sub.is_admin_waived = True
+        sub.waiver_reason = reason
+        sub.waived_at = datetime.utcnow()
+        sub.waived_by_admin_id = current_user.id
+
+        if not sub.usage:
+            db.session.add(SubscriptionUsage(subscription_id=sub.id))
+
+        invoice = Invoice(
+            user_id=user.id,
+            invoice_number=f"SUB-WAIVED-{sub.id:05d}",
+            description=f"{plan.name} Subscription Plan - Admin Waived",
+            amount=0.0,
+            grand_total=0.0,
+            amount_due=0.0,
+            status="paid",
+            date_issued=datetime.utcnow(),
+            date_paid=datetime.utcnow(),
+        )
+
+        db.session.add(invoice)
+        db.session.flush()
+
+        payment = Payment(
+            user_id=user.id,
+            invoice_id=invoice.id,
+            amount_jmd=0.0,
+            method="Admin Waiver",
+            status="completed",
+            transaction_type="subscription_waiver",
+            reference=f"Waived subscription {plan.name}",
+            notes=f"Admin waived subscription #{sub.id}. Reason: {reason}",
+            authorized_by_admin_id=current_user.id,
+        )
+
+        db.session.add(payment)
+        waived_count += 1
+
+    db.session.commit()
+
+    flash(f"{waived_count} subscription(s) activated as free/waived.", "success")
+    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
 @accounts_bp.route("/subscriptions/<int:sub_id>/remove-member/<int:user_id>", methods=["POST"])
 @admin_required
 def remove_subscription_member(sub_id, user_id):

@@ -75,12 +75,8 @@
         <i class="bi bi-exclamation-triangle"></i>
       </button>
 
-      <input type="text" name="waiver_reason" form="bulkSubForm"
-        class="form-control form-control-sm waiver-reason-input" placeholder="Waiver reason">
-
-      <button type="submit" form="bulkSubForm" formaction="{{ url_for('accounts_profiles.bulk_waive_subscriptions') }}"
-        class="btn btn-waive btn-sm action-btn" title="Activate as Complimentary / Waived"
-        onclick="return confirm('Activate selected pending subscription(s) as complimentary/free?');">
+      <button type="button" class="btn btn-waive btn-sm action-btn" title="Activate as Complimentary / Waived"
+        data-bs-toggle="modal" data-bs-target="#waiverModal">
         <i class="bi bi-gift"></i>
       </button>
 
@@ -330,7 +326,37 @@
   </div>
 
 </div>
+<div class="modal fade" id="waiverModal" tabindex="-1" aria-labelledby="waiverModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title" id="waiverModalLabel">Complimentary Subscription</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
 
+      <div class="modal-body">
+        <p class="text-muted mb-3">
+          Enter the reason for waiving the subscription charge.
+        </p>
+
+        <textarea name="waiver_reason" form="bulkSubForm" class="form-control" rows="4"
+          placeholder="Example: VIP promo, staff courtesy, customer service gesture..." required></textarea>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">
+          Cancel
+        </button>
+
+        <button type="submit" form="bulkSubForm"
+          formaction="{{ url_for('accounts_profiles.bulk_waive_subscriptions') }}" class="btn btn-waive"
+          onclick="return confirm('Activate selected pending subscription(s) as complimentary/free?');">
+          Activate Complimentary
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 <style>
   body {
     background: #f6f8fb;
@@ -722,12 +748,6 @@
 
     .subscriptions-header h3 {
       font-size: 1.6rem;
-    }
-
-    .waiver-reason-input {
-      width: 170px;
-      height: 38px;
-      border-radius: 10px;
     }
 
     .btn-waive {

@@ -1191,9 +1191,33 @@ def scan_package_in_shipment(shipment_id):
             "house_awb": package.house_awb,
         }), 200
 
+    allowed_statuses = ["overseas", "received at local port"]
+    current_status = (package.status or "").strip().lower()
+
+    if current_status not in allowed_statuses:
+        db.session.add(ShipmentScanLog(
+            shipment_id=shipment.id,
+            package_id=package.id,
+            scanned_value=scan_value,
+            scan_result="not_allowed",
+            scanned_by_id=current_user.id,
+            notes=f"Package status is {package.status}; scan-in not allowed"
+        ))
+        db.session.commit()
+
+        return jsonify({
+            "ok": False,
+            "status": "not_allowed",
+            "message": f"This package is already {package.status} and cannot be scanned in.",
+            "package_id": package.id,
+            "tracking_number": package.tracking_number,
+            "house_awb": package.house_awb,
+        }), 400
+
     package.received_scan_status = "scanned"
     package.received_scanned_at = datetime.now(timezone.utc)
     package.received_scanned_by_id = current_user.id
+    package.status = "Ready for Pick Up"
 
     db.session.add(ShipmentScanLog(
         shipment_id=shipment.id,
@@ -1201,7 +1225,7 @@ def scan_package_in_shipment(shipment_id):
         scanned_value=scan_value,
         scan_result="matched",
         scanned_by_id=current_user.id,
-        notes="Package scanned into shipment"
+        notes="Package scanned into shipment and marked Ready for Pick Up"
     ))
 
     db.session.commit()
@@ -1226,7 +1250,7 @@ def scan_package_in_shipment(shipment_id):
     return jsonify({
         "ok": True,
         "status": "scanned",
-        "message": "Package scanned successfully.",
+        "message": "Package scanned and marked Ready for Pick Up.",
         "package_id": package.id,
         "tracking_number": package.tracking_number,
         "house_awb": package.house_awb,

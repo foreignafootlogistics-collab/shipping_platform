@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request
@@ -6,7 +6,7 @@ from flask_login import current_user
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models import Claim, ClaimAuditLog, Wallet, WalletTransaction, Payment
+from app.models import Claim, ClaimAuditLog, Wallet, WalletTransaction, Payment, User
 from app.forms import AdminClaimDecisionForm
 from app.routes.admin_auth_routes import admin_required
 from app.utils.email_utils import send_claim_status_update_email
@@ -30,33 +30,105 @@ def _to_decimal(x, default="0"):
         return Decimal(default)
 
 
-# -----------------------------------------------------------
-# CLAIM QUEUE
-# -----------------------------------------------------------
-
 @admin_claims_bp.route("/", methods=["GET"])
 @admin_required
 def queue():
 
     status = request.args.get("status", "submitted")
+    search = (request.args.get("search") or "").strip()
+    date_filter = (request.args.get("date") or "").strip()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
 
-    q = Claim.query
+    if per_page not in [10, 25, 50, 100]:
+        per_page = 10
+
+    q = (
+        Claim.query
+        .join(Claim.user)
+    )
+
+    # -----------------------------------
+    # STATUS FILTER
+    # -----------------------------------
 
     if status and status != "all":
         q = q.filter(Claim.status == status)
 
-    claims = q.order_by(Claim.created_at.desc()).all()
+    # -----------------------------------
+    # SEARCH
+    # -----------------------------------
+
+    if search:
+        like = f"%{search}%"
+
+        q = q.filter(or_(
+            Claim.case_id.ilike(like),
+            Claim.house_awb.ilike(like),
+            Claim.tracking_number.ilike(like),
+            Claim.status.ilike(like),
+            Claim.user.has(User.full_name.ilike(like)),
+            Claim.user.has(User.email.ilike(like)),
+            Claim.user.has(User.registration_number.ilike(like)),
+        ))
+
+    # -----------------------------------
+    # DATE FILTER
+    # -----------------------------------
+
+    today = datetime.now(timezone.utc).date()
+
+    if date_filter == "today":
+        q = q.filter(db.func.date(Claim.created_at) == today)
+
+    elif date_filter == "7_days":
+        start_date = today - timedelta(days=7)
+        q = q.filter(db.func.date(Claim.created_at) >= start_date)
+
+    elif date_filter == "30_days":
+        start_date = today - timedelta(days=30)
+        q = q.filter(db.func.date(Claim.created_at) >= start_date)
+
+    # -----------------------------------
+    # PAGINATION
+    # -----------------------------------
+
+    pagination = (
+        q.order_by(Claim.created_at.desc())
+        .paginate(page=page, per_page=per_page, error_out=False)
+    )
+
+    claims = pagination.items
+
+    # -----------------------------------
+    # COUNTS
+    # -----------------------------------
+
+    counts = {
+        "all": Claim.query.count(),
+        "submitted": Claim.query.filter_by(status="submitted").count(),
+        "under_review": Claim.query.filter_by(status="under_review").count(),
+        "need_more_info": Claim.query.filter_by(status="need_more_info").count(),
+        "approved": Claim.query.filter_by(status="approved").count(),
+        "rejected": Claim.query.filter_by(status="rejected").count(),
+        "paid": Claim.query.filter_by(status="paid").count(),
+    }
 
     return render_template(
         "admin/claims/queue.html",
         claims=claims,
-        status=status
+        status=status,
+        counts=counts,
+        search=search,
+        date_filter=date_filter,
+        page=page,
+        per_page=per_page,
+        total_pages=max(pagination.pages or 1, 1),
+        total_results=pagination.total,
+        start_index=((page - 1) * per_page) + 1 if pagination.total else 0,
+        end_index=min(page * per_page, pagination.total),
     )
 
-
-# -----------------------------------------------------------
-# CLAIM REVIEW
-# -----------------------------------------------------------
 
 @admin_claims_bp.route("/<int:claim_id>", methods=["GET", "POST"])
 @admin_required

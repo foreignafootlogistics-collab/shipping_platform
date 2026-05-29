@@ -66,7 +66,7 @@ class User(db.Model, UserMixin):
     wallet = db.relationship('Wallet', back_populates='user', uselist=False)
     wallet_transactions = db.relationship('WalletTransaction', back_populates='user', lazy='dynamic')
     invoices = db.relationship('Invoice', back_populates='user', lazy='dynamic')
-    packages = db.relationship('Package', back_populates='user', lazy='dynamic')
+    packages = db.relationship('Package', back_populates='user', lazy='dynamic', foreign_keys='Package.user_id')
     prealerts = db.relationship('Prealert', back_populates='user', lazy='dynamic')
     scheduled_deliveries = db.relationship('ScheduledDelivery', back_populates='user', lazy='dynamic')
     authorized_pickups = db.relationship('AuthorizedPickup', back_populates='user', lazy='dynamic')
@@ -539,9 +539,38 @@ class Package(db.Model):
     # Status and destination
     status = db.Column(db.String, default="Overseas")
     destination_country = db.Column(db.String)
+  
+    # --------------------------------------------------
+    # Shipment Receiving Scan Tracking
+    # --------------------------------------------------
+    received_scan_status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="not_scanned",
+        index=True
+    )
+    # not_scanned | scanned
+
+    received_scanned_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True
+    )
+
+    received_scanned_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True,
+        index=True
+    )
+
+    received_scanned_by = db.relationship(
+        "User",
+        foreign_keys=[received_scanned_by_id],
+        lazy="joined"
+    )
 
     # Relations
-    user = db.relationship('User', back_populates='packages')
+    user = db.relationship('User', back_populates='packages', foreign_keys=[user_id])
     invoice = db.relationship('Invoice', back_populates='packages')
 
     scheduled_delivery = db.relationship(
@@ -662,6 +691,49 @@ class ShipmentArchiveLog(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
     shipment = db.relationship("ShipmentLog", backref=db.backref("archive_logs", lazy="dynamic"))
+
+class ShipmentScanLog(db.Model):
+    __tablename__ = "shipment_scan_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    shipment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("shipment_log.id"),
+        nullable=False,
+        index=True
+    )
+
+    package_id = db.Column(
+        db.Integer,
+        db.ForeignKey("packages.id"),
+        nullable=True,
+        index=True
+    )
+
+    scanned_value = db.Column(db.String(255), nullable=False, index=True)
+
+    scan_result = db.Column(db.String(30), nullable=False, default="matched")
+    # matched | already_scanned | not_found
+
+    scanned_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True,
+        index=True
+    )
+
+    scanned_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    notes = db.Column(db.String(255), nullable=True)
+
+    shipment = db.relationship("ShipmentLog")
+    package = db.relationship("Package")
+    scanned_by = db.relationship("User")
 
 
 class Claim(db.Model):

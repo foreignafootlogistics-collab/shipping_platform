@@ -37,7 +37,7 @@ from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
 from app.models import (
     Prealert, User, ScheduledDelivery, ShipmentLog, Invoice, ShipmentArchiveLog, Settings,
-    Package, Payment, shipment_packages, PackageAttachment
+    Package, Payment, shipment_packages, PackageAttachment, ShipmentScanLog
 )
 from app.models import Message as DBMessage
 from app.models import normalize_tracking
@@ -1109,6 +1109,131 @@ def admin_prealert_invoice(prealert_id):
 def admin_prealert_invoice_download(prealert_id):
     pa = Prealert.query.get_or_404(prealert_id)
     return serve_prealert_invoice_file(pa, download_name_prefix="prealert", as_attachment=True)
+
+
+@logistics_bp.route("/shipment-log/<int:shipment_id>/scan-package", methods=["POST"])
+@admin_required(roles=["operations"])
+def scan_package_in_shipment(shipment_id):
+    shipment = ShipmentLog.query.get_or_404(shipment_id)
+
+    blocked = _abort_if_archived(shipment)
+    if blocked:
+        return jsonify({
+            "ok": False,
+            "status": "archived",
+            "message": "This shipment is archived and cannot be scanned."
+        }), 403
+
+    payload = request.get_json(silent=True) or {}
+
+    raw_scan = (
+        request.form.get("scan_value")
+        or payload.get("scan_value")
+        or ""
+    )
+
+    scan_value = normalize_tracking(raw_scan)
+
+    if not scan_value:
+        return jsonify({
+            "ok": False,
+            "status": "empty",
+            "message": "Please scan or enter a tracking number."
+        }), 400
+
+    package = (
+        db.session.query(Package)
+        .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+        .filter(shipment_packages.c.shipment_id == shipment.id)
+        .filter(
+            or_(
+                func.upper(func.replace(Package.tracking_number, " ", "")) == scan_value,
+                func.upper(func.replace(Package.house_awb, " ", "")) == scan_value,
+            )
+        )
+        .first()
+    )
+
+    if not package:
+        db.session.add(ShipmentScanLog(
+            shipment_id=shipment.id,
+            package_id=None,
+            scanned_value=scan_value,
+            scan_result="not_found",
+            scanned_by_id=current_user.id,
+            notes="Scanned value not found in this shipment"
+        ))
+        db.session.commit()
+
+        return jsonify({
+            "ok": False,
+            "status": "not_found",
+            "message": f"{scan_value} was not found in this shipment."
+        }), 404
+
+    if package.received_scan_status == "scanned":
+        db.session.add(ShipmentScanLog(
+            shipment_id=shipment.id,
+            package_id=package.id,
+            scanned_value=scan_value,
+            scan_result="already_scanned",
+            scanned_by_id=current_user.id,
+            notes="Package was already scanned"
+        ))
+        db.session.commit()
+
+        return jsonify({
+            "ok": True,
+            "status": "already_scanned",
+            "message": "This package was already scanned.",
+            "package_id": package.id,
+            "tracking_number": package.tracking_number,
+            "house_awb": package.house_awb,
+        }), 200
+
+    package.received_scan_status = "scanned"
+    package.received_scanned_at = datetime.now(timezone.utc)
+    package.received_scanned_by_id = current_user.id
+
+    db.session.add(ShipmentScanLog(
+        shipment_id=shipment.id,
+        package_id=package.id,
+        scanned_value=scan_value,
+        scan_result="matched",
+        scanned_by_id=current_user.id,
+        notes="Package scanned into shipment"
+    ))
+
+    db.session.commit()
+
+    total_count = (
+        db.session.query(func.count(Package.id))
+        .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+        .filter(shipment_packages.c.shipment_id == shipment.id)
+        .scalar()
+        or 0
+    )
+
+    scanned_count = (
+        db.session.query(func.count(Package.id))
+        .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+        .filter(shipment_packages.c.shipment_id == shipment.id)
+        .filter(Package.received_scan_status == "scanned")
+        .scalar()
+        or 0
+    )
+
+    return jsonify({
+        "ok": True,
+        "status": "scanned",
+        "message": "Package scanned successfully.",
+        "package_id": package.id,
+        "tracking_number": package.tracking_number,
+        "house_awb": package.house_awb,
+        "total_count": total_count,
+        "scanned_count": scanned_count,
+        "missing_count": max(total_count - scanned_count, 0),
+    }), 200
 
 
 # --------------------------------------------------------------------------------------

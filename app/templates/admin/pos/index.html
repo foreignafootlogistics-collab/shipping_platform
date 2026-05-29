@@ -16,12 +16,8 @@
         <div class="card-body">
           <h5 class="mb-3">1. Search Customer</h5>
 
-          <input
-            type="text"
-            id="customerSearch"
-            class="form-control"
-            placeholder="Search by name, email, phone, registration #"
-          >
+          <input type="text" id="customerSearch" class="form-control"
+            placeholder="Search by name, email, phone, registration #">
 
           <div id="customerResults" class="list-group mt-3"></div>
 
@@ -39,13 +35,8 @@
           <hr>
 
           <h6 class="mb-2">Quick Deliver Scan</h6>
-          <input
-            type="text"
-            id="deliverScanInput"
-            class="form-control"
-            placeholder="Scan paid package to mark Delivered"
-            autocomplete="off"
-          >
+          <input type="text" id="deliverScanInput" class="form-control"
+            placeholder="Scan paid package to mark Delivered" autocomplete="off">
           <button id="deliverScanBtn" type="button" class="btn btn-outline-success w-100 mt-2">
             <i class="bi bi-check2-circle me-1"></i>Mark Delivered
           </button>
@@ -61,15 +52,30 @@
 
           <div class="mb-3">
             <label class="form-label">Scan or Enter Barcode</label>
-            <input
-              type="text"
-              id="barcodeScanInput"
-              class="form-control"
-              placeholder="Scan or type tracking # / House AWB and press Enter"
-              autocomplete="off"
-            >
-            <div class="form-text">Works even without selecting a customer first.</div>
+
+            <input type="text" id="barcodeScanInput" class="form-control"
+              placeholder="Scan or type tracking # / House AWB and press Enter" autocomplete="off">
+
+            <div class="d-flex gap-2 mt-2">
+              <button type="button" id="openPosCameraBtn" class="btn btn-outline-dark">
+                <i class="bi bi-camera"></i>
+                Camera Scan
+              </button>
+            </div>
+
+            <div class="form-text">
+              Works even without selecting a customer first.
+            </div>
+
             <div id="scanFeedback" class="small mt-2"></div>
+
+            <div id="posCameraBox" class="mt-3" style="display:none;">
+              <div id="posCameraReader" style="width:100%; max-width:420px;"></div>
+
+              <button type="button" id="stopPosCameraBtn" class="btn btn-sm btn-outline-danger mt-2">
+                Stop Camera
+              </button>
+            </div>
           </div>
 
           <div class="table-responsive">
@@ -152,235 +158,237 @@
   </div>
 </div>
 
+<script src="https://unpkg.com/html5-qrcode"></script>
+
 <script>
-let selectedCustomer = null;
-let loadedPackages = [];
-let lastCheckoutInvoiceIds = [];
-let searchTimer = null;
-let audioCtx = null;
+  let selectedCustomer = null;
+  let loadedPackages = [];
+  let lastCheckoutInvoiceIds = [];
+  let searchTimer = null;
+  let audioCtx = null;
 
-const customerSearch = document.getElementById("customerSearch");
-const customerResults = document.getElementById("customerResults");
-const selectedCustomerBox = document.getElementById("selectedCustomerBox");
-const selectedCustomerName = document.getElementById("selectedCustomerName");
-const selectedCustomerEmail = document.getElementById("selectedCustomerEmail");
-const selectedCustomerReg = document.getElementById("selectedCustomerReg");
-const packagesTableBody = document.getElementById("packagesTableBody");
-const selectAllPackages = document.getElementById("selectAllPackages");
-const paymentMethod = document.getElementById("paymentMethod");
-const checkoutNotes = document.getElementById("checkoutNotes");
-const selectedCount = document.getElementById("selectedCount");
-const selectedTotal = document.getElementById("selectedTotal");
-const checkoutBtn = document.getElementById("checkoutBtn");
-const checkoutMessage = document.getElementById("checkoutMessage");
-const checkoutActions = document.getElementById("checkoutActions");
-const printReceiptBtn = document.getElementById("printReceiptBtn");
-const emailReceiptBtn = document.getElementById("emailReceiptBtn");
-const barcodeScanInput = document.getElementById("barcodeScanInput");
-const scanFeedback = document.getElementById("scanFeedback");
-const deliverScanInput = document.getElementById("deliverScanInput");
-const deliverScanBtn = document.getElementById("deliverScanBtn");
-const deliverScanMessage = document.getElementById("deliverScanMessage");
+  const customerSearch = document.getElementById("customerSearch");
+  const customerResults = document.getElementById("customerResults");
+  const selectedCustomerBox = document.getElementById("selectedCustomerBox");
+  const selectedCustomerName = document.getElementById("selectedCustomerName");
+  const selectedCustomerEmail = document.getElementById("selectedCustomerEmail");
+  const selectedCustomerReg = document.getElementById("selectedCustomerReg");
+  const packagesTableBody = document.getElementById("packagesTableBody");
+  const selectAllPackages = document.getElementById("selectAllPackages");
+  const paymentMethod = document.getElementById("paymentMethod");
+  const checkoutNotes = document.getElementById("checkoutNotes");
+  const selectedCount = document.getElementById("selectedCount");
+  const selectedTotal = document.getElementById("selectedTotal");
+  const checkoutBtn = document.getElementById("checkoutBtn");
+  const checkoutMessage = document.getElementById("checkoutMessage");
+  const checkoutActions = document.getElementById("checkoutActions");
+  const printReceiptBtn = document.getElementById("printReceiptBtn");
+  const emailReceiptBtn = document.getElementById("emailReceiptBtn");
+  const barcodeScanInput = document.getElementById("barcodeScanInput");
+  const scanFeedback = document.getElementById("scanFeedback");
+  const deliverScanInput = document.getElementById("deliverScanInput");
+  const deliverScanBtn = document.getElementById("deliverScanBtn");
+  const deliverScanMessage = document.getElementById("deliverScanMessage");
 
-function beep(type = "ok") {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    if (!audioCtx) audioCtx = new Ctx();
+  function beep(type = "ok") {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      if (!audioCtx) audioCtx = new Ctx();
 
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
 
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
 
-    osc.type = "square";
-    osc.frequency.value = type === "ok" ? 880 : 220;
-    gain.gain.value = 0.03;
+      osc.type = "square";
+      osc.frequency.value = type === "ok" ? 880 : 220;
+      gain.gain.value = 0.03;
 
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.08);
-  } catch (e) {}
-}
-
-function setScanFeedback(message = "", type = "") {
-  if (!scanFeedback) return;
-
-  scanFeedback.className = "small mt-2";
-  scanFeedback.textContent = message;
-
-  if (type === "success") scanFeedback.classList.add("text-success");
-  if (type === "error") scanFeedback.classList.add("text-danger");
-  if (type === "info") scanFeedback.classList.add("text-muted");
-}
-
-function normalizeScanValue(value) {
-  return String(value || "")
-    .trim()
-    .replace(/\s+/g, "")
-    .toUpperCase();
-}
-
-function formatMoney(value) {
-  const n = Number(value || 0);
-  return `$${n.toFixed(2)}`;
-}
-
-function getSelectedPackageIds() {
-  return [...document.querySelectorAll(".pkg-check:checked")].map(cb => Number(cb.value));
-}
-
-function updateSummary() {
-  const ids = getSelectedPackageIds();
-
-  let total = 0;
-  ids.forEach(id => {
-    const pkg = loadedPackages.find(p => Number(p.id) === Number(id));
-    if (pkg) total += Number(pkg.amount_due || 0);
-  });
-
-  selectedCount.textContent = ids.length;
-  selectedTotal.textContent = formatMoney(total);
-  checkoutBtn.disabled = !selectedCustomer || ids.length === 0;
-}
-
-function checkPackageById(packageId) {
-  const cb = document.querySelector(`.pkg-check[value="${packageId}"]`);
-  if (!cb) return false;
-
-  if (cb.checked) return true;
-
-  cb.checked = true;
-  updateSummary();
-
-  const row = cb.closest("tr");
-  if (row) {
-    row.classList.add("table-success");
-    row.scrollIntoView({ behavior: "smooth", block: "center" });
-    setTimeout(() => row.classList.remove("table-success"), 800);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.08);
+    } catch (e) { }
   }
 
-  return true;
-}
+  function setScanFeedback(message = "", type = "") {
+    if (!scanFeedback) return;
 
-/**
- * Returns:
- * { status: "found", pkg }
- * { status: "multiple", matches }
- * { status: "none" }
- */
-function findPackageByScan(scanValue) {
-  const normalized = normalizeScanValue(scanValue);
-  if (!normalized) return { status: "none" };
+    scanFeedback.className = "small mt-2";
+    scanFeedback.textContent = message;
 
-  const exactMatches = loadedPackages.filter(pkg => {
-    const tracking = normalizeScanValue(pkg.tracking_number);
-    const houseAwb = normalizeScanValue(pkg.house_awb);
-    return normalized === tracking || normalized === houseAwb;
-  });
-
-  if (exactMatches.length === 1) {
-    return { status: "found", pkg: exactMatches[0] };
-  }
-  if (exactMatches.length > 1) {
-    return { status: "multiple", matches: exactMatches };
+    if (type === "success") scanFeedback.classList.add("text-success");
+    if (type === "error") scanFeedback.classList.add("text-danger");
+    if (type === "info") scanFeedback.classList.add("text-muted");
   }
 
-  const endsWithMatches = loadedPackages.filter(pkg => {
-    const tracking = normalizeScanValue(pkg.tracking_number);
-    const houseAwb = normalizeScanValue(pkg.house_awb);
-    return (
-      (tracking && tracking.endsWith(normalized)) ||
-      (houseAwb && houseAwb.endsWith(normalized))
-    );
-  });
-
-  if (endsWithMatches.length === 1) {
-    return { status: "found", pkg: endsWithMatches[0] };
-  }
-  if (endsWithMatches.length > 1) {
-    return { status: "multiple", matches: endsWithMatches };
+  function normalizeScanValue(value) {
+    return String(value || "")
+      .trim()
+      .replace(/\s+/g, "")
+      .toUpperCase();
   }
 
-  const containsMatches = loadedPackages.filter(pkg => {
-    const tracking = normalizeScanValue(pkg.tracking_number);
-    const houseAwb = normalizeScanValue(pkg.house_awb);
-    return (
-      (tracking && tracking.includes(normalized)) ||
-      (houseAwb && houseAwb.includes(normalized))
-    );
-  });
-
-  if (containsMatches.length === 1) {
-    return { status: "found", pkg: containsMatches[0] };
-  }
-  if (containsMatches.length > 1) {
-    return { status: "multiple", matches: containsMatches };
+  function formatMoney(value) {
+    const n = Number(value || 0);
+    return `$${n.toFixed(2)}`;
   }
 
-  return { status: "none" };
-}
-
-async function lookupPackageGlobally(scanValue) {
-  const resp = await fetch(`/admin/pos/scan-lookup?q=${encodeURIComponent(scanValue)}`, {
-    headers: { "X-Requested-With": "XMLHttpRequest" },
-    credentials: "same-origin"
-  });
-
-  const data = await resp.json();
-  return { ok: resp.ok && data.ok, data };
-}
-
-async function chooseCustomer(customer, focusScanner = true) {
-  selectedCustomer = customer;
-
-  selectedCustomerBox.classList.remove("d-none");
-  selectedCustomerName.textContent = customer.name || "";
-  selectedCustomerEmail.textContent = customer.email || "";
-  selectedCustomerReg.textContent = customer.registration_number || "";
-
-  customerResults.innerHTML = "";
-  customerSearch.value = customer.name || "";
-
-  checkoutActions.classList.add("d-none");
-  lastCheckoutInvoiceIds = [];
-  checkoutMessage.innerHTML = "";
-
-  await loadPackages(customer.id);
-
-  if (focusScanner && barcodeScanInput) {
-    barcodeScanInput.value = "";
-    barcodeScanInput.focus();
+  function getSelectedPackageIds() {
+    return [...document.querySelectorAll(".pkg-check:checked")].map(cb => Number(cb.value));
   }
-}
 
-async function loadPackages(userId) {
-  packagesTableBody.innerHTML = `
-    <tr>
-      <td colspan="7" class="text-center text-muted py-4">Loading packages...</td>
-    </tr>
-  `;
+  function updateSummary() {
+    const ids = getSelectedPackageIds();
 
-  try {
-    const resp = await fetch(`/admin/pos/customer/${userId}/packages`, {
+    let total = 0;
+    ids.forEach(id => {
+      const pkg = loadedPackages.find(p => Number(p.id) === Number(id));
+      if (pkg) total += Number(pkg.amount_due || 0);
+    });
+
+    selectedCount.textContent = ids.length;
+    selectedTotal.textContent = formatMoney(total);
+    checkoutBtn.disabled = !selectedCustomer || ids.length === 0;
+  }
+
+  function checkPackageById(packageId) {
+    const cb = document.querySelector(`.pkg-check[value="${packageId}"]`);
+    if (!cb) return false;
+
+    if (cb.checked) return true;
+
+    cb.checked = true;
+    updateSummary();
+
+    const row = cb.closest("tr");
+    if (row) {
+      row.classList.add("table-success");
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => row.classList.remove("table-success"), 800);
+    }
+
+    return true;
+  }
+
+  /**
+   * Returns:
+   * { status: "found", pkg }
+   * { status: "multiple", matches }
+   * { status: "none" }
+   */
+  function findPackageByScan(scanValue) {
+    const normalized = normalizeScanValue(scanValue);
+    if (!normalized) return { status: "none" };
+
+    const exactMatches = loadedPackages.filter(pkg => {
+      const tracking = normalizeScanValue(pkg.tracking_number);
+      const houseAwb = normalizeScanValue(pkg.house_awb);
+      return normalized === tracking || normalized === houseAwb;
+    });
+
+    if (exactMatches.length === 1) {
+      return { status: "found", pkg: exactMatches[0] };
+    }
+    if (exactMatches.length > 1) {
+      return { status: "multiple", matches: exactMatches };
+    }
+
+    const endsWithMatches = loadedPackages.filter(pkg => {
+      const tracking = normalizeScanValue(pkg.tracking_number);
+      const houseAwb = normalizeScanValue(pkg.house_awb);
+      return (
+        (tracking && tracking.endsWith(normalized)) ||
+        (houseAwb && houseAwb.endsWith(normalized))
+      );
+    });
+
+    if (endsWithMatches.length === 1) {
+      return { status: "found", pkg: endsWithMatches[0] };
+    }
+    if (endsWithMatches.length > 1) {
+      return { status: "multiple", matches: endsWithMatches };
+    }
+
+    const containsMatches = loadedPackages.filter(pkg => {
+      const tracking = normalizeScanValue(pkg.tracking_number);
+      const houseAwb = normalizeScanValue(pkg.house_awb);
+      return (
+        (tracking && tracking.includes(normalized)) ||
+        (houseAwb && houseAwb.includes(normalized))
+      );
+    });
+
+    if (containsMatches.length === 1) {
+      return { status: "found", pkg: containsMatches[0] };
+    }
+    if (containsMatches.length > 1) {
+      return { status: "multiple", matches: containsMatches };
+    }
+
+    return { status: "none" };
+  }
+
+  async function lookupPackageGlobally(scanValue) {
+    const resp = await fetch(`/admin/pos/scan-lookup?q=${encodeURIComponent(scanValue)}`, {
       headers: { "X-Requested-With": "XMLHttpRequest" },
       credentials: "same-origin"
     });
 
     const data = await resp.json();
-    loadedPackages = data.packages || [];
+    return { ok: resp.ok && data.ok, data };
+  }
 
-    if (!loadedPackages.length) {
-      packagesTableBody.innerHTML = `
+  async function chooseCustomer(customer, focusScanner = true) {
+    selectedCustomer = customer;
+
+    selectedCustomerBox.classList.remove("d-none");
+    selectedCustomerName.textContent = customer.name || "";
+    selectedCustomerEmail.textContent = customer.email || "";
+    selectedCustomerReg.textContent = customer.registration_number || "";
+
+    customerResults.innerHTML = "";
+    customerSearch.value = customer.name || "";
+
+    checkoutActions.classList.add("d-none");
+    lastCheckoutInvoiceIds = [];
+    checkoutMessage.innerHTML = "";
+
+    await loadPackages(customer.id);
+
+    if (focusScanner && barcodeScanInput) {
+      barcodeScanInput.value = "";
+      barcodeScanInput.focus();
+    }
+  }
+
+  async function loadPackages(userId) {
+    packagesTableBody.innerHTML = `
+    <tr>
+      <td colspan="7" class="text-center text-muted py-4">Loading packages...</td>
+    </tr>
+  `;
+
+    try {
+      const resp = await fetch(`/admin/pos/customer/${userId}/packages`, {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin"
+      });
+
+      const data = await resp.json();
+      loadedPackages = data.packages || [];
+
+      if (!loadedPackages.length) {
+        packagesTableBody.innerHTML = `
         <tr>
           <td colspan="7" class="text-center text-muted py-4">No eligible packages found</td>
         </tr>
       `;
-      updateSummary();
-      return;
-    }
+        updateSummary();
+        return;
+      }
 
-    packagesTableBody.innerHTML = loadedPackages.map(pkg => `
+      packagesTableBody.innerHTML = loadedPackages.map(pkg => `
       <tr>
         <td>
           <input type="checkbox" class="pkg-check" value="${pkg.id}">
@@ -390,118 +398,92 @@ async function loadPackages(userId) {
         <td>${pkg.description || ""}</td>
         <td>
           ${pkg.invoice_number
-            ? `<span class="badge bg-info text-dark">${pkg.invoice_number}</span>`
-            : `<span class="text-muted">—</span>`}
+          ? `<span class="badge bg-info text-dark">${pkg.invoice_number}</span>`
+          : `<span class="text-muted">—</span>`}
         </td>
         <td>${pkg.status || ""}</td>
         <td class="text-end">${formatMoney(pkg.amount_due)}</td>
       </tr>
     `).join("");
 
-    document.querySelectorAll(".pkg-check").forEach(cb => {
-      cb.addEventListener("change", updateSummary);
-    });
+      document.querySelectorAll(".pkg-check").forEach(cb => {
+        cb.addEventListener("change", updateSummary);
+      });
 
-    updateSummary();
-  } catch (err) {
-    console.error("POS package load failed:", err);
-    packagesTableBody.innerHTML = `
+      updateSummary();
+    } catch (err) {
+      console.error("POS package load failed:", err);
+      packagesTableBody.innerHTML = `
       <tr>
         <td colspan="7" class="text-center text-danger py-4">Failed to load packages</td>
       </tr>
     `;
-  }
-}
-
-customerSearch.addEventListener("input", function () {
-  const q = this.value.trim();
-
-  clearTimeout(searchTimer);
-
-  if (!q) {
-    customerResults.innerHTML = "";
-    return;
+    }
   }
 
-  searchTimer = setTimeout(async () => {
-    try {
-      const resp = await fetch(`/admin/pos/search-customers?q=${encodeURIComponent(q)}`, {
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-        credentials: "same-origin"
-      });
+  customerSearch.addEventListener("input", function () {
+    const q = this.value.trim();
 
-      const rows = await resp.json();
+    clearTimeout(searchTimer);
+
+    if (!q) {
       customerResults.innerHTML = "";
+      return;
+    }
 
-      if (!rows.length) {
-        customerResults.innerHTML = `<div class="list-group-item text-muted">No customers found</div>`;
-        return;
-      }
+    searchTimer = setTimeout(async () => {
+      try {
+        const resp = await fetch(`/admin/pos/search-customers?q=${encodeURIComponent(q)}`, {
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          credentials: "same-origin"
+        });
 
-      rows.forEach(row => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "list-group-item list-group-item-action";
-        btn.innerHTML = `
+        const rows = await resp.json();
+        customerResults.innerHTML = "";
+
+        if (!rows.length) {
+          customerResults.innerHTML = `<div class="list-group-item text-muted">No customers found</div>`;
+          return;
+        }
+
+        rows.forEach(row => {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "list-group-item list-group-item-action";
+          btn.innerHTML = `
           <div class="fw-semibold">${row.name || "Customer"}</div>
           <div class="small text-muted">${row.email || ""}</div>
           <div class="small text-muted">${row.registration_number || ""}</div>
         `;
-        btn.addEventListener("click", () => chooseCustomer(row));
-        customerResults.appendChild(btn);
-      });
-    } catch (err) {
-      console.error("POS customer search failed:", err);
-      customerResults.innerHTML = `<div class="list-group-item text-danger">Search failed</div>`;
-    }
-  }, 300);
-});
-
-selectAllPackages.addEventListener("change", function () {
-  document.querySelectorAll(".pkg-check").forEach(cb => {
-    cb.checked = this.checked;
-  });
-  updateSummary();
-});
-
-if (barcodeScanInput) {
-  barcodeScanInput.addEventListener("keydown", async function (e) {
-    if (e.key !== "Enter") return;
-
-    e.preventDefault();
-
-    const raw = barcodeScanInput.value;
-    const normalized = normalizeScanValue(raw);
-    if (!normalized) return;
-
-    let scanResult = selectedCustomer ? findPackageByScan(normalized) : { status: "none" };
-
-    if (scanResult.status === "multiple") {
-      barcodeScanInput.classList.add("is-invalid");
-      setScanFeedback("Multiple matches found. Type more characters.", "error");
-      beep("error");
-      setTimeout(() => barcodeScanInput.classList.remove("is-invalid"), 1200);
-      barcodeScanInput.select();
-      return;
-    }
-
-    let pkg = scanResult.status === "found" ? scanResult.pkg : null;
-
-    if (!pkg) {
-      const lookup = await lookupPackageGlobally(normalized);
-
-      if (!lookup.ok) {
-        barcodeScanInput.classList.add("is-invalid");
-        setScanFeedback(lookup.data?.error || "Package not found.", "error");
-        beep("error");
-        setTimeout(() => barcodeScanInput.classList.remove("is-invalid"), 1200);
-        barcodeScanInput.select();
-        return;
+          btn.addEventListener("click", () => chooseCustomer(row));
+          customerResults.appendChild(btn);
+        });
+      } catch (err) {
+        console.error("POS customer search failed:", err);
+        customerResults.innerHTML = `<div class="list-group-item text-danger">Search failed</div>`;
       }
+    }, 300);
+  });
 
-      await chooseCustomer(lookup.data.customer, false);
+  selectAllPackages.addEventListener("change", function () {
+    document.querySelectorAll(".pkg-check").forEach(cb => {
+      cb.checked = this.checked;
+    });
+    updateSummary();
+  });
 
-      scanResult = findPackageByScan(normalized);
+  if (barcodeScanInput) {
+    barcodeScanInput.addEventListener("keydown", async function (e) {
+      if (e.key !== "Enter") return;
+
+      e.preventDefault();
+
+      const raw = barcodeScanInput.value;
+      const normalized = normalizeScanValue(raw);
+      if (!normalized) return;
+
+      let scanResult = selectedCustomer ? findPackageByScan(normalized) : { status: "none" };
+
       if (scanResult.status === "multiple") {
         barcodeScanInput.classList.add("is-invalid");
         setScanFeedback("Multiple matches found. Type more characters.", "error");
@@ -511,229 +493,357 @@ if (barcodeScanInput) {
         return;
       }
 
-      pkg = scanResult.status === "found" ? scanResult.pkg : null;
+      let pkg = scanResult.status === "found" ? scanResult.pkg : null;
 
-      if (!pkg && lookup.data.package?.id) {
-        pkg = { id: lookup.data.package.id, tracking_number: lookup.data.package.tracking_number, house_awb: lookup.data.package.house_awb };
+      if (!pkg) {
+        const lookup = await lookupPackageGlobally(normalized);
+
+        if (!lookup.ok) {
+          barcodeScanInput.classList.add("is-invalid");
+          setScanFeedback(lookup.data?.error || "Package not found.", "error");
+          beep("error");
+          setTimeout(() => barcodeScanInput.classList.remove("is-invalid"), 1200);
+          barcodeScanInput.select();
+          return;
+        }
+
+        await chooseCustomer(lookup.data.customer, false);
+
+        scanResult = findPackageByScan(normalized);
+        if (scanResult.status === "multiple") {
+          barcodeScanInput.classList.add("is-invalid");
+          setScanFeedback("Multiple matches found. Type more characters.", "error");
+          beep("error");
+          setTimeout(() => barcodeScanInput.classList.remove("is-invalid"), 1200);
+          barcodeScanInput.select();
+          return;
+        }
+
+        pkg = scanResult.status === "found" ? scanResult.pkg : null;
+
+        if (!pkg && lookup.data.package?.id) {
+          pkg = { id: lookup.data.package.id, tracking_number: lookup.data.package.tracking_number, house_awb: lookup.data.package.house_awb };
+        }
       }
-    }
 
-    if (!pkg) {
-      barcodeScanInput.classList.add("is-invalid");
-      setScanFeedback("Package not found.", "error");
-      beep("error");
-      setTimeout(() => barcodeScanInput.classList.remove("is-invalid"), 1200);
-      barcodeScanInput.select();
-      return;
-    }
+      if (!pkg) {
+        barcodeScanInput.classList.add("is-invalid");
+        setScanFeedback("Package not found.", "error");
+        beep("error");
+        setTimeout(() => barcodeScanInput.classList.remove("is-invalid"), 1200);
+        barcodeScanInput.select();
+        return;
+      }
 
-    const ok = checkPackageById(pkg.id);
+      const ok = checkPackageById(pkg.id);
 
-    if (ok) {
-      barcodeScanInput.classList.remove("is-invalid");
-      barcodeScanInput.classList.add("is-valid");
-      setScanFeedback(`Selected package ${pkg.tracking_number || pkg.house_awb || ""}`, "success");
-      beep("ok");
-      setTimeout(() => barcodeScanInput.classList.remove("is-valid"), 800);
-    }
+      if (ok) {
+        barcodeScanInput.classList.remove("is-invalid");
+        barcodeScanInput.classList.add("is-valid");
+        const customerLabel = selectedCustomer
+          ? `${selectedCustomer.name || "Customer"} ${selectedCustomer.registration_number ? "(" + selectedCustomer.registration_number + ")" : ""}`
+          : "Customer";
 
-    const allIds = loadedPackages.map(p => p.id);
-    const selectedIds = getSelectedPackageIds();
+        setScanFeedback(
+          `✅ Customer Found: ${customerLabel} | Package Selected: ${pkg.tracking_number || pkg.house_awb || ""}`,
+          "success"
+        );
+        beep("ok");
+        setTimeout(() => barcodeScanInput.classList.remove("is-valid"), 800);
+      }
 
-    if (selectedIds.length === allIds.length && allIds.length > 0) {
-      checkoutBtn.focus();
-    }
+      const allIds = loadedPackages.map(p => p.id);
+      const selectedIds = getSelectedPackageIds();
 
-    barcodeScanInput.value = "";
-    barcodeScanInput.focus();
-  });
-}
+      if (selectedIds.length === allIds.length && allIds.length > 0) {
+        checkoutBtn.focus();
+      }
 
-checkoutBtn.addEventListener("click", async function () {
-  if (!selectedCustomer) return;
-
-  const package_ids = getSelectedPackageIds();
-  if (!package_ids.length) return;
-
-  checkoutBtn.disabled = true;
-  checkoutBtn.textContent = "Processing...";
-  checkoutMessage.innerHTML = "";
-  checkoutActions.classList.add("d-none");
-  lastCheckoutInvoiceIds = [];
-
-  try {
-    const resp = await fetch("/admin/pos/checkout", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-        "X-CSRFToken": (typeof getCSRFToken === "function" ? getCSRFToken() : "")
-      },
-      credentials: "same-origin",
-      body: JSON.stringify({
-        user_id: selectedCustomer.id,
-        package_ids,
-        payment_method: paymentMethod.value,
-        notes: checkoutNotes.value
-      })
+      barcodeScanInput.value = "";
+      barcodeScanInput.focus();
     });
+  }
 
-    const data = await resp.json();
+  checkoutBtn.addEventListener("click", async function () {
+    if (!selectedCustomer) return;
 
-    if (!data.ok) {
-      checkoutMessage.innerHTML = `<div class="alert alert-danger">${data.error || "Checkout failed."}</div>`;
-      checkoutBtn.disabled = false;
-      checkoutBtn.textContent = "Complete Checkout";
-      checkoutActions.classList.add("d-none");
-      lastCheckoutInvoiceIds = [];
-      return;
-    }
+    const package_ids = getSelectedPackageIds();
+    if (!package_ids.length) return;
 
-    lastCheckoutInvoiceIds = data.invoice_ids || [];
+    checkoutBtn.disabled = true;
+    checkoutBtn.textContent = "Processing...";
+    checkoutMessage.innerHTML = "";
+    checkoutActions.classList.add("d-none");
+    lastCheckoutInvoiceIds = [];
 
-    checkoutMessage.innerHTML = `
+    try {
+      const resp = await fetch("/admin/pos/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-CSRFToken": (typeof getCSRFToken === "function" ? getCSRFToken() : "")
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          user_id: selectedCustomer.id,
+          package_ids,
+          payment_method: paymentMethod.value,
+          notes: checkoutNotes.value
+        })
+      });
+
+      const data = await resp.json();
+
+      if (!data.ok) {
+        checkoutMessage.innerHTML = `<div class="alert alert-danger">${data.error || "Checkout failed."}</div>`;
+        checkoutBtn.disabled = false;
+        checkoutBtn.textContent = "Complete Checkout";
+        checkoutActions.classList.add("d-none");
+        lastCheckoutInvoiceIds = [];
+        return;
+      }
+
+      lastCheckoutInvoiceIds = data.invoice_ids || [];
+
+      checkoutMessage.innerHTML = `
       <div class="alert alert-success">
         ${data.message}<br>
         Total: ${formatMoney(data.total)}
       </div>
     `;
 
-    checkoutActions.classList.toggle("d-none", !lastCheckoutInvoiceIds.length);
+      checkoutActions.classList.toggle("d-none", !lastCheckoutInvoiceIds.length);
 
-    await loadPackages(selectedCustomer.id);
-    selectAllPackages.checked = false;
-    updateSummary();
-    if (barcodeScanInput) barcodeScanInput.focus();
-  } catch (err) {
-    console.error("POS checkout failed:", err);
-    checkoutMessage.innerHTML = `<div class="alert alert-danger">Something went wrong.</div>`;
-    checkoutActions.classList.add("d-none");
-    lastCheckoutInvoiceIds = [];
-  }
-
-  checkoutBtn.disabled = false;
-  checkoutBtn.textContent = "Complete Checkout";
-});
-
-printReceiptBtn.addEventListener("click", function () {
-  if (!lastCheckoutInvoiceIds.length) return;
-  const invoiceId = lastCheckoutInvoiceIds[0];
-  window.open(`/admin/pos/invoice/${invoiceId}/receipt?print=1`, "_blank");
-});
-
-emailReceiptBtn.addEventListener("click", async function () {
-  if (!lastCheckoutInvoiceIds.length) return;
-
-  const invoiceId = lastCheckoutInvoiceIds[0];
-  const originalText = emailReceiptBtn.innerHTML;
-
-  emailReceiptBtn.disabled = true;
-  emailReceiptBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Sending...`;
-
-  try {
-    const resp = await fetch(`/admin/pos/invoice/${invoiceId}/email-receipt`, {
-      method: "POST",
-      headers: {
-        "X-Requested-With": "XMLHttpRequest",
-        "X-CSRFToken": (typeof getCSRFToken === "function" ? getCSRFToken() : "")
-      },
-      credentials: "same-origin"
-    });
-
-    const data = await resp.json();
-
-    if (!resp.ok || !data.ok) {
-      alert(data.error || "Failed to email receipt.");
-      return;
-    }
-
-    alert(data.message || "Receipt emailed successfully.");
-  } catch (err) {
-    alert("Something went wrong while emailing the receipt.");
-  } finally {
-    emailReceiptBtn.disabled = false;
-    emailReceiptBtn.innerHTML = originalText;
-  }
-});
-
-async function handleDeliverScan() {
-  const raw = deliverScanInput.value;
-  const normalized = normalizeScanValue(raw);
-
-  if (!normalized) return;
-
-  deliverScanBtn.disabled = true;
-  deliverScanMessage.innerHTML = "";
-
-  try {
-    const resp = await fetch("/admin/pos/scan-deliver", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-        "X-CSRFToken": (typeof getCSRFToken === "function" ? getCSRFToken() : "")
-      },
-      credentials: "same-origin",
-      body: JSON.stringify({
-        scan_value: normalized
-      })
-    });
-
-    const data = await resp.json();
-
-    if (!resp.ok || !data.ok) {
-      deliverScanInput.classList.add("is-invalid");
-      deliverScanMessage.innerHTML = `<div class="alert alert-danger py-2 mb-0">${data.error || "Could not mark delivered."}</div>`;
-      beep("error");
-      setTimeout(() => deliverScanInput.classList.remove("is-invalid"), 1200);
-      deliverScanInput.select();
-      return;
-    }
-
-    deliverScanInput.classList.remove("is-invalid");
-    deliverScanInput.classList.add("is-valid");
-    deliverScanMessage.innerHTML = `<div class="alert alert-success py-2 mb-0">${data.message}</div>`;
-    beep("ok");
-
-    if (selectedCustomer && data.customer && Number(selectedCustomer.id) === Number(data.customer.id)) {
       await loadPackages(selectedCustomer.id);
+      selectAllPackages.checked = false;
+      updateSummary();
+      if (barcodeScanInput) barcodeScanInput.focus();
+    } catch (err) {
+      console.error("POS checkout failed:", err);
+      checkoutMessage.innerHTML = `<div class="alert alert-danger">Something went wrong.</div>`;
+      checkoutActions.classList.add("d-none");
+      lastCheckoutInvoiceIds = [];
     }
 
-    deliverScanInput.value = "";
-    deliverScanInput.focus();
-    setTimeout(() => deliverScanInput.classList.remove("is-valid"), 800);
-  } catch (err) {
-    deliverScanMessage.innerHTML = `<div class="alert alert-danger py-2 mb-0">Something went wrong.</div>`;
-    beep("error");
-  } finally {
-    deliverScanBtn.disabled = false;
-  }
-}
-
-if (deliverScanBtn) {
-  deliverScanBtn.addEventListener("click", handleDeliverScan);
-}
-
-if (deliverScanInput) {
-  deliverScanInput.addEventListener("keydown", function (e) {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
-    handleDeliverScan();
+    checkoutBtn.disabled = false;
+    checkoutBtn.textContent = "Complete Checkout";
   });
-}
+
+  printReceiptBtn.addEventListener("click", function () {
+    if (!lastCheckoutInvoiceIds.length) return;
+    const invoiceId = lastCheckoutInvoiceIds[0];
+    window.open(`/admin/pos/invoice/${invoiceId}/receipt?print=1`, "_blank");
+  });
+
+  emailReceiptBtn.addEventListener("click", async function () {
+    if (!lastCheckoutInvoiceIds.length) return;
+
+    const invoiceId = lastCheckoutInvoiceIds[0];
+    const originalText = emailReceiptBtn.innerHTML;
+
+    emailReceiptBtn.disabled = true;
+    emailReceiptBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Sending...`;
+
+    try {
+      const resp = await fetch(`/admin/pos/invoice/${invoiceId}/email-receipt`, {
+        method: "POST",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+          "X-CSRFToken": (typeof getCSRFToken === "function" ? getCSRFToken() : "")
+        },
+        credentials: "same-origin"
+      });
+
+      const data = await resp.json();
+
+      if (!resp.ok || !data.ok) {
+        alert(data.error || "Failed to email receipt.");
+        return;
+      }
+
+      alert(data.message || "Receipt emailed successfully.");
+    } catch (err) {
+      alert("Something went wrong while emailing the receipt.");
+    } finally {
+      emailReceiptBtn.disabled = false;
+      emailReceiptBtn.innerHTML = originalText;
+    }
+  });
+
+  async function handleDeliverScan() {
+    const raw = deliverScanInput.value;
+    const normalized = normalizeScanValue(raw);
+
+    if (!normalized) return;
+
+    deliverScanBtn.disabled = true;
+    deliverScanMessage.innerHTML = "";
+
+    try {
+      const resp = await fetch("/admin/pos/scan-deliver", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-CSRFToken": (typeof getCSRFToken === "function" ? getCSRFToken() : "")
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          scan_value: normalized
+        })
+      });
+
+      const data = await resp.json();
+
+      if (!resp.ok || !data.ok) {
+        deliverScanInput.classList.add("is-invalid");
+        deliverScanMessage.innerHTML = `<div class="alert alert-danger py-2 mb-0">${data.error || "Could not mark delivered."}</div>`;
+        beep("error");
+        setTimeout(() => deliverScanInput.classList.remove("is-invalid"), 1200);
+        deliverScanInput.select();
+        return;
+      }
+
+      deliverScanInput.classList.remove("is-invalid");
+      deliverScanInput.classList.add("is-valid");
+      deliverScanMessage.innerHTML = `<div class="alert alert-success py-2 mb-0">${data.message}</div>`;
+      beep("ok");
+
+      if (selectedCustomer && data.customer && Number(selectedCustomer.id) === Number(data.customer.id)) {
+        await loadPackages(selectedCustomer.id);
+      }
+
+      deliverScanInput.value = "";
+      deliverScanInput.focus();
+      setTimeout(() => deliverScanInput.classList.remove("is-valid"), 800);
+    } catch (err) {
+      deliverScanMessage.innerHTML = `<div class="alert alert-danger py-2 mb-0">Something went wrong.</div>`;
+      beep("error");
+    } finally {
+      deliverScanBtn.disabled = false;
+    }
+  }
+
+  if (deliverScanBtn) {
+    deliverScanBtn.addEventListener("click", handleDeliverScan);
+  }
+
+  if (deliverScanInput) {
+    deliverScanInput.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      handleDeliverScan();
+    });
+  }
+
+  let posCameraScanner = null;
+  let posCameraRunning = false;
+
+  async function processPOSBarcodeScan(value) {
+    if (!barcodeScanInput) return;
+
+    barcodeScanInput.value = value;
+
+    const event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true
+    });
+
+    barcodeScanInput.dispatchEvent(event);
+  }
+
+  async function startPosCameraScanner() {
+
+    const box = document.getElementById("posCameraBox");
+
+    if (box) box.style.display = "block";
+
+    if (posCameraRunning) return;
+
+    posCameraScanner = new Html5Qrcode("posCameraReader");
+
+    try {
+
+      await posCameraScanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 280, height: 160 }
+        },
+        async function (decodedText) {
+
+          await stopPosCameraScanner();
+
+          await processPOSBarcodeScan(decodedText);
+
+        }
+      );
+
+      posCameraRunning = true;
+
+    } catch (err) {
+
+      console.error(err);
+
+      setScanFeedback(
+        "Could not start camera. Allow camera permission.",
+        "error"
+      );
+    }
+  }
+
+  async function stopPosCameraScanner() {
+
+    const box = document.getElementById("posCameraBox");
+
+    if (posCameraScanner && posCameraRunning) {
+
+      try {
+        await posCameraScanner.stop();
+        await posCameraScanner.clear();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    posCameraScanner = null;
+    posCameraRunning = false;
+
+    if (box) {
+      box.style.display = "none";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+
+    if (barcodeScanInput) {
+      barcodeScanInput.focus();
+    }
+
+    document
+      .getElementById("openPosCameraBtn")
+      ?.addEventListener("click", startPosCameraScanner);
+
+    document
+      .getElementById("stopPosCameraBtn")
+      ?.addEventListener("click", stopPosCameraScanner);
+
+  });
 </script>
 
 <style>
-#barcodeScanInput.is-valid,
-#deliverScanInput.is-valid {
-  border-color: #198754;
-  box-shadow: 0 0 0 0.2rem rgba(25, 135, 84, 0.15);
-}
+  #barcodeScanInput.is-valid,
+  #deliverScanInput.is-valid {
+    border-color: #198754;
+    box-shadow: 0 0 0 0.2rem rgba(25, 135, 84, 0.15);
+  }
 
-#barcodeScanInput.is-invalid,
-#deliverScanInput.is-invalid {
-  border-color: #dc3545;
-  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15);
-}
+  #barcodeScanInput.is-invalid,
+  #deliverScanInput.is-invalid {
+    border-color: #dc3545;
+    box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.15);
+  }
 </style>
 {% endblock %}

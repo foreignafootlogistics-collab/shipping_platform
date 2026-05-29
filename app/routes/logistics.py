@@ -1653,6 +1653,11 @@ def logistics_dashboard():
                 "full_name": full_name,
                 "registration_number": reg,
                 "tracking_number": p.tracking_number,
+
+                "received_scan_status": getattr(p, "received_scan_status", "not_scanned"),
+                "received_scanned_at": getattr(p, "received_scanned_at", None),
+                "received_scanned_by_id": getattr(p, "received_scanned_by_id", None),
+
                 "description": p.description,
                 "weight": p.weight,
                 "status": p.status,

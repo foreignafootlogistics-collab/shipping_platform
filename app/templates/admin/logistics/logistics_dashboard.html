@@ -541,6 +541,15 @@
                     <input type="text" id="fltReg" class="form-control form-control-sm" placeholder="e.g. FA12345">
                   </div>
 
+                  <div class="col-md-2">
+                    <label class="form-label small mb-0">Scan Status</label>
+                    <select id="scanStatusFilter" class="form-select form-select-sm">
+                      <option value="">All</option>
+                      <option value="scanned">Scanned</option>
+                      <option value="not_scanned">Missing</option>
+                    </select>
+                  </div>
+
                   <div class="col-md-3">
                     <label class="form-label small mb-0">Weight Range (lbs)</label>
                     <div class="d-flex gap-2">
@@ -642,8 +651,10 @@
                 </thead>
                 <tbody class="small">
                   {% for pkg in shipment_packages %}
-                  <tr data-subscription-applied="{{ 'true' if pkg.subscription_applied else 'false' }}"
-                    data-subscription-result="{{ pkg.subscription_result or '' }}">
+                  <tr class="{% if pkg.get('received_scan_status') == 'scanned' %}table-success{% endif %}"
+                    data-subscription-applied="{{ 'true' if pkg.subscription_applied else 'false' }}"
+                    data-subscription-result="{{ pkg.subscription_result or '' }}"
+                    data-scan-status="{{ pkg.get('received_scan_status', 'not_scanned') }}">
                     <td>
                       <input type="checkbox" name="package_ids" value="{{ pkg.id }}" class="package-checkbox"
                         onclick="updateShipmentHeaderCheckbox()">
@@ -676,6 +687,11 @@
                       {% if pkg.get("received_scan_status") == "scanned" %}
                       <span class="badge bg-success mb-1">
                         ✓ Scanned
+                      </span>
+                      <br>
+                      {% else %}
+                      <span class="badge bg-danger mb-1">
+                        ❌ Missing
                       </span>
                       <br>
                       {% endif %}
@@ -1730,7 +1746,19 @@ Not emailed yet"></i>
     const subscriptionOnly = document.getElementById('fltSubscriptionOnly')?.checked || false;
 
 
-    return { name, tracking, house_awb, reg, wMin, wMax, subscriptionOnly };
+    const scanStatus =
+      (document.getElementById('scanStatusFilter')?.value || '').trim();
+
+    return {
+      name,
+      tracking,
+      house_awb,
+      reg,
+      wMin,
+      wMax,
+      subscriptionOnly,
+      scanStatus
+    };
   }
 
   function parseCellText(td) {
@@ -1768,6 +1796,8 @@ Not emailed yet"></i>
       const houseText = parseCellText(rowNode.querySelector('td:nth-child(5)'));
       const w = parseWeightFromRow(rowNode);
       const isSubPackage = rowNode.querySelector('.shipment-subscription-icon') !== null;
+      const scanStatus =
+        rowNode.dataset.scanStatus || 'not_scanned';
 
       if (f.name && !userText.includes(f.name)) return false;
       if (f.reg && !userText.includes(f.reg)) return false;
@@ -1776,6 +1806,9 @@ Not emailed yet"></i>
       if (f.wMin != null && w < f.wMin) return false;
       if (f.wMax != null && w > f.wMax) return false;
       if (f.subscriptionOnly && !isSubPackage) return false;
+
+      if (f.scanStatus && scanStatus !== f.scanStatus)
+        return false;
 
       return true;
     });
@@ -1907,7 +1940,15 @@ Not emailed yet"></i>
     }
 
     function doClear() {
-      ['fltName', 'fltTracking', 'fltHouseAwb', 'fltReg', 'fltWMin', 'fltWMax'].forEach(id => {
+      [
+        'fltName',
+        'fltTracking',
+        'fltHouseAwb',
+        'fltReg',
+        'fltWMin',
+        'fltWMax',
+        'scanStatusFilter'
+      ].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
@@ -1920,8 +1961,19 @@ Not emailed yet"></i>
 
     btnApply?.addEventListener('click', doApply);
     btnClear?.addEventListener('click', doClear);
+    document
+      .getElementById('scanStatusFilter')
+      ?.addEventListener('change', doApply);
 
-    ['fltName', 'fltTracking', 'fltHouseAwb', 'fltReg', 'fltWMin', 'fltWMax'].forEach(id => {
+    [
+      'fltName',
+      'fltTracking',
+      'fltHouseAwb',
+      'fltReg',
+      'fltWMin',
+      'fltWMax',
+      'scanStatusFilter'
+    ].forEach(id => {
       document.getElementById(id)?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); doApply(); }
       });

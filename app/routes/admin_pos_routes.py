@@ -288,8 +288,10 @@ def checkout():
     if not package_ids:
         return jsonify({"ok": False, "error": "Select at least one package."}), 400
 
-    if payment_method not in {"cash", "card", "transfer"}:
+    if payment_method not in {"cash", "card", "transfer", "transfer_pending"}:
         return jsonify({"ok": False, "error": "Invalid payment method."}), 400
+
+    is_pending_transfer = payment_method == "transfer_pending"
 
     user = User.query.get_or_404(user_id)
 
@@ -340,6 +342,7 @@ def checkout():
 
         for invoice_id, pkg_list in existing_invoice_groups.items():
             invoice = Invoice.query.get(invoice_id)
+
             if not invoice:
                 db.session.rollback()
                 return jsonify({
@@ -348,35 +351,48 @@ def checkout():
                 }), 400
 
             group_total = Decimal("0.00")
+
             for p in pkg_list:
                 group_total += _package_charge_amount(p)
 
-            payment = Payment(
-                user_id=user.id,
-                invoice_id=invoice.id,
-                method=payment_method.title(),
-                amount_jmd=float(group_total),
-                transaction_type="invoice_payment",
-                status="completed",
-                notes=notes or "POS payment",
-                source="pos"
-            )
-            db.session.add(payment)
-            db.session.flush()
-            created_payment_ids.append(payment.id)
+            if not is_pending_transfer:
+                payment = Payment(
+                    user_id=user.id,
+                    invoice_id=invoice.id,
+                    method=payment_method.title(),
+                    amount_jmd=float(group_total),
+                    transaction_type="invoice_payment",
+                    status="completed",
+                    notes=notes or "POS payment",
+                    source="pos"
+                )
 
-            current_due = Decimal(str(invoice.amount_due or 0))
-            new_due = current_due - group_total
-            if new_due < Decimal("0.00"):
-                new_due = Decimal("0.00")
+                db.session.add(payment)
+                db.session.flush()
+                created_payment_ids.append(payment.id)
 
-            invoice.amount_due = float(new_due)
+                current_due = Decimal(str(invoice.amount_due or 0))
+                new_due = current_due - group_total
 
-            if new_due == Decimal("0.00"):
-                invoice.status = "paid"
-                invoice.date_paid = now_utc
+                if new_due < Decimal("0.00"):
+                    new_due = Decimal("0.00")
+
+                invoice.amount_due = float(new_due)
+
+                if new_due == Decimal("0.00"):
+                    invoice.status = "paid"
+                    invoice.date_paid = now_utc
+                else:
+                    invoice.status = "unpaid"
+
             else:
                 invoice.status = "unpaid"
+
+                if notes:
+                    invoice.description = (
+                        (invoice.description or "") +
+                        f"\nPOS release pending transfer: {notes}"
+                    ).strip()
 
             checkout_invoice_ids.append(invoice.id)
 
@@ -390,6 +406,7 @@ def checkout():
 
             for p in uninvoiced_packages:
                 new_total += _package_charge_amount(p)
+
                 try:
                     new_weight += Decimal(str(p.weight or 0))
                 except Exception:
@@ -401,31 +418,34 @@ def checkout():
                 description=notes or f"POS checkout for {len(uninvoiced_packages)} package(s)",
                 total_weight=float(new_weight),
                 amount=float(new_total),
-                amount_due=0.0,
+                amount_due=float(new_total) if is_pending_transfer else 0.0,
                 grand_total=float(new_total),
                 date_issued=now_utc,
-                date_paid=now_utc,
+                date_paid=None if is_pending_transfer else now_utc,
                 created_at=now_utc,
-                status="paid"
+                status="unpaid" if is_pending_transfer else "paid"
             )
+
             db.session.add(pos_invoice)
             db.session.flush()
 
             checkout_invoice_ids.append(pos_invoice.id)
 
-            pos_payment = Payment(
-                user_id=user.id,
-                invoice_id=pos_invoice.id,
-                method=payment_method.title(),
-                amount_jmd=float(new_total),
-                transaction_type="invoice_payment",
-                status="completed",
-                notes=notes or "POS payment",
-                source="pos"
-            )
-            db.session.add(pos_payment)
-            db.session.flush()
-            created_payment_ids.append(pos_payment.id)
+            if not is_pending_transfer:
+                pos_payment = Payment(
+                    user_id=user.id,
+                    invoice_id=pos_invoice.id,
+                    method=payment_method.title(),
+                    amount_jmd=float(new_total),
+                    transaction_type="invoice_payment",
+                    status="completed",
+                    notes=notes or "POS payment",
+                    source="pos"
+                )
+
+                db.session.add(pos_payment)
+                db.session.flush()
+                created_payment_ids.append(pos_payment.id)
 
             for p in uninvoiced_packages:
                 p.invoice_id = pos_invoice.id
@@ -434,12 +454,19 @@ def checkout():
 
         db.session.commit()
 
+        message = (
+            "Package(s) released. Transfer is pending and balance remains outstanding."
+            if is_pending_transfer
+            else "Checkout completed successfully."
+        )
+
         return jsonify({
             "ok": True,
-            "message": "Checkout completed successfully.",
+            "message": message,
             "invoice_ids": checkout_invoice_ids,
             "payment_ids": created_payment_ids,
             "total": str(total),
+            "payment_pending": is_pending_transfer,
         })
 
     except Exception as e:

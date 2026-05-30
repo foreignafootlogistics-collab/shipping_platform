@@ -1020,6 +1020,13 @@ def view_user(id):
                 "status": getattr(p, "status", None),
                 "description": getattr(p, "description", None),
                 "tracking_number": getattr(p, "tracking_number", None),
+                "received_scan_status": getattr(p, "received_scan_status", "not_scanned"),
+                "received_scanned_at": getattr(p, "received_scanned_at", None),
+                "received_scanned_by_id": getattr(p, "received_scanned_by_id", None),
+
+                "delivery_scan_status": getattr(p, "delivery_scan_status", "not_scanned"),
+                "delivery_scanned_at": getattr(p, "delivery_scanned_at", None),
+                "delivery_scanned_by_id": getattr(p, "delivery_scanned_by_id", None),
                 "weight": weight,
                 "date_received": _fmt_date(date_received),
                 "declared_value": declared_value,

@@ -1868,6 +1868,13 @@ def logistics_dashboard():
             "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
             "invoice_id": p.invoice_id,
             "customer_notified_at": getattr(p, "customer_notified_at", None),
+            "received_scan_status": getattr(p, "received_scan_status", "not_scanned"),
+            "received_scanned_at": getattr(p, "received_scanned_at", None),
+            "received_scanned_by_id": getattr(p, "received_scanned_by_id", None),
+
+            "delivery_scan_status": getattr(p, "delivery_scan_status", "not_scanned"),
+            "delivery_scanned_at": getattr(p, "delivery_scanned_at", None),
+            "delivery_scanned_by_id": getattr(p, "delivery_scanned_by_id", None),
             "subscription_applied": bool(getattr(p, "subscription_applied", False)),
             "subscription_result": getattr(p, "subscription_result", None),
             "subscription_covered": bool(getattr(p, "subscription_applied", False)),

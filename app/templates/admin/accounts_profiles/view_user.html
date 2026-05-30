@@ -417,23 +417,7 @@
                   <strong>{{ pkg.house_awb or '-' }}</strong><br>
                   {% include 'partials/status_tracker.html' with context %}
 
-                  {% if pkg.received_scan_status == "scanned" or pkg.delivery_scan_status == "scanned" %}
-                  <div class="mt-1">
 
-                    {% if pkg.received_scan_status == "scanned" %}
-                    <span class="badge bg-success me-1">
-                      In
-                    </span>
-                    {% endif %}
-
-                    {% if pkg.delivery_scan_status == "scanned" %}
-                    <span class="badge bg-primary">
-                      Out
-                    </span>
-                    {% endif %}
-
-                  </div>
-                  {% endif %}
                   {% if pkg.epc or pkg.bad_address %}
                   <div class="mt-1">
                     <span class="badge bg-info text-dark">
@@ -520,7 +504,28 @@
                   </div>
                   {% endif %}
                 </td>
-                <td>{{ pkg.tracking_number or '-' }}</td>
+                <td>
+                  <div>{{ pkg.tracking_number or '-' }}</div>
+
+                  {% if pkg.received_scan_status == "scanned"
+                  or pkg.delivery_scan_status == "scanned" %}
+                  <div class="mt-1 d-flex align-items-center gap-2">
+
+                    {% if pkg.received_scan_status == "scanned" %}
+                    <span data-bs-toggle="tooltip" title="Received by Foreign A Foot">
+                      <i class="bi bi-box-arrow-in-down text-success"></i>
+                    </span>
+                    {% endif %}
+
+                    {% if pkg.delivery_scan_status == "scanned" %}
+                    <span data-bs-toggle="tooltip" title="Released to Customer">
+                      <i class="bi bi-box-arrow-up text-primary"></i>
+                    </span>
+                    {% endif %}
+
+                  </div>
+                  {% endif %}
+                </td>
                 <td>{{ pkg.weight }}</td>
                 <td>{{ pkg.date_received or 'N/A' }}</td>
                 <td class="text-end">${{ money(pkg.declared_value) }}</td>

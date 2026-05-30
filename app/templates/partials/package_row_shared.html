@@ -82,23 +82,6 @@ pkg.get('customer_notified_at') %}
     <br>
     <small class="text-muted">{{ _tracking or '-' }}</small>
 
-    {% if pkg.received_scan_status == "scanned" or pkg.delivery_scan_status == "scanned" %}
-    <div class="mt-1">
-
-      {% if pkg.received_scan_status == "scanned" %}
-      <span class="badge bg-success me-1">
-        In
-      </span>
-      {% endif %}
-
-      {% if pkg.delivery_scan_status == "scanned" %}
-      <span class="badge bg-primary">
-        Out
-      </span>
-      {% endif %}
-
-    </div>
-    {% endif %}
 
     {% if pkg.subscription_covered %}
     <div class="mt-1">
@@ -130,7 +113,27 @@ pkg.get('customer_notified_at') %}
   </td>
 
   <td data-order="{{ (_house or '0')|replace(',', '') }}" class="text-nowrap">
-    {{ _house or '-' }}
+
+    <strong>{{ _house or '-' }}</strong>
+
+    {% if pkg.received_scan_status == "scanned"
+    or pkg.delivery_scan_status == "scanned" %}
+    <div class="mt-1 d-flex align-items-center gap-2">
+
+      {% if pkg.received_scan_status == "scanned" %}
+      <span data-bs-toggle="tooltip" title="Received by Foreign A Foot">
+        <i class="bi bi-box-arrow-in-down text-success fs-5"></i>
+      </span>
+      {% endif %}
+
+      {% if pkg.delivery_scan_status == "scanned" %}
+      <span data-bs-toggle="tooltip" title="Released to Customer">
+        <i class="bi bi-box-arrow-up text-primary fs-5"></i>
+      </span>
+      {% endif %}
+
+    </div>
+    {% endif %}
     {% if pkg.subscription_covered %}
     <span class="ms-1" data-bs-toggle="tooltip" title="Covered by subscription">
       <i class="bi bi-patch-check-fill text-success"></i>

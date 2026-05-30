@@ -416,6 +416,24 @@
 
                   <strong>{{ pkg.house_awb or '-' }}</strong><br>
                   {% include 'partials/status_tracker.html' with context %}
+
+                  {% if pkg.received_scan_status == "scanned" or pkg.delivery_scan_status == "scanned" %}
+                  <div class="mt-1">
+
+                    {% if pkg.received_scan_status == "scanned" %}
+                    <span class="badge bg-success me-1">
+                      In
+                    </span>
+                    {% endif %}
+
+                    {% if pkg.delivery_scan_status == "scanned" %}
+                    <span class="badge bg-primary">
+                      Out
+                    </span>
+                    {% endif %}
+
+                  </div>
+                  {% endif %}
                   {% if pkg.epc or pkg.bad_address %}
                   <div class="mt-1">
                     <span class="badge bg-info text-dark">

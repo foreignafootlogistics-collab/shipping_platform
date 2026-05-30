@@ -400,6 +400,10 @@ def checkout():
                 p.status = "Delivered"
                 p.is_locked = True
 
+                p.delivery_scan_status = "scanned"
+                p.delivery_scanned_at = now_utc
+                p.delivery_scanned_by_id = current_user.id
+
         if uninvoiced_packages:
             new_total = Decimal("0.00")
             new_weight = Decimal("0.00")
@@ -451,6 +455,10 @@ def checkout():
                 p.invoice_id = pos_invoice.id
                 p.status = "Delivered"
                 p.is_locked = True
+
+                p.delivery_scan_status = "scanned"
+                p.delivery_scanned_at = now_utc
+                p.delivery_scanned_by_id = current_user.id
 
         db.session.commit()
 

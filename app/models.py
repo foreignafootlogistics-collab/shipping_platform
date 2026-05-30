@@ -569,6 +569,25 @@ class Package(db.Model):
         lazy="joined"
     )
 
+    delivery_scan_status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="not_scanned",
+        index=True
+    )
+
+    delivery_scanned_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True
+    )
+
+    delivery_scanned_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True,
+        index=True
+    )
+
     # Relations
     user = db.relationship('User', back_populates='packages', foreign_keys=[user_id])
     invoice = db.relationship('Invoice', back_populates='packages')

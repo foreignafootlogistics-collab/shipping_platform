@@ -81,6 +81,25 @@ pkg.get('customer_notified_at') %}
     {% include 'partials/status_tracker.html' with context %}
     <br>
     <small class="text-muted">{{ _tracking or '-' }}</small>
+
+    {% if pkg.received_scan_status == "scanned" or pkg.delivery_scan_status == "scanned" %}
+    <div class="mt-1">
+
+      {% if pkg.received_scan_status == "scanned" %}
+      <span class="badge bg-success me-1">
+        In
+      </span>
+      {% endif %}
+
+      {% if pkg.delivery_scan_status == "scanned" %}
+      <span class="badge bg-primary">
+        Out
+      </span>
+      {% endif %}
+
+    </div>
+    {% endif %}
+
     {% if pkg.subscription_covered %}
     <div class="mt-1">
       {% if pkg.customs_only_due_to_subscription %}

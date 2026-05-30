@@ -566,7 +566,7 @@ class Package(db.Model):
     received_scanned_by = db.relationship(
         "User",
         foreign_keys=[received_scanned_by_id],
-        lazy="joined"
+        lazy="select"
     )
 
     delivery_scan_status = db.Column(
@@ -586,6 +586,11 @@ class Package(db.Model):
         db.ForeignKey("users.id"),
         nullable=True,
         index=True
+    )
+    delivery_scanned_by = db.relationship(
+        "User",
+        foreign_keys=[delivery_scanned_by_id],
+        lazy="select"
     )
 
     # Relations

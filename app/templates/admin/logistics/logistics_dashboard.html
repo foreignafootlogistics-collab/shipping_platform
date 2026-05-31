@@ -3745,6 +3745,45 @@ Not emailed yet"></i>
     }, true);
   })();
 
+  function playScanSound(type) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+      function beep(freq, duration, delay = 0) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.frequency.value = freq;
+        osc.type = "sine";
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        gain.gain.setValueAtTime(0.08, ctx.currentTime + delay);
+        gain.gain.exponentialRampToValueAtTime(
+          0.001,
+          ctx.currentTime + delay + duration
+        );
+
+        osc.start(ctx.currentTime + delay);
+        osc.stop(ctx.currentTime + delay + duration);
+      }
+
+      if (type === "success") {
+        beep(900, 0.08, 0);
+        beep(1200, 0.08, 0.10);
+      }
+      else if (type === "warning") {
+        beep(650, 0.15, 0);
+      }
+      else {
+        beep(220, 0.25, 0);
+      }
+
+    } catch (e) {
+      console.warn("Audio failed", e);
+    }
+  }
   function showScanResult(type, message) {
     const box = document.getElementById("scanResultBox");
     if (!box) return;
@@ -3823,31 +3862,46 @@ Not emailed yet"></i>
       const data = await res.json();
 
       if (data.status === "scanned") {
+
+        playScanSound("success");
+
         showScanResult(
           "scanned",
-          `✅ ${data.message || "Package scanned and marked Ready for Pick Up."}: ${data.tracking_number || scanValue}`
+          `✅ ${data.message || "Package scanned successfully."}: ${data.tracking_number || scanValue}`
         );
         updateScanCounters(data);
 
       } else if (data.status === "already_scanned") {
+
+        playScanSound("warning");
+
         showScanResult(
           "already_scanned",
           `⚠️ Already scanned: ${data.tracking_number || scanValue}`
         );
 
       } else if (data.status === "not_found") {
+
+        playScanSound("error");
+
         showScanResult(
           "not_found",
           `❌ ${data.message || "Package not found in this shipment."}`
         );
 
       } else if (data.status === "not_allowed") {
+
+        playScanSound("error");
+
         showScanResult(
           "not_found",
           `🚫 ${data.message || "This package cannot be scanned in."}`
         );
 
       } else {
+
+        playScanSound("error");
+
         showScanResult(
           data.status || "error",
           data.message || "Scan failed."
@@ -3858,6 +3912,7 @@ Not emailed yet"></i>
       input.focus();
 
     } catch (err) {
+      playScanSound("error");
       showScanResult("not_found", "Scan request failed. Please try again.");
       console.error(err);
     } finally {
@@ -3950,6 +4005,7 @@ Not emailed yet"></i>
       input.focus();
     }
   });
+
 
 </script>
 

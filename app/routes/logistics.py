@@ -1217,7 +1217,7 @@ def scan_package_in_shipment(shipment_id):
     package.received_scan_status = "scanned"
     package.received_scanned_at = datetime.now(timezone.utc)
     package.received_scanned_by_id = current_user.id
-    package.status = "Ready for Pick Up"
+    
 
     db.session.add(ShipmentScanLog(
         shipment_id=shipment.id,
@@ -1225,7 +1225,7 @@ def scan_package_in_shipment(shipment_id):
         scanned_value=scan_value,
         scan_result="matched",
         scanned_by_id=current_user.id,
-        notes="Package scanned into shipment and marked Ready for Pick Up"
+        notes="Package scanned into shipment"
     ))
 
     db.session.commit()
@@ -1250,7 +1250,7 @@ def scan_package_in_shipment(shipment_id):
     return jsonify({
         "ok": True,
         "status": "scanned",
-        "message": "Package scanned and marked Ready for Pick Up.",
+        "message": "Package scanned successfully.",
         "package_id": package.id,
         "tracking_number": package.tracking_number,
         "house_awb": package.house_awb,

@@ -106,13 +106,6 @@
                   </li>
 
                   <li class="nav-item">
-                    <a class="nav-link {{ 'active' if request.endpoint == 'admin.register_admin' else '' }}"
-                      href="{{ url_for('admin.register_admin') }}">
-                      <i class="bi bi-person-plus me-2"></i> Register Admin
-                    </a>
-                  </li>
-
-                  <li class="nav-item">
                     <a class="nav-link {{ 'active' if request.endpoint in ['admin.messages','admin.view_message'] else '' }}"
                       href="{{ url_for('admin.messages') }}">
                       <i class="bi bi-chat-dots me-2"></i> Messages
@@ -269,6 +262,9 @@
           </div>
 
           {# ---- Finance (accordion) ---- #}
+
+          {% if current_user.is_authenticated and current_user.is_superadmin %}
+
           {% set is_finance = request.blueprint == 'finance' or request.path.startswith('/finance') %}
           <div class="accordion-item border-0">
             <h2 class="accordion-header" id="headingFinance">
@@ -330,8 +326,12 @@
               </div>
             </div>
           </div>
+          {% endif %}
 
           {# ---- Analytics & Insights (accordion) ---- #}
+
+          {% if current_user.is_authenticated and current_user.is_superadmin %}
+
           {% set is_analytics = request.blueprint == 'analytics' or request.path.startswith('/analytics') %}
           <div class="accordion-item border-0">
             <h2 class="accordion-header" id="headingAnalytics">
@@ -394,8 +394,12 @@
               </div>
             </div>
           </div>
+          {% endif %}
 
           <!-- Settings -->
+
+          {% if current_user.is_authenticated and current_user.is_superadmin %}
+
           <div class="accordion-item border-0">
             <h2 class="accordion-header" id="headingSettings">
               <button
@@ -421,6 +425,15 @@
 
                   {% if current_user.is_authenticated and current_user.is_superadmin %}
                   <li class="nav-item">
+                    <a href="{{ url_for('admin.register_admin') }}"
+                      class="nav-link {% if request.endpoint == 'admin.register_admin' %}active{% endif %}">
+                      Register Admin
+                    </a>
+                  </li>
+                  {% endif %}
+
+                  {% if current_user.is_authenticated and current_user.is_superadmin %}
+                  <li class="nav-item">
                     <a href="{{ url_for('admin.manage_admins') }}"
                       class="nav-link {% if request.path == url_for('admin.manage_admins') %}active{% endif %}">
                       Manage Admins
@@ -431,8 +444,10 @@
               </div>
             </div>
           </div>
+          {% endif %}
 
         </div>
+
       </nav>
 
       <!-- Main content -->

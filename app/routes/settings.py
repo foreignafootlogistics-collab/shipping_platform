@@ -36,7 +36,7 @@ def _get_settings_row(create_if_missing: bool = True) -> Settings | None:
 
 
 @settings_bp.route('/update-logo', methods=['POST'])
-@admin_required
+@admin_required(roles=["superadmin"])
 def update_logo():
     file = request.files.get('logo_file')
     if not file or file.filename.strip() == '':
@@ -61,7 +61,7 @@ def update_logo():
 
 
 @settings_bp.route('/update-display', methods=['POST'])
-@admin_required
+@admin_required(roles=["superadmin"])
 def update_display():
     currency_code   = (request.form.get('currency_code') or 'USD').strip().upper()
     currency_symbol = request.form.get('currency_symbol') or '$'
@@ -114,7 +114,7 @@ def manage_settings():
 # UPDATE COMPANY INFO
 # -----------------------------
 @settings_bp.route('/update-company-info', methods=['POST'])
-@admin_required
+@admin_required(roles=["superadmin"])
 def update_company_info():
     company_name    = request.form.get('company_name')
     company_address = request.form.get('company_address')
@@ -189,7 +189,7 @@ def update_registration_settings():
 # UPDATE RATES & FEES
 # -----------------------------
 @settings_bp.route('/update-rates', methods=['POST'])
-@admin_required
+@admin_required(roles=["superadmin"])
 def update_rates():
     def f(name, default=0.0):
         raw = request.form.get(name, "").strip()
@@ -262,7 +262,7 @@ def update_rates():
 # UPDATE BRANCHES & LOCATIONS
 # -----------------------------
 @settings_bp.route('/update-branches', methods=['POST'])
-@admin_required
+@admin_required(roles=["superadmin"])
 def update_branches():
     branches = request.form.get('branches')
 
@@ -285,7 +285,7 @@ def update_branches():
 # UPDATE DELIVERY SETTINGS
 # -----------------------------
 @settings_bp.route('/update-delivery-settings', methods=['POST'])
-@admin_required
+@admin_required(roles=["superadmin"])
 def update_delivery_settings():
 
     def f(name, default=0.0):
@@ -384,7 +384,7 @@ def update_delivery_settings():
 # UPDATE TERMS & SERVICES
 # -----------------------------
 @settings_bp.route('/update-terms', methods=['POST'])
-@admin_required
+@admin_required(roles=["superadmin"])
 def update_terms():
     terms = request.form.get('terms')
 
@@ -407,8 +407,7 @@ def update_terms():
 # UPDATE US WAREHOUSE ADDRESS
 # -----------------------------
 @settings_bp.route('/update-us-address', methods=['POST'])
-@admin_required
-def update_us_address():
+@admin_required(roles=["superadmin"])def update_us_address():
     us_street       = request.form.get('us_street')
     us_suite_prefix = request.form.get('us_suite_prefix')   # e.g. "KCDA-FAFL# "
     us_city         = request.form.get('us_city')

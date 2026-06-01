@@ -1100,14 +1100,14 @@ def delete_expense(expense_id):
 
 # ---------------------- ADD EXPENSE ---------------------- #
 @finance_bp.route('/expenses/add', methods=['GET', 'POST'])
-@admin_required
+@admin_required(roles=["finance"])
 def add_expense():
     return redirect(url_for('finance.monthly_expenses'))
 
 
 # ---------------------- VIEW EXPENSES ---------------------- #
 @finance_bp.route('/expenses')
-@admin_required
+@admin_required(roles=["finance"])
 def view_expenses():
     return redirect(url_for('finance.monthly_expenses'))
 

@@ -407,7 +407,8 @@ def update_terms():
 # UPDATE US WAREHOUSE ADDRESS
 # -----------------------------
 @settings_bp.route('/update-us-address', methods=['POST'])
-@admin_required(roles=["superadmin"])def update_us_address():
+@admin_required(roles=["superadmin"])
+def update_us_address():
     us_street       = request.form.get('us_street')
     us_suite_prefix = request.form.get('us_suite_prefix')   # e.g. "KCDA-FAFL# "
     us_city         = request.form.get('us_city')

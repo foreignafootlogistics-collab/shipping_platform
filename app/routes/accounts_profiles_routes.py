@@ -1963,9 +1963,29 @@ def manual_add_subscription(id):
     flash(f"{plan.name} subscription activated for {user.full_name}.", "success")
     return redirect(url_for("accounts_profiles.view_user", id=id, tab="packages"))
 
+def sync_expired_subscriptions():
+    now = datetime.now(timezone.utc)
+
+    expired_subs = (
+        Subscription.query
+        .filter(
+            Subscription.status.in_(["active", "exhausted"]),
+            Subscription.end_date < now
+        )
+        .all()
+    )
+
+    for sub in expired_subs:
+        sub.status = "expired"
+
+    if expired_subs:
+        db.session.commit()
+
 @accounts_bp.route("/subscriptions")
 @admin_required
 def admin_subscriptions():
+    sync_expired_subscriptions()
+
     status_filter = (request.args.get("status") or "").strip()
     search = (request.args.get("search") or "").strip()
     created_filter = (request.args.get("created") or "").strip()

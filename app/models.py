@@ -539,6 +539,13 @@ class Package(db.Model):
     # Status and destination
     status = db.Column(db.String, default="Overseas")
     destination_country = db.Column(db.String)
+
+    current_location = db.Column(
+        db.String(50),
+        nullable=False,
+        default="Warehouse",
+        index=True
+    )
   
     # --------------------------------------------------
     # Shipment Receiving Scan Tracking
@@ -930,6 +937,85 @@ class Prealert(db.Model):
         if tn is not None:
             kwargs["tracking_number"] = normalize_tracking(tn)
         super().__init__(*args, **kwargs)
+
+pickup_packages = db.Table(
+    "pickup_packages",
+    db.Column(
+        "pickup_id",
+        db.Integer,
+        db.ForeignKey("scheduled_pickups.id", ondelete="CASCADE"),
+        primary_key=True
+    ),
+    db.Column(
+        "package_id",
+        db.Integer,
+        db.ForeignKey("packages.id", ondelete="CASCADE"),
+        primary_key=True
+    ),
+)
+
+class ScheduledPickup(db.Model):
+    __tablename__ = "scheduled_pickups"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=False,
+        index=True
+    )
+
+    pickup_date = db.Column(
+        db.Date,
+        nullable=False,
+        index=True
+    )
+
+    branch = db.Column(
+        db.String(100),
+        nullable=False,
+        default="Gregory Park"
+    )
+
+    status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="Scheduled",
+        index=True
+    )
+    # Scheduled | Ready | Collected | Cancelled
+
+    authorized_person = db.Column(db.String(255))
+    notes = db.Column(db.Text)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    completed_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True
+    )
+
+    user = db.relationship(
+        "User",
+        backref=db.backref(
+            "scheduled_pickups",
+            lazy="dynamic"
+        )
+    )
+
+    packages = db.relationship(
+        "Package",
+        secondary=pickup_packages,
+        lazy="dynamic",
+        backref=db.backref(
+            "scheduled_pickups",
+            lazy="dynamic"
+        )
+    )
 
 # -------------------------------
 # Scheduled Delivery & Authorized Pickup

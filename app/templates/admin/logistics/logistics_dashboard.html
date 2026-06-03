@@ -3745,9 +3745,28 @@ Not emailed yet"></i>
     }, true);
   })();
 
+  let scanAudioCtx = null;
+
+  function unlockScanAudio() {
+    try {
+      scanAudioCtx = scanAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+
+      if (scanAudioCtx.state === "suspended") {
+        scanAudioCtx.resume();
+      }
+    } catch (e) {
+      console.warn("Audio unlock failed", e);
+    }
+  }
+
   function playScanSound(type) {
     try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = scanAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      scanAudioCtx = ctx;
+
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
 
       function beep(freq, duration, delay = 0) {
         const osc = ctx.createOscillator();
@@ -3772,11 +3791,9 @@ Not emailed yet"></i>
       if (type === "success") {
         beep(900, 0.08, 0);
         beep(1200, 0.08, 0.10);
-      }
-      else if (type === "warning") {
+      } else if (type === "warning") {
         beep(650, 0.15, 0);
-      }
-      else {
+      } else {
         beep(220, 0.25, 0);
       }
 
@@ -3784,6 +3801,7 @@ Not emailed yet"></i>
       console.warn("Audio failed", e);
     }
   }
+
   function showScanResult(type, message) {
     const box = document.getElementById("scanResultBox");
     if (!box) return;
@@ -3870,6 +3888,9 @@ Not emailed yet"></i>
           `✅ ${data.message || "Package scanned successfully."}: ${data.tracking_number || scanValue}`
         );
         updateScanCounters(data);
+        setTimeout(() => {
+          window.location.reload();
+        }, 700);
 
       } else if (data.status === "already_scanned") {
 
@@ -3980,7 +4001,10 @@ Not emailed yet"></i>
 
   document.addEventListener("DOMContentLoaded", function () {
     document.getElementById("openCameraScanBtn")
-      ?.addEventListener("click", startPhoneScanner);
+      ?.addEventListener("click", function () {
+        unlockScanAudio();
+        startPhoneScanner();
+      });
 
     document.getElementById("stopCameraScanBtn")
       ?.addEventListener("click", stopPhoneScanner);

@@ -297,9 +297,15 @@
   <div class="dashboard-section">
     <div class="d-flex justify-content-between align-items-center mb-2">
       <h3>READY PACKAGES</h3>
-      <a href="{{ url_for('customer.schedule_delivery_overview') }}" class="btn btn-dashboard btn-sm">
-        Schedule Delivery
-      </a>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="{{ url_for('customer.schedule_delivery_overview') }}" class="btn btn-dashboard btn-sm">
+          Schedule Delivery
+        </a>
+
+        <a href="{{ url_for('customer.schedule_pickup_overview') }}" class="btn btn-dashboard-outline btn-sm">
+          Schedule Store Pickup
+        </a>
+      </div>
     </div>
 
     <div class="ready-packages">

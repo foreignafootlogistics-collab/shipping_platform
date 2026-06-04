@@ -37,7 +37,7 @@ from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
 from app.models import (
     Prealert, User, ScheduledDelivery, ShipmentLog, Invoice, ShipmentArchiveLog, Settings,
-    Package, Payment, shipment_packages, PackageAttachment, ShipmentScanLog
+    Package, Payment, shipment_packages, ScheduledPickup, PackageAttachment, ShipmentScanLog
 )
 from app.models import Message as DBMessage
 from app.models import normalize_tracking
@@ -6241,6 +6241,75 @@ def set_invoice_status(invoice_id):
 
     db.session.commit()
     return jsonify({"ok": True})
+
+
+@logistics_bp.route("/scheduled-pickups", methods=["GET"])
+@admin_required()
+def scheduled_pickups():
+    status = (request.args.get("status") or "").strip()
+    branch = (request.args.get("branch") or "").strip()
+
+    q = ScheduledPickup.query
+
+    if status:
+        q = q.filter(ScheduledPickup.status == status)
+
+    if branch:
+        q = q.filter(ScheduledPickup.branch == branch)
+
+    pickups = (
+        q.order_by(ScheduledPickup.pickup_date.desc(), ScheduledPickup.id.desc())
+        .all()
+    )
+
+    return render_template(
+        "admin/logistics/scheduled_pickups.html",
+        pickups=pickups,
+        status=status,
+        branch=branch
+    )
+
+
+@logistics_bp.route("/scheduled-pickups/<int:pickup_id>", methods=["GET"])
+@admin_required()
+def scheduled_pickup_view(pickup_id):
+    pickup = ScheduledPickup.query.get_or_404(pickup_id)
+
+    return render_template(
+        "admin/logistics/scheduled_pickup_view.html",
+        pickup=pickup
+    )
+
+
+@logistics_bp.route("/scheduled-pickups/<int:pickup_id>/status/<status>", methods=["POST"])
+@admin_required()
+def scheduled_pickup_set_status(pickup_id, status):
+    pickup = ScheduledPickup.query.get_or_404(pickup_id)
+
+    allowed = ["Scheduled", "Ready", "Collected", "Cancelled"]
+    if status not in allowed:
+        flash("Invalid pickup status.", "danger")
+        return redirect(url_for("logistics.scheduled_pickup_view", pickup_id=pickup.id))
+
+    pickup.status = status
+
+    if status == "Ready":
+        for pkg in pickup.packages.all():
+            pkg.current_location = pickup.branch
+
+    if status == "Collected":
+        pickup.completed_at = datetime.utcnow()
+        for pkg in pickup.packages.all():
+            pkg.current_location = "Collected"
+
+    if status == "Cancelled":
+        for pkg in pickup.packages.all():
+            pkg.current_location = "Warehouse"
+
+    db.session.commit()
+
+    flash(f"Pickup marked as {status}.", "success")
+    return redirect(url_for("logistics.scheduled_pickup_view", pickup_id=pickup.id))
 
 # --------------------------------------------------------------------------------------
 # Scheduled Deliveries (Admin / Operations)

@@ -1,0 +1,125 @@
+{% extends 'layout_admin.html' %}
+{% block title %}Scheduled Pickups{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <div class="card shadow-sm border-0" style="border-radius:16px; overflow:hidden;">
+        <div class="card-header text-white d-flex justify-content-between align-items-center"
+            style="background:#4a148c;">
+            <div>
+                <h4 class="mb-0">🏬 Scheduled Store Pickups</h4>
+                <small>Track packages customers requested for store pickup.</small>
+            </div>
+        </div>
+
+        <div class="card-body">
+
+            <form method="get" class="row g-2 mb-3">
+                <div class="col-md-3">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="">All</option>
+                        <option value="Scheduled" {% if status=="Scheduled" %}selected{% endif %}>Scheduled</option>
+                        <option value="Ready" {% if status=="Ready" %}selected{% endif %}>Ready</option>
+                        <option value="Collected" {% if status=="Collected" %}selected{% endif %}>Collected</option>
+                        <option value="Cancelled" {% if status=="Cancelled" %}selected{% endif %}>Cancelled</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">Branch</label>
+                    <select name="branch" class="form-select">
+                        <option value="">All</option>
+                        <option value="Gregory Park" {% if branch=="Gregory Park" %}selected{% endif %}>Gregory Park
+                        </option>
+                        <option value="Portmore" {% if branch=="Portmore" %}selected{% endif %}>Portmore</option>
+                    </select>
+                </div>
+
+                <div class="col-md-3 d-flex align-items-end gap-2">
+                    <button class="btn btn-dark" type="submit">Filter</button>
+                    <a href="{{ url_for('logistics.scheduled_pickups') }}" class="btn btn-outline-secondary">Clear</a>
+                </div>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-bordered align-middle" id="scheduledPickupsTable">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Pickup #</th>
+                            <th>Date</th>
+                            <th>Customer</th>
+                            <th>Branch</th>
+                            <th>Packages</th>
+                            <th>Status</th>
+                            <th>Authorized Person</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for p in pickups %}
+                        <tr>
+                            <td class="fw-bold">#{{ p.id }}</td>
+                            <td>{{ p.pickup_date.strftime('%Y-%m-%d') if p.pickup_date else '—' }}</td>
+                            <td>
+                                {% if p.user %}
+                                {{ p.user.full_name or p.user.email }}
+                                {% if p.user.registration_number %}
+                                <br><small class="text-muted">{{ p.user.registration_number }}</small>
+                                {% endif %}
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+                            <td>{{ p.branch }}</td>
+                            <td>{{ p.packages.count() }}</td>
+                            <td>
+                                {% if p.status == "Scheduled" %}
+                                <span class="badge bg-warning text-dark">Scheduled</span>
+                                {% elif p.status == "Ready" %}
+                                <span class="badge bg-success">Ready</span>
+                                {% elif p.status == "Collected" %}
+                                <span class="badge bg-primary">Collected</span>
+                                {% elif p.status == "Cancelled" %}
+                                <span class="badge bg-danger">Cancelled</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ p.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ p.authorized_person or '—' }}</td>
+                            <td>
+                                <a class="btn btn-sm btn-outline-dark"
+                                    href="{{ url_for('logistics.scheduled_pickup_view', pickup_id=p.id) }}">
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center text-muted py-4">
+                                No scheduled pickups found.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(document).ready(function () {
+        $('#scheduledPickupsTable').DataTable({
+            order: [[1, 'desc']],
+            pageLength: 25
+        });
+    });
+</script>
+{% endblock %}

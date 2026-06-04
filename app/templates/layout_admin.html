@@ -213,6 +213,13 @@
                     </a>
                   </li>
 
+                  <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint in ['logistics.scheduled_pickups', 'logistics.scheduled_pickup_view'] else '' }}"
+                      href="{{ url_for('logistics.scheduled_pickups') }}">
+                      <i class="bi bi-shop me-2"></i> Scheduled Pickups
+                    </a>
+                  </li>
+
                 </ul>
               </div>
             </div>

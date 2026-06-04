@@ -155,6 +155,11 @@
       <i class="fas fa-calendar-alt"></i> Schedule Delivery
     </a>
 
+    <a href="{{ url_for('customer.schedule_pickup_overview') }}"
+      class="{% if request.endpoint == 'customer.schedule_pickup_overview' %}active{% endif %}">
+      <i class="fas fa-store"></i> Schedule Store Pickup
+    </a>
+
     <a href="{{ url_for('customer.authorized_pickup_overview') }}"
       class="{% if request.endpoint == 'customer.authorized_pickup_overview' %}active{% endif %}">
       <i class="fas fa-user-check"></i> Authorized Pickup
@@ -294,6 +299,13 @@
                 <a class="dropdown-item {% if request.endpoint == 'customer.schedule_delivery_overview' %}active{% endif %}"
                   href="{{ url_for('customer.schedule_delivery_overview') }}">
                   Schedule Delivery
+                </a>
+              </li>
+
+              <li>
+                <a class="dropdown-item {% if request.endpoint == 'customer.schedule_pickup_overview' %}active{% endif %}"
+                  href="{{ url_for('customer.schedule_pickup_overview') }}">
+                  Schedule Store Pickup
                 </a>
               </li>
               <li>

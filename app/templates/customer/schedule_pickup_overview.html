@@ -1,0 +1,302 @@
+{% extends 'layout_customer.html' %}
+{% block title %}Schedule Store Pickup{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <h2>🏬 Schedule Store Pickup</h2>
+    <p class="text-muted">
+        Let us know when you plan to collect your packages so we can have them ready at the store.
+    </p>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">
+            Schedule Pickup
+        </div>
+
+        <div class="card-body">
+
+            <input type="hidden" id="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="row g-3">
+
+                <div class="col-md-4">
+                    <label class="form-label">Pickup Date</label>
+                    <input type="date" id="pickupDate" class="form-control" required>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Pickup Branch</label>
+                    <select id="pickupBranch" class="form-select">
+                        <option value="Gregory Park" selected>
+                            Gregory Park
+                        </option>
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label class="form-label">Authorized Person</label>
+                    <input type="text" id="authorizedPerson" class="form-control" placeholder="Optional">
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    <textarea id="pickupNotes" class="form-control" rows="2"></textarea>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">
+            Ready For Pickup Packages
+        </div>
+
+        <div class="card-body">
+
+            {% if eligible_packages %}
+
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle">
+                    <thead>
+                        <tr>
+                            <th width="50">
+                                <input type="checkbox" id="selectAllPackages">
+                            </th>
+                            <th>Tracking #</th>
+                            <th>Description</th>
+                            <th>Weight</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for pkg in eligible_packages %}
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="pickup-package" value="{{ pkg.id }}">
+                            </td>
+
+                            <td>{{ pkg.tracking_number }}</td>
+
+                            <td>{{ pkg.description }}</td>
+
+                            <td>{{ pkg.weight }}</td>
+
+                            <td>
+                                <span class="badge bg-success">
+                                    {{ pkg.status }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <button id="schedulePickupBtn" class="btn btn-primary">
+                Schedule Pickup
+            </button>
+
+            {% else %}
+
+            <div class="alert alert-info mb-0">
+                You currently have no packages available for pickup.
+            </div>
+
+            {% endif %}
+
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+
+        <div class="card-header bg-dark text-white">
+            Scheduled Pickups
+        </div>
+
+        <div class="card-body">
+
+            <div class="table-responsive">
+
+                <table class="table table-striped">
+
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Date</th>
+                            <th>Branch</th>
+                            <th>Status</th>
+                            <th>Packages</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                        {% for pickup in pickups %}
+                        <tr>
+
+                            <td>#{{ pickup.id }}</td>
+
+                            <td>
+                                {{ pickup.pickup_date.strftime('%Y-%m-%d') }}
+                            </td>
+
+                            <td>{{ pickup.branch }}</td>
+
+                            <td>
+
+                                {% if pickup.status == "Scheduled" %}
+                                <span class="badge bg-warning text-dark">
+                                    Scheduled
+                                </span>
+
+                                {% elif pickup.status == "Ready" %}
+                                <span class="badge bg-success">
+                                    Ready
+                                </span>
+
+                                {% elif pickup.status == "Collected" %}
+                                <span class="badge bg-primary">
+                                    Collected
+                                </span>
+
+                                {% else %}
+                                <span class="badge bg-secondary">
+                                    {{ pickup.status }}
+                                </span>
+                                {% endif %}
+
+                            </td>
+
+                            <td>
+                                {{ pickup.packages.count() }}
+                            </td>
+
+                            <td>
+
+                                {% if pickup.status == "Scheduled" %}
+                                <button class="btn btn-sm btn-danger" onclick="cancelPickup({{ pickup.id }})">
+                                    Cancel
+                                </button>
+                                {% endif %}
+
+                            </td>
+
+                        </tr>
+                        {% endfor %}
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+    document.getElementById("selectAllPackages")?.addEventListener("change", function () {
+
+        document.querySelectorAll(".pickup-package").forEach(cb => {
+            cb.checked = this.checked;
+        });
+
+    });
+
+    document.getElementById("schedulePickupBtn")?.addEventListener("click", async function () {
+
+        const package_ids = [...document.querySelectorAll(".pickup-package:checked")]
+            .map(cb => parseInt(cb.value));
+
+        const pickup_date = document.getElementById("pickupDate").value;
+
+        const branch = document.getElementById("pickupBranch").value;
+
+        const authorized_person =
+            document.getElementById("authorizedPerson").value;
+
+        const notes =
+            document.getElementById("pickupNotes").value;
+
+        if (!pickup_date) {
+            alert("Please select a pickup date.");
+            return;
+        }
+
+        if (package_ids.length === 0) {
+            alert("Please select at least one package.");
+            return;
+        }
+
+        const csrfToken =
+            document.getElementById("csrf_token").value;
+
+        const response = await fetch(
+            "{{ url_for('customer.schedule_pickup_add') }}",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    pickup_date,
+                    branch,
+                    authorized_person,
+                    notes,
+                    package_ids
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        if (!data.success) {
+            alert(data.message);
+            return;
+        }
+
+        location.reload();
+
+    });
+
+    async function cancelPickup(id) {
+
+        if (!confirm("Cancel this pickup request?")) {
+            return;
+        }
+
+        const csrfToken =
+            document.getElementById("csrf_token").value;
+
+        const response = await fetch(
+            `/customer/schedule-pickup/${id}/cancel`,
+            {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": csrfToken
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!data.success) {
+            alert(data.message);
+            return;
+        }
+
+        location.reload();
+    }
+
+</script>
+
+{% endblock %}

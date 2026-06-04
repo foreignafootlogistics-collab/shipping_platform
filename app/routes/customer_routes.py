@@ -55,6 +55,7 @@ from urllib.parse import urlsplit, urlunsplit
 from app.models import (
     User, Package, Invoice,
     AuthorizedPickup, ScheduledDelivery,
+    ScheduledPickup, pickup_packages,
     Notification,
     Message as DBMessage,  # 👈 avoid name clash with Flask-Mail
     MessageAttachment,
@@ -2265,6 +2266,132 @@ def authorized_pickup_add():
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 400
 
+
+@customer_bp.route('/schedule-pickup', methods=['GET'])
+@login_required
+def schedule_pickup_overview():
+    active_pickup_statuses = ["Scheduled", "Ready"]
+
+    eligible_packages = (
+        Package.query
+        .filter(
+            Package.user_id == current_user.id,
+            func.lower(func.trim(Package.status)) == "ready for pick up",
+            ~Package.scheduled_pickups.any(
+                ScheduledPickup.status.in_(active_pickup_statuses)
+            )
+        )
+        .order_by(Package.created_at.desc())
+        .all()
+    )
+
+    pickups = (
+        ScheduledPickup.query
+        .filter_by(user_id=current_user.id)
+        .order_by(ScheduledPickup.pickup_date.desc(), ScheduledPickup.id.desc())
+        .all()
+    )
+
+    return render_template(
+        "customer/schedule_pickup_overview.html",
+        eligible_packages=eligible_packages,
+        pickups=pickups
+    )
+
+
+@customer_bp.route('/schedule-pickup/add', methods=['POST'])
+@login_required
+def schedule_pickup_add():
+    data = request.get_json(silent=True) or {}
+
+    pickup_date_raw = (data.get("pickup_date") or "").strip()
+    branch = (data.get("branch") or "Gregory Park").strip()
+    authorized_person = (data.get("authorized_person") or "").strip()
+    notes = (data.get("notes") or "").strip()
+    package_ids = data.get("package_ids") or []
+
+    if not pickup_date_raw:
+        return jsonify({"success": False, "message": "Please select a pickup date."}), 400
+
+    if not package_ids:
+        return jsonify({"success": False, "message": "Please select at least one package."}), 400
+
+    try:
+        pickup_date = datetime.strptime(pickup_date_raw, "%Y-%m-%d").date()
+    except Exception:
+        return jsonify({"success": False, "message": "Invalid pickup date."}), 400
+
+    active_pickup_statuses = ["Scheduled", "Ready"]
+
+    packages = (
+        Package.query
+        .filter(
+            Package.user_id == current_user.id,
+            Package.id.in_(package_ids),
+            func.lower(func.trim(Package.status)) == "ready for pick up",
+            ~Package.scheduled_pickups.any(
+                ScheduledPickup.status.in_(active_pickup_statuses)
+            )
+        )
+        .all()
+    )
+
+    if not packages:
+        return jsonify({
+            "success": False,
+            "message": "No eligible packages selected. They may already be scheduled for pickup."
+        }), 400
+
+    try:
+        pickup = ScheduledPickup(
+            user_id=current_user.id,
+            pickup_date=pickup_date,
+            branch=branch,
+            status="Scheduled",
+            authorized_person=authorized_person,
+            notes=notes
+        )
+
+        db.session.add(pickup)
+        db.session.flush()
+
+        for pkg in packages:
+            pickup.packages.append(pkg)
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Store pickup scheduled successfully."
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("schedule_pickup_add failed")
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@customer_bp.route('/schedule-pickup/<int:pickup_id>/cancel', methods=['POST'])
+@login_required
+def schedule_pickup_cancel(pickup_id):
+    pickup = ScheduledPickup.query.filter_by(
+        id=pickup_id,
+        user_id=current_user.id
+    ).first_or_404()
+
+    if pickup.status not in ["Scheduled"]:
+        return jsonify({
+            "success": False,
+            "message": "This pickup can no longer be cancelled online."
+        }), 400
+
+    pickup.status = "Cancelled"
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Pickup cancelled."
+    }), 200
 
 # -----------------------------
 # Scheduled Delivery

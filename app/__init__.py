@@ -263,6 +263,37 @@ def create_app():
 
     @app.context_processor
     @_safe_ctx
+    def inject_scheduled_pickup_counts():
+        """
+        Global scheduled pickup alert counts for layout_admin.html badges.
+        """
+        try:
+            from .models import ScheduledPickup
+        except Exception:
+            return {
+                "sp_today_count": 0
+            }
+
+        today = date.today()
+
+        try:
+            sp_today_count = (
+                ScheduledPickup.query
+                .filter(
+                    ScheduledPickup.pickup_date == today,
+                    ScheduledPickup.status.in_(["Scheduled", "Ready"])
+                )
+                .count()
+            )
+        except Exception:
+            sp_today_count = 0
+
+        return {
+            "sp_today_count": sp_today_count
+        }
+
+    @app.context_processor
+    @_safe_ctx
     def inject_unread_notifications_count():
         from flask_login import current_user
         try:

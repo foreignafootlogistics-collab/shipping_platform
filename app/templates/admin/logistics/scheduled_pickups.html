@@ -62,7 +62,9 @@
                         {% for p in pickups %}
                         <tr>
                             <td class="fw-bold">#{{ p.id }}</td>
+
                             <td>{{ p.pickup_date.strftime('%Y-%m-%d') if p.pickup_date else '—' }}</td>
+
                             <td>
                                 {% if p.user %}
                                 {{ p.user.full_name or p.user.email }}
@@ -73,8 +75,17 @@
                                 —
                                 {% endif %}
                             </td>
-                            <td>{{ p.branch }}</td>
-                            <td>{{ p.packages.count() }}</td>
+
+                            <td>{{ p.branch or '—' }}</td>
+
+                            <td>
+                                {% if p.packages is defined %}
+                                {{ p.packages.count() }}
+                                {% else %}
+                                0
+                                {% endif %}
+                            </td>
+
                             <td>
                                 {% if p.status == "Scheduled" %}
                                 <span class="badge bg-warning text-dark">Scheduled</span>
@@ -85,21 +96,17 @@
                                 {% elif p.status == "Cancelled" %}
                                 <span class="badge bg-danger">Cancelled</span>
                                 {% else %}
-                                <span class="badge bg-secondary">{{ p.status }}</span>
+                                <span class="badge bg-secondary">{{ p.status or 'Unknown' }}</span>
                                 {% endif %}
                             </td>
+
                             <td>{{ p.authorized_person or '—' }}</td>
+
                             <td>
                                 <a class="btn btn-sm btn-outline-dark"
                                     href="{{ url_for('logistics.scheduled_pickup_view', pickup_id=p.id) }}">
                                     View
                                 </a>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="8" class="text-center text-muted py-4">
-                                No scheduled pickups found.
                             </td>
                         </tr>
                         {% endfor %}
@@ -116,9 +123,18 @@
 {% block scripts %}
 <script>
     $(document).ready(function () {
-        $('#scheduledPickupsTable').DataTable({
+        const table = $('#scheduledPickupsTable');
+
+        if ($.fn.DataTable.isDataTable(table)) {
+            table.DataTable().destroy();
+        }
+
+        table.DataTable({
             order: [[1, 'desc']],
-            pageLength: 25
+            pageLength: 25,
+            language: {
+                emptyTable: "No scheduled pickups found."
+            }
         });
     });
 </script>

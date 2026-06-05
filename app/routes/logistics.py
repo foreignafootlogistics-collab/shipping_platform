@@ -6246,6 +6246,17 @@ def set_invoice_status(invoice_id):
 @logistics_bp.route("/scheduled-pickups", methods=["GET"])
 @admin_required()
 def scheduled_pickups():
+    today = date.today()
+
+    sp_today_count = (
+        ScheduledPickup.query
+        .filter(
+            ScheduledPickup.pickup_date == today,
+            ScheduledPickup.status.in_(["Scheduled", "Ready"])
+        )
+        .count()
+    )
+    
     status = (request.args.get("status") or "").strip()
     branch = (request.args.get("branch") or "").strip()
 
@@ -6265,6 +6276,7 @@ def scheduled_pickups():
     return render_template(
         "admin/logistics/scheduled_pickups.html",
         pickups=pickups,
+        sp_today_count=sp_today_count,
         status=status,
         branch=branch
     )

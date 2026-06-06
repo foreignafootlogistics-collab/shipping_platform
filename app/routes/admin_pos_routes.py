@@ -401,6 +401,13 @@ def checkout():
             if group_final_total < Decimal("0.00"):
                 group_final_total = Decimal("0.00")
 
+            invoice.subtotal_before_discount = group_total
+            invoice.discount_type = discount_type if group_discount > 0 else "none"
+            invoice.discount_amount = discount_amount if group_discount > 0 else Decimal("0.00")
+            invoice.discount_total = group_discount
+            invoice.grand_total = float(group_final_total)
+            invoice.amount = float(group_final_total)
+
             if not is_pending_transfer:
                 payment_notes = notes or "POS payment"
                 if discount_note:
@@ -423,8 +430,6 @@ def checkout():
 
                 current_due = Decimal(str(invoice.amount_due or 0))
 
-                # Clear the full selected package charge from invoice balance.
-                # Customer pays less because discount is approved at POS.
                 new_due = current_due - group_total
 
                 if new_due < Decimal("0.00"):
@@ -499,6 +504,12 @@ def checkout():
                 amount=float(new_final_total),
                 amount_due=float(new_final_total) if is_pending_transfer else 0.0,
                 grand_total=float(new_final_total),
+
+                subtotal_before_discount=new_total,
+                discount_type=discount_type if new_discount > 0 else "none",
+                discount_amount=discount_amount if new_discount > 0 else Decimal("0.00"),
+                discount_total=new_discount,
+
                 date_issued=now_utc,
                 date_paid=None if is_pending_transfer else now_utc,
                 created_at=now_utc,

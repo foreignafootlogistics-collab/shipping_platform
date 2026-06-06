@@ -122,19 +122,48 @@
           </div>
 
           <div class="mb-3">
+            <label class="form-label">Discount Type</label>
+            <select id="discountType" class="form-select">
+              <option value="none">No Discount</option>
+              <option value="fixed">Fixed Amount (JMD)</option>
+              <option value="percent">Percentage (%)</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Discount Amount</label>
+            <input type="number" id="discountAmount" class="form-control" value="0" min="0" step="0.01">
+          </div>
+
+          <div class="mb-3">
             <label class="form-label">Notes</label>
             <textarea id="checkoutNotes" class="form-control" rows="3" placeholder="Optional note"></textarea>
           </div>
 
           <div class="border rounded p-3 bg-light mb-3">
+
             <div class="d-flex justify-content-between mb-2">
               <span>Selected Packages</span>
               <strong id="selectedCount">0</strong>
             </div>
+
+            <div class="d-flex justify-content-between mb-2">
+              <span>Subtotal</span>
+              <strong id="subtotalAmount">$0.00</strong>
+            </div>
+
+            <div class="d-flex justify-content-between mb-2 text-danger">
+              <span>Discount</span>
+              <strong id="discountDisplay">$0.00</strong>
+            </div>
+
+            <hr>
+
             <div class="d-flex justify-content-between">
               <span>Total</span>
               <strong id="selectedTotal">$0.00</strong>
             </div>
+
           </div>
 
           <button id="checkoutBtn" class="btn btn-primary w-100" disabled>
@@ -178,6 +207,11 @@
   const selectAllPackages = document.getElementById("selectAllPackages");
   const paymentMethod = document.getElementById("paymentMethod");
   const checkoutNotes = document.getElementById("checkoutNotes");
+  const discountType = document.getElementById("discountType");
+  const discountAmount = document.getElementById("discountAmount");
+
+  const subtotalAmount = document.getElementById("subtotalAmount");
+  const discountDisplay = document.getElementById("discountDisplay");
   const selectedCount = document.getElementById("selectedCount");
   const selectedTotal = document.getElementById("selectedTotal");
   const checkoutBtn = document.getElementById("checkoutBtn");
@@ -240,17 +274,52 @@
   }
 
   function updateSummary() {
+
     const ids = getSelectedPackageIds();
 
-    let total = 0;
+    let subtotal = 0;
+
     ids.forEach(id => {
-      const pkg = loadedPackages.find(p => Number(p.id) === Number(id));
-      if (pkg) total += Number(pkg.amount_due || 0);
+      const pkg = loadedPackages.find(
+        p => Number(p.id) === Number(id)
+      );
+
+      if (pkg) {
+        subtotal += Number(pkg.amount_due || 0);
+      }
     });
 
+    let discount = 0;
+
+    const type = discountType.value;
+    const amount = parseFloat(discountAmount.value || 0);
+
+    if (type === "fixed") {
+      discount = amount;
+    }
+    else if (type === "percent") {
+      discount = subtotal * (amount / 100);
+    }
+
+    if (discount > subtotal) {
+      discount = subtotal;
+    }
+
+    const finalTotal = subtotal - discount;
+
     selectedCount.textContent = ids.length;
-    selectedTotal.textContent = formatMoney(total);
-    checkoutBtn.disabled = !selectedCustomer || ids.length === 0;
+
+    subtotalAmount.textContent =
+      formatMoney(subtotal);
+
+    discountDisplay.textContent =
+      "-" + formatMoney(discount);
+
+    selectedTotal.textContent =
+      formatMoney(finalTotal);
+
+    checkoutBtn.disabled =
+      !selectedCustomer || ids.length === 0;
   }
 
   function checkPackageById(packageId) {
@@ -473,6 +542,9 @@
     updateSummary();
   });
 
+  discountType.addEventListener("change", updateSummary);
+  discountAmount.addEventListener("input", updateSummary);
+
   if (barcodeScanInput) {
     barcodeScanInput.addEventListener("keydown", async function (e) {
       if (e.key !== "Enter") return;
@@ -590,6 +662,10 @@
           user_id: selectedCustomer.id,
           package_ids,
           payment_method: paymentMethod.value,
+
+          discount_type: discountType.value,
+          discount_amount: discountAmount.value,
+
           notes: checkoutNotes.value
         })
       });

@@ -3,10 +3,10 @@
 
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
   <div>
     <h4 class="mb-1">POS Closeout History</h4>
-    <div class="text-muted">Review daily register closeouts and cash differences</div>
+    <div class="text-muted">Review daily register closeouts, discounts, totals, and cash differences</div>
   </div>
 
   <a href="{{ url_for('admin_pos.daily_sales') }}" class="btn btn-outline-primary">
@@ -14,16 +14,18 @@
   </a>
 </div>
 
-<div class="card p-3">
+<div class="card shadow-sm p-3">
   <div class="table-responsive">
     <table class="table table-sm table-bordered align-middle">
       <thead class="table-light">
         <tr>
           <th>Date</th>
+          <th class="text-end">Gross Sales</th>
+          <th class="text-end">Discounts</th>
+          <th class="text-end">Net Sales</th>
           <th class="text-end">Expected Cash</th>
           <th class="text-end">Actual Cash</th>
-          <th class="text-end">Difference</th>
-          <th class="text-end">Expected Total</th>
+          <th class="text-end">Cash Difference</th>
           <th>Closed By</th>
           <th>Closed At</th>
           <th>Notes</th>
@@ -32,6 +34,10 @@
 
       <tbody>
         {% for c in closeouts %}
+        {% set discount = c.expected_discount or 0 %}
+        {% set net_sales = c.expected_total or 0 %}
+        {% set gross_sales = net_sales + discount %}
+
         <tr>
           <td>
             <a href="{{ url_for('admin_pos.daily_sales', date=c.business_date.strftime('%Y-%m-%d')) }}">
@@ -39,21 +45,25 @@
             </a>
           </td>
 
-          <td class="text-end">JMD {{ "%.2f"|format(c.expected_cash) }}</td>
-          <td class="text-end">JMD {{ "%.2f"|format(c.actual_cash) }}</td>
+          <td class="text-end">JMD {{ "%.2f"|format(gross_sales) }}</td>
+          <td class="text-end text-danger">JMD {{ "%.2f"|format(discount) }}</td>
+          <td class="text-end fw-semibold">JMD {{ "%.2f"|format(net_sales) }}</td>
 
-          <td class="text-end {% if c.cash_difference < 0 %}text-danger fw-bold{% elif c.cash_difference > 0 %}text-success fw-bold{% endif %}">
-            JMD {{ "%.2f"|format(c.cash_difference) }}
+          <td class="text-end">JMD {{ "%.2f"|format(c.expected_cash or 0) }}</td>
+          <td class="text-end">JMD {{ "%.2f"|format(c.actual_cash or 0) }}</td>
+
+          <td
+            class="text-end {% if c.cash_difference < 0 %}text-danger fw-bold{% elif c.cash_difference > 0 %}text-success fw-bold{% endif %}">
+            JMD {{ "%.2f"|format(c.cash_difference or 0) }}
           </td>
 
-          <td class="text-end">JMD {{ "%.2f"|format(c.expected_total) }}</td>
           <td>{{ c.closed_by.full_name if c.closed_by else "Admin" }}</td>
           <td>{{ c.closed_at.strftime('%Y-%m-%d %H:%M') if c.closed_at else "" }}</td>
           <td>{{ c.notes or "—" }}</td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="8" class="text-center text-muted py-4">
+          <td colspan="10" class="text-center text-muted py-4">
             No register closeouts found.
           </td>
         </tr>

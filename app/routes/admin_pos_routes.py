@@ -282,6 +282,19 @@ def checkout():
     payment_method = (data.get("payment_method") or "").strip().lower()
     notes = (data.get("notes") or "").strip()
 
+    discount_type = (data.get("discount_type") or "none").strip().lower()
+
+    try:
+        discount_amount = Decimal(str(data.get("discount_amount") or 0))
+    except Exception:
+        discount_amount = Decimal("0.00")
+
+    if discount_type not in {"none", "fixed", "percent"}:
+        discount_type = "none"
+
+    if discount_amount < Decimal("0.00"):
+        discount_amount = Decimal("0.00")
+
     if not user_id:
         return jsonify({"ok": False, "error": "Customer is required."}), 400
 
@@ -294,6 +307,8 @@ def checkout():
     is_pending_transfer = payment_method == "transfer_pending"
 
     user = User.query.get_or_404(user_id)
+
+    package_ids = [int(x) for x in package_ids if str(x).isdigit()]
 
     packages = (
         Package.query
@@ -309,7 +324,7 @@ def checkout():
         return jsonify({"ok": False, "error": "No valid packages found."}), 400
 
     invalid = []
-    total = Decimal("0.00")
+    subtotal = Decimal("0.00")
 
     for p in packages:
         if p.status != "Ready for Pick Up":
@@ -320,10 +335,30 @@ def checkout():
             invalid.append(f"Package {p.id} is already locked.")
             continue
 
-        total += _package_charge_amount(p)
+        subtotal += _package_charge_amount(p)
 
     if invalid:
         return jsonify({"ok": False, "error": " ".join(invalid)}), 400
+
+    discount = Decimal("0.00")
+
+    if discount_type == "fixed":
+        discount = discount_amount
+    elif discount_type == "percent":
+        discount = (subtotal * discount_amount) / Decimal("100")
+
+    if discount > subtotal:
+        discount = subtotal
+
+    final_total = subtotal - discount
+
+    discount_note = ""
+    if discount > 0:
+        discount_note = (
+            f"POS discount applied: {discount_type} "
+            f"{discount_amount} | Discount JMD {discount:.2f} | "
+            f"Subtotal JMD {subtotal:.2f} | Final Total JMD {final_total:.2f}"
+        )
 
     try:
         now_utc = datetime.now(timezone.utc)
@@ -340,6 +375,8 @@ def checkout():
         checkout_invoice_ids = []
         created_payment_ids = []
 
+        total_before_discount = subtotal if subtotal > 0 else Decimal("1.00")
+
         for invoice_id, pkg_list in existing_invoice_groups.items():
             invoice = Invoice.query.get(invoice_id)
 
@@ -355,15 +392,28 @@ def checkout():
             for p in pkg_list:
                 group_total += _package_charge_amount(p)
 
+            group_discount = Decimal("0.00")
+            if discount > 0:
+                group_discount = (group_total / total_before_discount) * discount
+
+            group_final_total = group_total - group_discount
+
+            if group_final_total < Decimal("0.00"):
+                group_final_total = Decimal("0.00")
+
             if not is_pending_transfer:
+                payment_notes = notes or "POS payment"
+                if discount_note:
+                    payment_notes = f"{payment_notes}\n{discount_note}"
+
                 payment = Payment(
                     user_id=user.id,
                     invoice_id=invoice.id,
                     method=payment_method.title(),
-                    amount_jmd=float(group_total),
+                    amount_jmd=float(group_final_total),
                     transaction_type="invoice_payment",
                     status="completed",
-                    notes=notes or "POS payment",
+                    notes=payment_notes,
                     source="pos"
                 )
 
@@ -372,12 +422,21 @@ def checkout():
                 created_payment_ids.append(payment.id)
 
                 current_due = Decimal(str(invoice.amount_due or 0))
+
+                # Clear the full selected package charge from invoice balance.
+                # Customer pays less because discount is approved at POS.
                 new_due = current_due - group_total
 
                 if new_due < Decimal("0.00"):
                     new_due = Decimal("0.00")
 
                 invoice.amount_due = float(new_due)
+
+                if discount_note:
+                    invoice.description = (
+                        (invoice.description or "") +
+                        f"\n{discount_note}"
+                    ).strip()
 
                 if new_due == Decimal("0.00"):
                     invoice.status = "paid"
@@ -388,10 +447,14 @@ def checkout():
             else:
                 invoice.status = "unpaid"
 
-                if notes:
+                pending_note = notes or ""
+                if discount_note:
+                    pending_note = f"{pending_note}\n{discount_note}".strip()
+
+                if pending_note:
                     invoice.description = (
                         (invoice.description or "") +
-                        f"\nPOS release pending transfer: {notes}"
+                        f"\nPOS release pending transfer: {pending_note}"
                     ).strip()
 
             checkout_invoice_ids.append(invoice.id)
@@ -399,7 +462,6 @@ def checkout():
             for p in pkg_list:
                 p.status = "Delivered"
                 p.is_locked = True
-
                 p.delivery_scan_status = "scanned"
                 p.delivery_scanned_at = now_utc
                 p.delivery_scanned_by_id = current_user.id
@@ -416,14 +478,27 @@ def checkout():
                 except Exception:
                     pass
 
+            new_discount = Decimal("0.00")
+            if discount > 0:
+                new_discount = (new_total / total_before_discount) * discount
+
+            new_final_total = new_total - new_discount
+
+            if new_final_total < Decimal("0.00"):
+                new_final_total = Decimal("0.00")
+
+            invoice_description = notes or f"POS checkout for {len(uninvoiced_packages)} package(s)"
+            if discount_note:
+                invoice_description = f"{invoice_description}\n{discount_note}"
+
             pos_invoice = Invoice(
                 user_id=user.id,
                 invoice_number=f"POS-{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
-                description=notes or f"POS checkout for {len(uninvoiced_packages)} package(s)",
+                description=invoice_description,
                 total_weight=float(new_weight),
-                amount=float(new_total),
-                amount_due=float(new_total) if is_pending_transfer else 0.0,
-                grand_total=float(new_total),
+                amount=float(new_final_total),
+                amount_due=float(new_final_total) if is_pending_transfer else 0.0,
+                grand_total=float(new_final_total),
                 date_issued=now_utc,
                 date_paid=None if is_pending_transfer else now_utc,
                 created_at=now_utc,
@@ -436,14 +511,18 @@ def checkout():
             checkout_invoice_ids.append(pos_invoice.id)
 
             if not is_pending_transfer:
+                payment_notes = notes or "POS payment"
+                if discount_note:
+                    payment_notes = f"{payment_notes}\n{discount_note}"
+
                 pos_payment = Payment(
                     user_id=user.id,
                     invoice_id=pos_invoice.id,
                     method=payment_method.title(),
-                    amount_jmd=float(new_total),
+                    amount_jmd=float(new_final_total),
                     transaction_type="invoice_payment",
                     status="completed",
-                    notes=notes or "POS payment",
+                    notes=payment_notes,
                     source="pos"
                 )
 
@@ -455,7 +534,6 @@ def checkout():
                 p.invoice_id = pos_invoice.id
                 p.status = "Delivered"
                 p.is_locked = True
-
                 p.delivery_scan_status = "scanned"
                 p.delivery_scanned_at = now_utc
                 p.delivery_scanned_by_id = current_user.id
@@ -473,7 +551,9 @@ def checkout():
             "message": message,
             "invoice_ids": checkout_invoice_ids,
             "payment_ids": created_payment_ids,
-            "total": str(total),
+            "subtotal": str(subtotal),
+            "discount": str(discount),
+            "total": str(final_total),
             "payment_pending": is_pending_transfer,
         })
 
@@ -483,7 +563,6 @@ def checkout():
             "ok": False,
             "error": f"Checkout failed: {str(e)}"
         }), 500
-
 
 @admin_pos_bp.route("/invoice/<int:invoice_id>/receipt", methods=["GET"])
 @admin_required
@@ -565,7 +644,7 @@ Thank you for shipping with Foreign A Foot Logistics Limited.
 @admin_pos_bp.route("/daily-sales", methods=["GET", "POST"])
 @admin_required
 def daily_sales():
-    from datetime import datetime, timedelta, date
+    from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
 
     jamaica_tz = ZoneInfo("America/Jamaica")
@@ -576,7 +655,11 @@ def daily_sales():
     else:
         business_date = datetime.now(jamaica_tz).date()
 
-    start_local = datetime.combine(business_date, datetime.min.time(), tzinfo=jamaica_tz)
+    start_local = datetime.combine(
+        business_date,
+        datetime.min.time(),
+        tzinfo=jamaica_tz
+    )
     end_local = start_local + timedelta(days=1)
 
     # Your DB timestamps are stored naive UTC, so convert local day to UTC naive range
@@ -600,7 +683,9 @@ def daily_sales():
         "cash": Decimal("0.00"),
         "card": Decimal("0.00"),
         "transfer": Decimal("0.00"),
-        "total": Decimal("0.00")
+        "gross_total": Decimal("0.00"),
+        "discount": Decimal("0.00"),
+        "total": Decimal("0.00"),
     }
 
     rows = []
@@ -609,6 +694,17 @@ def daily_sales():
         amount = Decimal(str(p.amount_jmd or 0))
         method = (p.method or "").strip().lower()
 
+        invoice_discount = Decimal("0.00")
+        invoice_gross = amount
+
+        if p.invoice:
+            invoice_discount = Decimal(str(p.invoice.discount_total or 0))
+            invoice_gross = Decimal(str(p.invoice.subtotal_before_discount or 0))
+
+            # Safety fallback for older invoices that may not have subtotal stored
+            if invoice_gross <= Decimal("0.00"):
+                invoice_gross = amount + invoice_discount
+
         if method == "cash":
             summary["cash"] += amount
         elif method == "card":
@@ -616,6 +712,8 @@ def daily_sales():
         elif method in {"transfer", "bank", "bank transfer"}:
             summary["transfer"] += amount
 
+        summary["gross_total"] += invoice_gross
+        summary["discount"] += invoice_discount
         summary["total"] += amount
 
         rows.append({
@@ -623,10 +721,14 @@ def daily_sales():
             "customer": p.user.full_name if p.user else "",
             "invoice": p.invoice.invoice_number if p.invoice else "",
             "method": p.method,
-            "amount": amount
+            "gross": invoice_gross,
+            "discount": invoice_discount,
+            "amount": amount,
         })
 
-    closeout = POSCloseout.query.filter_by(business_date=business_date).first()
+    closeout = POSCloseout.query.filter_by(
+        business_date=business_date
+    ).first()
 
     if request.method == "POST":
         actual_cash = Decimal(str(request.form.get("actual_cash") or "0"))
@@ -641,7 +743,9 @@ def daily_sales():
         closeout.expected_cash = summary["cash"]
         closeout.expected_card = summary["card"]
         closeout.expected_transfer = summary["transfer"]
+        closeout.expected_discount = summary["discount"]
         closeout.expected_total = summary["total"]
+
         closeout.actual_cash = actual_cash
         closeout.cash_difference = cash_difference
         closeout.notes = notes
@@ -651,7 +755,12 @@ def daily_sales():
         db.session.commit()
         flash("POS register closed successfully.", "success")
 
-        return redirect(url_for("admin_pos.daily_sales", date=business_date.strftime("%Y-%m-%d")))
+        return redirect(
+            url_for(
+                "admin_pos.daily_sales",
+                date=business_date.strftime("%Y-%m-%d")
+            )
+        )
 
     return render_template(
         "admin/pos/daily_sales.html",

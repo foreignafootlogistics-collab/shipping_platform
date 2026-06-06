@@ -64,7 +64,12 @@ class User(db.Model, UserMixin):
 
     # Relationships
     wallet = db.relationship('Wallet', back_populates='user', uselist=False)
-    wallet_transactions = db.relationship('WalletTransaction', back_populates='user', lazy='dynamic')
+    wallet_transactions = db.relationship(
+        'WalletTransaction',
+        back_populates='user',
+        lazy='dynamic',
+        foreign_keys='WalletTransaction.user_id'
+    )
     invoices = db.relationship('Invoice', back_populates='user', lazy='dynamic')
     packages = db.relationship('Package', back_populates='user', lazy='dynamic', foreign_keys='Package.user_id')
     prealerts = db.relationship('Prealert', back_populates='user', lazy='dynamic')
@@ -382,12 +387,29 @@ class WalletTransaction(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+
     amount = db.Column(db.Float, nullable=False)
+
+    # required going forward
     description = db.Column(db.String)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
     type = db.Column(db.String)
 
-    user = db.relationship('User', back_populates='wallet_transactions')
+    # new audit fields
+    action = db.Column(db.String(30), nullable=True, index=True)
+    reason = db.Column(db.String(80), nullable=True, index=True)
+    invoice_number = db.Column(db.String(40), nullable=True, index=True)
+    package_id = db.Column(db.Integer, db.ForeignKey("packages.id"), nullable=True, index=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship(
+        'User',
+        back_populates='wallet_transactions',
+        foreign_keys=[user_id]
+    )
+    admin = db.relationship("User", foreign_keys=[admin_id], lazy="joined")
+    package = db.relationship("Package", foreign_keys=[package_id], lazy="joined")
 
     def __repr__(self):
         return f"<WalletTransaction User {self.user_id} Amount {self.amount}>"
@@ -423,6 +445,11 @@ class Invoice(db.Model):
     amount = db.Column(db.Float, default=0)         # legacy
     amount_due = db.Column(db.Float, default=0)     # open balance
     grand_total = db.Column(db.Float, default=0)    # full sum with fees
+    # POS Discount Tracking
+    subtotal_before_discount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    discount_type = db.Column(db.String(20), nullable=False, default="none")
+    discount_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    discount_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
 
     # Dates
     date_issued = db.Column(db.DateTime)
@@ -1415,6 +1442,7 @@ class POSCloseout(db.Model):
     expected_card = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     expected_transfer = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     expected_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    expected_discount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
 
     actual_cash = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     cash_difference = db.Column(db.Numeric(12, 2), nullable=False, default=0)

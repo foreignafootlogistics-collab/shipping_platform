@@ -1859,14 +1859,73 @@ def update_wallet(id):
         flash("User not found.", "danger")
         return redirect(url_for('accounts_profiles.manage_users'))
 
-    amount = float(request.form.get('amount', 0) or 0)
-    desc   = (request.form.get('description') or '').strip()
+    wallet_action = (request.form.get("wallet_action") or "").strip()
+    reason = (request.form.get("reason") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    invoice_number = (request.form.get("invoice_number") or "").strip()
 
-    user.wallet_balance = (user.wallet_balance or 0) + amount
+    try:
+        amount = abs(float(request.form.get("amount", 0) or 0))
+    except ValueError:
+        amount = 0
+
+    if wallet_action not in ("credit", "debit", "invoice_payment"):
+        flash("Please select whether this is an add funds, deduct funds, or invoice/package payment transaction.", "danger")
+        return redirect(_back_to_view_user_url(id))
+
+    if amount <= 0:
+        flash("Please enter an amount greater than 0.", "danger")
+        return redirect(_back_to_view_user_url(id))
+
+    if not reason:
+        flash("Please select a wallet reason.", "danger")
+        return redirect(_back_to_view_user_url(id))
+
+    if not description:
+        flash("Please enter a wallet description.", "danger")
+        return redirect(_back_to_view_user_url(id))
+
+    if wallet_action == "invoice_payment" and not invoice_number:
+        flash("Invoice number is required when wallet funds are used to pay for a package/invoice.", "danger")
+        return redirect(_back_to_view_user_url(id))
+
+    signed_amount = amount
+
+    if wallet_action in ("debit", "invoice_payment"):
+        signed_amount = -amount
+
+    new_balance = float(user.wallet_balance or 0) + signed_amount
+
+    if new_balance < 0:
+        flash("Wallet deduction denied. This transaction would make the wallet balance negative.", "danger")
+        return redirect(_back_to_view_user_url(id))
+
+    user.wallet_balance = new_balance
+
+    txn_description = description
+    if invoice_number:
+        txn_description = f"{description} | Invoice #: {invoice_number}"
+
+    wallet_txn = WalletTransaction(
+        user_id=user.id,
+        amount=signed_amount,
+        description=txn_description,
+        type=wallet_action,
+        action=wallet_action,
+        reason=reason,
+        invoice_number=invoice_number or None,
+        admin_id=current_user.id if current_user and current_user.is_authenticated else None,
+    )
+
+    db.session.add(wallet_txn)
     _safe_commit()
 
-    flash(f"Wallet updated by {amount:+.2f}. New balance: {user.wallet_balance:.2f}", "success")
+    flash(
+        f"Wallet updated by {signed_amount:+.2f}. New balance: {user.wallet_balance:.2f}",
+        "success"
+    )
     return redirect(_back_to_view_user_url(id))
+
 
 @accounts_bp.route("/view_user/<int:id>/messages/bulk-delete", methods=["POST"])
 @admin_required

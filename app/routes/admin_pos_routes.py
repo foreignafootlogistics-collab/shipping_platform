@@ -2,7 +2,7 @@ import re
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from flask import Blueprint, render_template, request, jsonify, url_for, redirect
+from flask import Blueprint, render_template, request, jsonify, url_for, redirect, flash
 from sqlalchemy import or_, func
 
 from app.extensions import db

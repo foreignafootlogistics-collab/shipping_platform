@@ -6,13 +6,24 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
   <div>
     <h4 class="mb-1">Payroll: {{ run.period_start }} → {{ run.period_end }}</h4>
-    <div class="text-muted">
-      Status:
-      {% if run.status == "paid" %}
+    <div class="text-muted d-flex flex-wrap gap-2 align-items-center">
+      <span>
+        Status:
+        {% if run.status == "paid" %}
         <span class="badge bg-success">Paid</span>
-      {% else %}
+        {% else %}
         <span class="badge bg-warning text-dark">Draft</span>
-      {% endif %}
+        {% endif %}
+      </span>
+
+      <span>
+        Frequency:
+        {% if run.pay_frequency == "fortnightly" %}
+        <span class="badge bg-info text-dark">Fortnightly</span>
+        {% else %}
+        <span class="badge bg-secondary">Monthly</span>
+        {% endif %}
+      </span>
     </div>
   </div>
 
@@ -37,55 +48,70 @@
 </div>
 
 <div class="row mb-4">
-  <div class="col-md-4">
+  <div class="col-md-3">
     <div class="card p-3 text-center">
       <strong>Total Gross</strong>
       <div class="fs-5">JMD {{ "%.2f"|format(run.total_gross or 0) }}</div>
     </div>
   </div>
 
-  <div class="col-md-4">
+  <div class="col-md-3">
     <div class="card p-3 text-center">
       <strong>Total Net</strong>
       <div class="fs-5">JMD {{ "%.2f"|format(run.total_net or 0) }}</div>
     </div>
   </div>
 
-  <div class="col-md-4">
+  <div class="col-md-3">
     <div class="card p-3 text-center">
       <strong>Employees</strong>
       <div class="fs-5">{{ items|length }}</div>
+    </div>
+  </div>
+
+
+  <div class="col-md-3">
+    <div class="card p-3 text-center">
+      <strong>Frequency</strong>
+      <div class="fs-5">
+        {% if run.pay_frequency == "fortnightly" %}
+        Fortnightly
+        {% else %}
+        Monthly
+        {% endif %}
+      </div>
     </div>
   </div>
 </div>
 
 <div class="card p-3 mb-3">
   <div class="d-flex justify-content-between align-items-center">
-    <h6 class="mb-0">Employees</h6>
+
+    <div>
+      <h6 class="mb-0">Employees</h6>
+      <div class="text-muted small">
+        {% if run.pay_frequency == "fortnightly" %}
+        Fortnightly Payroll Run
+        {% else %}
+        Monthly Payroll Run
+        {% endif %}
+      </div>
+    </div>
 
     <div class="d-flex gap-2">
       {% if run.status != "paid" %}
-      <button type="button"
-              id="editSelectedBtn"
-              class="btn btn-sm btn-outline-warning"
-              title="Edit selected employee">
+      <button type="button" id="editSelectedBtn" class="btn btn-sm btn-outline-warning" title="Edit selected employee">
         <i class="bi bi-pencil-square"></i>
       </button>
 
-      <button type="submit"
-              form="bulkForm"
-              formaction="{{ url_for('finance.bulk_calculate_payroll', run_id=run.id) }}"
-              class="btn btn-sm btn-primary"
-              title="Calculate payroll">
+      <button type="submit" form="bulkForm" formaction="{{ url_for('finance.bulk_calculate_payroll', run_id=run.id) }}"
+        class="btn btn-sm btn-primary" title="Calculate payroll">
         <i class="bi bi-calculator"></i>
       </button>
       {% endif %}
 
-      <button type="submit"
-              form="bulkForm"
-              formaction="{{ url_for('finance.bulk_email_payslips', run_id=run.id) }}"
-              class="btn btn-sm btn-outline-success"
-              title="Email selected payslips">
+      <button type="submit" form="bulkForm" formaction="{{ url_for('finance.bulk_email_payslips', run_id=run.id) }}"
+        class="btn btn-sm btn-outline-success" title="Email selected payslips">
         <i class="bi bi-envelope"></i>
       </button>
     </div>
@@ -113,17 +139,13 @@
         {% for item in items %}
         <tr>
           <td>
-            <input type="checkbox"
-                   name="item_ids"
-                   value="{{ item.id }}"
-                   class="emp-check"
-                   data-modal-id="editPayrollModal{{ item.id }}">
+            <input type="checkbox" name="item_ids" value="{{ item.id }}" class="emp-check"
+              data-modal-id="editPayrollModal{{ item.id }}">
           </td>
 
           <td>
-            <a href="{{ url_for('finance.view_payslip', item_id=item.id) }}"
-               class="fw-semibold text-decoration-none"
-               title="View payslip">
+            <a href="{{ url_for('finance.view_payslip', item_id=item.id) }}" class="fw-semibold text-decoration-none"
+              title="View payslip">
               {{ item.user.full_name if item.user else "" }}
             </a><br>
 
@@ -164,27 +186,26 @@
           <div class="mb-3">
             <label class="form-label">Basic Salary / Base Gross</label>
             <input type="number" step="0.01" min="0" name="gross_pay"
-                   value="{{ (item.gross_pay or 0) - (item.allowance or 0) - (item.overtime or 0) - (item.bonus or 0) }}"
-                   class="form-control" required>
+              value="{{ (item.gross_pay or 0) - (item.allowance or 0) - (item.overtime or 0) - (item.bonus or 0) }}"
+              class="form-control" required>
           </div>
 
           <div class="row">
             <div class="col-md-4 mb-3">
               <label class="form-label">Allowance</label>
-              <input type="number" step="0.01" min="0" name="allowance"
-                     value="{{ item.allowance or 0 }}" class="form-control">
+              <input type="number" step="0.01" min="0" name="allowance" value="{{ item.allowance or 0 }}"
+                class="form-control">
             </div>
 
             <div class="col-md-4 mb-3">
               <label class="form-label">Overtime</label>
-              <input type="number" step="0.01" min="0" name="overtime"
-                     value="{{ item.overtime or 0 }}" class="form-control">
+              <input type="number" step="0.01" min="0" name="overtime" value="{{ item.overtime or 0 }}"
+                class="form-control">
             </div>
 
             <div class="col-md-4 mb-3">
               <label class="form-label">Bonus</label>
-              <input type="number" step="0.01" min="0" name="bonus"
-                     value="{{ item.bonus or 0 }}" class="form-control">
+              <input type="number" step="0.01" min="0" name="bonus" value="{{ item.bonus or 0 }}" class="form-control">
             </div>
           </div>
 
@@ -193,32 +214,29 @@
           <div class="row">
             <div class="col-md-6 mb-3">
               <label class="form-label">NIS</label>
-              <input type="number" step="0.01" min="0" name="nis"
-                     value="{{ item.nis or 0 }}" class="form-control">
+              <input type="number" step="0.01" min="0" name="nis" value="{{ item.nis or 0 }}" class="form-control">
             </div>
 
             <div class="col-md-6 mb-3">
               <label class="form-label">Income Tax / PAYE</label>
-              <input type="number" step="0.01" min="0" name="tax"
-                     value="{{ item.tax or 0 }}" class="form-control">
+              <input type="number" step="0.01" min="0" name="tax" value="{{ item.tax or 0 }}" class="form-control">
             </div>
 
             <div class="col-md-6 mb-3">
               <label class="form-label">NHT</label>
-              <input type="number" step="0.01" min="0" name="nht"
-                     value="{{ item.nht or 0 }}" class="form-control">
+              <input type="number" step="0.01" min="0" name="nht" value="{{ item.nht or 0 }}" class="form-control">
             </div>
 
             <div class="col-md-6 mb-3">
               <label class="form-label">Education Tax</label>
-              <input type="number" step="0.01" min="0" name="education_tax"
-                     value="{{ item.education_tax or 0 }}" class="form-control">
+              <input type="number" step="0.01" min="0" name="education_tax" value="{{ item.education_tax or 0 }}"
+                class="form-control">
             </div>
 
             <div class="col-md-12 mb-3">
               <label class="form-label">Other Deductions</label>
-              <input type="number" step="0.01" min="0" name="other_deductions"
-                     value="{{ item.other_deductions or 0 }}" class="form-control">
+              <input type="number" step="0.01" min="0" name="other_deductions" value="{{ item.other_deductions or 0 }}"
+                class="form-control">
             </div>
           </div>
 
@@ -245,43 +263,43 @@
 {% endfor %}
 
 <script>
-const selectAll = document.getElementById("selectAllEmployees");
-const editSelectedBtn = document.getElementById("editSelectedBtn");
+  const selectAll = document.getElementById("selectAllEmployees");
+  const editSelectedBtn = document.getElementById("editSelectedBtn");
 
-if (selectAll) {
-  selectAll.addEventListener("change", function () {
-    document.querySelectorAll(".emp-check").forEach(cb => {
-      cb.checked = this.checked;
+  if (selectAll) {
+    selectAll.addEventListener("change", function () {
+      document.querySelectorAll(".emp-check").forEach(cb => {
+        cb.checked = this.checked;
+      });
     });
-  });
-}
+  }
 
-if (editSelectedBtn) {
-  editSelectedBtn.addEventListener("click", function () {
-    const selected = Array.from(document.querySelectorAll(".emp-check:checked"));
+  if (editSelectedBtn) {
+    editSelectedBtn.addEventListener("click", function () {
+      const selected = Array.from(document.querySelectorAll(".emp-check:checked"));
 
-    if (selected.length === 0) {
-      alert("Select one employee to edit.");
-      return;
-    }
+      if (selected.length === 0) {
+        alert("Select one employee to edit.");
+        return;
+      }
 
-    if (selected.length > 1) {
-      alert("Please select only one employee to edit.");
-      return;
-    }
+      if (selected.length > 1) {
+        alert("Please select only one employee to edit.");
+        return;
+      }
 
-    const modalId = selected[0].dataset.modalId;
-    const modalEl = document.getElementById(modalId);
+      const modalId = selected[0].dataset.modalId;
+      const modalEl = document.getElementById(modalId);
 
-    if (!modalEl) {
-      alert("Edit modal not found.");
-      return;
-    }
+      if (!modalEl) {
+        alert("Edit modal not found.");
+        return;
+      }
 
-    const modal = new bootstrap.Modal(modalEl);
-    modal.show();
-  });
-}
+      const modal = new bootstrap.Modal(modalEl);
+      modal.show();
+    });
+  }
 </script>
 
 {% endblock %}

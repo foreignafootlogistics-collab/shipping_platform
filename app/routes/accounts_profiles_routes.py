@@ -41,7 +41,7 @@ from app.models import (
     User, Invoice, Payment, Package, Prealert,
     Message as DBMessage,  # ✅ alias it like customer_routes.py
     Settings, PackageAttachment, ScheduledDelivery, 
-    Claim, ClaimAuditLog
+    Claim, ClaimAuditLog, WalletTransaction, AuditLog
 )
 from app.models import generate_claim_case_id
 from app.models import SubscriptionPlan, Subscription, SubscriptionUsage, SubscriptionMember
@@ -174,6 +174,33 @@ def _safe_commit():
     except Exception:
         db.session.rollback()
         return False
+
+def create_audit_log(
+    module,
+    action,
+    admin_id=None,
+    user_id=None,
+    entity_type=None,
+    entity_id=None,
+    reason=None,
+    description=None,
+    old_value=None,
+    new_value=None,
+):
+    log = AuditLog(
+        module=module,
+        action=action,
+        admin_id=admin_id,
+        user_id=user_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        reason=reason,
+        description=description,
+        old_value=old_value,
+        new_value=new_value,
+    )
+
+    db.session.add(log)
 
 
 # -------------------------
@@ -1256,6 +1283,30 @@ def view_user(id):
     wallet_balance = user.wallet_balance or 0.0
     referral_code  = user.referral_code or ''
 
+    # -------------------------
+    # Wallet History
+    # -------------------------
+    wallet_transactions = []
+
+    try:
+        wallet_transactions = (
+            WalletTransaction.query
+            .filter(WalletTransaction.user_id == id)
+            .order_by(
+                WalletTransaction.created_at.desc(),
+                WalletTransaction.id.desc()
+            )
+            .all()
+        )
+    except Exception as e:
+        current_app.logger.exception(
+            "Error loading wallet transactions for user %s: %s",
+            id,
+            e
+        )
+        db.session.rollback()
+        wallet_transactions = []
+
     # ✅ UPDATED: supports tab coming from GET or POST
     active_tab = request.values.get("tab", "packages")
 
@@ -1388,6 +1439,7 @@ def view_user(id):
         balance=balance,
         messages=messages,
         wallet_balance=wallet_balance,
+        wallet_transactions=wallet_transactions,
         referral_code=referral_code,
         us_address=us_address,
         home_address=home_address,
@@ -1610,16 +1662,39 @@ def change_password(id: int):
 
         if new_password != confirm_password:
             flash("Passwords do not match.", "danger")
-            return render_template('admin/accounts_profiles/change_password.html', user={"id": user.id, "full_name": user.full_name})
+            return render_template(
+                'admin/accounts_profiles/change_password.html',
+                user={"id": user.id, "full_name": user.full_name}
+            )
 
-        hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())  # bytes
+        hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
         user.password = hashed_pw
+
+        db.session.add(AuditLog(
+            module="Admin Activity",
+            action="Customer Password Changed",
+            admin_id=current_user.id,
+            user_id=user.id,
+            entity_type="User",
+            entity_id=user.id,
+            reason="Admin changed customer password",
+            description=(
+                f"Password was changed for "
+                f"{user.full_name or user.email or ('User #' + str(user.id))}."
+            ),
+            old_value="Password: Hidden",
+            new_value="Password: Updated",
+        ))
+
         _safe_commit()
 
         flash(f"Password updated for {user.full_name or 'user'}.", "success")
         return redirect(_back_to_view_user_url(id))
 
-    return render_template('admin/accounts_profiles/change_password.html', user={"id": user.id, "full_name": user.full_name or ''})
+    return render_template(
+        'admin/accounts_profiles/change_password.html',
+        user={"id": user.id, "full_name": user.full_name or ''}
+    )
 
 
 # -------------------------
@@ -1647,8 +1722,33 @@ def delete_account(id: int):
 
     if request.method == 'POST':
         user_name = user.full_name or "user"
+        user_email = user.email
+        user_reg = user.registration_number
+        user_role = user.role
 
         try:
+            db.session.add(AuditLog(
+                module="Admin Activity",
+                action="Account Deleted",
+                admin_id=current_user.id,
+                user_id=user.id,
+                entity_type="User",
+                entity_id=user.id,
+                reason="Admin deleted user account",
+                description=(
+                    f"Account deleted for {user_name}. "
+                    f"Email: {user_email or '—'}. "
+                    f"FAFL: {user_reg or '—'}."
+                ),
+                old_value=(
+                    f"Name: {user_name}; "
+                    f"Email: {user_email or '—'}; "
+                    f"FAFL: {user_reg or '—'}; "
+                    f"Role: {user_role or '—'}"
+                ),
+                new_value="Account deleted",
+            ))
+
             DBMessage.query.filter(
                 (DBMessage.recipient_id == user.id) |
                 (DBMessage.sender_id == user.id)
@@ -1823,33 +1923,104 @@ def manage_account(id: int):
         return redirect(_back_to_view_user_url(id))
 
     # --------- email uniqueness check ----------
-    # If changing email, ensure no other user already has it
     current_email = (user.email or '').strip().lower()
+
     if email != current_email:
         existing = db.session.execute(
-            select(User.id).where(User.email == email, User.id != user.id)
+            select(User.id).where(
+                User.email == email,
+                User.id != user.id
+            )
         ).scalar_one_or_none()
+
         if existing:
             flash("That email is already in use by another account.", "danger")
             return redirect(_back_to_view_user_url(id))
 
-    # --------- apply updates ----------
+    # -------------------------------------------------
+    # Capture old values for audit logging
+    # -------------------------------------------------
+    old_full_name = user.full_name or ""
+    old_email = user.email or ""
+    old_mobile = user.mobile or ""
+    old_address = user.address or ""
+    old_referral = user.referral_code or ""
+    old_status = "Enabled" if user.is_enabled else "Disabled"
+
+    # -------------------------------------------------
+    # Apply updates
+    # -------------------------------------------------
     user.full_name = full_name
     user.email = email
     user.mobile = mobile
     user.address = address
-    user.referral_code = referral or None     # helps with unique constraint
-    user.is_enabled = is_enabled_val          # ✅ real DB column
+    user.referral_code = referral or None
+    user.is_enabled = is_enabled_val
+
+    new_status = "Enabled" if user.is_enabled else "Disabled"
+
+    # -------------------------------------------------
+    # Build audit description
+    # -------------------------------------------------
+    changes = []
+
+    if old_full_name != (user.full_name or ""):
+        changes.append(
+            f"Name: {old_full_name} → {user.full_name or ''}"
+        )
+
+    if old_email != (user.email or ""):
+        changes.append(
+            f"Email: {old_email} → {user.email or ''}"
+        )
+
+    if old_mobile != (user.mobile or ""):
+        changes.append(
+            f"Mobile: {old_mobile} → {user.mobile or ''}"
+        )
+
+    if old_address != (user.address or ""):
+        changes.append("Address updated")
+
+    if old_referral != (user.referral_code or ""):
+        changes.append(
+            f"Referral Code: {old_referral or 'None'} → {user.referral_code or 'None'}"
+        )
+
+    if old_status != new_status:
+        changes.append(
+            f"Status: {old_status} → {new_status}"
+        )
+
+    # -------------------------------------------------
+    # Create audit log if anything changed
+    # -------------------------------------------------
+    if changes:
+        create_audit_log(
+            module="Admin Activity",
+            action="Account Updated",
+            admin_id=current_user.id,
+            user_id=user.id,
+            entity_type="User",
+            entity_id=user.id,
+            reason="Account profile update",
+            description="; ".join(changes),
+            old_value=old_status,
+            new_value=new_status,
+        )
 
     try:
         _safe_commit()
         flash("Account updated successfully.", "success")
+
     except IntegrityError:
         db.session.rollback()
-        flash("Could not save changes: referral code or email already exists.", "danger")
+        flash(
+            "Could not save changes: referral code or email already exists.",
+            "danger"
+        )
 
     return redirect(_back_to_view_user_url(id))
-
 
 @accounts_bp.route('/users/<int:id>/wallet', methods=['POST'])
 @admin_required
@@ -1918,6 +2089,20 @@ def update_wallet(id):
     )
 
     db.session.add(wallet_txn)
+
+    create_audit_log(
+        module="Wallet",
+        action=wallet_action,
+        admin_id=current_user.id,
+        user_id=user.id,
+        entity_type="Wallet",
+        entity_id=user.id,
+        reason=reason,
+        description=txn_description,
+        old_value=str(user.wallet_balance - signed_amount),
+        new_value=str(user.wallet_balance),
+    )
+
     _safe_commit()
 
     flash(
@@ -1991,7 +2176,9 @@ def manual_add_subscription(id):
         flash("Invalid subscription plan.", "danger")
         return redirect(url_for("accounts_profiles.view_user", id=id))
 
-    # expire old active subs
+    # -------------------------
+    # Capture previous active/exhausted subscription info
+    # -------------------------
     old_subs = (
         Subscription.query
         .filter(
@@ -2000,6 +2187,14 @@ def manual_add_subscription(id):
         )
         .all()
     )
+
+    old_plan_names = []
+    for old_sub in old_subs:
+        old_plan_names.append(old_sub.plan.name if old_sub.plan else f"Subscription #{old_sub.id}")
+
+    old_value = ", ".join(old_plan_names) if old_plan_names else "No active subscription"
+
+    # expire old active subs
     for s in old_subs:
         s.status = "expired"
 
@@ -2017,28 +2212,29 @@ def manual_add_subscription(id):
     usage = SubscriptionUsage(subscription_id=sub.id)
     db.session.add(usage)
 
+    # -------------------------
+    # Audit log
+    # -------------------------
+    create_audit_log(
+        module="Subscription",
+        action="Subscription Activated",
+        admin_id=current_user.id,
+        user_id=user.id,
+        entity_type="Subscription",
+        entity_id=sub.id,
+        reason="Manual subscription activation",
+        description=(
+            f"{plan.name} subscription activated manually for "
+            f"{user.full_name or user.email} for {duration_days} day(s)."
+        ),
+        old_value=old_value,
+        new_value=f"{plan.name} - Active until {sub.end_date.strftime('%Y-%m-%d')}",
+    )
+
     db.session.commit()
 
     flash(f"{plan.name} subscription activated for {user.full_name}.", "success")
     return redirect(url_for("accounts_profiles.view_user", id=id, tab="packages"))
-
-def sync_expired_subscriptions():
-    now = datetime.now(timezone.utc)
-
-    expired_subs = (
-        Subscription.query
-        .filter(
-            Subscription.status.in_(["active", "exhausted"]),
-            Subscription.end_date < now
-        )
-        .all()
-    )
-
-    for sub in expired_subs:
-        sub.status = "expired"
-
-    if expired_subs:
-        db.session.commit()
 
 @accounts_bp.route("/subscriptions")
 @admin_required
@@ -2312,11 +2508,32 @@ def add_subscription_member(sub_id):
     )
 
     db.session.add(member)
+    db.session.flush()
+
+    owner = sub.user
+    plan_name = sub.plan.name if sub.plan else "Family Plan"
+
+    create_audit_log(
+        module="Subscription",
+        action="Family Member Added",
+        admin_id=current_user.id,
+        user_id=user.id,
+        entity_type="SubscriptionMember",
+        entity_id=member.id,
+        reason="Family plan member added",
+        description=(
+            f"{user.full_name or user.email} ({user.registration_number or 'No FAFL #'}) "
+            f"was added as a member to {plan_name} subscription owned by "
+            f"{owner.full_name or owner.email if owner else 'Unknown owner'}."
+        ),
+        old_value="Not a member",
+        new_value=f"Active family member on subscription #{sub.id}",
+    )
+
     db.session.commit()
 
     flash(f"{user.full_name} added to family plan.", "success")
     return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
-
 
 @accounts_bp.route("/subscriptions/bulk-waive", methods=["POST"])
 @admin_required
@@ -2345,6 +2562,8 @@ def bulk_waive_subscriptions():
         plan = sub.plan
         user = sub.user
 
+        old_value = f"Status: {sub.status}"
+
         old_active = (
             Subscription.query
             .filter(
@@ -2355,7 +2574,9 @@ def bulk_waive_subscriptions():
             .all()
         )
 
+        old_active_names = []
         for old in old_active:
+            old_active_names.append(old.plan.name if old.plan else f"Subscription #{old.id}")
             old.status = "expired"
 
         sub.status = "active"
@@ -2398,6 +2619,32 @@ def bulk_waive_subscriptions():
         )
 
         db.session.add(payment)
+
+        expired_note = ""
+        if old_active_names:
+            expired_note = f" Previous active subscription(s) expired: {', '.join(old_active_names)}."
+
+        create_audit_log(
+            module="Subscription",
+            action="Subscription Waived",
+            admin_id=current_user.id,
+            user_id=user.id,
+            entity_type="Subscription",
+            entity_id=sub.id,
+            reason=reason,
+            description=(
+                f"{plan.name} subscription was waived and activated for "
+                f"{user.full_name or user.email}. Invoice {invoice.invoice_number} created at $0.00."
+                f"{expired_note}"
+            ),
+            old_value=old_value,
+            new_value=(
+                f"Status: active; Waived: yes; "
+                f"End Date: {sub.end_date.strftime('%Y-%m-%d')}; "
+                f"Invoice: {invoice.invoice_number}"
+            ),
+        )
+
         waived_count += 1
 
     db.session.commit()
@@ -2422,8 +2669,32 @@ def remove_subscription_member(sub_id, user_id):
         flash("Cannot remove owner.", "danger")
         return redirect(request.referrer)
 
+    sub = member.subscription
+    removed_user = member.user
+    owner = sub.user if sub else None
+    plan_name = sub.plan.name if sub and sub.plan else "Family Plan"
+
+    old_value = f"Active family member on subscription #{sub_id}"
+
     member.status = "removed"
     member.removed_at = datetime.utcnow()
+
+    create_audit_log(
+        module="Subscription",
+        action="Family Member Removed",
+        admin_id=current_user.id,
+        user_id=removed_user.id if removed_user else user_id,
+        entity_type="SubscriptionMember",
+        entity_id=member.id,
+        reason="Family plan member removed",
+        description=(
+            f"{removed_user.full_name or removed_user.email if removed_user else 'Unknown user'} "
+            f"was removed from {plan_name} subscription owned by "
+            f"{owner.full_name or owner.email if owner else 'Unknown owner'}."
+        ),
+        old_value=old_value,
+        new_value="Removed from family plan",
+    )
 
     db.session.commit()
 
@@ -2496,6 +2767,11 @@ def override_cancel_subscription(sub_id):
         flash("Override cancellation requires a reason.", "warning")
         return redirect(url_for("accounts_profiles.admin_subscriptions"))
 
+    user = sub.user
+    plan_name = sub.plan.name if sub.plan else "Subscription Plan"
+
+    old_value = f"Status: {sub.status}; Plan: {plan_name}"
+
     sub.status = "cancelled"
 
     note = Payment(
@@ -2510,6 +2786,24 @@ def override_cancel_subscription(sub_id):
     )
 
     db.session.add(note)
+
+    create_audit_log(
+        module="Subscription",
+        action="Subscription Cancelled",
+        admin_id=current_user.id,
+        user_id=sub.user_id,
+        entity_type="Subscription",
+        entity_id=sub.id,
+        reason=reason,
+        description=(
+            f"{plan_name} subscription for "
+            f"{user.full_name or user.email if user else 'Unknown user'} "
+            f"was cancelled by admin override."
+        ),
+        old_value=old_value,
+        new_value="Status: cancelled",
+    )
+
     db.session.commit()
 
     flash("Subscription cancelled by admin override.", "success")
@@ -2525,14 +2819,41 @@ def bulk_cancel_pending_subscriptions():
 
     for sid in ids:
         sub = Subscription.query.get(sid)
-        if sub and sub.status == "pending_payment":
-            sub.status = "cancelled"
-            count += 1
+
+        if not sub or sub.status != "pending_payment":
+            continue
+
+        user = sub.user
+        plan_name = sub.plan.name if sub.plan else "Subscription Plan"
+
+        old_value = f"Status: {sub.status}; Plan: {plan_name}"
+
+        sub.status = "cancelled"
+
+        create_audit_log(
+            module="Subscription",
+            action="Pending Subscription Cancelled",
+            admin_id=current_user.id,
+            user_id=sub.user_id,
+            entity_type="Subscription",
+            entity_id=sub.id,
+            reason="Bulk cancellation",
+            description=(
+                f"Pending subscription {plan_name} for "
+                f"{user.full_name or user.email if user else 'Unknown user'} "
+                f"was cancelled through bulk cancellation."
+            ),
+            old_value=old_value,
+            new_value="Status: cancelled",
+        )
+
+        count += 1
 
     db.session.commit()
 
     flash(f"{count} pending subscriptions cancelled.", "success")
     return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
 
 @accounts_bp.route("/subscriptions/bulk-refund-unused", methods=["POST"])
 @admin_required
@@ -2551,7 +2872,11 @@ def bulk_refund_unused_subscriptions():
         weight_used = float(getattr(usage, "weight_used", 0) or 0)
 
         if packages_used == 0 and weight_used == 0:
+            user = sub.user
+            plan_name = sub.plan.name if sub.plan else "Subscription Plan"
             amount_jmd = float(sub.plan.price_usd or 0) * 162
+
+            old_value = f"Status: {sub.status}; Plan: {plan_name}; Used: {packages_used} package(s), {weight_used:.1f} lb"
 
             sub.status = "cancelled"
 
@@ -2561,11 +2886,29 @@ def bulk_refund_unused_subscriptions():
                 method="Subscription Refund",
                 status="completed",
                 transaction_type="subscription_refund",
-                reference=f"Refund for {sub.plan.name}",
+                reference=f"Refund for {plan_name}",
                 authorized_by_admin_id=current_user.id,
             )
 
             db.session.add(refund)
+
+            create_audit_log(
+                module="Subscription",
+                action="Subscription Refunded",
+                admin_id=current_user.id,
+                user_id=sub.user_id,
+                entity_type="Subscription",
+                entity_id=sub.id,
+                reason="Unused subscription refund",
+                description=(
+                    f"{plan_name} subscription for "
+                    f"{user.full_name or user.email if user else 'Unknown user'} "
+                    f"was refunded because no packages/weight were used. Refund amount: JMD {amount_jmd:.2f}."
+                ),
+                old_value=old_value,
+                new_value=f"Status: cancelled; Refund: JMD {amount_jmd:.2f}",
+            )
+
             count += 1
 
     db.session.commit()
@@ -2585,6 +2928,10 @@ def bulk_override_cancel_subscriptions():
         if not sub:
             continue
 
+        user = sub.user
+        plan_name = sub.plan.name if sub.plan else "Subscription Plan"
+        old_value = f"Status: {sub.status}; Plan: {plan_name}"
+
         sub.status = "cancelled"
 
         note = Payment(
@@ -2598,6 +2945,24 @@ def bulk_override_cancel_subscriptions():
         )
 
         db.session.add(note)
+
+        create_audit_log(
+            module="Subscription",
+            action="Subscription Cancelled",
+            admin_id=current_user.id,
+            user_id=sub.user_id,
+            entity_type="Subscription",
+            entity_id=sub.id,
+            reason="Bulk admin override cancellation",
+            description=(
+                f"{plan_name} subscription for "
+                f"{user.full_name or user.email if user else 'Unknown user'} "
+                f"was cancelled by bulk admin override."
+            ),
+            old_value=old_value,
+            new_value="Status: cancelled",
+        )
+
         count += 1
 
     db.session.commit()
@@ -2608,7 +2973,12 @@ def bulk_override_cancel_subscriptions():
 @accounts_bp.route("/subscriptions/bulk-upgrade", methods=["POST"])
 @admin_required
 def bulk_upgrade_subscriptions():
-    subscription_ids = [int(x) for x in request.form.getlist("subscription_ids") if str(x).isdigit()]
+    subscription_ids = [
+        int(x)
+        for x in request.form.getlist("subscription_ids")
+        if str(x).isdigit()
+    ]
+
     new_plan_id = request.form.get("new_plan_id", type=int)
 
     if not subscription_ids:
@@ -2632,7 +3002,13 @@ def bulk_upgrade_subscriptions():
             skipped += 1
             continue
 
-        old_price = float(old_sub.plan.price_usd or 0)
+        old_plan = old_sub.plan
+
+        if not old_plan:
+            skipped += 1
+            continue
+
+        old_price = float(old_plan.price_usd or 0)
         new_price = float(new_plan.price_usd or 0)
 
         if new_price <= old_price:
@@ -2644,11 +3020,16 @@ def bulk_upgrade_subscriptions():
         packages_used = int(getattr(old_usage, "packages_used", 0) or 0)
         weight_used = float(getattr(old_usage, "weight_used", 0) or 0)
 
-        old_package_limit = int(old_sub.plan.package_limit or 0)
-        old_weight_limit = float(old_sub.plan.weight_limit or 0)
+        old_package_limit = int(old_plan.package_limit or 0)
+        old_weight_limit = float(old_plan.weight_limit or 0)
 
-        package_used_percent = (packages_used / old_package_limit) if old_package_limit else 0
-        weight_used_percent = (weight_used / old_weight_limit) if old_weight_limit else 0
+        package_used_percent = (
+            packages_used / old_package_limit
+        ) if old_package_limit else 0
+
+        weight_used_percent = (
+            weight_used / old_weight_limit
+        ) if old_weight_limit else 0
 
         # Block upgrade after 60% usage
         if package_used_percent >= 0.60 or weight_used_percent >= 0.60:
@@ -2657,6 +3038,16 @@ def bulk_upgrade_subscriptions():
 
         difference_usd = new_price - old_price
         difference_jmd = difference_usd * 162
+
+        user = old_sub.user
+
+        old_value = (
+            f"Subscription #{old_sub.id}; "
+            f"Plan: {old_plan.name}; "
+            f"Status: {old_sub.status}; "
+            f"Price: US${old_price:.2f}; "
+            f"Usage: {packages_used} package(s), {weight_used:.1f} lb"
+        )
 
         old_sub.status = "expired"
 
@@ -2688,7 +3079,7 @@ def bulk_upgrade_subscriptions():
         invoice = Invoice(
             user_id=old_sub.user_id,
             invoice_number=f"SUB-UPG-{new_sub.id:05d}",
-            description=f"Upgrade from {old_sub.plan.name} to {new_plan.name} Subscription Plan",
+            description=f"Upgrade from {old_plan.name} to {new_plan.name} Subscription Plan",
             amount=difference_jmd,
             grand_total=difference_jmd,
             amount_due=0.0,
@@ -2707,7 +3098,7 @@ def bulk_upgrade_subscriptions():
             method="Subscription Upgrade",
             status="completed",
             transaction_type="subscription_upgrade_payment",
-            reference=f"Upgrade from {old_sub.plan.name} to {new_plan.name}",
+            reference=f"Upgrade from {old_plan.name} to {new_plan.name}",
             notes=(
                 f"Paid difference only: US${difference_usd:.2f}. "
                 f"Usage carried forward: {packages_used} package(s), {weight_used:.1f} lb."
@@ -2715,15 +3106,50 @@ def bulk_upgrade_subscriptions():
             authorized_by_admin_id=current_user.id,
         ))
 
+        create_audit_log(
+            module="Subscription",
+            action="Subscription Upgraded",
+            admin_id=current_user.id,
+            user_id=old_sub.user_id,
+            entity_type="Subscription",
+            entity_id=new_sub.id,
+            reason="Subscription upgrade",
+            description=(
+                f"{user.full_name or user.email if user else 'Unknown user'} "
+                f"was upgraded from {old_plan.name} to {new_plan.name}. "
+                f"Paid difference: JMD {difference_jmd:.2f}. "
+                f"Usage carried forward: {packages_used} package(s), {weight_used:.1f} lb. "
+                f"Invoice created: {invoice.invoice_number}."
+            ),
+            old_value=old_value,
+            new_value=(
+                f"Subscription #{new_sub.id}; "
+                f"Plan: {new_plan.name}; "
+                f"Status: active; "
+                f"Price: US${new_price:.2f}; "
+                f"Invoice: {invoice.invoice_number}"
+            ),
+        )
+
         upgraded += 1
 
     db.session.commit()
 
-    flash(
-        f"{blocked_usage} subscription(s) cannot be upgraded because they are over 60% usage. "
-        "Customer must start a new subscription.",
-        "success" if upgraded else "warning"
-    )
+    if upgraded:
+        flash(
+            f"{upgraded} subscription(s) upgraded successfully. "
+            f"{blocked_usage} blocked because they are over 60% usage. "
+            f"{skipped} skipped.",
+            "success"
+        )
+    else:
+        flash(
+            f"No subscriptions upgraded. "
+            f"{blocked_usage} blocked because they are over 60% usage. "
+            f"{skipped} skipped.",
+            "warning"
+        )
+
     return redirect(url_for("accounts_profiles.admin_subscriptions"))
 
 @accounts_bp.route("/subscriptions/process-reminders")
@@ -2877,3 +3303,46 @@ https://app.faflcourier.com/customer/subscriptions
 
     flash(f"Processed subscription reminders. Emails sent: {sent_count}", "success")
     return redirect(url_for("accounts_profiles.admin_subscriptions"))
+
+
+@accounts_bp.route("/audit-logs")
+@admin_required
+def audit_logs():
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 25, type=int)
+
+    if per_page not in [10, 25, 50, 100]:
+        per_page = 25
+
+    module = (request.args.get("module") or "").strip()
+    search = (request.args.get("search") or "").strip()
+
+    q = AuditLog.query
+
+    if module:
+        q = q.filter(AuditLog.module == module)
+
+    if search:
+        like = f"%{search}%"
+        q = q.outerjoin(User, AuditLog.user_id == User.id).filter(or_(
+            AuditLog.action.ilike(like),
+            AuditLog.description.ilike(like),
+            AuditLog.entity_type.ilike(like),
+            User.full_name.ilike(like),
+            User.email.ilike(like),
+            User.registration_number.ilike(like),
+        ))
+
+    q = q.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+
+    pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+
+    return render_template(
+        "admin/audit_logs/index.html",
+        logs=pagination.items,
+        pagination=pagination,
+        page=page,
+        per_page=per_page,
+        module=module,
+        search=search,
+    )

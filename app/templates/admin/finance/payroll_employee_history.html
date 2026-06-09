@@ -1,0 +1,68 @@
+{% extends "layout_admin.html" %}
+{% block title %}Payroll Employee History{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-1">Payroll History</h4>
+        <div class="text-muted">
+            {{ emp.user.full_name or emp.user.email }}
+        </div>
+    </div>
+
+    <a href="{{ url_for('finance.payroll_dashboard') }}" class="btn btn-outline-secondary">
+        Back to Payroll
+    </a>
+</div>
+
+<div class="card p-3">
+    <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Date</th>
+                    <th>Action</th>
+                    <th>Old Value</th>
+                    <th>New Value</th>
+                    <th>Description</th>
+                    <th>Done By</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>
+                        {% if log.created_at %}
+                        {{ to_jamaica(log.created_at).strftime("%Y-%m-%d %I:%M %p") if to_jamaica is defined else
+                        log.created_at.strftime("%Y-%m-%d %I:%M %p") }}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td>{{ log.action or "—" }}</td>
+                    <td>{{ log.old_value or "—" }}</td>
+                    <td>{{ log.new_value or "—" }}</td>
+                    <td>{{ log.description or "—" }}</td>
+                    <td>
+                        {% if log.admin %}
+                        {{ log.admin.full_name or log.admin.email }}
+                        {% else %}
+                        System / Unknown
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-4">
+                        No payroll history found.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}

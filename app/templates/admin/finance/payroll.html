@@ -18,14 +18,26 @@
   <form method="POST" action="{{ url_for('finance.create_payroll') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    <div class="row">
-      <div class="col-md-4">
+    <div class="row g-2">
+      <div class="col-md-3">
+        <label class="form-label small">Start Date</label>
         <input type="date" name="start" class="form-control" required>
       </div>
-      <div class="col-md-4">
+
+      <div class="col-md-3">
+        <label class="form-label small">End Date</label>
         <input type="date" name="end" class="form-control" required>
       </div>
-      <div class="col-md-4">
+
+      <div class="col-md-3">
+        <label class="form-label small">Payroll Type</label>
+        <select name="pay_frequency" class="form-select" required>
+          <option value="monthly">Monthly Payroll</option>
+          <option value="fortnightly">Fortnightly Payroll</option>
+        </select>
+      </div>
+
+      <div class="col-md-3 d-flex align-items-end">
         <button class="btn btn-primary w-100">Create Payroll</button>
       </div>
     </div>
@@ -34,38 +46,180 @@
 
 <!-- EMPLOYEES -->
 <div class="card p-3 mb-4">
-  <h6>Employees on Payroll</h6>
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h6 class="mb-0">Employees on Payroll</h6>
 
-  <table class="table table-sm table-bordered">
-    <thead>
-      <tr>
-        <th>Employee</th>
-        <th>Pay Type</th>
-        <th class="text-end">Base Salary</th>
-        <th class="text-end">Hourly Rate</th>
-      </tr>
-    </thead>
+    <div class="d-flex flex-wrap gap-2">
+      <button type="button" id="historySelectedBtn" class="btn btn-sm btn-outline-dark">
+        History
+      </button>
 
-    <tbody>
-      {% for emp in employees %}
-      <tr>
-        <td>
-          {{ emp.user.full_name or emp.user.email }}<br>
-          <small class="text-muted">{{ emp.user.employee_code }}</small>
-        </td>
-        <td>{{ emp.pay_type|title }}</td>
-        <td class="text-end">JMD {{ "%.2f"|format(emp.base_salary or 0) }}</td>
-        <td class="text-end">JMD {{ "%.2f"|format(emp.hourly_rate or 0) }}</td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="4" class="text-center text-muted py-4">
-          No payroll employees added yet.
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+      <button type="button" id="editSelectedEmployeeBtn" class="btn btn-sm btn-outline-primary">
+        Edit Selected
+      </button>
+
+      <button type="submit" form="employeeBulkForm"
+        formaction="{{ url_for('finance.bulk_deactivate_payroll_employees') }}" class="btn btn-sm btn-outline-danger"
+        onclick="return confirm('Deactivate selected payroll employee(s)?');">
+        Deactivate Selected
+      </button>
+
+      <button type="submit" form="employeeBulkForm"
+        formaction="{{ url_for('finance.bulk_reactivate_payroll_employees') }}" class="btn btn-sm btn-outline-success"
+        onclick="return confirm('Reactivate selected payroll employee(s)?');">
+        Reactivate Selected
+      </button>
+    </div>
+  </div>
+
+  <form method="POST" id="employeeBulkForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle">
+        <thead>
+          <tr>
+            <th style="width:40px;">
+              <input type="checkbox" id="selectAllPayrollEmployees">
+            </th>
+            <th>Employee</th>
+            <th>Position</th>
+            <th>Pay Type</th>
+            <th>Frequency</th>
+            <th class="text-end">Base Salary</th>
+            <th class="text-end">Hourly Rate</th>
+            <th class="text-center">Status</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for emp in employees %}
+          <tr>
+            <td>
+              <input type="checkbox" name="employee_ids" value="{{ emp.id }}" class="payroll-employee-check"
+                data-emp-id="{{ emp.id }}" data-user-name="{{ emp.user.full_name or emp.user.email }}"
+                data-position-title="{{ emp.position_title or '' }}" data-pay-type="{{ emp.pay_type }}"
+                data-pay-frequency="{{ emp.pay_frequency }}" data-base-salary="{{ emp.base_salary or 0 }}"
+                data-hourly-rate="{{ emp.hourly_rate or 0 }}">
+            </td>
+
+            <td>
+              {{ emp.user.full_name or emp.user.email }}<br>
+              <small class="text-muted">{{ emp.user.employee_code }}</small>
+            </td>
+
+            <td>
+              {{ emp.position_title or "—" }}
+            </td>
+
+            <td>{{ emp.pay_type|title }}</td>
+
+            <td>
+              {% if emp.pay_frequency == "fortnightly" %}
+              <span class="badge bg-info text-dark">Fortnightly</span>
+              {% else %}
+              <span class="badge bg-secondary">Monthly</span>
+              {% endif %}
+            </td>
+
+            <td class="text-end">JMD {{ "%.2f"|format(emp.base_salary or 0) }}</td>
+            <td class="text-end">JMD {{ "%.2f"|format(emp.hourly_rate or 0) }}</td>
+
+            <td class="text-center">
+              {% if emp.is_active %}
+              <span class="badge bg-success">Active</span>
+              {% else %}
+              <span class="badge bg-danger">Inactive</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="text-center text-muted py-4">
+              No payroll employees added yet.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+</div>
+
+<!-- SINGLE EDIT EMPLOYEE MODAL -->
+<div class="modal fade" id="editPayrollEmployeeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+
+      <form method="POST" id="editPayrollEmployeeForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Payroll Employee</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+
+          <div class="mb-3">
+            <label class="form-label">Employee</label>
+            <input type="text" id="editEmployeeName" class="form-control" disabled>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Position / Job Title</label>
+            <select name="position_title" id="editPositionTitle" class="form-select" required>
+              <option value="">Select position</option>
+              <option value="CEO">CEO</option>
+              <option value="Finance Director">Finance Director</option>
+              <option value="Logistics Director">Logistics Director</option>
+              <option value="Store Operations Associate">Store Operations Associate</option>
+              <option value="Senior Operations Support">Senior Operations Support</option>
+              <option value="Customer Service Representative">Customer Service Representative</option>
+              <option value="Cleaning Attendant">Cleaning Attendant</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Pay Type</label>
+            <select name="pay_type" id="editPayType" class="form-select">
+              <option value="salary">Salary</option>
+              <option value="hourly">Hourly</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Pay Frequency</label>
+            <select name="pay_frequency" id="editPayFrequency" class="form-select">
+              <option value="monthly">Monthly</option>
+              <option value="fortnightly">Fortnightly</option>
+            </select>
+          </div>
+
+          <div class="mb-3" id="editSalaryBox">
+            <label class="form-label">Base Salary</label>
+            <input type="number" step="0.01" min="0" name="base_salary" id="editBaseSalary" class="form-control">
+          </div>
+
+          <div class="mb-3 d-none" id="editHourlyBox">
+            <label class="form-label">Hourly Rate</label>
+            <input type="number" step="0.01" min="0" name="hourly_rate" id="editHourlyRate" class="form-control">
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+            Cancel
+          </button>
+          <button class="btn btn-primary">
+            Save Changes
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
 </div>
 
 <!-- PAYROLL RUNS -->
@@ -74,12 +228,8 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h6 class="mb-0">Recent Payroll Runs</h6>
 
-    <button
-      type="submit"
-      form="payrollBulkForm"
-      class="btn btn-sm btn-outline-danger"
-      onclick="return confirm('Delete selected draft payroll run(s)? This cannot be undone.');"
-    >
+    <button type="submit" form="payrollBulkForm" class="btn btn-sm btn-outline-danger"
+      onclick="return confirm('Delete selected draft payroll run(s)? This cannot be undone.');">
       Delete Selected Drafts
     </button>
   </div>
@@ -94,6 +244,7 @@
             <input type="checkbox" id="selectAllPayrollRuns">
           </th>
           <th>Period</th>
+          <th>Frequency</th>
           <th class="text-end">Total Gross</th>
           <th class="text-end">Total Net</th>
           <th>Status</th>
@@ -103,12 +254,11 @@
       <tbody>
         {% for r in runs %}
         <tr>
-
           <td>
             {% if r.status != "paid" %}
-              <input type="checkbox" name="run_ids" value="{{ r.id }}" class="payroll-run-check">
+            <input type="checkbox" name="run_ids" value="{{ r.id }}" class="payroll-run-check">
             {% else %}
-              <i class="bi bi-lock text-muted"></i>
+            <i class="bi bi-lock text-muted"></i>
             {% endif %}
           </td>
 
@@ -118,21 +268,28 @@
             </a>
           </td>
 
+          <td>
+            {% if r.pay_frequency == "fortnightly" %}
+            <span class="badge bg-info text-dark">Fortnightly</span>
+            {% else %}
+            <span class="badge bg-secondary">Monthly</span>
+            {% endif %}
+          </td>
+
           <td class="text-end">JMD {{ "%.2f"|format(r.total_gross or 0) }}</td>
           <td class="text-end">JMD {{ "%.2f"|format(r.total_net or 0) }}</td>
 
           <td>
             {% if r.status == "paid" %}
-              <span class="badge bg-success">Paid</span>
+            <span class="badge bg-success">Paid</span>
             {% else %}
-              <span class="badge bg-warning text-dark">Draft</span>
+            <span class="badge bg-warning text-dark">Draft</span>
             {% endif %}
           </td>
-
         </tr>
         {% else %}
         <tr>
-          <td colspan="5" class="text-center text-muted py-4">
+          <td colspan="6" class="text-center text-muted py-4">
             No payroll runs created yet.
           </td>
         </tr>
@@ -143,17 +300,105 @@
   </form>
 </div>
 
-<!-- SELECT ALL SCRIPT -->
 <script>
-const selectAll = document.getElementById("selectAllPayrollRuns");
+  const selectAllRuns = document.getElementById("selectAllPayrollRuns");
 
-if (selectAll) {
-  selectAll.addEventListener("change", function () {
-    document.querySelectorAll(".payroll-run-check").forEach(cb => {
-      cb.checked = this.checked;
+  if (selectAllRuns) {
+    selectAllRuns.addEventListener("change", function () {
+      document.querySelectorAll(".payroll-run-check").forEach(cb => {
+        cb.checked = this.checked;
+      });
     });
-  });
-}
+  }
+
+  const selectAllEmployees = document.getElementById("selectAllPayrollEmployees");
+
+  if (selectAllEmployees) {
+    selectAllEmployees.addEventListener("change", function () {
+      document.querySelectorAll(".payroll-employee-check").forEach(cb => {
+        cb.checked = this.checked;
+      });
+    });
+  }
+
+  function getSelectedPayrollEmployees() {
+    return Array.from(document.querySelectorAll(".payroll-employee-check:checked"));
+  }
+
+  const historySelectedBtn = document.getElementById("historySelectedBtn");
+
+  if (historySelectedBtn) {
+    historySelectedBtn.addEventListener("click", function () {
+      const selected = getSelectedPayrollEmployees();
+
+      if (selected.length === 0) {
+        alert("Select one payroll employee first.");
+        return;
+      }
+
+      if (selected.length > 1) {
+        alert("Please select only one employee to view history.");
+        return;
+      }
+
+      const empId = selected[0].dataset.empId;
+      window.location.href = "{{ url_for('finance.payroll_employee_history', emp_id=0) }}".replace("/0/", "/" + empId + "/");
+    });
+  }
+
+  const editSelectedEmployeeBtn = document.getElementById("editSelectedEmployeeBtn");
+  const editPayType = document.getElementById("editPayType");
+  const editSalaryBox = document.getElementById("editSalaryBox");
+  const editHourlyBox = document.getElementById("editHourlyBox");
+
+  function syncEditPayFields() {
+    if (editPayType.value === "hourly") {
+      editSalaryBox.classList.add("d-none");
+      editHourlyBox.classList.remove("d-none");
+    } else {
+      editHourlyBox.classList.add("d-none");
+      editSalaryBox.classList.remove("d-none");
+    }
+  }
+
+  if (editPayType) {
+    editPayType.addEventListener("change", syncEditPayFields);
+  }
+
+  if (editSelectedEmployeeBtn) {
+    editSelectedEmployeeBtn.addEventListener("click", function () {
+      const selected = getSelectedPayrollEmployees();
+
+      if (selected.length === 0) {
+        alert("Select one payroll employee first.");
+        return;
+      }
+
+      if (selected.length > 1) {
+        alert("Please select only one employee to edit.");
+        return;
+      }
+
+      const row = selected[0];
+      const empId = row.dataset.empId;
+
+      document.getElementById("editEmployeeName").value = row.dataset.userName || "";
+      document.getElementById("editPositionTitle").value = row.dataset.positionTitle || "";
+      document.getElementById("editPayType").value = row.dataset.payType || "salary";
+      document.getElementById("editPayFrequency").value = row.dataset.payFrequency || "monthly";
+      document.getElementById("editBaseSalary").value = row.dataset.baseSalary || 0;
+      document.getElementById("editHourlyRate").value = row.dataset.hourlyRate || 0;
+
+      document.getElementById("editPayrollEmployeeForm").action =
+        "{{ url_for('finance.update_payroll_employee', emp_id=0) }}".replace("/0/", "/" + empId + "/");
+
+      syncEditPayFields();
+
+      const modalEl = document.getElementById("editPayrollEmployeeModal");
+      const modal = new bootstrap.Modal(modalEl);
+      modal.show();
+    });
+  }
 </script>
 
 {% endblock %}

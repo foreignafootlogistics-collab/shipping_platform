@@ -7,7 +7,7 @@ from sqlalchemy import or_, func
 
 from app.extensions import db
 from flask_login import current_user
-from app.models import User, Package, Invoice, Payment, POSCloseout
+from app.models import User, Package, Invoice, Payment, POSCloseout, AuditLog
 from app.routes.admin_auth_routes import admin_required
 
 from app.utils.email_utils import send_email, EMAIL_FROM, EMAIL_ADDRESS
@@ -762,6 +762,35 @@ def daily_sales():
         closeout.notes = notes
         closeout.closed_by_admin_id = current_user.id
         closeout.closed_at = datetime.now(timezone.utc)
+
+        db.session.flush()
+
+        db.session.add(AuditLog(
+            module="POS",
+            action="POS Closeout",
+            admin_id=current_user.id,
+            user_id=None,
+            entity_type="POSCloseout",
+            entity_id=closeout.id,
+            reason="Daily register closeout",
+            description=(
+                f"POS closeout completed for {business_date}. "
+                f"Expected Cash: JMD {float(summary['cash']):,.2f}. "
+                f"Actual Cash: JMD {float(actual_cash):,.2f}. "
+                f"Cash Difference: JMD {float(cash_difference):,.2f}. "
+                f"Card: JMD {float(summary['card']):,.2f}. "
+                f"Transfer: JMD {float(summary['transfer']):,.2f}. "
+                f"Discount: JMD {float(summary['discount']):,.2f}. "
+                f"Total: JMD {float(summary['total']):,.2f}."
+            ),
+            old_value="Register open / not closed",
+            new_value=(
+                f"Closed By Admin ID: {current_user.id}; "
+                f"Business Date: {business_date}; "
+                f"Expected Total: JMD {float(summary['total']):,.2f}; "
+                f"Actual Cash: JMD {float(actual_cash):,.2f}"
+            ),
+        ))
 
         db.session.commit()
         flash("POS register closed successfully.", "success")

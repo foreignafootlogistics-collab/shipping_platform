@@ -25,7 +25,7 @@ from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import USD_TO_JMD
 
 from app.extensions import db
-from app.models import Invoice, Expense, User, ExpenseAuditLog, Package, Payment, EmployeePayroll, PayrollRun, PayrollItem
+from app.models import Invoice, Expense, User, ExpenseAuditLog, Package, Payment, EmployeePayroll, PayrollRun, PayrollItem, AuditLog
 import cloudinary
 import cloudinary.uploader
 
@@ -831,19 +831,11 @@ def _render_unpaid_users_pdf(send_email: bool = False):
 @finance_bp.route("/unpaid_invoices/mark_paid_bulk", methods=["POST"])
 @admin_required(roles=["finance"])
 def bulk_mark_invoices_paid():
-    """
-    Bulk mark invoices paid:
-    - creates a Payment record for each invoice (for remaining balance)
-    - sets invoice.status='paid', invoice.amount_due=0, invoice.date_paid=now (if date_paid exists)
-    - sets Package.amount_due=0 and status='delivered' for packages on that invoice
-    """
-
-    # ✅ payment method from dropdown
     payment_method = (request.form.get("payment_method") or "Bulk").strip()
 
-    # ✅ support both invoice_ids[] and invoice_ids
     raw_ids = request.form.getlist("invoice_ids[]") or request.form.getlist("invoice_ids")
     invoice_ids = []
+
     for x in raw_ids:
         try:
             invoice_ids.append(int(x))
@@ -861,7 +853,6 @@ def bulk_mark_invoices_paid():
         or "Finance"
     )
 
-    # ✅ lock invoice rows (avoid double-paying)
     invoices = (
         db.session.query(Invoice)
         .filter(Invoice.id.in_(invoice_ids))
@@ -874,15 +865,17 @@ def bulk_mark_invoices_paid():
 
     try:
         for inv in invoices:
-            # ✅ compute remaining balance (includes discounts + prior payments)
-            # IMPORTANT: make sure fetch_invoice_totals_pg is imported/defined in finance.py
             subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
             balance = float(total_due or 0.0)
 
-            # already paid / nothing due
+            old_status = inv.status or "unpaid"
+            old_amount_due = float(inv.amount_due or balance or 0)
+            invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
+
             if balance <= 0:
                 inv.amount_due = 0.0
                 inv.status = "paid"
+
                 if hasattr(inv, "date_paid"):
                     inv.date_paid = inv.date_paid or now
 
@@ -890,29 +883,48 @@ def bulk_mark_invoices_paid():
                     {"amount_due": 0.0, "status": "delivered"},
                     synchronize_session=False
                 )
+
+                db.session.add(AuditLog(
+                    module="Finance",
+                    action="Invoice Already Paid / Zero Due",
+                    admin_id=current_user.id,
+                    user_id=inv.user_id,
+                    entity_type="Invoice",
+                    entity_id=inv.id,
+                    reason="Bulk mark paid",
+                    description=f"Invoice {invoice_number} was included in bulk mark paid but had no remaining balance.",
+                    old_value=f"Status: {old_status}; Amount Due: JMD {old_amount_due:,.2f}",
+                    new_value="Status: paid; Amount Due: JMD 0.00",
+                ))
+
                 skipped += 1
                 continue
 
-            # ✅ Create Payment for remaining balance (matches your Payment model)
             p = Payment(
                 invoice_id=inv.id,
                 user_id=inv.user_id,
-                method=payment_method,  # ✅ FROM DROPDOWN
+                method=payment_method,
                 amount_jmd=balance,
                 reference=f"BULK-{now.strftime('%Y%m%d%H%M%S')}-{inv.id}",
                 notes=f"Bulk marked paid by {actor_name}",
                 created_at=now,
+                status="completed",
+                transaction_type="invoice_payment",
+                source="finance",
+                authorized_by_admin_id=current_user.id,
             )
+
             db.session.add(p)
             db.session.flush()
 
-            # ✅ recompute after inserting payment
             _s, _d, _p, new_due = fetch_invoice_totals_pg(inv.id)
+
             inv.amount_due = float(new_due or 0.0)
 
             if inv.amount_due <= 0:
                 inv.amount_due = 0.0
                 inv.status = "paid"
+
                 if hasattr(inv, "date_paid"):
                     inv.date_paid = now
 
@@ -922,6 +934,22 @@ def bulk_mark_invoices_paid():
                 )
             else:
                 inv.status = "partial"
+
+            db.session.add(AuditLog(
+                module="Finance",
+                action="Bulk Invoice Marked Paid",
+                admin_id=current_user.id,
+                user_id=inv.user_id,
+                entity_type="Invoice",
+                entity_id=inv.id,
+                reason="Bulk mark paid",
+                description=(
+                    f"Invoice {invoice_number} was marked paid through Finance bulk action. "
+                    f"Payment method: {payment_method}. Amount paid: JMD {balance:,.2f}."
+                ),
+                old_value=f"Status: {old_status}; Amount Due: JMD {old_amount_due:,.2f}",
+                new_value=f"Status: {inv.status}; Amount Due: JMD {float(inv.amount_due or 0):,.2f}",
+            ))
 
             changed += 1
 
@@ -2057,7 +2085,7 @@ Foreign A Foot Logistics Limited
 @finance_bp.route("/payroll", methods=["GET"])
 @admin_required(roles=["finance"])
 def payroll_dashboard():
-    employees = EmployeePayroll.query.filter_by(is_active=True).all()
+    employees = EmployeePayroll.query.order_by(EmployeePayroll.is_active.desc(), EmployeePayroll.id.desc()).all()
     runs = PayrollRun.query.order_by(PayrollRun.created_at.desc()).limit(20).all()
 
     return render_template(
@@ -2071,9 +2099,14 @@ def payroll_dashboard():
 def create_payroll():
     start = request.form.get("start")
     end = request.form.get("end")
+    pay_frequency = (request.form.get("pay_frequency") or "monthly").strip().lower()
 
     if not start or not end:
         flash("Start and end date required", "danger")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    if pay_frequency not in {"monthly", "fortnightly"}:
+        flash("Invalid payroll frequency.", "danger")
         return redirect(url_for("finance.payroll_dashboard"))
 
     period_start = datetime.fromisoformat(start).date()
@@ -2082,27 +2115,34 @@ def create_payroll():
     existing_run = PayrollRun.query.filter_by(
         period_start=period_start,
         period_end=period_end,
+        pay_frequency=pay_frequency,
         status="draft"
     ).first()
 
     if existing_run:
-        flash("A draft payroll already exists for this period. Open it instead of creating another one.", "warning")
+        flash("A draft payroll already exists for this period and frequency. Open it instead of creating another one.", "warning")
         return redirect(url_for("finance.payroll_detail", run_id=existing_run.id))
 
-    employees = EmployeePayroll.query.filter_by(is_active=True).all()
+    employees = EmployeePayroll.query.filter_by(
+        is_active=True,
+        pay_frequency=pay_frequency
+    ).all()
 
     if not employees:
-        flash("No active payroll employees found. Add employees before creating payroll.", "warning")
+        flash(f"No active {pay_frequency} payroll employees found. Add employees before creating payroll.", "warning")
         return redirect(url_for("finance.payroll_dashboard"))
 
     run = PayrollRun(
         period_start=period_start,
-        period_end=period_end
+        period_end=period_end,
+        pay_frequency=pay_frequency
     )
+
     db.session.add(run)
     db.session.flush()
 
     total = 0
+    employee_count = 0
 
     for emp in employees:
         if emp.pay_type == "salary":
@@ -2119,10 +2159,33 @@ def create_payroll():
         )
 
         total += gross
+        employee_count += 1
         db.session.add(item)
 
     run.total_gross = total
     run.total_net = total
+
+    db.session.add(AuditLog(
+        module="Finance",
+        action="Payroll Created",
+        admin_id=current_user.id,
+        user_id=None,
+        entity_type="PayrollRun",
+        entity_id=run.id,
+        reason="Payroll draft created",
+        description=(
+            f"{pay_frequency.title()} payroll draft created for period {period_start} to {period_end}. "
+            f"Employees included: {employee_count}. "
+            f"Total gross/net: JMD {float(total or 0):,.2f}."
+        ),
+        old_value="No payroll run",
+        new_value=(
+            f"Payroll Run #{run.id}; "
+            f"Frequency: {pay_frequency}; "
+            f"Status: {getattr(run, 'status', 'draft') or 'draft'}; "
+            f"Total: JMD {float(total or 0):,.2f}"
+        ),
+    ))
 
     db.session.commit()
 
@@ -2139,12 +2202,37 @@ def delete_payroll_run(run_id):
         flash("Paid payroll runs cannot be deleted.", "danger")
         return redirect(url_for("finance.payroll_detail", run_id=run.id))
 
+    old_value = (
+        f"Payroll Run #{run.id}; "
+        f"Status: {run.status or 'draft'}; "
+        f"Period: {run.period_start} to {run.period_end}; "
+        f"Total Net: JMD {float(run.total_net or 0):,.2f}"
+    )
+
     PayrollItem.query.filter_by(payroll_run_id=run.id).delete()
+
+    db.session.add(AuditLog(
+        module="Finance",
+        action="Payroll Deleted",
+        admin_id=current_user.id,
+        user_id=None,
+        entity_type="PayrollRun",
+        entity_id=run.id,
+        reason="Draft payroll deleted",
+        description=(
+            f"Draft payroll run #{run.id} for period "
+            f"{run.period_start} to {run.period_end} was deleted."
+        ),
+        old_value=old_value,
+        new_value="Payroll run deleted",
+    ))
+
     db.session.delete(run)
     db.session.commit()
 
     flash("Draft payroll run deleted successfully.", "success")
     return redirect(url_for("finance.payroll_dashboard"))
+
 
 @finance_bp.route("/payroll/delete-selected", methods=["POST"])
 @admin_required(roles=["finance"])
@@ -2172,7 +2260,31 @@ def delete_selected_payroll_runs():
             skipped += 1
             continue
 
+        old_value = (
+            f"Payroll Run #{run.id}; "
+            f"Status: {run.status or 'draft'}; "
+            f"Period: {run.period_start} to {run.period_end}; "
+            f"Total Net: JMD {float(run.total_net or 0):,.2f}"
+        )
+
         PayrollItem.query.filter_by(payroll_run_id=run.id).delete()
+
+        db.session.add(AuditLog(
+            module="Finance",
+            action="Payroll Deleted",
+            admin_id=current_user.id,
+            user_id=None,
+            entity_type="PayrollRun",
+            entity_id=run.id,
+            reason="Bulk draft payroll delete",
+            description=(
+                f"Draft payroll run #{run.id} for period "
+                f"{run.period_start} to {run.period_end} was deleted through bulk delete."
+            ),
+            old_value=old_value,
+            new_value="Payroll run deleted",
+        ))
+
         db.session.delete(run)
         deleted += 1
 
@@ -2186,16 +2298,25 @@ def delete_selected_payroll_runs():
 
     return redirect(url_for("finance.payroll_dashboard"))
 
-
 @finance_bp.route("/payroll/employees/add", methods=["GET", "POST"])
 @admin_required(roles=["finance"])
 def add_payroll_employee():
     if request.method == "POST":
         user_id = request.form.get("user_id")
+        position_title = (request.form.get("position_title") or "").strip()
         pay_type = (request.form.get("pay_type") or "salary").strip().lower()
+        pay_frequency = (request.form.get("pay_frequency") or "monthly").strip().lower()
 
         if not user_id:
             flash("Please select an employee.", "danger")
+            return redirect(url_for("finance.add_payroll_employee"))
+
+        if not position_title:
+            flash("Please enter the employee position/title.", "danger")
+            return redirect(url_for("finance.add_payroll_employee"))
+
+        if pay_frequency not in {"monthly", "fortnightly"}:
+            flash("Invalid pay frequency.", "danger")
             return redirect(url_for("finance.add_payroll_employee"))
 
         try:
@@ -2220,6 +2341,8 @@ def add_payroll_employee():
             flash("Hourly rate must be greater than 0.", "danger")
             return redirect(url_for("finance.add_payroll_employee"))
 
+        payroll_user = User.query.get(int(user_id))
+
         existing = EmployeePayroll.query.filter_by(user_id=int(user_id)).first()
         if existing:
             flash("This user is already in payroll.", "warning")
@@ -2227,13 +2350,47 @@ def add_payroll_employee():
 
         emp = EmployeePayroll(
             user_id=int(user_id),
+            position_title=position_title,
             pay_type=pay_type,
+            pay_frequency=pay_frequency,
             base_salary=base_salary if pay_type == "salary" else 0,
             hourly_rate=hourly_rate if pay_type == "hourly" else 0,
             is_active=True
         )
 
         db.session.add(emp)
+        db.session.flush()
+
+        pay_value = base_salary if pay_type == "salary" else hourly_rate
+        pay_label = "Base Salary" if pay_type == "salary" else "Hourly Rate"
+
+        db.session.add(AuditLog(
+            module="Finance",
+            action="Payroll Employee Added",
+            admin_id=current_user.id,
+            user_id=int(user_id),
+            entity_type="EmployeePayroll",
+            entity_id=emp.id,
+            reason="Payroll employee setup",
+            description=(
+                f"{payroll_user.full_name or payroll_user.email if payroll_user else 'Unknown user'} "
+                f"was added to payroll. "
+                f"Position: {position_title}. "
+                f"Pay Type: {pay_type}. "
+                f"Frequency: {pay_frequency}. "
+                f"{pay_label}: JMD {float(pay_value or 0):,.2f}."
+            ),
+            old_value="Not in payroll",
+            new_value=(
+                f"Payroll Employee #{emp.id}; "
+                f"Position: {position_title}; "
+                f"Pay Type: {pay_type}; "
+                f"Frequency: {pay_frequency}; "
+                f"{pay_label}: JMD {float(pay_value or 0):,.2f}; "
+                f"Active: True"
+            ),
+        ))
+
         db.session.commit()
 
         flash("Employee added to payroll.", "success")
@@ -2253,6 +2410,158 @@ def add_payroll_employee():
         "admin/finance/add_payroll_employee.html",
         users=users
     )
+
+
+@finance_bp.route("/payroll/employees/<int:emp_id>/update", methods=["POST"])
+@admin_required(roles=["finance"])
+def update_payroll_employee(emp_id):
+    emp = EmployeePayroll.query.get_or_404(emp_id)
+
+    old_value = (
+        f"Position: {emp.position_title or '—'}; "
+        f"Pay Type: {emp.pay_type}; "
+        f"Frequency: {emp.pay_frequency}; "
+        f"Base Salary: JMD {float(emp.base_salary or 0):,.2f}; "
+        f"Hourly Rate: JMD {float(emp.hourly_rate or 0):,.2f}; "
+        f"Active: {bool(emp.is_active)}"
+    )
+
+    position_title = (request.form.get("position_title") or "").strip()
+    pay_type = (request.form.get("pay_type") or "salary").strip().lower()
+    pay_frequency = (request.form.get("pay_frequency") or "monthly").strip().lower()
+
+    if not position_title:
+        flash("Please enter the employee position/title.", "danger")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    if pay_type not in {"salary", "hourly"}:
+        flash("Invalid pay type.", "danger")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    if pay_frequency not in {"monthly", "fortnightly"}:
+        flash("Invalid pay frequency.", "danger")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    try:
+        base_salary = float(request.form.get("base_salary") or 0)
+    except Exception:
+        base_salary = 0
+
+    try:
+        hourly_rate = float(request.form.get("hourly_rate") or 0)
+    except Exception:
+        hourly_rate = 0
+
+    if pay_type == "salary" and base_salary <= 0:
+        flash("Salary must be greater than 0.", "danger")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    if pay_type == "hourly" and hourly_rate <= 0:
+        flash("Hourly rate must be greater than 0.", "danger")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    emp.position_title = position_title
+    emp.pay_type = pay_type
+    emp.pay_frequency = pay_frequency
+    emp.base_salary = base_salary if pay_type == "salary" else 0
+    emp.hourly_rate = hourly_rate if pay_type == "hourly" else 0
+
+    pay_value = base_salary if pay_type == "salary" else hourly_rate
+    pay_label = "Base Salary" if pay_type == "salary" else "Hourly Rate"
+
+    db.session.add(AuditLog(
+        module="Finance",
+        action="Payroll Employee Updated",
+        admin_id=current_user.id,
+        user_id=emp.user_id,
+        entity_type="EmployeePayroll",
+        entity_id=emp.id,
+        reason="Payroll employee update",
+        description=(
+            f"Payroll setup updated for "
+            f"{emp.user.full_name or emp.user.email if emp.user else 'Unknown user'}."
+        ),
+        old_value=old_value,
+        new_value=(
+            f"Position: {position_title}; "
+            f"Pay Type: {pay_type}; "
+            f"Frequency: {pay_frequency}; "
+            f"{pay_label}: JMD {float(pay_value or 0):,.2f}; "
+            f"Active: {bool(emp.is_active)}"
+        ),
+    ))
+
+    db.session.commit()
+
+    flash("Payroll employee updated.", "success")
+    return redirect(url_for("finance.payroll_dashboard"))
+
+@finance_bp.route("/payroll/employees/<int:emp_id>/deactivate", methods=["POST"])
+@admin_required(roles=["finance"])
+def deactivate_payroll_employee(emp_id):
+    emp = EmployeePayroll.query.get_or_404(emp_id)
+
+    if not emp.is_active:
+        flash("Payroll employee is already inactive.", "warning")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    emp.is_active = False
+
+    db.session.add(AuditLog(
+        module="Finance",
+        action="Payroll Employee Deactivated",
+        admin_id=current_user.id,
+        user_id=emp.user_id,
+        entity_type="EmployeePayroll",
+        entity_id=emp.id,
+        reason="Payroll employee deactivated",
+        description=(
+            f"{emp.user.full_name or emp.user.email if emp.user else 'Unknown user'} "
+            f"was deactivated from payroll."
+        ),
+        old_value="Active: True",
+        new_value="Active: False",
+    ))
+
+    db.session.commit()
+
+    flash("Payroll employee deactivated.", "success")
+    return redirect(url_for("finance.payroll_dashboard"))
+
+
+@finance_bp.route("/payroll/employees/<int:emp_id>/reactivate", methods=["POST"])
+@admin_required(roles=["finance"])
+def reactivate_payroll_employee(emp_id):
+    emp = EmployeePayroll.query.get_or_404(emp_id)
+
+    if emp.is_active:
+        flash("Payroll employee is already active.", "warning")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    emp.is_active = True
+
+    db.session.add(AuditLog(
+        module="Finance",
+        action="Payroll Employee Reactivated",
+        admin_id=current_user.id,
+        user_id=emp.user_id,
+        entity_type="EmployeePayroll",
+        entity_id=emp.id,
+        reason="Payroll employee reactivated",
+        description=(
+            f"{emp.user.full_name or emp.user.email if emp.user else 'Unknown user'} "
+            f"was reactivated on payroll."
+        ),
+        old_value="Active: False",
+        new_value="Active: True",
+    ))
+
+    db.session.commit()
+
+    flash("Payroll employee reactivated.", "success")
+    return redirect(url_for("finance.payroll_dashboard"))
+
+
 
 @finance_bp.route("/payroll/<int:run_id>")
 @admin_required(roles=["finance"])
@@ -2292,6 +2601,14 @@ def mark_payroll_paid(run_id):
         flash("Payroll is already marked as paid.", "warning")
         return redirect(url_for("finance.payroll_detail", run_id=run.id))
 
+    old_status = run.status or "draft"
+    old_value = (
+        f"Payroll Run #{run.id}; "
+        f"Status: {old_status}; "
+        f"Period: {run.period_start} to {run.period_end}; "
+        f"Total Net: JMD {float(run.total_net or 0):,.2f}"
+    )
+
     run.status = "paid"
     run.paid_at = datetime.now(timezone.utc)
     run.paid_by_admin_id = current_user.id
@@ -2302,7 +2619,30 @@ def mark_payroll_paid(run_id):
         amount=float(run.total_net or 0),
         description=f"Payroll paid for period {run.period_start} to {run.period_end}"
     )
+
     db.session.add(expense)
+    db.session.flush()
+
+    db.session.add(AuditLog(
+        module="Finance",
+        action="Payroll Marked Paid",
+        admin_id=current_user.id,
+        user_id=None,
+        entity_type="PayrollRun",
+        entity_id=run.id,
+        reason="Payroll payment",
+        description=(
+            f"Payroll run #{run.id} was marked paid for period "
+            f"{run.period_start} to {run.period_end}. "
+            f"Payroll expense #{expense.id} created for JMD {float(run.total_net or 0):,.2f}."
+        ),
+        old_value=old_value,
+        new_value=(
+            f"Status: paid; "
+            f"Paid At: {run.paid_at.strftime('%Y-%m-%d %H:%M:%S UTC')}; "
+            f"Expense ID: {expense.id}"
+        ),
+    ))
 
     db.session.commit()
 
@@ -2600,6 +2940,115 @@ Foreign A Foot Logistics
 
     return redirect(url_for("finance.payroll_detail", run_id=run_id))
 
+@finance_bp.route("/payroll/employees/<int:emp_id>/history")
+@admin_required(roles=["finance"])
+def payroll_employee_history(emp_id):
+    emp = EmployeePayroll.query.get_or_404(emp_id)
+
+    logs = (
+        AuditLog.query
+        .filter(
+            AuditLog.module == "Finance",
+            AuditLog.entity_type == "EmployeePayroll",
+            AuditLog.entity_id == emp.id
+        )
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .all()
+    )
+
+    return render_template(
+        "admin/finance/payroll_employee_history.html",
+        emp=emp,
+        logs=logs
+    )
+
+@finance_bp.route("/payroll/employees/bulk-deactivate", methods=["POST"])
+@admin_required(roles=["finance"])
+def bulk_deactivate_payroll_employees():
+    raw_ids = request.form.getlist("employee_ids")
+    emp_ids = [int(x) for x in raw_ids if str(x).isdigit()]
+
+    if not emp_ids:
+        flash("Select at least one payroll employee.", "warning")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    employees = EmployeePayroll.query.filter(EmployeePayroll.id.in_(emp_ids)).all()
+
+    changed = 0
+
+    for emp in employees:
+        if not emp.is_active:
+            continue
+
+        emp.is_active = False
+
+        db.session.add(AuditLog(
+            module="Finance",
+            action="Payroll Employee Deactivated",
+            admin_id=current_user.id,
+            user_id=emp.user_id,
+            entity_type="EmployeePayroll",
+            entity_id=emp.id,
+            reason="Bulk payroll employee deactivation",
+            description=(
+                f"{emp.user.full_name or emp.user.email if emp.user else 'Unknown user'} "
+                f"was deactivated from payroll through bulk action."
+            ),
+            old_value="Active: True",
+            new_value="Active: False",
+        ))
+
+        changed += 1
+
+    db.session.commit()
+
+    flash(f"{changed} payroll employee(s) deactivated.", "success")
+    return redirect(url_for("finance.payroll_dashboard"))
+
+
+@finance_bp.route("/payroll/employees/bulk-reactivate", methods=["POST"])
+@admin_required(roles=["finance"])
+def bulk_reactivate_payroll_employees():
+    raw_ids = request.form.getlist("employee_ids")
+    emp_ids = [int(x) for x in raw_ids if str(x).isdigit()]
+
+    if not emp_ids:
+        flash("Select at least one payroll employee.", "warning")
+        return redirect(url_for("finance.payroll_dashboard"))
+
+    employees = EmployeePayroll.query.filter(EmployeePayroll.id.in_(emp_ids)).all()
+
+    changed = 0
+
+    for emp in employees:
+        if emp.is_active:
+            continue
+
+        emp.is_active = True
+
+        db.session.add(AuditLog(
+            module="Finance",
+            action="Payroll Employee Reactivated",
+            admin_id=current_user.id,
+            user_id=emp.user_id,
+            entity_type="EmployeePayroll",
+            entity_id=emp.id,
+            reason="Bulk payroll employee reactivation",
+            description=(
+                f"{emp.user.full_name or emp.user.email if emp.user else 'Unknown user'} "
+                f"was reactivated on payroll through bulk action."
+            ),
+            old_value="Active: False",
+            new_value="Active: True",
+        ))
+
+        changed += 1
+
+    db.session.commit()
+
+    flash(f"{changed} payroll employee(s) reactivated.", "success")
+    return redirect(url_for("finance.payroll_dashboard"))
+
 @finance_bp.route("/monthly-income/daily-sales")
 @admin_required(roles=["finance"])
 def daily_sales_report():
@@ -2758,3 +3207,5 @@ def daily_sales_detail(sale_date):
         selected_date=selected_date,
         total_sales=total_sales,
     )
+
+

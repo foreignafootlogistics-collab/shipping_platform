@@ -404,12 +404,24 @@ class WalletTransaction(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship(
-        'User',
-        back_populates='wallet_transactions',
-        foreign_keys=[user_id]
+        "User",
+        back_populates="wallet_transactions",
+        foreign_keys=[user_id],
+        primaryjoin="WalletTransaction.user_id == User.id"
     )
-    admin = db.relationship("User", foreign_keys=[admin_id], lazy="joined")
-    package = db.relationship("Package", foreign_keys=[package_id], lazy="joined")
+
+    admin = db.relationship(
+        "User",
+        foreign_keys=[admin_id],
+        primaryjoin="WalletTransaction.admin_id == User.id",
+        lazy="joined"
+    )
+
+    package = db.relationship(
+        "Package",
+        foreign_keys=[package_id],
+        lazy="joined"
+    )
 
     def __repr__(self):
         return f"<WalletTransaction User {self.user_id} Amount {self.amount}>"
@@ -1773,10 +1785,16 @@ def generate_search_case_id(prefix: str = "SRC") -> str:
 class EmployeePayroll(db.Model):
     __tablename__ = "employee_payroll"
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.Integer, primary_key=True)    
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
 
+    position_title = db.Column(db.String(100), nullable=True, index=True)
+
     pay_type = db.Column(db.String(20), nullable=False)  # salary / hourly
+
+    # monthly / fortnightly
+    pay_frequency = db.Column(db.String(20), nullable=False, default="monthly", index=True)
+
     base_salary = db.Column(db.Numeric(12, 2), default=0)
     hourly_rate = db.Column(db.Numeric(12, 2), default=0)
 
@@ -1792,6 +1810,9 @@ class PayrollRun(db.Model):
 
     period_start = db.Column(db.Date, nullable=False)
     period_end = db.Column(db.Date, nullable=False)
+
+    # monthly / fortnightly
+    pay_frequency = db.Column(db.String(20), nullable=False, default="monthly", index=True)
 
     total_gross = db.Column(db.Numeric(12, 2), default=0)
     total_net = db.Column(db.Numeric(12, 2), default=0)
@@ -1827,3 +1848,53 @@ class PayrollItem(db.Model):
     nht = db.Column(db.Numeric(12, 2), default=0)
     education_tax = db.Column(db.Numeric(12, 2), default=0)
     other_deductions = db.Column(db.Numeric(12, 2), default=0)
+
+class AuditLog(db.Model):
+    __tablename__ = "audit_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    module = db.Column(db.String(50), nullable=False, index=True)
+    action = db.Column(db.String(100), nullable=False, index=True)
+    reason = db.Column(db.String(100), nullable=True, index=True)
+    entity_type = db.Column(db.String(50), nullable=True)
+    entity_id = db.Column(db.Integer, nullable=True)
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True,
+        index=True
+    )
+
+    admin_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True,
+        index=True
+    )
+
+    description = db.Column(db.Text, nullable=True)
+
+    old_value = db.Column(db.Text, nullable=True)
+    new_value = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+        index=True
+    )
+
+    user = db.relationship(
+        "User",
+        foreign_keys=[user_id]
+    )
+
+    admin = db.relationship(
+        "User",
+        foreign_keys=[admin_id]
+    )
+
+    def __repr__(self):
+        return f"<AuditLog {self.module}:{self.action}>"

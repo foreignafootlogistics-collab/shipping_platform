@@ -265,7 +265,7 @@
         <li class="nav-item" role="presentation">
           <button class="nav-link {% if current_tab == 'prealerts' %}active{% endif %}" id="prealerts-tab"
             data-bs-toggle="tab" data-bs-target="#prealerts" type="button" role="tab">
-            <i class="bi bi-box-seam me-1"></i> Pre-Alert Shipments
+            <i class="bi bi-box-seam me-1"></i> Pre-Alerts
           </button>
         </li>
 
@@ -293,6 +293,13 @@
         </li>
 
         <li class="nav-item" role="presentation">
+          <button class="nav-link {% if current_tab == 'wallet' %}active{% endif %}" id="wallet-tab"
+            data-bs-toggle="tab" data-bs-target="#wallet" type="button" role="tab">
+            <i class="bi bi-wallet2"></i> Wallet
+          </button>
+        </li>
+
+        <li class="nav-item" role="presentation">
           <button class="nav-link {% if current_tab == 'messages' %}active{% endif %}" id="messages-tab"
             data-bs-toggle="tab" data-bs-target="#messages" type="button" role="tab">
             <i class="bi bi-envelope me-1"></i> Messages
@@ -309,7 +316,7 @@
         <li class="nav-item" role="presentation">
           <button class="nav-link {% if current_tab == 'schedule' %}active{% endif %}" id="schedule-delivery-tab"
             data-bs-toggle="tab" data-bs-target="#schedule-delivery" type="button" role="tab">
-            <i class="bi bi-truck"></i> Schedule Delivery
+            <i class="bi bi-truck"></i> Delivery
           </button>
         </li>
 
@@ -1062,6 +1069,86 @@
               </a>
             </li>
           </ul>
+        </div>
+      </div>
+
+      <!-- Wallet History Tab -->
+      <div class="tab-pane fade {% if current_tab == 'wallet' %}show active{% endif %}" id="wallet" role="tabpanel"
+        aria-labelledby="wallet-tab">
+
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <div>
+            <h6 class="mb-0">Wallet History</h6>
+            <small class="text-muted">All wallet credits, deductions, promotions, refunds, and invoice payments.</small>
+          </div>
+
+          <div class="fw-bold">
+            Current Balance: ${{ money(wallet_balance) }}
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-striped table-bordered align-middle">
+            <thead class="table-dark">
+              <tr>
+                <th>Date</th>
+                <th>Action</th>
+                <th>Reason</th>
+                <th>Invoice #</th>
+                <th>Description</th>
+                <th class="text-end">Amount</th>
+                <th>Processed By</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {% for t in wallet_transactions %}
+              <tr>
+                <td>
+                  {% if t.created_at %}
+                  {{ to_jamaica(t.created_at).strftime("%Y-%m-%d %I:%M %p") }}
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+
+                <td>
+                  {% if t.action == 'credit' %}
+                  <span class="badge bg-success">Add Funds</span>
+                  {% elif t.action == 'debit' %}
+                  <span class="badge bg-danger">Deduct Funds</span>
+                  {% elif t.action == 'invoice_payment' %}
+                  <span class="badge bg-primary">Invoice Payment</span>
+                  {% else %}
+                  <span class="badge bg-secondary">{{ t.action or t.type or 'Wallet' }}</span>
+                  {% endif %}
+                </td>
+
+                <td>{{ t.reason or '—' }}</td>
+                <td>{{ t.invoice_number or '—' }}</td>
+                <td>{{ t.description or '—' }}</td>
+
+                <td class="text-end fw-bold {% if t.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                  {{ '+' if t.amount > 0 else '' }}${{ money(t.amount) }}
+                </td>
+
+                <td>
+                  {% if t.admin %}
+                  {{ t.admin.full_name or t.admin.email }}
+                  {% else %}
+                  System / Unknown
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                  No wallet history found.
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -2530,16 +2617,51 @@
           </div>
 
           <div class="modal-body">
+
             <div class="mb-3">
-              <label for="amount" class="form-label">Amount (JMD)</label>
-              <input type="number" step="0.01" name="amount" id="amount" class="form-control" required>
-              <div class="form-text">Use a negative value to subtract from the wallet.</div>
+              <label class="form-label">Wallet Action</label>
+              <select name="wallet_action" class="form-select" required>
+                <option value="">Select Action</option>
+                <option value="credit">Add Funds</option>
+                <option value="debit">Deduct Funds</option>
+                <option value="invoice_payment">Invoice / Package Payment</option>
+              </select>
             </div>
+
             <div class="mb-3">
-              <label for="description" class="form-label">Description (optional)</label>
-              <input type="text" name="description" id="description" class="form-control"
-                placeholder="e.g. Adjustment for overcharge, manual top-up, promo, etc.">
+              <label class="form-label">Amount (JMD)</label>
+              <input type="number" step="0.01" min="0.01" name="amount" class="form-control" required>
+              <div class="form-text">
+                Enter positive amounts only.
+              </div>
             </div>
+
+            <div class="mb-3">
+              <label class="form-label">Reason</label>
+              <select name="reason" class="form-select" required>
+                <option value="">Select Reason</option>
+                <option value="Customer Top-up">Customer Top-up</option>
+                <option value="Change / Overpayment">Change / Overpayment</option>
+                <option value="Promotion">Promotion</option>
+                <option value="Refund">Refund</option>
+                <option value="Package Payment">Package Payment</option>
+                <option value="Manual Correction">Manual Correction</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Invoice Number</label>
+              <input type="text" name="invoice_number" class="form-control"
+                placeholder="Required for invoice/package payments">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Description</label>
+              <textarea name="description" class="form-control" rows="3" required
+                placeholder="Explain why this wallet transaction is being made"></textarea>
+            </div>
+
           </div>
 
           <div class="modal-footer">

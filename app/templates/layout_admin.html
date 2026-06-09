@@ -410,6 +410,43 @@
           </div>
           {% endif %}
 
+          {% if current_user.is_authenticated and current_user.is_superadmin %}
+
+          {% set is_audit = request.endpoint == 'accounts_profiles.audit_logs' %}
+
+          <div class="accordion-item border-0">
+            <h2 class="accordion-header" id="headingAudit">
+              <button class="accordion-button {{ '' if is_audit else 'collapsed' }} text-white" type="button"
+                data-bs-toggle="collapse" data-bs-target="#collapseAudit"
+                aria-expanded="{{ 'true' if is_audit else 'false' }}" aria-controls="collapseAudit"
+                style="background-color:#4a148c;">
+
+                <i class="bi bi-journal-check me-2"></i>
+                Audit Logs
+              </button>
+            </h2>
+
+            <div id="collapseAudit" class="accordion-collapse collapse {{ 'show' if is_audit else '' }}"
+              aria-labelledby="headingAudit" data-bs-parent="#sidebarAccordion">
+
+              <div class="accordion-body p-0">
+                <ul class="nav flex-column ms-3">
+
+                  <li class="nav-item">
+                    <a href="{{ url_for('accounts_profiles.audit_logs') }}"
+                      class="nav-link {{ 'active' if request.endpoint == 'accounts_profiles.audit_logs' else '' }}">
+                      <i class="bi bi-journal-text me-2"></i>
+                      All Audit Logs
+                    </a>
+                  </li>
+
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {% endif %}
+
           <!-- Settings -->
 
           {% if current_user.is_authenticated and current_user.is_superadmin %}

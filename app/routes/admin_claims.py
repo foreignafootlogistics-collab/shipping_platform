@@ -6,10 +6,11 @@ from flask_login import current_user
 from sqlalchemy import or_
 
 from app.extensions import db
-from app.models import Claim, ClaimAuditLog, Wallet, WalletTransaction, Payment, User
+from app.models import Claim, ClaimAuditLog, Wallet, WalletTransaction, Payment, User, AuditLog
 from app.forms import AdminClaimDecisionForm
 from app.routes.admin_auth_routes import admin_required
 from app.utils.email_utils import send_claim_status_update_email
+from app.utils.time import to_jamaica
 
 # Optional in-app messaging
 try:
@@ -19,6 +20,33 @@ except Exception:
 
 
 admin_claims_bp = Blueprint("admin_claims", __name__, url_prefix="/admin/claims")
+
+
+def create_audit_log(
+    module,
+    action,
+    admin_id=None,
+    user_id=None,
+    entity_type=None,
+    entity_id=None,
+    reason=None,
+    description=None,
+    old_value=None,
+    new_value=None,
+):
+    log = AuditLog(
+        module=module,
+        action=action,
+        admin_id=admin_id,
+        user_id=user_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        reason=reason,
+        description=description,
+        old_value=old_value,
+        new_value=new_value,
+    )
+    db.session.add(log)
 
 
 def _to_decimal(x, default="0"):
@@ -33,7 +61,6 @@ def _to_decimal(x, default="0"):
 @admin_claims_bp.route("/", methods=["GET"])
 @admin_required
 def queue():
-
     status = request.args.get("status", "submitted")
     search = (request.args.get("search") or "").strip()
     date_filter = (request.args.get("date") or "").strip()
@@ -43,25 +70,13 @@ def queue():
     if per_page not in [10, 25, 50, 100]:
         per_page = 10
 
-    q = (
-        Claim.query
-        .join(Claim.user)
-    )
-
-    # -----------------------------------
-    # STATUS FILTER
-    # -----------------------------------
+    q = Claim.query.join(Claim.user)
 
     if status and status != "all":
         q = q.filter(Claim.status == status)
 
-    # -----------------------------------
-    # SEARCH
-    # -----------------------------------
-
     if search:
         like = f"%{search}%"
-
         q = q.filter(or_(
             Claim.case_id.ilike(like),
             Claim.house_awb.ilike(like),
@@ -72,26 +87,16 @@ def queue():
             Claim.user.has(User.registration_number.ilike(like)),
         ))
 
-    # -----------------------------------
-    # DATE FILTER
-    # -----------------------------------
-
     today = datetime.now(timezone.utc).date()
 
     if date_filter == "today":
         q = q.filter(db.func.date(Claim.created_at) == today)
-
     elif date_filter == "7_days":
         start_date = today - timedelta(days=7)
         q = q.filter(db.func.date(Claim.created_at) >= start_date)
-
     elif date_filter == "30_days":
         start_date = today - timedelta(days=30)
         q = q.filter(db.func.date(Claim.created_at) >= start_date)
-
-    # -----------------------------------
-    # PAGINATION
-    # -----------------------------------
 
     pagination = (
         q.order_by(Claim.created_at.desc())
@@ -99,10 +104,6 @@ def queue():
     )
 
     claims = pagination.items
-
-    # -----------------------------------
-    # COUNTS
-    # -----------------------------------
 
     counts = {
         "all": Claim.query.count(),
@@ -133,16 +134,10 @@ def queue():
 @admin_claims_bp.route("/<int:claim_id>", methods=["GET", "POST"])
 @admin_required
 def review(claim_id):
-
     claim = Claim.query.get_or_404(claim_id)
     form = AdminClaimDecisionForm()
 
-    # -------------------------------------------------------
-    # PREFILL FORM
-    # -------------------------------------------------------
-
     if request.method == "GET":
-
         form.status.data = claim.status or "submitted"
         form.approved_amount_jmd.data = claim.approved_amount_jmd
         form.decision_reason.data = claim.decision_reason
@@ -153,14 +148,13 @@ def review(claim_id):
         form.refunded_amount_jmd.data = getattr(claim, "refunded_amount_jmd", None)
         form.refund_reference.data = getattr(claim, "refund_reference", None)
 
-    # -------------------------------------------------------
-    # PROCESS FORM
-    # -------------------------------------------------------
-
     if form.validate_on_submit():
-
         old_status = claim.status or "submitted"
         new_status = form.status.data
+
+        old_approved_amount = claim.approved_amount_jmd
+        old_decision_reason = claim.decision_reason
+        old_admin_notes = claim.admin_notes
 
         claim.status = new_status
 
@@ -173,24 +167,14 @@ def review(claim_id):
         claim.reviewed_by_admin_id = current_user.id
         claim.reviewed_at = claim.reviewed_at or datetime.now(timezone.utc)
 
-        # ---------------------------------------------------
-        # REFUND PROCESSING
-        # ---------------------------------------------------
-
         wants_refund_issued = bool(form.refund_issued.data)
 
         if wants_refund_issued:
-
             method = (form.refund_issued_method.data or "").strip()
 
             if not method:
-                flash(
-                    "Select 'Refund Method Issued' before marking refund as issued.",
-                    "warning"
-                )
-                return redirect(
-                    url_for("admin_claims.review", claim_id=claim.id)
-                )
+                flash("Select 'Refund Method Issued' before marking refund as issued.", "warning")
+                return redirect(url_for("admin_claims.review", claim_id=claim.id))
 
             refunded_amount = form.refunded_amount_jmd.data
 
@@ -202,17 +186,9 @@ def review(claim_id):
             claim.refund_issued = True
             claim.refund_issued_method = method
             claim.refunded_amount_jmd = refunded_amount_dec
-
-            claim.refund_reference = (
-                (form.refund_reference.data or "").strip() or None
-            )
-
+            claim.refund_reference = (form.refund_reference.data or "").strip() or None
             claim.refund_issued_at = datetime.now(timezone.utc)
             claim.refund_issued_by_admin_id = current_user.id
-
-            # ------------------------------------------------
-            # CREATE PAYMENT RECORD
-            # ------------------------------------------------
 
             existing_refund_payment = (
                 Payment.query
@@ -226,7 +202,6 @@ def review(claim_id):
             )
 
             if not existing_refund_payment:
-
                 refund_payment = Payment(
                     user_id=claim.user_id,
                     invoice_id=None,
@@ -249,19 +224,11 @@ def review(claim_id):
                     authorized_by_admin_id=current_user.id,
                     created_at=datetime.now(timezone.utc)
                 )
-
                 db.session.add(refund_payment)
-
-            # ------------------------------------------------
-            # UPDATE CLAIM STATUS
-            # ------------------------------------------------
 
             if claim.status != "rejected":
                 claim.status = "paid"
 
-            # ------------------------------------------------
-            # MARK LINKED PACKAGE AS CLAIM REFUNDED
-            # ------------------------------------------------
             if getattr(claim, "package_id", None):
                 linked_pkg = claim.package
                 if linked_pkg:
@@ -291,12 +258,7 @@ def review(claim_id):
                     if linked_pkg:
                         linked_pkg.status = "Claim Refunded"
 
-            # ------------------------------------------------
-            # WALLET CREDIT OPTION
-            # ------------------------------------------------
-
             if method == "wallet_credit":
-
                 wallet = Wallet.query.filter_by(user_id=claim.user_id).first()
 
                 if not wallet:
@@ -307,7 +269,9 @@ def review(claim_id):
                     db.session.add(wallet)
                     db.session.flush()
 
-                wallet.ewallet_balance = float(wallet.ewallet_balance or 0) + float(refunded_amount_dec)
+                wallet.ewallet_balance = (
+                    float(wallet.ewallet_balance or 0) + float(refunded_amount_dec)
+                )
 
                 db.session.add(
                     WalletTransaction(
@@ -315,53 +279,121 @@ def review(claim_id):
                         amount=float(refunded_amount_dec),
                         description=f"Claim refund credited ({claim.case_id or ('Claim #' + str(claim.id))})",
                         type="credit",
+                        action="credit",
+                        reason="Claim Refund",
+                        invoice_number=None,
+                        admin_id=current_user.id,
                         created_at=datetime.now(timezone.utc)
                     )
                 )
 
-        # ---------------------------------------------------
-        # AUDIT LOG
-        # ---------------------------------------------------
-
-        db.session.add(
-            ClaimAuditLog(
-                claim_id=claim.id,
-                action="status_changed",
-                from_status=old_status,
-                to_status=claim.status,
-                actor_admin_id=current_user.id,
-                message=f"Admin updated claim {claim.case_id or ('#' + str(claim.id))}: {old_status} → {claim.status}"
+            create_audit_log(
+                module="Claims",
+                action="Claim Refund Issued",
+                admin_id=current_user.id,
+                user_id=claim.user_id,
+                entity_type="Claim",
+                entity_id=claim.id,
+                reason=method,
+                description=(
+                    f"Refund issued for claim {claim.case_id or ('#' + str(claim.id))}. "
+                    f"Method: {method}. Amount: JMD {float(refunded_amount_dec):,.2f}."
+                ),
+                old_value="Refund Pending",
+                new_value=f"Refund Issued - JMD {float(refunded_amount_dec):,.2f}",
             )
-        )
+
+        claim_detail_changes = []
+
+        if str(old_approved_amount or "") != str(claim.approved_amount_jmd or ""):
+            claim_detail_changes.append(
+                f"Approved Amount: {old_approved_amount or 0} → {claim.approved_amount_jmd or 0}"
+            )
+
+        if str(old_decision_reason or "") != str(claim.decision_reason or ""):
+            claim_detail_changes.append("Decision Reason changed")
+
+        if str(old_admin_notes or "") != str(claim.admin_notes or ""):
+            claim_detail_changes.append("Admin Notes changed")
+
+        if claim_detail_changes:
+            create_audit_log(
+                module="Claims",
+                action="Claim Details Updated",
+                admin_id=current_user.id,
+                user_id=claim.user_id,
+                entity_type="Claim",
+                entity_id=claim.id,
+                reason=claim.decision_reason or "Claim details update",
+                description=(
+                    f"Claim {claim.case_id or ('#' + str(claim.id))} details updated. "
+                    + "; ".join(claim_detail_changes)
+                ),
+                old_value=(
+                    f"Status: {old_status}; "
+                    f"Approved Amount: {old_approved_amount or 0}; "
+                    f"Decision Reason: {old_decision_reason or '—'}; "
+                    f"Admin Notes: {old_admin_notes or '—'}"
+                ),
+                new_value=(
+                    f"Status: {claim.status}; "
+                    f"Approved Amount: {claim.approved_amount_jmd or 0}; "
+                    f"Decision Reason: {claim.decision_reason or '—'}; "
+                    f"Admin Notes: {claim.admin_notes or '—'}"
+                ),
+            )
+
+        if old_status != claim.status:
+            claim_action_label = (
+                f"Claim {str(claim.status or '').replace('_', ' ').title()}"
+            )
+
+            create_audit_log(
+                module="Claims",
+                action=claim_action_label,
+                admin_id=current_user.id,
+                user_id=claim.user_id,
+                entity_type="Claim",
+                entity_id=claim.id,
+                reason=claim.decision_reason or "Claim review",
+                description=(
+                    f"Claim {claim.case_id or ('#' + str(claim.id))} "
+                    f"changed from {old_status} to {claim.status}."
+                ),
+                old_value=old_status,
+                new_value=claim.status,
+            )
+
+            db.session.add(
+                ClaimAuditLog(
+                    claim_id=claim.id,
+                    action="status_changed",
+                    from_status=old_status,
+                    to_status=claim.status,
+                    actor_admin_id=current_user.id,
+                    message=(
+                        f"Admin updated claim "
+                        f"{claim.case_id or ('#' + str(claim.id))}: "
+                        f"{old_status} → {claim.status}"
+                    )
+                )
+            )
 
         db.session.commit()
 
-        # ---------------------------------------------------
-        # EMAIL NOTIFICATION
-        # ---------------------------------------------------
-
         try:
-
             send_claim_status_update_email(
                 user_email=claim.user.email,
                 full_name=claim.user.full_name,
                 claim=claim,
                 recipient_user_id=claim.user_id
             )
-
         except Exception:
             pass
 
-        # ---------------------------------------------------
-        # IN-APP MESSAGE
-        # ---------------------------------------------------
-
         if Message is not None:
-
             try:
-
                 title = f"Claim Update: {claim.case_id or ('Claim #' + str(claim.id))}"
-
                 body = f"Your claim status has been updated to '{claim.status}'."
 
                 if claim.decision_reason:
@@ -384,9 +416,7 @@ def review(claim_id):
 
         flash("Claim updated.", "success")
 
-        return redirect(
-            url_for("admin_claims.review", claim_id=claim.id)
-        )
+        return redirect(url_for("admin_claims.review", claim_id=claim.id))
 
     logs = claim.audit_logs.order_by(
         ClaimAuditLog.created_at.desc()
@@ -398,4 +428,3 @@ def review(claim_id):
         form=form,
         logs=logs
     )
-

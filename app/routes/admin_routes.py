@@ -53,7 +53,7 @@ from app.extensions import db
 from app.models import (
     User, Wallet, Message, MessageAttachment, ScheduledDelivery,
     WalletTransaction, Package, Invoice, Notification, Payment,
-    RateBracket, Discount, shipment_packages, Prealert, ShipmentLog
+    RateBracket, Discount, shipment_packages, Prealert, ShipmentLog, AuditLog
 )
 from app.routes.admin_auth_routes import admin_required
 
@@ -242,7 +242,7 @@ def admin_routes_dump():
 
 
 @admin_bp.route('/register-admin', methods=['GET', 'POST'])
-@admin_required(roles=['superadmin'])   # 🔒 only superadmin can create other admins
+@admin_required(roles=['superadmin'])
 def register_admin():
     form = AdminRegisterForm()
 
@@ -250,17 +250,12 @@ def register_admin():
         full_name = (form.full_name.data or "").strip()
         email = (form.email.data or "").strip()
         password = (form.password.data or "").strip()
-
-        # 🔹 role coming from the <select name="role"> in your HTML
-        #    e.g. "admin", "finance", "operations", "accounts_manager"
         role = (request.form.get("role") or "admin").strip()
 
-        # 1) Guard: existing email
         if User.query.filter_by(email=email).first():
             flash("Email already exists", "danger")
             return render_template('admin/register_admin.html', form=form)
 
-        # 2) See if this is the very first admin-type user in the system
         admin_roles = ["admin", "superadmin", "finance", "operations", "accounts_manager"]
 
         conds = [
@@ -268,34 +263,27 @@ def register_admin():
             User.role.in_(admin_roles),
         ]
 
-        # Some older builds use is_admin boolean
         if hasattr(User, "is_admin"):
             conds.append(User.is_admin.is_(True))
 
         has_any_admin = User.query.filter(sa.or_(*conds)).first() is not None
 
-        # Default flags
         is_admin = True
         is_superadmin = False
 
-        # If there are NO admins at all yet, force owner superadmin
         if not has_any_admin:
             role = "superadmin"
             is_superadmin = True
 
-        # Optional registration number for first admin
         registration_number = "FAFL10000" if not has_any_admin else None
-
-        # Hash password with bcrypt (store as bytes in LargeBinary column)
         hashed_pw = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
 
-        # Create the user
         u = User(
             full_name=full_name,
             email=email,
-            password=hashed_pw,              # bytes (LargeBinary)
+            password=hashed_pw,
             role=role,
-            created_at=datetime.now(timezone.utc),    # if your column is string, it'll still store fine
+            created_at=datetime.now(timezone.utc),
             registration_number=registration_number,
             is_admin=is_admin if hasattr(User, "is_admin") else True,
             is_superadmin=is_superadmin,
@@ -306,6 +294,22 @@ def register_admin():
 
         u.employee_code = f"FAFL-{str(u.id).zfill(4)}"
 
+        db.session.add(AuditLog(
+            module="Admin Activity",
+            action="Admin Account Created",
+            admin_id=current_user.id,
+            user_id=u.id,
+            entity_type="User",
+            entity_id=u.id,
+            reason="Admin account creation",
+            description=(
+                f"Admin account created for {u.full_name or u.email}. "
+                f"Role: {role}. Employee Code: {u.employee_code}."
+            ),
+            old_value="No admin account",
+            new_value=f"Role: {role}; Superadmin: {bool(is_superadmin)}",
+        ))
+
         db.session.commit()
 
         flash(
@@ -315,7 +319,6 @@ def register_admin():
         )
         return redirect(url_for('admin.dashboard'))
 
-    # GET or failed validation
     return render_template('admin/register_admin.html', form=form)
 
 @admin_bp.route('/manage-admins')
@@ -326,19 +329,18 @@ def manage_admins():
     return render_template('admin/manage_admins.html', admins=admins)
 
 @admin_bp.route('/admins/<int:user_id>/update-role', methods=['POST'])
-@admin_required(roles=['superadmin'])  # only superadmin can change roles
+@admin_required(roles=['superadmin'])
 def update_admin_role(user_id):
-    from app.extensions import db
-    from app.models import User
-
     new_role = (request.form.get("role") or "").strip().lower()
 
     admin = User.query.get_or_404(user_id)
 
-    # Update role field
+    old_role = admin.role or "unknown"
+    old_is_admin = bool(getattr(admin, "is_admin", False))
+    old_is_superadmin = bool(getattr(admin, "is_superadmin", False))
+
     admin.role = new_role
 
-    # Keep is_admin / is_superadmin flags in sync
     if new_role == "superadmin":
         admin.is_superadmin = True
         admin.is_admin = True
@@ -346,11 +348,35 @@ def update_admin_role(user_id):
         admin.is_superadmin = False
         admin.is_admin = True
     else:
-        # fallback – not really expected for this screen
         admin.is_superadmin = False
         admin.is_admin = False
 
+    db.session.add(AuditLog(
+        module="Admin Activity",
+        action="Admin Role Changed",
+        admin_id=current_user.id,
+        user_id=admin.id,
+        entity_type="User",
+        entity_id=admin.id,
+        reason="Admin role update",
+        description=(
+            f"Admin role changed for {admin.full_name or admin.email} "
+            f"from {old_role} to {new_role}."
+        ),
+        old_value=(
+            f"Role: {old_role}; "
+            f"is_admin: {old_is_admin}; "
+            f"is_superadmin: {old_is_superadmin}"
+        ),
+        new_value=(
+            f"Role: {admin.role}; "
+            f"is_admin: {bool(admin.is_admin)}; "
+            f"is_superadmin: {bool(admin.is_superadmin)}"
+        ),
+    ))
+
     db.session.commit()
+
     flash("Admin role updated successfully.", "success")
     return redirect(url_for('admin.manage_admins'))
 
@@ -1848,7 +1874,9 @@ def mark_invoice_paid():
         if amount <= 0:
             return jsonify({"success": False, "error": "Payment amount must be greater than 0."}), 400
 
-        # ✅ Create Payment using ONLY columns that exist in your model
+        old_status = inv.status or "unpaid"
+        old_amount_due = float(inv.amount_due or 0)
+
         notes = f"Authorized by: {authorized_by}" if authorized_by else None
 
         payment = Payment(
@@ -1866,26 +1894,51 @@ def mark_invoice_paid():
         db.session.add(payment)
         db.session.flush()
 
-        # ✅ Recompute using your shared totals function (includes discounts + all payments)
         subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
 
         inv.amount_due = float(total_due)
-        prev_status = inv.status
 
         from app.utils.invoice_totals import lock_delivered_packages_for_invoice
 
         if inv.amount_due <= 0:
             inv.status = "paid"
             inv.date_paid = datetime.now(timezone.utc)
-            if prev_status != "paid":
+
+            if old_status != "paid":
                 lock_delivered_packages_for_invoice(inv.id, reason="Invoice fully paid")
 
         elif float(payments_total) > 0:
             inv.status = "partial"
             inv.date_paid = None
+
         else:
             inv.status = "unpaid"
             inv.date_paid = None
+
+        db.session.add(AuditLog(
+            module="Finance",
+            action="Invoice Payment Recorded",
+            admin_id=current_user.id,
+            user_id=inv.user_id,
+            entity_type="Invoice",
+            entity_id=inv.id,
+            reason="Invoice payment",
+            description=(
+                f"Payment of JMD {amount:,.2f} recorded on invoice "
+                f"{inv.invoice_number or ('#' + str(inv.id))}. "
+                f"Method: {method}. Authorized by: {authorized_by}. "
+                f"Invoice status changed from {old_status} to {inv.status}."
+            ),
+            old_value=(
+                f"Status: {old_status}; "
+                f"Amount Due: JMD {old_amount_due:,.2f}"
+            ),
+            new_value=(
+                f"Status: {inv.status}; "
+                f"Amount Due: JMD {float(inv.amount_due or 0):,.2f}; "
+                f"Total Paid: JMD {float(payments_total or 0):,.2f}"
+            ),
+        ))
 
         db.session.commit()
 
@@ -1900,10 +1953,10 @@ def mark_invoice_paid():
             "amount": amount,
             "authorized_by": authorized_by,
         })
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)})
-
 
 @admin_bp.route("/invoice/cart_summary", methods=["POST"])
 @admin_required
@@ -1992,7 +2045,6 @@ def bulk_invoice_payment():
                 pass
         ids = list(dict.fromkeys(ids))
 
-        # Load invoice objects (and validate they belong to this user)
         invoices = []
         for inv_id in ids:
             inv = Invoice.query.get(inv_id)
@@ -2011,14 +2063,23 @@ def bulk_invoice_payment():
         if not invoices:
             return jsonify({"success": False, "error": "No valid invoices found for this user."}), 400
 
-        # Compute owed per invoice (DB-truth)
         inv_rows = []
+        old_state = {}
+
         for inv in invoices:
             subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
             owed = float(total_due or 0.0)
+
+            old_state[inv.id] = {
+                "status": inv.status or "unpaid",
+                "amount_due": float(getattr(inv, "amount_due", 0) or owed or 0),
+                "paid_sum": float(payments_total or 0),
+                "owed": owed,
+                "invoice_number": inv.invoice_number or f"Invoice #{inv.id}",
+            }
+
             inv_rows.append((inv, owed))
 
-        # Sort allocation
         def inv_date(inv):
             return (
                 getattr(inv, "date", None)
@@ -2031,7 +2092,7 @@ def bulk_invoice_payment():
             inv_rows.sort(key=lambda t: inv_date(t[0]), reverse=True)
         elif allocation == "highest_owed_first":
             inv_rows.sort(key=lambda t: t[1], reverse=True)
-        else:  # oldest_first default
+        else:
             inv_rows.sort(key=lambda t: inv_date(t[0]))
 
         remaining = float(amount)
@@ -2059,12 +2120,14 @@ def bulk_invoice_payment():
                 authorized_by_admin_id=current_user.id,
                 created_at=now,
             )
+
             db.session.add(p)
+
             created.append((inv.id, float(pay_amt)))
             remaining -= float(pay_amt)
 
-        # Recompute + update invoice statuses after applying payments
         updated = []
+
         for inv, _ in inv_rows:
             subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
 
@@ -2074,18 +2137,55 @@ def bulk_invoice_payment():
             if inv.amount_due <= 0:
                 inv.status = "paid"
                 inv.date_paid = now
+
                 if prev_status != "paid":
                     lock_delivered_packages_for_invoice(
                         inv.id,
                         reason="Invoice fully paid",
                         actor_admin_id=current_user.id
                     )
+
             elif float(payments_total or 0) > 0:
                 inv.status = "partial"
                 inv.date_paid = None
+
             else:
                 inv.status = "unpaid"
                 inv.date_paid = None
+
+            applied_to_invoice = 0.0
+            for created_inv_id, created_amount in created:
+                if created_inv_id == inv.id:
+                    applied_to_invoice += float(created_amount or 0)
+
+            if applied_to_invoice > 0:
+                old = old_state.get(inv.id, {})
+
+                db.session.add(AuditLog(
+                    module="Finance",
+                    action="Bulk Invoice Payment Applied",
+                    admin_id=current_user.id,
+                    user_id=getattr(inv, "user_id", user_id) or user_id,
+                    entity_type="Invoice",
+                    entity_id=inv.id,
+                    reason="Bulk invoice payment",
+                    description=(
+                        f"Bulk payment of JMD {applied_to_invoice:,.2f} applied to "
+                        f"{inv.invoice_number or ('Invoice #' + str(inv.id))}. "
+                        f"Method: {method}. Authorized by: {authorized_by}. "
+                        f"Allocation: {allocation}."
+                    ),
+                    old_value=(
+                        f"Status: {old.get('status', 'unpaid')}; "
+                        f"Amount Due: JMD {float(old.get('amount_due', 0)):,.2f}; "
+                        f"Paid Sum: JMD {float(old.get('paid_sum', 0)):,.2f}"
+                    ),
+                    new_value=(
+                        f"Status: {inv.status}; "
+                        f"Amount Due: JMD {float(inv.amount_due or 0):,.2f}; "
+                        f"Total Paid: JMD {float(payments_total or 0):,.2f}"
+                    ),
+                ))
 
             updated.append({
                 "invoice_id": inv.id,
@@ -2675,22 +2775,25 @@ def add_payment(invoice_id):
 @admin_required
 def add_discount(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
-    previous_status = inv.status
+
+    previous_status = inv.status or "unpaid"
+    old_grand_total = float(inv.grand_total or inv.amount or 0)
+    old_amount_due = float(inv.amount_due or 0)
 
     amount = float(request.form.get("amount_jmd", 0) or 0)
+
     if amount <= 0:
         flash("Discount amount must be greater than 0.", "warning")
         return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
 
-    # First apply discount to base total
     base_total_before = float(inv.grand_total or inv.amount or 0)
-    base_total_after  = max(base_total_before - amount, 0.0)
+    base_total_after = max(base_total_before - amount, 0.0)
 
     inv.grand_total = base_total_after
-    inv.amount      = base_total_after  # keep legacy in sync
+    inv.amount = base_total_after
 
-    # ✅ Sum payments using the correct column (supports old/new schemas)
     pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
+
     paid_sum = (
         db.session.query(func.coalesce(func.sum(pay_col), 0.0))
         .filter(Payment.invoice_id == inv.id)
@@ -2701,21 +2804,49 @@ def add_discount(invoice_id):
     new_due = max(base_total_after - paid_sum, 0.0)
     inv.amount_due = new_due
 
-    # Status
     if new_due <= 0:
-        inv.status    = "paid"
+        inv.status = "paid"
         inv.date_paid = datetime.utcnow()
 
         if previous_status != "paid":
             mark_invoice_packages_delivered(inv.id)
             for pkg in inv.packages:
-                pkg.status = "delivered" 
+                pkg.status = "delivered"
+
     elif 0 < new_due < base_total_after:
         inv.status = "partial"
+
     else:
         inv.status = "unpaid"
 
+    db.session.add(AuditLog(
+        module="Finance",
+        action="Invoice Discount Added",
+        admin_id=current_user.id,
+        user_id=inv.user_id,
+        entity_type="Invoice",
+        entity_id=inv.id,
+        reason="Manual invoice discount",
+        description=(
+            f"Discount of JMD {amount:,.2f} added to invoice "
+            f"{inv.invoice_number or ('#' + str(inv.id))}. "
+            f"Status changed from {previous_status} to {inv.status}."
+        ),
+        old_value=(
+            f"Status: {previous_status}; "
+            f"Grand Total: JMD {old_grand_total:,.2f}; "
+            f"Amount Due: JMD {old_amount_due:,.2f}"
+        ),
+        new_value=(
+            f"Status: {inv.status}; "
+            f"Grand Total: JMD {float(inv.grand_total or 0):,.2f}; "
+            f"Amount Due: JMD {float(inv.amount_due or 0):,.2f}; "
+            f"Discount: JMD {amount:,.2f}"
+        ),
+    ))
+
     db.session.commit()
+
     flash("Discount added.", "success")
     return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
 

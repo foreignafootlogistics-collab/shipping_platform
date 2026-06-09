@@ -23,11 +23,27 @@
       <select name="user_id" class="form-select" required>
         <option value="">Select employee</option>
         {% for u in users %}
-          <option value="{{ u.id }}">
-            {{ u.full_name or u.email }} — {{ u.role }} — {{ u.email }}
-          </option>
+        <option value="{{ u.id }}">
+          {{ u.full_name or u.email }} — {{ u.role }} — {{ u.email }}
+        </option>
         {% endfor %}
       </select>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Position / Job Title</label>
+      <select name="position_title" class="form-select" required>
+        <option value="">Select position</option>
+        <option value="CEO">CEO</option>
+        <option value="Finance Director">Finance Director</option>
+        <option value="Logistics Director">Logistics Director</option>
+        <option value="Store Operations Associate">Store Operations Associate</option>
+        <option value="Senior Operations Support">Senior Operations Support</option>
+        <option value="Customer Service Representative">Customer Service Representative</option>
+        <option value="Cleaning Attendant">Cleaning Attendant</option>
+      </select>
+      <div class="form-text">
+        This is the employee's payroll/job title, separate from their system login role.
+      </div>
     </div>
 
     <div class="mb-3">
@@ -38,9 +54,23 @@
       </select>
     </div>
 
+    <div class="mb-3">
+      <label class="form-label">Pay Frequency</label>
+      <select name="pay_frequency" id="payFrequency" class="form-select" required>
+        <option value="monthly">Monthly</option>
+        <option value="fortnightly">Fortnightly</option>
+      </select>
+      <div class="form-text">
+        Choose Monthly for monthly staff, Fortnightly for staff paid every two weeks.
+      </div>
+    </div>
+
     <div class="mb-3" id="salaryBox">
-      <label class="form-label">Base Salary / Pay Period</label>
-      <input type="number" step="0.01" min="0" name="base_salary" class="form-control" placeholder="Example: 50000">
+      <label class="form-label" id="salaryLabel">Base Salary / Pay Period</label>
+      <input type="number" step="0.01" min="0" name="base_salary" class="form-control" placeholder="Example: 30000">
+      <div class="form-text" id="salaryHelp">
+        Enter the salary for the selected pay frequency.
+      </div>
     </div>
 
     <div class="mb-3 d-none" id="hourlyBox">
@@ -55,19 +85,34 @@
 </div>
 
 <script>
-const payType = document.getElementById("payType");
-const salaryBox = document.getElementById("salaryBox");
-const hourlyBox = document.getElementById("hourlyBox");
+  const payType = document.getElementById("payType");
+  const payFrequency = document.getElementById("payFrequency");
+  const salaryBox = document.getElementById("salaryBox");
+  const hourlyBox = document.getElementById("hourlyBox");
+  const salaryLabel = document.getElementById("salaryLabel");
+  const salaryHelp = document.getElementById("salaryHelp");
 
-payType.addEventListener("change", function () {
-  if (this.value === "hourly") {
-    salaryBox.classList.add("d-none");
-    hourlyBox.classList.remove("d-none");
-  } else {
-    hourlyBox.classList.add("d-none");
-    salaryBox.classList.remove("d-none");
+  function syncPayFields() {
+    if (payType.value === "hourly") {
+      salaryBox.classList.add("d-none");
+      hourlyBox.classList.remove("d-none");
+    } else {
+      hourlyBox.classList.add("d-none");
+      salaryBox.classList.remove("d-none");
+
+      if (payFrequency.value === "fortnightly") {
+        salaryLabel.textContent = "Fortnightly Salary";
+        salaryHelp.textContent = "Enter the amount paid every fortnight.";
+      } else {
+        salaryLabel.textContent = "Monthly Salary";
+        salaryHelp.textContent = "Enter the amount paid monthly.";
+      }
+    }
   }
-});
+
+  payType.addEventListener("change", syncPayFields);
+  payFrequency.addEventListener("change", syncPayFields);
+  syncPayFields();
 </script>
 
 {% endblock %}

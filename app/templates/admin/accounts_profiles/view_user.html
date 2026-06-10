@@ -128,14 +128,31 @@
 
             <h6 class="fw-bold mb-3">Address</h6>
 
-            <div class="fw-bold text-dark">Street</div>
-            <div>{{ us_address.address_line1 }}</div>
+            <!-- Overseas Address -->
+            <div id="overseas-address">
+              <div class="fw-bold text-dark">Street</div>
+              <div>{{ us_address.address_line1 }}</div>
 
-            <div class="fw-bold text-dark mt-2">Suite</div>
-            <div>{{ us_address.address_line2 }}</div>
+              <div class="fw-bold text-dark mt-2">Suite</div>
+              <div>
+                {{ (us_address.address_line2 or '')
+                |replace('FAFL#', '')
+                |replace('FAFL #', '')
+                |trim }}
+              </div>
 
-            <div class="fw-bold text-dark mt-2">City/State/ZIP</div>
-            <div>{{ us_address.city }}, {{ us_address.state }} {{ us_address.zip }}</div>
+              <div class="fw-bold text-dark mt-2">City/State/ZIP</div>
+              <div>{{ us_address.city }}, {{ us_address.state }} {{ us_address.zip }}</div>
+            </div>
+
+            <!-- Home Address -->
+            <div id="home-address" style="display:none;">
+              <div class="fw-bold text-dark">Home Address</div>
+              <div>{{ user.address or 'Not set' }}</div>
+
+              <div class="fw-bold text-dark mt-2">Mobile</div>
+              <div>{{ user.mobile or 'Not set' }}</div>
+            </div>
 
           </div>
         </div>
@@ -650,9 +667,13 @@
                   N/A
                   {% endif %}
                 </td>
-
-
-                <td>{{ p.created_at }}</td>
+                <td>
+                  {% if p.created_at %}
+                  {{ to_jamaica(p.created_at).strftime("%Y-%m-%d %I:%M %p") }}
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
               </tr>
               {% endfor %}
             </tbody>
@@ -1354,20 +1375,15 @@
                   </a>
                 </td>
               </tr>
-              {% else %}
-              <tr>
-                <td class="text-center text-muted py-4">—</td>
-                <td class="text-center text-muted py-4">—</td>
-                <td class="text-center text-muted py-4">—</td>
-                <td class="text-center text-muted py-4">—</td>
-                <td class="text-center text-muted py-4">—</td>
-                <td class="text-center text-muted py-4">—</td>
-                <td class="text-center text-muted py-4">—</td>
-                <td class="text-center text-muted py-4">No claims found for this customer.</td>
-              </tr>
               {% endfor %}
             </tbody>
           </table>
+          {% if not user_claims %}
+          <div class="text-center text-muted py-5 border border-top-0 rounded-bottom">
+            <i class="bi bi-exclamation-circle fs-3 d-block mb-2"></i>
+            No claims found for this customer.
+          </div>
+          {% endif %}
         </div>
       </div>
 
@@ -1883,6 +1899,13 @@
               <div class="col-md-6">
                 <label class="form-label">Address</label>
                 <input type="text" name="address" class="form-control" value="{{ user.address }}">
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">TRN</label>
+                <input type="text" name="trn" class="form-control" value="{{ user.trn or '' }}">
               </div>
             </div>
 
@@ -2461,6 +2484,11 @@
         </div>
 
         <div class="modal-footer">
+          <button type="button" class="btn btn-outline-purple" data-bs-dismiss="modal" data-bs-toggle="modal"
+            data-bs-target="#manageAccountModal">
+            <i class="bi bi-pencil-square me-1"></i> Edit Sensitive Info
+          </button>
+
           <button type="button" class="btn" style="background-color:#4a148c; color:white;" data-bs-dismiss="modal">
             Close
           </button>
@@ -3117,8 +3145,13 @@
 <script>
   /* Expose this globally for inline onclick icons */
   function showAddress(type) {
-    document.getElementById("overseas-address").style.display = (type === 'overseas') ? 'block' : 'none';
-    document.getElementById("home-address").style.display = (type === 'home') ? 'block' : 'none';
+    const overseasBox = document.getElementById("overseas-address");
+    const homeBox = document.getElementById("home-address");
+
+    if (!overseasBox || !homeBox) return;
+
+    overseasBox.style.display = (type === "overseas") ? "block" : "none";
+    homeBox.style.display = (type === "home") ? "block" : "none";
   }
 
   /* ----------------------------------------------------

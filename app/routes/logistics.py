@@ -1305,7 +1305,7 @@ def logistics_dashboard():
         raw_date_to   = (request.args.get("date_to") or "").strip()
 
         if not raw_date_from and not raw_date_to:
-            today = datetime.now().strftime("%Y-%m-%d")
+            today = to_jamaica(datetime.now(timezone.utc)).strftime("%Y-%m-%d")
 
             args = request.args.to_dict(flat=True)
             args["tab"] = "view_packages"
@@ -3608,7 +3608,7 @@ def _next_sl_id():
     Global sequence that never resets.
     Format: SL-YYYYMMDD-00001 (date reflects creation day, number always increases globally)
     """
-    today = datetime.now(timezone.utc).strftime("%Y%m%d")
+    today = to_jamaica(datetime.now(timezone.utc)).strftime("%Y%m%d")
 
     # Look for the last shipment overall (not just today)
     last = (
@@ -5464,7 +5464,7 @@ def _generate_invoice_number():
         Today last:    INV-20260109-0008
         Tomorrow next: INV-20260110-0009
     """
-    today_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    today_str = to_jamaica(datetime.now(timezone.utc)).strftime("%Y%m%d")
 
     prefix = f"INV-{today_str}-"
 

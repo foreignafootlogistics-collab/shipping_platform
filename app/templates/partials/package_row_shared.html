@@ -180,7 +180,7 @@ pkg.get('customer_notified_at') %}
   <td>
     {% if _date_received %}
     {% if _date_received.strftime is defined %}
-    {{ _date_received.strftime("%Y-%m-%d") }}
+    {{ to_jamaica(_date_received).strftime("%Y-%m-%d") }}
     {% else %}
     {{ (_date_received|string)[:10] }}
     {% endif %}
@@ -322,7 +322,7 @@ pkg.get('customer_notified_at') %}
   <td class="text-center">
     {% if _date_received %}
     {% if _date_received.strftime is defined %}
-    {{ _date_received.strftime("%Y-%m-%d") }}
+    {{ to_jamaica(_date_received).strftime("%Y-%m-%d") }}
     {% else %}
     {{ (_date_received|string)[:10] }}
     {% endif %}

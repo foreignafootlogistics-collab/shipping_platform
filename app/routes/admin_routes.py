@@ -93,7 +93,8 @@ def format_datetime(value, format='%Y-%m-%d %H:%M:%S'):
         dt = value
     else:
         return value
-    return dt.strftime(format)
+
+    return to_jamaica(dt).strftime(format)
 
 # Register the filter AFTER defining it
 admin_bp.add_app_template_filter(format_datetime, 'datetimeformat')

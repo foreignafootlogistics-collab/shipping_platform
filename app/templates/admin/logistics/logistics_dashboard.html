@@ -155,531 +155,850 @@
     {% if active_tab == 'shipmentLog' %}
     <div class="tab-pane show active" id="shipmentLog" role="tabpanel" aria-labelledby="shipment-tab">
 
-      <div class="row mb-3">
+      <style>
+        .shipment-shell {
+          background: #f8f7fb;
+          width: 100%;
+          overflow-x: hidden;
+        }
+
+        .shipment-side-card,
+        .shipment-main-card {
+          background: #fff;
+          border: 1px solid #eee;
+          border-radius: 14px;
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+        }
+
+        .shipment-action-grid {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 0;
+          border: 1px solid #d8c8ef;
+          border-radius: 10px;
+          overflow: hidden;
+          background: #fff;
+        }
+
+        .shipment-action-item {
+          border: 0;
+          background: #fff;
+          color: #4a148c;
+          border-radius: 10px;
+          min-height: 42px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1rem;
+          text-decoration: none;
+          transition: all .15s ease-in-out;
+        }
+
+        .shipment-action-grid>div:not(:last-child) {
+          border-right: 1px solid #e5d8f5;
+        }
+
+        .shipment-action-item:hover {
+          background: #4a148c;
+          color: #fff;
+        }
+
+        .shipment-action-label {
+          font-size: .68rem;
+          text-align: center;
+          color: #333;
+          margin-top: 3px;
+        }
+
+        .shipment-batch-card {
+          border: 1px solid #eee;
+          border-radius: 12px;
+          padding: 12px;
+          margin-bottom: 8px;
+          background: #fff;
+          transition: all .15s ease-in-out;
+        }
+
+        .shipment-batch-card.active {
+          background: linear-gradient(135deg, #4a148c, #6a1b9a);
+          color: #fff;
+          border-color: #4a148c;
+        }
+
+        .shipment-batch-card.active small,
+        .shipment-batch-card.active .text-muted {
+          color: rgba(255, 255, 255, .75) !important;
+        }
+
+        .shipment-stat-card {
+          border: 1px solid #eee;
+          border-radius: 12px;
+          padding: 14px;
+          background: #fff;
+          height: 100%;
+        }
+
+        .shipment-stat-icon {
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.4rem;
+          flex: 0 0 auto;
+        }
+
+        .shipment-progress-track {
+          height: 12px;
+          background: #e9ecef;
+          border-radius: 999px;
+          overflow: hidden;
+        }
+
+        .shipment-progress-fill {
+          height: 100%;
+          background: #16a34a;
+          border-radius: 999px;
+          transition: width .2s ease;
+        }
+
+        .shipment-progress-circle {
+          width: 72px;
+          height: 72px;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background:
+            radial-gradient(closest-side, #fff 74%, transparent 75% 100%),
+            conic-gradient(#0d6efd var(--progress), #e5e7eb 0);
+          color: #111827;
+          font-weight: 800;
+          font-size: 1.05rem;
+        }
+
+        .shipment-modern-table {
+          min-width: 1180px;
+        }
+
+        .shipment-modern-table thead th {
+          background: #111827 !important;
+          color: #fff !important;
+          vertical-align: middle;
+          white-space: nowrap;
+          font-size: .78rem;
+          padding-top: 12px;
+          padding-bottom: 12px;
+        }
+
+        .shipment-modern-table tbody td {
+          vertical-align: middle;
+          font-size: .82rem;
+        }
+
+        .shipment-scan-input {
+          min-height: 64px;
+          font-size: 1.05rem;
+          border: 1.5px solid #6f42c1;
+        }
+
+        .shipment-filter-card .form-label {
+          font-weight: 600;
+          color: #333;
+        }
+
+        .shipment-bottom-complete {
+          position: sticky;
+          bottom: 0;
+          z-index: 10;
+          background: rgba(255, 255, 255, .96);
+          backdrop-filter: blur(6px);
+          border: 1px solid #eee;
+          border-radius: 12px;
+        }
+
+        .shipment-scan-icon {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: .72rem;
+          flex: 0 0 auto;
+        }
+
+        .shipment-scan-icon.scanned {
+          border: 2px solid #16a34a;
+          color: #16a34a;
+          background: #ecfdf5;
+        }
+
+        .shipment-scan-icon.missing {
+          border: 2px solid #f97316;
+          color: #f97316;
+          background: #fff7ed;
+        }
+
+        .shipment-tracking-wrap {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          min-width: 230px;
+        }
+
+        .shipment-tracking-text {
+          min-width: 0;
+          flex: 1;
+        }
+
+        .shipment-date-only {
+          white-space: nowrap;
+        }
+
+        .btn-purple {
+          background: #4a148c;
+          border-color: #4a148c;
+          color: #fff;
+        }
+
+        .btn-purple:hover {
+          background: #380f6b;
+          border-color: #380f6b;
+          color: #fff;
+        }
+
+        .btn-outline-purple {
+          border-color: #4a148c;
+          color: #4a148c;
+        }
+
+        .btn-outline-purple:hover {
+          background: #4a148c;
+          color: #fff;
+        }
+
+        .text-purple {
+          color: #4a148c !important;
+        }
+
+        @media (min-width: 1200px) {
+          .shipment-sidebar-col {
+            flex: 0 0 280px;
+            max-width: 280px;
+          }
+
+          .shipment-main-col {
+            flex: 1 1 auto;
+            max-width: calc(100% - 280px);
+          }
+        }
+      </style>
+
+      <div class="row g-3 mb-3 shipment-shell">
 
         <!-- Sidebar: Shipments -->
-        <div class="col-md-3">
+        <div class="col-lg-3 shipment-sidebar-col">
 
-          <!-- ACTION BAR -->
-          <div class="shipment-actions-bar mb-2">
-            <div class="shipment-toolbar">
+          <div class="shipment-side-card p-3">
 
-              <!-- Create -->
-              <form method="POST" action="{{ url_for('logistics.create_empty_shipment') }}">
-                {{ bulk_form.hidden_tag() }}
-                <button type="submit" class="ship-tool-btn" title="Create a blank shipment log">
-                  <i class="fas fa-plus"></i>
-                </button>
-              </form>
-
-              <!-- Search -->
-              <button type="button" class="ship-tool-btn" title="Search packages" data-bs-toggle="modal"
-                data-bs-target="#shipmentSearchModal">
-                <i class="fas fa-search"></i>
-              </button>
-
-              <!-- Delete -->
-              <button type="button" class="ship-tool-btn" title="Delete current shipment" data-bs-toggle="modal"
-                data-bs-target="#deleteShipmentModal" {% if not selected_shipment or selected_shipment.is_archived
-                %}disabled{% endif %}>
-                <i class="fas fa-trash-alt"></i>
-              </button>
-
-              <!-- Archive / Unarchive -->
-              {% if selected_shipment %}
-              {% if selected_shipment.is_archived %}
-              <button type="button" class="ship-tool-btn" title="Unarchive shipment" data-bs-toggle="modal"
-                data-bs-target="#unarchiveShipmentModal">
-                <i class="fas fa-box-open"></i>
-              </button>
-              {% else %}
-              <button type="button" class="ship-tool-btn" title="Archive shipment" data-bs-toggle="modal"
-                data-bs-target="#archiveShipmentModal">
-                <i class="fas fa-archive"></i>
-              </button>
-              {% endif %}
-              {% endif %}
-
-              <!-- Archived collapse toggle -->
-              <button type="button" class="ship-tool-btn" title="Show archived shipments" data-bs-toggle="collapse"
-                data-bs-target="#archivedShipmentsCollapse" aria-expanded="false"
-                aria-controls="archivedShipmentsCollapse">
-                <i class="fas fa-folder-open"></i>
-              </button>
-
-              <!-- Logs page -->
-              <a class="ship-tool-btn" href="{{ url_for('logistics.shipment_archive_logs_page') }}"
-                title="View shipment archive logs">
-                <i class="bi bi-clock-history"></i>
-              </a>
-
-            </div>
-          </div>
-
-          <!-- TITLE -->
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h5 class="fw-bold text-purple mb-0">📦 Shipment Batches</h5>
-            <span class="badge rounded-pill bg-light text-dark border">
-              {{ archived_count or 0 }} archived
-            </span>
-          </div>
-
-          <!-- ACTIVE HEADER -->
-          <div class="shipment-section-head">
-            <span>Active</span>
-            <small class="text-muted">
-              Page {{ active_pagination.page if active_pagination else 1 }}
-              /
-              {{ active_pagination.pages if active_pagination else 1 }}
-            </small>
-          </div>
-
-          <!-- ACTIVE SHIPMENTS -->
-          <ul class="list-group shadow-sm shipment-list">
-            {% if active_shipments and active_shipments|length %}
-            {% for s in active_shipments %}
-            {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
-
-            <li class="list-group-item shipment-item {% if is_active %}is-active{% endif %}">
-              <a class="shipment-link {% if is_active %}text-white{% else %}text-dark{% endif %}" href="{{ url_for('logistics.logistics_dashboard',
-                                  tab='shipmentLog',
-                                  shipment_id=s.id,
-                                  ship_page=(active_pagination.page if active_pagination else 1)) }}">
-
-                <div class="shipment-title">
-                  <strong class="text-truncate d-block">
-                    {{ s.sl_name or s.sl_id }}
-                  </strong>
-
-                  <small class="{% if is_active %}text-white-50{% else %}text-muted{% endif %}">
-                    {{ s.sl_id }}
-                  </small>
-                </div>
-
-                <small class="{% if is_active %}text-white-50{% else %}text-muted{% endif %}">
-                  {{ (s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
-                </small>
-              </a>
-            </li>
-            {% endfor %}
-            {% else %}
-            <li class="list-group-item text-muted">
-              No shipment batches found.
-              <br>
-              <a href="{{ url_for('logistics.logistics_dashboard', tab='view_packages') }}"
-                class="btn btn-sm btn-purple mt-2">
-                ➕ Create Shipment
-              </a>
-            </li>
-            {% endif %}
-          </ul>
-
-          <!-- ACTIVE PAGINATION -->
-          {% if active_pagination and active_pagination.pages > 1 %}
-          <nav class="mt-2">
-            <ul class="pagination pagination-sm mb-0">
-
-              <li class="page-item {% if not active_pagination.has_prev %}disabled{% endif %}">
-                <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
-                                  tab='shipmentLog',
-                                  shipment_id=selected_shipment_id,
-                                  ship_page=(active_pagination.prev_num if active_pagination.has_prev else 1)) }}">
-                  &laquo;
-                </a>
-              </li>
-
-              {% for p in range(1, active_pagination.pages + 1) %}
-              {% if p == 1 or p == active_pagination.pages or (p >= active_pagination.page - 1 and p <=
-                active_pagination.page + 1) %} <li
-                class="page-item {% if p == active_pagination.page %}active{% endif %}">
-                <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
-                                      tab='shipmentLog',
-                                      shipment_id=selected_shipment_id,
-                                      ship_page=p) }}">
-                  {{ p }}
-                </a>
-                </li>
-                {% endif %}
-                {% endfor %}
-
-                <li class="page-item {% if not active_pagination.has_next %}disabled{% endif %}">
-                  <a class="page-link"
-                    href="{{ url_for('logistics.logistics_dashboard',
-                                  tab='shipmentLog',
-                                  shipment_id=selected_shipment_id,
-                                  ship_page=(active_pagination.next_num if active_pagination.has_next else active_pagination.pages)) }}">
-                    &raquo;
-                  </a>
-                </li>
-
-            </ul>
-          </nav>
-          {% endif %}
-
-          <!-- ARCHIVED SHIPMENTS (COLLAPSE) -->
-          <div class="collapse mt-3" id="archivedShipmentsCollapse">
-            <div class="card shadow-sm">
-              <div class="card-header py-2 bg-white d-flex justify-content-between align-items-center">
-                <div class="fw-semibold small">
-                  Archived
-                  {% if archived_count %}
-                  <span class="badge bg-warning text-dark ms-1 ship-pill">{{ archived_count }}</span>
-                  {% endif %}
-                </div>
-                <div class="text-muted small">Read-only</div>
-              </div>
-
-              <div class="list-group ship-list" style="max-height: 32vh; overflow-y:auto;">
-                {% if archived_shipments and archived_shipments|length %}
-                {% for s in archived_shipments %}
-                {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
-
-                <div class="list-group-item ship-item {% if is_active %}active bg-warning text-dark{% endif %}">
-                  <a class="text-dark text-decoration-none" href="{{ url_for('logistics.logistics_dashboard',
-                                      tab='shipmentLog',
-                                      shipment_id=s.id,
-                                      ship_page=(active_pagination.page if active_pagination else 1)) }}">
-
-                    <div class="d-flex justify-content-between align-items-start gap-2">
-                      <div class="fw-bold text-truncate" style="max-width: 200px;">
-                        {{ s.sl_name or s.sl_id }}
-                      </div>
-                      <span class="badge bg-warning text-dark ship-pill">ARCHIVED</span>
-                    </div>
-
-                    {% if s.sl_name %}
-                    <div class="ship-meta text-muted">
-                      {{ s.sl_id }}
-                    </div>
-                    {% endif %}
-
-                    <div class="ship-meta text-muted">
-                      Archived: {{ (s.archived_at or s.created_at or now()) | datetimeformat('%Y-%m-%d %H:%M') }}
-                    </div>
-                  </a>
-                </div>
-                {% endfor %}
-                {% else %}
-                <div class="list-group-item text-muted py-3">
-                  No archived shipments found.
-                </div>
-                {% endif %}
-              </div>
-
-              <div class="card-footer py-2 small text-muted">
-                Tip: open an archived batch to view packages; actions are blocked.
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- Main: Packages -->
-        <div class="col-md-9">
-
-          <div class="shipment-header d-flex justify-content-between align-items-center mb-3">
-            {% if selected_shipment %}
-            <div class="d-flex align-items-center gap-1 shipment-title-wrap">
-              <h5 class="fw-bold text-purple mb-0 text-truncate" style="max-width: 650px;">
-                🚚 Shipment Packages -
-                <span id="shipmentNameDisplay">
-                  {{ selected_shipment.sl_name or selected_shipment.sl_id }}
-                </span>
-
-                {% if selected_shipment.sl_name %}
-                <span class="badge bg-light text-dark border ms-2">
-                  Ref: {{ selected_shipment.sl_id }}
-                </span>
-                {% endif %}
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="fw-bold text-purple mb-0">
+                <i class="bi bi-card-checklist me-1"></i> Shipment Batches
               </h5>
-
-              <button class="btn btn-sm btn-outline-purple flex-shrink-0" data-bs-toggle="modal"
-                data-bs-target="#renameShipmentModal">
-                ✏️
-              </button>
             </div>
-            <div class="d-flex align-items-center gap-2 shipment-actions">
 
-              <!-- export toolbar -->
-              <div class="shipment-export-toolbar">
-                <a href="{{ url_for('logistics.print_shipment_log', shipment_id=selected_shipment.id) }}"
-                  class="ship-export-btn" target="_blank" title="Print shipment log">
-                  <i class="bi bi-printer"></i>
-                </a>
+            <!-- Action Icons -->
+            <div class="shipment-action-grid mb-2">
 
-                <span class="ship-export-divider"></span>
-
-                <a href="{{ url_for('logistics.download_shipment_log_csv', shipment_id=selected_shipment.id) }}"
-                  class="ship-export-btn" title="Download CSV">
-                  <i class="bi bi-filetype-csv"></i>
-                </a>
-
-                <span class="ship-export-divider"></span>
-
-                <a href="{{ url_for('logistics.download_shipment_log_excel', shipment_id=selected_shipment.id) }}"
-                  class="ship-export-btn" title="Download Excel">
-                  <i class="bi bi-file-earmark-excel"></i>
-                </a>
-
-                <span class="ship-export-divider"></span>
-
-                <a href="{{ url_for('logistics.download_shipment_log_pdf', shipment_id=selected_shipment.id) }}"
-                  class="ship-export-btn" title="Download PDF">
-                  <i class="bi bi-file-earmark-pdf"></i>
-                </a>
+              <div>
+                <form method="POST" action="{{ url_for('logistics.create_empty_shipment') }}">
+                  {{ bulk_form.hidden_tag() }}
+                  <button type="submit" class="shipment-action-item w-100" title="Create blank shipment">
+                    <i class="bi bi-plus-lg"></i>
+                  </button>
+                </form>
+                <div class="shipment-action-label">New</div>
               </div>
 
               <div>
+                <button type="button" class="shipment-action-item w-100" title="Search packages" data-bs-toggle="modal"
+                  data-bs-target="#shipmentSearchModal">
+                  <i class="bi bi-search"></i>
+                </button>
+                <div class="shipment-action-label">Search</div>
+              </div>
 
-                {% set return_to = request.args.get('return_to') %}
-                <a class="btn btn-outline-dark btn-sm"
-                  href="{{ return_to or url_for('logistics.logistics_dashboard', tab='view_packages') }}">
-                  <i class="bi bi-arrow-left"></i> Back to View Packages
+              <div>
+                <button type="button" class="shipment-action-item w-100" title="Delete shipment" data-bs-toggle="modal"
+                  data-bs-target="#deleteShipmentModal" {% if not selected_shipment or selected_shipment.is_archived
+                  %}disabled{% endif %}>
+                  <i class="bi bi-trash"></i>
+                </button>
+                <div class="shipment-action-label">Delete</div>
+              </div>
+
+              <div>
+                {% if selected_shipment and selected_shipment.is_archived %}
+                <button type="button" class="shipment-action-item w-100" title="Unarchive shipment"
+                  data-bs-toggle="modal" data-bs-target="#unarchiveShipmentModal">
+                  <i class="bi bi-box-arrow-up"></i>
+                </button>
+                <div class="shipment-action-label">Unarchive</div>
+                {% else %}
+                <button type="button" class="shipment-action-item w-100" title="Archive shipment" data-bs-toggle="modal"
+                  data-bs-target="#archiveShipmentModal" {% if not selected_shipment %}disabled{% endif %}>
+                  <i class="bi bi-archive"></i>
+                </button>
+                <div class="shipment-action-label">Archive</div>
+                {% endif %}
+              </div>
+
+              <div>
+                <button type="button" class="shipment-action-item w-100" title="Show archived shipments"
+                  data-bs-toggle="collapse" data-bs-target="#archivedShipmentsCollapse" aria-expanded="false"
+                  aria-controls="archivedShipmentsCollapse">
+                  <i class="bi bi-folder2-open"></i>
+                </button>
+                <div class="shipment-action-label">Archived</div>
+              </div>
+
+              <div>
+                <a class="shipment-action-item" href="{{ url_for('logistics.shipment_archive_logs_page') }}"
+                  title="View shipment archive logs">
+                  <i class="bi bi-clock-history"></i>
                 </a>
+                <div class="shipment-action-label">Logs</div>
+              </div>
+
+            </div>
+
+            <!-- Active / Archived Pills -->
+            <div class="row g-2 my-3">
+              <div class="col-6">
+                <div class="border rounded p-2 text-center fw-semibold text-purple">
+                  Active
+                  <span class="badge bg-light text-dark border ms-1">
+                    {{ active_pagination.total if active_pagination else 0 }}
+                  </span>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="border rounded p-2 text-center fw-semibold text-muted">
+                  Archived
+                  <span class="badge bg-light text-dark border ms-1">
+                    {{ archived_count or 0 }}
+                  </span>
+                </div>
               </div>
             </div>
+
+            <div class="mb-3">
+              <input type="text" class="form-control form-control-sm" placeholder="Search shipments..."
+                onkeyup="filterShipmentList(this.value)">
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div class="small fw-bold text-muted">ACTIVE</div>
+              <small class="text-muted">
+                Page {{ active_pagination.page if active_pagination else 1 }}
+                /
+                {{ active_pagination.pages if active_pagination else 1 }}
+              </small>
+            </div>
+
+            <!-- Active Shipments -->
+            <div class="shipment-list" style="max-height: 62vh; overflow-y:auto;">
+              {% if active_shipments and active_shipments|length %}
+              {% for s in active_shipments %}
+              {% set is_active = (selected_shipment and s.id == selected_shipment.id) %}
+
+              <a class="text-decoration-none shipment-list-row" href="{{ url_for('logistics.logistics_dashboard',
+                          tab='shipmentLog',
+                          shipment_id=s.id,
+                          ship_page=(active_pagination.page if active_pagination else 1)) }}">
+                <div class="shipment-batch-card {% if is_active %}active{% endif %}">
+                  <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div>
+                      <div class="fw-bold text-truncate">
+                        {{ s.sl_name or s.sl_id }}
+                      </div>
+                      <small class="{% if is_active %}text-white-50{% else %}text-muted{% endif %}">
+                        {{ s.sl_id }}
+                      </small>
+                    </div>
+
+                    {% if is_active %}
+                    <span class="badge rounded-pill bg-light text-purple">In Progress</span>
+                    {% endif %}
+                  </div>
+
+                  <div class="small mt-2 {% if is_active %}text-white-50{% else %}text-muted{% endif %}">
+                    {{ (s.created_at or now()) | datetimeformat('%Y-%m-%d %I:%M %p') }}
+                  </div>
+                </div>
+              </a>
+              {% endfor %}
+              {% else %}
+              <div class="text-muted small">
+                No shipment batches found.
+              </div>
+              {% endif %}
+            </div>
+
+            <!-- Active Pagination -->
+            {% if active_pagination and active_pagination.pages > 1 %}
+            <nav class="mt-3">
+              <ul class="pagination pagination-sm justify-content-center mb-0">
+                <li class="page-item {% if not active_pagination.has_prev %}disabled{% endif %}">
+                  <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
+                            tab='shipmentLog',
+                            shipment_id=selected_shipment_id,
+                            ship_page=(active_pagination.prev_num if active_pagination.has_prev else 1)) }}">
+                    &laquo;
+                  </a>
+                </li>
+
+                {% for p in range(1, active_pagination.pages + 1) %}
+                {% if p == 1 or p == active_pagination.pages or (p >= active_pagination.page - 1 and p <=
+                  active_pagination.page + 1) %} <li
+                  class="page-item {% if p == active_pagination.page %}active{% endif %}">
+                  <a class="page-link" href="{{ url_for('logistics.logistics_dashboard',
+                                tab='shipmentLog',
+                                shipment_id=selected_shipment_id,
+                                ship_page=p) }}">
+                    {{ p }}
+                  </a>
+                  </li>
+                  {% endif %}
+                  {% endfor %}
+
+                  <li class="page-item {% if not active_pagination.has_next %}disabled{% endif %}">
+                    <a class="page-link"
+                      href="{{ url_for('logistics.logistics_dashboard',
+                            tab='shipmentLog',
+                            shipment_id=selected_shipment_id,
+                            ship_page=(active_pagination.next_num if active_pagination.has_next else active_pagination.pages)) }}">
+                      &raquo;
+                    </a>
+                  </li>
+              </ul>
+            </nav>
             {% endif %}
+
+            <!-- Archived Shipments -->
+            <div class="collapse mt-3" id="archivedShipmentsCollapse">
+              <div class="border rounded p-2 bg-light">
+                <div class="fw-semibold small mb-2">
+                  Archived Shipments
+                </div>
+
+                <div class="list-group small" style="max-height: 32vh; overflow-y:auto;">
+                  {% if archived_shipments and archived_shipments|length %}
+                  {% for s in archived_shipments %}
+                  <a class="list-group-item list-group-item-action" href="{{ url_for('logistics.logistics_dashboard',
+                              tab='shipmentLog',
+                              shipment_id=s.id,
+                              ship_page=(active_pagination.page if active_pagination else 1)) }}">
+                    <div class="fw-bold text-truncate">
+                      {{ s.sl_name or s.sl_id }}
+                    </div>
+                    <div class="text-muted">
+                      {{ s.sl_id }}
+                    </div>
+                    <div class="text-muted">
+                      Archived: {{ (s.archived_at or s.created_at or now()) | datetimeformat('%Y-%m-%d %I:%M %p') }}
+                    </div>
+                  </a>
+                  {% endfor %}
+                  {% else %}
+                  <div class="text-muted py-2">
+                    No archived shipments found.
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+
           </div>
+        </div>
+
+        <!-- Main: Packages -->
+        <div class="col-lg-9 shipment-main-col">
 
           {% if selected_shipment %}
+
+          {% set total_count_scan = shipment_packages|length %}
+          {% set scanned_count_scan =
+          shipment_packages|selectattr('received_scan_status','equalto','scanned')|list|length %}
+          {% set missing_count_scan = total_count_scan - scanned_count_scan %}
+          {% set progress_percent = ((scanned_count_scan / total_count_scan * 100) if total_count_scan else 0)|round(0,
+          'floor')|int %}
+
+          <!-- Header -->
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div>
+              <h4 class="fw-bold mb-0">
+                Shipment:
+                <span id="shipmentNameDisplay">{{ selected_shipment.sl_name or selected_shipment.sl_id }}</span>
+              </h4>
+              {% if selected_shipment.sl_name %}
+              <small class="text-muted">Ref: {{ selected_shipment.sl_id }}</small>
+              {% endif %}
+            </div>
+
+            <div class="d-flex flex-wrap align-items-center gap-2">
+
+              <button class="btn btn-outline-purple btn-sm" data-bs-toggle="modal"
+                data-bs-target="#renameShipmentModal">
+                <i class="bi bi-pencil me-1"></i> Edit Shipment
+              </button>
+
+              <a href="{{ url_for('logistics.print_shipment_log', shipment_id=selected_shipment.id) }}"
+                class="btn btn-outline-purple btn-sm" target="_blank">
+                <i class="bi bi-printer me-1"></i> Print
+              </a>
+
+              <div class="dropdown">
+                <button class="btn btn-outline-purple btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                  aria-expanded="false">
+                  <i class="bi bi-download me-1"></i> Export
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li>
+                    <a href="{{ url_for('logistics.download_shipment_log_csv', shipment_id=selected_shipment.id) }}"
+                      class="dropdown-item">
+                      <i class="bi bi-filetype-csv me-1"></i> CSV
+                    </a>
+                  </li>
+                  <li>
+                    <a href="{{ url_for('logistics.download_shipment_log_excel', shipment_id=selected_shipment.id) }}"
+                      class="dropdown-item">
+                      <i class="bi bi-file-earmark-excel me-1"></i> Excel
+                    </a>
+                  </li>
+                </ul>
+              </div>
+
+              <div class="dropdown">
+                <button class="btn btn-outline-purple btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                  aria-expanded="false">
+                  <i class="bi bi-file-earmark-text me-1"></i> Reports
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li>
+                    <a href="{{ url_for('logistics.download_shipment_log_pdf', shipment_id=selected_shipment.id) }}"
+                      class="dropdown-item">
+                      <i class="bi bi-file-earmark-pdf me-1"></i> PDF Report
+                    </a>
+                  </li>
+                </ul>
+              </div>
+
+              {% set return_to = request.args.get('return_to') %}
+              <a class="btn btn-outline-purple btn-sm"
+                href="{{ return_to or url_for('logistics.logistics_dashboard', tab='view_packages') }}">
+                <i class="bi bi-arrow-left"></i> Back to View Packages
+              </a>
+            </div>
+          </div>
+
           <form method="POST" id="shipmentForm" class="d-block"
             action="{{ url_for('logistics.bulk_shipment_action', shipment_id=selected_shipment.id) }}" novalidate>
 
             {{ bulk_form.hidden_tag() }}
             <input type="hidden" name="tab" value="shipmentLog">
 
-            <!-- Shipment Scan Panel -->
-            <div class="card border-0 shadow-sm mb-3">
-              <div class="card-body">
+            <!-- Progress Summary -->
+            <div class="shipment-main-card p-3 mb-3">
 
-                <div class="row g-3">
+              <div class="row g-3 mb-3">
 
-                  <div class="col-md-3">
-                    <div class="border rounded p-3 text-center">
-                      <div class="small text-muted">Total Packages</div>
-                      <div class="h4 mb-0" id="scanTotalCount">
-                        {{ shipment_packages|length }}
+                <div class="col-md-3">
+                  <div class="shipment-stat-card">
+                    <div class="d-flex align-items-center gap-3">
+                      <div class="shipment-stat-icon" style="background:#f3e8ff; color:#4a148c;">
+                        <i class="bi bi-box-seam"></i>
+                      </div>
+                      <div>
+                        <div class="small text-muted">Total Packages</div>
+                        <div class="h3 mb-0 fw-bold" id="scanTotalCount">{{ total_count_scan }}</div>
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  <div class="col-md-3">
-                    <div class="border rounded p-3 text-center bg-success bg-opacity-10">
-                      <div class="small text-muted">Scanned</div>
-                      <div class="h4 mb-0 text-success" id="scanScannedCount">
-                        {{ shipment_packages|selectattr('received_scan_status','equalto','scanned')|list|length }}
+                <div class="col-md-3">
+                  <div class="shipment-stat-card">
+                    <div class="d-flex align-items-center gap-3">
+                      <div class="shipment-stat-icon" style="background:#dcfce7; color:#16a34a;">
+                        <i class="bi bi-check-circle"></i>
+                      </div>
+                      <div>
+                        <div class="small text-muted">Scanned</div>
+                        <div class="h3 mb-0 fw-bold text-success" id="scanScannedCount">{{ scanned_count_scan }}</div>
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  <div class="col-md-3">
-                    <div class="border rounded p-3 text-center bg-danger bg-opacity-10">
-                      <div class="small text-muted">Missing</div>
-                      <div class="h4 mb-0 text-danger" id="scanMissingCount">
-                        {{ shipment_packages|length -
-                        (shipment_packages|selectattr('received_scan_status','equalto','scanned')|list|length) }}
+                <div class="col-md-3">
+                  <div class="shipment-stat-card">
+                    <div class="d-flex align-items-center gap-3">
+                      <div class="shipment-stat-icon" style="background:#ffedd5; color:#f97316;">
+                        <i class="bi bi-box"></i>
+                      </div>
+                      <div>
+                        <div class="small text-muted">Remaining</div>
+                        <div class="h3 mb-0 fw-bold" style="color:#f97316;" id="scanMissingCount">
+                          {{ missing_count_scan }}
+                        </div>
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  <div class="col-md-3">
-                    <div class="border rounded p-3 text-center">
+                <div class="col-md-3">
+                  <div class="shipment-stat-card d-flex align-items-center justify-content-between gap-3">
+                    <div>
                       <div class="small text-muted">Progress</div>
-                      <div class="h4 mb-0" id="scanProgressCount">
-                        {% set scanned =
-                        shipment_packages|selectattr('received_scan_status','equalto','scanned')|list|length %}
-                        {{ scanned }}/{{ shipment_packages|length }}
+                    </div>
+                    <div class="shipment-progress-circle" id="scanProgressPercent"
+                      style="--progress: {{ progress_percent }}%;">
+                      {{ progress_percent }}%
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              <div class="shipment-progress-track">
+                <div class="shipment-progress-fill" id="shipmentProgressFill" style="width: {{ progress_percent }}%;">
+                </div>
+              </div>
+            </div>
+
+            <!-- Scan + Filters -->
+            <div class="row g-3 mb-3">
+
+              <!-- Scan Panel -->
+              <div class="col-lg-5">
+                <div class="shipment-main-card p-3 h-100">
+                  <h5 class="fw-bold text-purple mb-3">
+                    <i class="bi bi-upc-scan me-1"></i> Scan Package
+                  </h5>
+
+                  <input type="text" id="shipmentScannerInput" class="form-control shipment-scan-input mb-3"
+                    placeholder="Scan barcode or type tracking number and press Enter" autocomplete="off">
+
+                  <div class="row g-2">
+                    <div class="col-md-7">
+                      <button type="button" class="btn btn-success w-100 btn-lg" id="scanShipmentBtn">
+                        <i class="bi bi-upc-scan me-1"></i> Scan Package
+                      </button>
+                    </div>
+
+                    <div class="col-md-5">
+                      <button type="button" class="btn btn-outline-dark w-100 btn-lg" id="openCameraScanBtn">
+                        <i class="bi bi-camera me-1"></i> Camera
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="small text-muted mt-3">
+                    <i class="bi bi-info-circle text-purple me-1"></i>
+                    Tip: Scan or type the tracking number and press Enter
+                  </div>
+
+                  <div id="scanResultBox" class="mt-3"></div>
+
+                  <div id="cameraScanBox" class="mt-3" style="display:none;">
+                    <div class="border rounded p-2">
+                      <div id="phoneScannerReader" style="width:100%; max-width:420px;"></div>
+
+                      <button type="button" class="btn btn-sm btn-outline-danger mt-2" id="stopCameraScanBtn">
+                        Stop Camera
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Filters Panel -->
+              <div class="col-lg-7">
+                <div class="shipment-main-card shipment-filter-card p-3 h-100">
+                  <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold text-purple mb-0">
+                      <i class="bi bi-funnel me-1"></i> Advanced Filters
+                    </h5>
+
+                    <button class="btn btn-sm btn-link text-purple text-decoration-none" type="button"
+                      data-bs-toggle="collapse" data-bs-target="#shipmentAdvancedFilters" aria-expanded="true"
+                      aria-controls="shipmentAdvancedFilters">
+                      Collapse <i class="bi bi-chevron-up ms-1"></i>
+                    </button>
+                  </div>
+
+                  <div class="collapse show" id="shipmentAdvancedFilters">
+                    <div class="row g-2 align-items-end">
+
+                      <div class="col-md-3">
+                        <label class="form-label small mb-1">Customer Name</label>
+                        <input type="text" id="fltName" class="form-control form-control-sm"
+                          placeholder="e.g. Jane Doe">
                       </div>
+
+                      <div class="col-md-3">
+                        <label class="form-label small mb-1">Tracking #</label>
+                        <input type="text" id="fltTracking" class="form-control form-control-sm"
+                          placeholder="e.g. 1Z...">
+                      </div>
+
+                      <div class="col-md-3">
+                        <label class="form-label small mb-1">House AWB</label>
+                        <input type="text" id="fltHouseAwb" class="form-control form-control-sm"
+                          placeholder="e.g. HAWB / Control #">
+                      </div>
+
+                      <div class="col-md-3">
+                        <label class="form-label small mb-1">Registration #</label>
+                        <input type="text" id="fltReg" class="form-control form-control-sm" placeholder="e.g. FA12345">
+                      </div>
+
+                      <div class="col-md-3">
+                        <label class="form-label small mb-1">Scan Status</label>
+                        <select id="scanStatusFilter" class="form-select form-select-sm">
+                          <option value="">All Status</option>
+                          <option value="scanned">Scanned</option>
+                          <option value="not_scanned">Missing</option>
+                        </select>
+                      </div>
+
+                      <div class="col-md-4">
+                        <label class="form-label small mb-1">Weight Range (lbs)</label>
+                        <div class="d-flex gap-2 align-items-center">
+                          <input type="number" step="0.01" id="fltWMin" class="form-control form-control-sm"
+                            placeholder="Min">
+                          <span class="text-muted">–</span>
+                          <input type="number" step="0.01" id="fltWMax" class="form-control form-control-sm"
+                            placeholder="Max">
+                        </div>
+                      </div>
+
+                      <div class="col-md-5">
+                        <label class="form-label small mb-1">&nbsp;</label>
+                        <div class="form-check mt-1">
+                          <input type="checkbox" class="form-check-input" id="fltSubscriptionOnly">
+                          <label class="form-check-label small fw-semibold" for="fltSubscriptionOnly">
+                            Subscription Packages
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="col-12 d-flex justify-content-between align-items-center mt-3">
+                        <div class="d-flex gap-2 flex-wrap">
+                          <button type="button" id="btnApplyFilters" class="btn btn-purple btn-sm">
+                            <i class="bi bi-funnel"></i> Apply Filters
+                          </button>
+                          <button type="button" id="btnClearFilters" class="btn btn-outline-purple btn-sm">
+                            <i class="bi bi-x-circle"></i> Clear
+                          </button>
+                        </div>
+
+                        <button type="button" id="btnDeleteSelectedPkgs" class="btn btn-outline-danger btn-sm">
+                          <i class="bi bi-trash"></i> Delete Selected Package(s)
+                        </button>
+                      </div>
+
                     </div>
                   </div>
-
-                </div>
-
-                <hr>
-
-                <div class="row g-2 align-items-end">
-                  <div class="col-lg-7">
-                    <label class="form-label fw-semibold">
-                      Scan Tracking Number / House AWB
-                    </label>
-
-                    <input type="text" id="shipmentScannerInput" class="form-control form-control-lg"
-                      placeholder="Scan barcode or type tracking number and press Enter" autocomplete="off">
-                  </div>
-
-                  <div class="col-lg-3">
-                    <button type="button" class="btn btn-success w-100 btn-lg" id="scanShipmentBtn">
-                      <i class="bi bi-upc-scan"></i> Scan Package
-                    </button>
-                  </div>
-
-                  <div class="col-lg-2">
-                    <button type="button" class="btn btn-outline-dark w-100 btn-lg" id="openCameraScanBtn">
-                      <i class="bi bi-camera"></i> Camera
-                    </button>
-                  </div>
-                </div>
-
-                <div id="scanResultBox" class="mt-3"></div>
-                <div id="cameraScanBox" class="mt-3" style="display:none;">
-                  <div class="border rounded p-2">
-                    <div id="phoneScannerReader" style="width:100%; max-width:420px;"></div>
-
-                    <button type="button" class="btn btn-sm btn-outline-danger mt-2" id="stopCameraScanBtn">
-                      Stop Camera
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-            <!-- ✅ Filters card -->
-            <div class="card border-0 shadow-sm mb-3">
-              <div class="card-body py-2">
-                <div class="row g-2 align-items-end">
-
-                  <div class="col-md-3">
-                    <label class="form-label small mb-0">Customer Name</label>
-                    <input type="text" id="fltName" class="form-control form-control-sm" placeholder="e.g. Jane Doe">
-                  </div>
-
-                  <div class="col-md-3">
-                    <label class="form-label small mb-0">Tracking #</label>
-                    <input type="text" id="fltTracking" class="form-control form-control-sm" placeholder="e.g. 1Z...">
-                  </div>
-
-                  <div class="col-md-3">
-                    <label class="form-label small mb-0">House AWB</label>
-                    <input type="text" id="fltHouseAwb" class="form-control form-control-sm"
-                      placeholder="e.g. HAWB / Control #">
-                  </div>
-
-                  <div class="col-md-3">
-                    <label class="form-label small mb-0">Registration #</label>
-                    <input type="text" id="fltReg" class="form-control form-control-sm" placeholder="e.g. FA12345">
-                  </div>
-
-                  <div class="col-md-2">
-                    <label class="form-label small mb-0">Scan Status</label>
-                    <select id="scanStatusFilter" class="form-select form-select-sm">
-                      <option value="">All</option>
-                      <option value="scanned">Scanned</option>
-                      <option value="not_scanned">Missing</option>
-                    </select>
-                  </div>
-
-                  <div class="col-md-3">
-                    <label class="form-label small mb-0">Weight Range (lbs)</label>
-                    <div class="d-flex gap-2">
-                      <input type="number" step="0.01" id="fltWMin" class="form-control form-control-sm"
-                        placeholder="Min">
-                      <input type="number" step="0.01" id="fltWMax" class="form-control form-control-sm"
-                        placeholder="Max">
-                    </div>
-                  </div>
-
-                  <div class="col-md-3">
-                    <label class="form-label small mb-0">&nbsp;</label>
-                    <div class="form-check mt-1">
-                      <input type="checkbox" class="form-check-input" id="fltSubscriptionOnly">
-                      <label class="form-check-label small" for="fltSubscriptionOnly">
-                        Subscription Packages
-                      </label>
-                    </div>
-                  </div>
-
-                  <div class="col-12 d-flex justify-content-between align-items-center mt-1">
-                    <div class="d-flex gap-2 flex-wrap">
-                      <button type="button" id="btnApplyFilters" class="btn btn-sm btn-outline-purple">
-                        <i class="bi bi-funnel"></i> Apply
-                      </button>
-                      <button type="button" id="btnClearFilters" class="btn btn-sm btn-outline-secondary">
-                        <i class="bi bi-x-circle"></i> Clear
-                      </button>
-                    </div>
-
-                    <button type="button" id="btnDeleteSelectedPkgs" class="btn btn-sm btn-danger">
-                      <i class="bi bi-trash"></i> Delete Selected Package(s)
-                    </button>
-                  </div>
-
                 </div>
               </div>
+
             </div>
 
-            <!-- Bulk action bar -->
-            <div class="shipment-bulkbar d-flex justify-content-between align-items-center gap-2 mb-3 w-100 flex-wrap">
+            <!-- Package Toolbar -->
+            <div class="shipment-main-card p-3 mb-0 rounded-bottom-0">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
 
-              <div class="d-flex align-items-center gap-2">
-                <label for="shipmentLengthSelect" class="small text-muted mb-0">Show</label>
-                <select id="shipmentLengthSelect" class="form-select form-select-sm w-auto">
-                  <option value="10" selected>10</option>
-                  <option value="25">25</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                  <option value="500">500</option>
-                  <option value="1000">1000</option>
-                </select>
+                <h5 class="fw-bold text-purple mb-0">
+                  <i class="bi bi-box-seam me-1"></i>
+                  Packages
+                  <span class="small text-muted">({{ missing_count_scan }} remaining)</span>
+                </h5>
+
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <label for="shipmentLengthSelect" class="small text-muted mb-0">Show</label>
+                  <select id="shipmentLengthSelect" class="form-select form-select-sm w-auto">
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50" selected>50</option>
+                    <option value="100">100</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                  </select>
+
+                  <select name="action" class="form-select form-select-sm w-auto" required>
+                    <option value="" selected disabled>Select Action</option>
+                    <option value="calc_outstanding">🧮 Calculate Outstanding</option>
+                    <option value="move">🔁 Move to Shipment…</option>
+                    <option value="received_local_port">📍 Received at Local Port</option>
+                    <option value="ready">✅ Mark Ready for Pick Up</option>
+                    <option value="revert_overseas">↩️ Revert to Overseas</option>
+                    <option value="delivered">📦 Mark Delivered (Lock)</option>
+                    <option value="generate_invoice">🧾 Generate Invoice</option>
+                    <option value="finance_invoice">💼 Finance Invoice</option>
+                    <option value="notify_ready">📣 Email: Ready for Pick-Up</option>
+                    <option value="send_invoices">📧 Email: Invoices (Totals)</option>
+                    <option value="resend_failed_invoices">🔁 Resend Failed Invoice Emails</option>
+                    <option value="remove_from_shipment">🗑 Remove from this Shipment</option>
+                    <option value="purge_shipment_invoices">🧹 Purge Shipment Invoices (Unpaid Only)</option>
+                  </select>
+
+                  <button type="button" id="shipmentApplyBtn" class="btn btn-purple btn-sm"
+                    onclick="handleShipmentApply(event)">
+                    Apply
+                  </button>
+                </div>
+
               </div>
-
-              <div class="d-flex align-items-center gap-2">
-                <select name="action" class="form-select form-select-sm w-auto" required>
-                  <option value="" selected disabled>Select Action</option>
-                  <option value="calc_outstanding">🧮 Calculate Outstanding</option>
-                  <option value="move">🔁 Move to Shipment…</option>
-                  <option value="received_local_port">📍 Received at Local Port</option>
-                  <option value="ready">✅ Mark Ready for Pick Up</option>
-                  <option value="revert_overseas">↩️ Revert to Overseas</option>
-                  <option value="delivered">📦 Mark Delivered (Lock)</option>
-                  <option value="generate_invoice">🧾 Generate Invoice</option>
-                  <option value="finance_invoice">💼 Finance Invoice</option>
-                  <option value="notify_ready">📣 Email: Ready for Pick-Up</option>
-                  <option value="send_invoices">📧 Email: Invoices (Totals)</option>
-                  <option value="resend_failed_invoices">🔁 Resend Failed Invoice Emails</option>
-                  <option value="remove_from_shipment">🗑 Remove from this Shipment</option>
-                  <option value="purge_shipment_invoices">🧹 Purge Shipment Invoices (Unpaid Only)</option>
-                </select>
-
-                <button type="button" id="shipmentApplyBtn" class="btn btn-purple btn-sm"
-                  onclick="handleShipmentApply(event)">
-                  Apply
-                </button>
-              </div>
-
             </div>
 
             {% if shipment_packages %}
             <div class="table-responsive shadow-sm">
-              <table id="shipmentTable" class="table table-bordered table-striped table-hover align-middle table-sm">
-                <thead class="bg-purple text-white small">
+              <table id="shipmentTable"
+                class="table table-bordered table-hover align-middle table-sm shipment-modern-table mb-0">
+                <thead class="small">
                   <tr>
                     <th style="width:30px;">
                       <input type="checkbox" id="selectAll" onclick="toggleShipmentSelectAll(this)">
                     </th>
                     <th>Action</th>
                     <th>User</th>
-                    <th>Package</th>
+                    <th>Tracking #</th>
                     <th>House AWB</th>
                     <th>Description</th>
                     <th>Date Received</th>
-                    <th>Weight</th>
+                    <th>Weight (lbs)</th>
                     <th>Item Value ($)</th>
                     <th>Outstanding ($)</th>
                   </tr>
                 </thead>
+
                 <tbody class="small">
                   {% for pkg in shipment_packages %}
                   <tr class="{% if pkg.get('received_scan_status') == 'scanned' %}table-success{% endif %}"
                     data-subscription-applied="{{ 'true' if pkg.subscription_applied else 'false' }}"
                     data-subscription-result="{{ pkg.subscription_result or '' }}"
                     data-scan-status="{{ pkg.get('received_scan_status', 'not_scanned') }}">
+
                     <td>
                       <input type="checkbox" name="package_ids" value="{{ pkg.id }}" class="package-checkbox"
                         onclick="updateShipmentHeaderCheckbox()">
                     </td>
 
                     <td class="text-center align-middle">
-                      <!-- ✅ IMPORTANT: include data-category so modal opens correctly -->
                       <button type="button" class="btn btn-sm btn-outline-primary mb-1 js-open-charges"
                         data-bs-toggle="modal" data-bs-target="#chargesModalSL" data-pkg-id="{{ pkg.id }}"
                         data-desc="{{ pkg.description or pkg.tracking_number or ('Package #' ~ pkg.id) }}"
@@ -701,42 +1020,43 @@
                     </td>
 
                     <td>
+                      <div class="shipment-tracking-wrap">
+                        {% if pkg.get("received_scan_status") == "scanned" %}
+                        <span class="shipment-scan-icon scanned" title="Scanned">
+                          <i class="bi bi-check-lg"></i>
+                        </span>
+                        {% else %}
+                        <span class="shipment-scan-icon missing" title="Missing scan">
+                          <i class="bi bi-exclamation-lg"></i>
+                        </span>
+                        {% endif %}
 
-                      {% if pkg.get("received_scan_status") == "scanned" %}
-                      <span class="badge bg-success mb-1">
-                        ✓ Scanned
-                      </span>
-                      <br>
-                      {% else %}
-                      <span class="badge bg-danger mb-1">
-                        ❌ Missing
-                      </span>
-                      <br>
-                      {% endif %}
+                        <div class="shipment-tracking-text">
+                          <div class="fw-semibold">{{ pkg.tracking_number }}</div>
 
-                      {% set status = pkg.status %}
-                      {% include 'partials/status_vars.html' %}
-                      {% include 'partials/status_tracker.html' %}
-                      <br>
-                      <small class="text-muted">{{ pkg.tracking_number }}</small>
+                          {% set status = pkg.status %}
+                          {% include 'partials/status_vars.html' %}
+                          {% include 'partials/status_tracker.html' %}
+                        </div>
+                      </div>
                     </td>
 
                     <td>
                       <div class="d-inline-flex align-items-center gap-1">
                         <span>{{ pkg.house_awb or '-' }}</span>
+
                         {% if pkg.subscription_applied %}
                         <i class="bi bi-patch-check-fill text-success ms-1 shipment-subscription-icon"
                           style="font-size:0.9rem;" title="Covered by subscription"></i>
                         {% endif %}
+
                         {% if pkg.invoice_id %}
                         {% if pkg.invoice_emailed_at %}
                         <i class="bi bi-envelope-check-fill text-success ms-1" style="font-size:0.9rem;" title="Invoice {{ pkg.invoice_number or ('INV-' ~ pkg.invoice_id) }}
-Sent: {{ pkg.invoice_emailed_at.strftime('%b %d %Y %I:%M %p') }}"></i>
-
+Sent: {{ to_jamaica(pkg.invoice_emailed_at).strftime('%b %d %Y %I:%M %p') }}"></i>
                         {% elif pkg.invoice_email_failed %}
                         <i class="bi bi-envelope-x-fill text-danger ms-1" style="font-size:0.9rem;" title="Invoice {{ pkg.invoice_number or ('INV-' ~ pkg.invoice_id) }}
 Email failed{% if pkg.invoice_email_failure_reason %}: {{ pkg.invoice_email_failure_reason }}{% endif %}"></i>
-
                         {% else %}
                         <i class="bi bi-envelope text-secondary ms-1" style="font-size:0.9rem;" title="Invoice {{ pkg.invoice_number or ('INV-' ~ pkg.invoice_id) }}
 Not emailed yet"></i>
@@ -775,18 +1095,20 @@ Not emailed yet"></i>
                       {% endif %}
                     </td>
 
-                    <td>
+                    <td class="shipment-date-only">
                       {% set d = (pkg.date_any or pkg.date_received) %}
+                      {% if d and d.strftime is defined %}
+                      {{ to_jamaica(d).strftime("%Y-%m-%d") }}
+                      {% else %}
                       {{ (d|string)[:10] if d else '-' }}
+                      {% endif %}
                     </td>
 
-                    <!-- ✅ MUST HAVE name=weight_{id} -->
                     <td>
                       <input id="weight_{{ pkg.id }}" name="weight_{{ pkg.id }}" type="number" step="0.01" min="0"
                         class="form-control form-control-sm text-end" value="{{ pkg.weight or 0 }}">
                     </td>
 
-                    <!-- ✅ MUST HAVE name=value_{id} -->
                     <td>
                       <input id="value_{{ pkg.id }}" name="value_{{ pkg.id }}" type="number" step="0.01" min="0"
                         class="form-control form-control-sm text-end"
@@ -797,12 +1119,10 @@ Not emailed yet"></i>
                       <input id="amount_due_{{ pkg.id }}" type="number" step="0.01"
                         class="form-control form-control-sm text-end" value="{{ pkg.amount_due or 0 }}" readonly>
 
-                      <!-- ✅ CRITICAL: category per row for server calc -->
                       <input type="hidden" id="category_{{ pkg.id }}" name="category_{{ pkg.id }}"
                         value="{{ pkg.category or 'Other' }}">
                       <input type="hidden" id="locked_{{ pkg.id }}" name="locked_{{ pkg.id }}"
                         value="{{ 1 if pkg.pricing_locked else 0 }}">
-                      <!-- ✅ Hidden manual override fields -->
                       <input type="hidden" name="duty_{{ pkg.id }}" id="duty_{{ pkg.id }}" value="{{ pkg.duty or 0 }}">
                       <input type="hidden" name="gct_{{ pkg.id }}" id="gct_{{ pkg.id }}" value="{{ pkg.gct or 0 }}">
                       <input type="hidden" name="scf_{{ pkg.id }}" id="scf_{{ pkg.id }}" value="{{ pkg.scf or 0 }}">
@@ -810,7 +1130,6 @@ Not emailed yet"></i>
                       <input type="hidden" name="caf_{{ pkg.id }}" id="caf_{{ pkg.id }}" value="{{ pkg.caf or 0 }}">
                       <input type="hidden" name="stamp_{{ pkg.id }}" id="stamp_{{ pkg.id }}"
                         value="{{ pkg.stamp or 0 }}">
-
                       <input type="hidden" name="freight_{{ pkg.id }}" id="freight_{{ pkg.id }}"
                         value="{{ pkg.freight_fee or 0 }}">
                       <input type="hidden" name="handling_{{ pkg.id }}" id="handling_{{ pkg.id }}"
@@ -822,803 +1141,823 @@ Not emailed yet"></i>
                       <input type="hidden" name="bad_address_fee_{{ pkg.id }}" id="bad_address_fee_{{ pkg.id }}"
                         value="{{ pkg.bad_address_fee or 0 }}">
                     </td>
+
                   </tr>
                   {% endfor %}
                 </tbody>
               </table>
             </div>
+
+            <div class="shipment-bottom-complete p-3 mt-3 d-flex justify-content-center align-items-center gap-4">
+              <div class="fw-semibold">
+                <span class="d-inline-block rounded-circle me-2"
+                  style="width:11px;height:11px;background:#f97316;"></span>
+                <span id="shipmentBottomRemaining">{{ missing_count_scan }}</span> remaining
+              </div>
+
+              <button type="button" class="btn btn-success px-5" disabled
+                title="Enable later when ready to close shipment">
+                <i class="bi bi-check2 me-1"></i> Mark Shipment Complete
+              </button>
+            </div>
+
             {% else %}
-            <p class="text-muted">No packages in this shipment.</p>
+            <div class="shipment-main-card p-5 text-center text-muted">
+              No packages in this shipment.
+            </div>
             {% endif %}
 
           </form>
+
+          {% else %}
+          <div class="shipment-main-card p-5 text-center text-muted">
+            Select or create a shipment batch to begin.
+          </div>
           {% endif %}
 
         </div>
       </div>
+    </div>
 
-      <!-- Archive Shipment Batch Modal -->
-      <div class="modal fade" id="archiveShipmentModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-sm modal-dialog-centered">
-          <div class="modal-content">
-            <form method="POST"
-              action="{{ url_for('logistics.archive_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
-              <div class="modal-header">
-                <h5 class="modal-title">Archive Shipment</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-              </div>
-
-              <div class="modal-body">
-                {% if selected_shipment %}
-                <p class="mb-1">
-                  Archive <strong>{{ selected_shipment.sl_name or selected_shipment.sl_id }}</strong>?
-                </p>
-                <small class="text-muted">
-                  This will hide the shipment from the main list but keeps all packages and invoices.
-                </small>
-
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                {% else %}
-                <p class="mb-0 text-muted">Select a shipment on the left first.</p>
-                {% endif %}
-              </div>
-
-              <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-dark btn-sm" {% if not selected_shipment %}disabled{% endif %}>
-                  <i class="fas fa-archive me-1"></i> Archive
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-
-      <!-- Unarchive Shipment Batch Modal -->
-      <div class="modal fade" id="unarchiveShipmentModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-sm modal-dialog-centered">
-          <div class="modal-content">
-            <form method="POST"
-              action="{{ url_for('logistics.unarchive_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
-              <div class="modal-header">
-                <h5 class="modal-title">Unarchive Shipment</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-              </div>
-
-              <div class="modal-body">
-                {% if selected_shipment %}
-                <p class="mb-1">
-                  Unarchive <strong>{{ selected_shipment.sl_name or selected_shipment.sl_id }}</strong>?
-                </p>
-                <small class="text-muted">
-                  This will restore the shipment to the active list.
-                </small>
-
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                {% else %}
-                <p class="mb-0 text-muted">Select a shipment on the left first.</p>
-                {% endif %}
-              </div>
-
-              <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-warning btn-sm" {% if not selected_shipment %}disabled{% endif %}>
-                  <i class="fas fa-box-open me-1"></i> Unarchive
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-
-      <!-- Move to Shipment Modal -->
-      <div class="modal fade" id="moveShipmentModal" tabindex="-1" aria-labelledby="moveShipmentLabel"
-        aria-hidden="true">
-        <div class="modal-dialog modal-sm modal-dialog-centered">
-          <div class="modal-content">
-            <form method="POST" action="{{ url_for('logistics.move_packages_between_shipments') }}"
-              id="moveShipmentForm" onsubmit="return validateMoveShipmentForm();">
-              <div class="modal-header">
-                <h5 class="modal-title" id="moveShipmentLabel">Move Packages</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-              </div>
-              <div class="modal-body">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="from_shipment_id"
-                  value="{{ selected_shipment.id if selected_shipment else 0 }}">
-                <div id="movePackageIdsContainer"></div>
-
-                <label class="form-label small">Destination Shipment</label>
-                <select class="form-select form-select-sm" name="to_shipment_id" required>
-                  <option value="">Select…</option>
-                  {% for s in shipments %}
-                  {% if not selected_shipment or s.id != selected_shipment.id %}
-                  <option value="{{ s.id }}">{{ s.sl_name or s.sl_id }}</option>
-                  {% endif %}
-                  {% endfor %}
-                </select>
-
-                <div class="form-text mt-2">
-                  Selected packages will be moved to the chosen shipment.
-                </div>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-purple btn-sm">Move</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-
-      <!-- Charges / Fees Modal -->
-      <div class="modal fade" id="chargesModalSL" tabindex="-1" aria-labelledby="chargesModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered charges-modal-dialog">
-          <div class="modal-content">
-
-            <div class="modal-header" style="background:#4a148c; color:#fff;">
-              <h5 class="modal-title" id="chargesModalLabel">Calculate Charges for Package</h5>
-              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
-                aria-label="Close"></button>
-            </div>
-
-            <div class="modal-body">
-              <form id="chargesForm" onsubmit="return false;">
-                <input type="hidden" id="chargesPkgId">
-
-
-                <div class="row g-3 mb-2">
-                  <div class="col-12">
-                    <label class="form-label fw-semibold">Package</label>
-                    <input type="text" id="chargesPkgDesc" class="form-control form-control-sm" readonly>
-                  </div>
-
-                  <div class="col-md-4">
-                    <label for="chargesCategory" class="form-label fw-semibold">Category</label>
-                    <select id="chargesCategory" class="form-select form-select-sm">
-                      {% for cat in categories %}
-                      <option value="{{ cat }}">{{ cat }}</option>
-                      {% endfor %}
-                    </select>
-                  </div>
-
-                  <div class="col-md-4">
-                    <label for="chargesWeight" class="form-label fw-semibold">Weight (lbs)</label>
-                    <input type="number" step="0.01" id="chargesWeight" class="form-control form-control-sm">
-                  </div>
-
-                  <div class="col-md-4">
-                    <label for="chargesValue" class="form-label fw-semibold">Item Value (USD)</label>
-                    <input type="number" step="0.01" id="chargesValue" class="form-control form-control-sm">
-                  </div>
-                </div>
-
-                <div class="row g-3 mb-2">
-                  <div class="col-md-6">
-                    <div class="form-check mt-4">
-                      <input class="form-check-input" type="checkbox" id="chargesBadAddress">
-                      <label class="form-check-label fw-semibold" for="chargesBadAddress">
-                        Bad Address
-                      </label>
-                      <div class="small text-muted">
-                        Apply when package arrived without a valid registration number and had to be manually assigned.
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="col-md-6">
-                    <label for="chargesBadAddressFee" class="form-label fw-semibold">Bad Address Fee (JMD)</label>
-                    <input type="number" step="0.01" id="chargesBadAddressFee" class="form-control form-control-sm">
-                  </div>
-                </div>
-
-                <div class="d-flex align-items-center justify-content-between
-                            border rounded p-2 mb-2" style="background:#f8f9fa;">
-                  <div class="small">
-                    <div class="fw-semibold">Manual override</div>
-                    <div class="text-muted">When ON, auto-calc won’t overwrite your typed values.</div>
-                  </div>
-
-                  <div class="form-check form-switch m-0">
-                    <input class="form-check-input" type="checkbox" id="pricingLockedToggle">
-                    <label class="form-check-label small" for="pricingLockedToggle">Lock</label>
-                  </div>
-                </div>
-                <hr class="my-3">
-
-                <div id="chargesResult">
-                  <h6 class="fw-bold mb-2">Breakdown</h6>
-                  <div class="row g-2 small">
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted">Duty</div><input type="number" step="0.01" id="resDuty"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted">GCT</div><input type="number" step="0.01" id="resGct"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted">SCF</div><input type="number" step="0.01" id="resScf"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted">ENVL</div><input type="number" step="0.01" id="resEnvl"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted">CAF</div><input type="number" step="0.01" id="resCaf"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted small">Stamp</div><input type="number" step="0.01" id="resStamp"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted small">Customs Total</div><input type="number" step="0.01"
-                          id="resCustomsTotal" class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted">Freight</div><input type="number" step="0.01" id="resFreight"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted">Handling</div><input type="number" step="0.01" id="resHandling"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted small">Bad Address</div>
-                        <input type="number" step="0.01" id="resBadAddress"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted small">Freight Total</div><input type="number" step="0.01"
-                          id="resFreightTotal" class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-                    <div class="col-md-4">
-                      <div class="border rounded p-2">
-                        <div class="text-muted small">Other Charges</div><input type="number" step="0.01" id="resOther"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-                    <div class="col-md-8">
-                      <div class="border rounded p-2 bg-light">
-                        <div class="text-muted">Grand Total (JMD)</div><input type="number" step="0.01" id="resTotal"
-                          class="form-control form-control-sm text-end">
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div id="chargesError" class="alert alert-danger mt-3 py-2 px-3 small" style="display:none;"></div>
-              </form>
-            </div>
-
-            <div class="modal-footer">
-              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-              <button type="button" id="btnApplyToPkg" class="btn btn-outline-success btn-sm"
-                style="display:inline-block;">Apply & Save</button>
-              <button type="button" id="btnCalcCharges" class="btn btn-purple btn-sm">
-                <i class="bi bi-calculator"></i> Calculate Charges
-              </button>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-
-
-      <!-- Attach Files Modal -->
-      <div class="modal fade" id="attachInvoiceModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-md modal-dialog-centered">
-          <div class="modal-content">
-            <div class="modal-header" style="background:#4a148c; color:#fff;">
-              <h5 class="modal-title"><i class="bi bi-paperclip me-1"></i> Attach Files</h5>
-              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-
-            <div class="modal-body">
-              <input type="hidden" id="attachPkgId" value="">
-              <input type="hidden" id="attachCsrfToken" value="{{ csrf_token() }}">
-
-              <div class="small text-muted mb-2">
-                Package ID: <strong id="attachPkgLabel">—</strong>
-              </div>
-
-              <label class="form-label">Select file(s)</label>
-              <input type="file" id="attachFiles" class="form-control" multiple accept=".pdf,.png,.jpg,.jpeg,.webp">
-              <div class="form-text">Allowed: PDF, PNG, JPG, WEBP</div>
-
-              <div id="attachUploadStatus" class="small text-muted mt-2">Select a file to upload.</div>
-            </div>
-
-            <div class="modal-footer">
-              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-              <button type="button" class="btn btn-success" id="btnAttachUpload">
-                <i class="bi bi-upload me-1"></i> Upload
-              </button>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      <!-- Search Packages Modal -->
-      <div class="modal fade" id="shipmentSearchModal" tabindex="-1" aria-labelledby="shipmentSearchLabel"
-        aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-          <div class="modal-content">
+    <!-- Archive Shipment Batch Modal -->
+    <div class="modal fade" id="archiveShipmentModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <form method="POST"
+            action="{{ url_for('logistics.archive_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
             <div class="modal-header">
-              <h5 class="modal-title" id="shipmentSearchLabel">Search Packages</h5>
+              <h5 class="modal-title">Archive Shipment</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+              {% if selected_shipment %}
+              <p class="mb-1">
+                Archive <strong>{{ selected_shipment.sl_name or selected_shipment.sl_id }}</strong>?
+              </p>
+              <small class="text-muted">
+                This will hide the shipment from the main list but keeps all packages and invoices.
+              </small>
+
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              {% else %}
+              <p class="mb-0 text-muted">Select a shipment on the left first.</p>
+              {% endif %}
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-dark btn-sm" {% if not selected_shipment %}disabled{% endif %}>
+                <i class="fas fa-archive me-1"></i> Archive
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Unarchive Shipment Batch Modal -->
+    <div class="modal fade" id="unarchiveShipmentModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <form method="POST"
+            action="{{ url_for('logistics.unarchive_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
+            <div class="modal-header">
+              <h5 class="modal-title">Unarchive Shipment</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+              {% if selected_shipment %}
+              <p class="mb-1">
+                Unarchive <strong>{{ selected_shipment.sl_name or selected_shipment.sl_id }}</strong>?
+              </p>
+              <small class="text-muted">
+                This will restore the shipment to the active list.
+              </small>
+
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              {% else %}
+              <p class="mb-0 text-muted">Select a shipment on the left first.</p>
+              {% endif %}
+            </div>
+
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-warning btn-sm" {% if not selected_shipment %}disabled{% endif %}>
+                <i class="fas fa-box-open me-1"></i> Unarchive
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Move to Shipment Modal -->
+    <div class="modal fade" id="moveShipmentModal" tabindex="-1" aria-labelledby="moveShipmentLabel" aria-hidden="true">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <form method="POST" action="{{ url_for('logistics.move_packages_between_shipments') }}" id="moveShipmentForm"
+            onsubmit="return validateMoveShipmentForm();">
+            <div class="modal-header">
+              <h5 class="modal-title" id="moveShipmentLabel">Move Packages</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-
             <div class="modal-body">
-              <form id="shipmentSearchForm" class="row g-2 mb-3">
-                <div class="col-md-6">
-                  <label class="form-label small mb-0">Customer Name</label>
-                  <input type="text" class="form-control form-control-sm" name="name" placeholder="e.g., Jane Doe">
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label small mb-0">Registration #</label>
-                  <input type="text" class="form-control form-control-sm" name="reg" placeholder="e.g., FA12345">
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label small mb-0">Tracking #</label>
-                  <input type="text" class="form-control form-control-sm" name="tracking" placeholder="e.g., 1Z...">
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label small mb-0">House AWB</label>
-                  <input type="text" class="form-control form-control-sm" name="house" placeholder="e.g., 06978687">
-                </div>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="from_shipment_id"
+                value="{{ selected_shipment.id if selected_shipment else 0 }}">
+              <div id="movePackageIdsContainer"></div>
 
-                <div class="col-12 d-flex justify-content-end">
-                  <button type="submit" class="btn btn-sm btn-purple">Search</button>
-                </div>
-              </form>
+              <label class="form-label small">Destination Shipment</label>
+              <select class="form-select form-select-sm" name="to_shipment_id" required>
+                <option value="">Select…</option>
+                {% for s in shipments %}
+                {% if not selected_shipment or s.id != selected_shipment.id %}
+                <option value="{{ s.id }}">{{ s.sl_name or s.sl_id }}</option>
+                {% endif %}
+                {% endfor %}
+              </select>
 
-              <div class="table-responsive">
-                <table class="table table-sm table-striped align-middle mb-0" id="shipmentSearchResults">
-                  <thead class="table-light">
-                    <tr>
-                      <th style="width:40px;">
-                        <input type="checkbox" id="searchSelectAll">
-                      </th>
-                      <th>Customer</th>
-                      <th>Tracking #</th>
-                      <th>House AWB</th>
-                      <th>Description</th>
-                      <th>Date Received</th>
-                      <th>Weight</th>
-                      <th>Shipment Batch</th>
-                    </tr>
-                  </thead>
-                  <tbody id="shipmentSearchResultsBody">
-                    <tr>
-                      <td colspan="8" class="text-muted">Enter criteria and click Search.</td>
-                    </tr>
-                  </tbody>
-                </table>
+              <div class="form-text mt-2">
+                Selected packages will be moved to the chosen shipment.
               </div>
             </div>
-
             <div class="modal-footer">
-              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-              <button type="button" class="btn btn-purple btn-sm" id="btnAddSearchResultsToShipment">
-                <i class="bi bi-plus-circle"></i> Add / Move Selected Packages
-              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-purple btn-sm">Move</button>
             </div>
-          </div>
+          </form>
         </div>
       </div>
+    </div>
 
-      <!-- Move Search Results to Shipment Modal -->
-      <div class="modal fade" id="searchMoveShipmentModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-sm modal-dialog-centered">
-          <div class="modal-content">
-            <form method="POST" action="{{ url_for('logistics.assign_search_results_to_shipment') }}">
-              <div class="modal-header">
-                <h5 class="modal-title">Add / Move Packages</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-              </div>
+    <!-- Charges / Fees Modal -->
+    <div class="modal fade" id="chargesModalSL" tabindex="-1" aria-labelledby="chargesModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-centered charges-modal-dialog">
+        <div class="modal-content">
 
-              <div class="modal-body">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div id="searchMovePackageIdsContainer"></div>
+          <div class="modal-header" style="background:#4a148c; color:#fff;">
+            <h5 class="modal-title" id="chargesModalLabel">Calculate Charges for Package</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
 
-                <div class="mb-3">
-                  <label class="form-label small">Destination Type</label>
-                  <select class="form-select form-select-sm" name="mode" id="searchMoveMode" required>
-                    <option value="existing" selected>Existing Shipment</option>
-                    <option value="new">New Shipment</option>
-                  </select>
+          <div class="modal-body">
+            <form id="chargesForm" onsubmit="return false;">
+              <input type="hidden" id="chargesPkgId">
+
+
+              <div class="row g-3 mb-2">
+                <div class="col-12">
+                  <label class="form-label fw-semibold">Package</label>
+                  <input type="text" id="chargesPkgDesc" class="form-control form-control-sm" readonly>
                 </div>
 
-                <div class="mb-3" id="searchExistingShipmentWrap">
-                  <label class="form-label small">Choose Existing Shipment</label>
-                  <select class="form-select form-select-sm" name="shipment_id">
-                    <option value="">Select…</option>
-                    {% for s in active_shipments %}
-                    <option value="{{ s.id }}">{{ s.sl_name or s.sl_id }}</option>
+                <div class="col-md-4">
+                  <label for="chargesCategory" class="form-label fw-semibold">Category</label>
+                  <select id="chargesCategory" class="form-select form-select-sm">
+                    {% for cat in categories %}
+                    <option value="{{ cat }}">{{ cat }}</option>
                     {% endfor %}
                   </select>
                 </div>
 
-                <div class="mb-3 d-none" id="searchNewShipmentWrap">
-                  <label class="form-label small">New Shipment Name (optional)</label>
-                  <input type="text" class="form-control form-control-sm" name="new_sl_name"
-                    placeholder="e.g. March Barrel Batch">
+                <div class="col-md-4">
+                  <label for="chargesWeight" class="form-label fw-semibold">Weight (lbs)</label>
+                  <input type="number" step="0.01" id="chargesWeight" class="form-control form-control-sm">
+                </div>
+
+                <div class="col-md-4">
+                  <label for="chargesValue" class="form-label fw-semibold">Item Value (USD)</label>
+                  <input type="number" step="0.01" id="chargesValue" class="form-control form-control-sm">
                 </div>
               </div>
 
-              <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
-                  Cancel
-                </button>
-                <button type="submit" class="btn btn-purple btn-sm">
-                  Continue
-                </button>
+              <div class="row g-3 mb-2">
+                <div class="col-md-6">
+                  <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" id="chargesBadAddress">
+                    <label class="form-check-label fw-semibold" for="chargesBadAddress">
+                      Bad Address
+                    </label>
+                    <div class="small text-muted">
+                      Apply when package arrived without a valid registration number and had to be manually assigned.
+                    </div>
+                  </div>
+                </div>
+
+                <div class="col-md-6">
+                  <label for="chargesBadAddressFee" class="form-label fw-semibold">Bad Address Fee (JMD)</label>
+                  <input type="number" step="0.01" id="chargesBadAddressFee" class="form-control form-control-sm">
+                </div>
+              </div>
+
+              <div class="d-flex align-items-center justify-content-between
+                            border rounded p-2 mb-2" style="background:#f8f9fa;">
+                <div class="small">
+                  <div class="fw-semibold">Manual override</div>
+                  <div class="text-muted">When ON, auto-calc won’t overwrite your typed values.</div>
+                </div>
+
+                <div class="form-check form-switch m-0">
+                  <input class="form-check-input" type="checkbox" id="pricingLockedToggle">
+                  <label class="form-check-label small" for="pricingLockedToggle">Lock</label>
+                </div>
+              </div>
+              <hr class="my-3">
+
+              <div id="chargesResult">
+                <h6 class="fw-bold mb-2">Breakdown</h6>
+                <div class="row g-2 small">
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted">Duty</div><input type="number" step="0.01" id="resDuty"
+                        class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted">GCT</div><input type="number" step="0.01" id="resGct"
+                        class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted">SCF</div><input type="number" step="0.01" id="resScf"
+                        class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted">ENVL</div><input type="number" step="0.01" id="resEnvl"
+                        class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted">CAF</div><input type="number" step="0.01" id="resCaf"
+                        class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted small">Stamp</div><input type="number" step="0.01" id="resStamp"
+                        class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted small">Customs Total</div><input type="number" step="0.01"
+                        id="resCustomsTotal" class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted">Freight</div><input type="number" step="0.01" id="resFreight"
+                        class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted">Handling</div><input type="number" step="0.01" id="resHandling"
+                        class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted small">Bad Address</div>
+                      <input type="number" step="0.01" id="resBadAddress" class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted small">Freight Total</div><input type="number" step="0.01"
+                        id="resFreightTotal" class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="border rounded p-2">
+                      <div class="text-muted small">Other Charges</div><input type="number" step="0.01" id="resOther"
+                        class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+                  <div class="col-md-8">
+                    <div class="border rounded p-2 bg-light">
+                      <div class="text-muted">Grand Total (JMD)</div><input type="number" step="0.01" id="resTotal"
+                        class="form-control form-control-sm text-end">
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="chargesError" class="alert alert-danger mt-3 py-2 px-3 small" style="display:none;"></div>
+            </form>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            <button type="button" id="btnApplyToPkg" class="btn btn-outline-success btn-sm"
+              style="display:inline-block;">Apply & Save</button>
+            <button type="button" id="btnCalcCharges" class="btn btn-purple btn-sm">
+              <i class="bi bi-calculator"></i> Calculate Charges
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+
+
+    <!-- Attach Files Modal -->
+    <div class="modal fade" id="attachInvoiceModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-md modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header" style="background:#4a148c; color:#fff;">
+            <h5 class="modal-title"><i class="bi bi-paperclip me-1"></i> Attach Files</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body">
+            <input type="hidden" id="attachPkgId" value="">
+            <input type="hidden" id="attachCsrfToken" value="{{ csrf_token() }}">
+
+            <div class="small text-muted mb-2">
+              Package ID: <strong id="attachPkgLabel">—</strong>
+            </div>
+
+            <label class="form-label">Select file(s)</label>
+            <input type="file" id="attachFiles" class="form-control" multiple accept=".pdf,.png,.jpg,.jpeg,.webp">
+            <div class="form-text">Allowed: PDF, PNG, JPG, WEBP</div>
+
+            <div id="attachUploadStatus" class="small text-muted mt-2">Select a file to upload.</div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-success" id="btnAttachUpload">
+              <i class="bi bi-upload me-1"></i> Upload
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Search Packages Modal -->
+    <div class="modal fade" id="shipmentSearchModal" tabindex="-1" aria-labelledby="shipmentSearchLabel"
+      aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="shipmentSearchLabel">Search Packages</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <div class="modal-body">
+            <form id="shipmentSearchForm" class="row g-2 mb-3">
+              <div class="col-md-6">
+                <label class="form-label small mb-0">Customer Name</label>
+                <input type="text" class="form-control form-control-sm" name="name" placeholder="e.g., Jane Doe">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small mb-0">Registration #</label>
+                <input type="text" class="form-control form-control-sm" name="reg" placeholder="e.g., FA12345">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small mb-0">Tracking #</label>
+                <input type="text" class="form-control form-control-sm" name="tracking" placeholder="e.g., 1Z...">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small mb-0">House AWB</label>
+                <input type="text" class="form-control form-control-sm" name="house" placeholder="e.g., 06978687">
+              </div>
+
+              <div class="col-12 d-flex justify-content-end">
+                <button type="submit" class="btn btn-sm btn-purple">Search</button>
               </div>
             </form>
+
+            <div class="table-responsive">
+              <table class="table table-sm table-striped align-middle mb-0" id="shipmentSearchResults">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width:40px;">
+                      <input type="checkbox" id="searchSelectAll">
+                    </th>
+                    <th>Customer</th>
+                    <th>Tracking #</th>
+                    <th>House AWB</th>
+                    <th>Description</th>
+                    <th>Date Received</th>
+                    <th>Weight</th>
+                    <th>Shipment Batch</th>
+                  </tr>
+                </thead>
+                <tbody id="shipmentSearchResultsBody">
+                  <tr>
+                    <td colspan="8" class="text-muted">Enter criteria and click Search.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-purple btn-sm" id="btnAddSearchResultsToShipment">
+              <i class="bi bi-plus-circle"></i> Add / Move Selected Packages
+            </button>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Delete Shipment Batch Modal -->
-      <div class="modal fade" id="deleteShipmentModal" tabindex="-1" aria-labelledby="deleteShipmentLabel"
-        aria-hidden="true">
-        <div class="modal-dialog modal-sm modal-dialog-centered">
-          <div class="modal-content">
-            <form method="POST"
-              action="{{ url_for('logistics.delete_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
-              <div class="modal-header">
-                <h5 class="modal-title" id="deleteShipmentLabel">Delete Shipment</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-              </div>
-              <div class="modal-body">
-                {% if selected_shipment %}
-                <p class="mb-0">Delete <strong>{{ selected_shipment.sl_id }}</strong>?</p>
-                <small class="text-muted">Packages stay in the system; only the batch is removed.</small>
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                {% else %}
-                <p class="mb-0 text-muted">Select a shipment on the left first.</p>
-                {% endif %}
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-danger btn-sm" {% if not selected_shipment or
-                  selected_shipment.is_archived %}disabled{% endif %}>Delete</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-
-      <!-- Bulk Invoice Preview Modal -->
-      <div class="modal fade" id="bulkInvoicePreviewModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
-          <div class="modal-content">
-
+    <!-- Move Search Results to Shipment Modal -->
+    <div class="modal fade" id="searchMoveShipmentModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <form method="POST" action="{{ url_for('logistics.assign_search_results_to_shipment') }}">
             <div class="modal-header">
-              <h5 class="modal-title">Invoice Preview</h5>
+              <h5 class="modal-title">Add / Move Packages</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
 
             <div class="modal-body">
-              <p id="detained-note" class="text-muted small mb-2"></p>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <div id="searchMovePackageIdsContainer"></div>
 
-              <div class="table-responsive">
-                <table class="table table-sm align-middle">
-                  <thead>
-                    <tr>
-                      <th>Select</th>
-                      <th>Customer</th>
-                      <th class="text-center">Packages</th>
-                      <th class="text-end">Total Due</th>
-                    </tr>
-                  </thead>
+              <div class="mb-3">
+                <label class="form-label small">Destination Type</label>
+                <select class="form-select form-select-sm" name="mode" id="searchMoveMode" required>
+                  <option value="existing" selected>Existing Shipment</option>
+                  <option value="new">New Shipment</option>
+                </select>
+              </div>
 
-                  <tbody id="inv-prev-tbody"></tbody>
+              <div class="mb-3" id="searchExistingShipmentWrap">
+                <label class="form-label small">Choose Existing Shipment</label>
+                <select class="form-select form-select-sm" name="shipment_id">
+                  <option value="">Select…</option>
+                  {% for s in active_shipments %}
+                  <option value="{{ s.id }}">{{ s.sl_name or s.sl_id }}</option>
+                  {% endfor %}
+                </select>
+              </div>
 
-                  <tfoot>
-                    <tr class="table-light">
-                      <th colspan="3" class="text-end">Total Amount Due</th>
-                      <th class="text-end" id="inv-prev-total">0.00</th>
-                    </tr>
-                  </tfoot>
-                </table>
+              <div class="mb-3 d-none" id="searchNewShipmentWrap">
+                <label class="form-label small">New Shipment Name (optional)</label>
+                <input type="text" class="form-control form-control-sm" name="new_sl_name"
+                  placeholder="e.g. March Barrel Batch">
               </div>
             </div>
 
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">
                 Cancel
               </button>
-              <button id="btn-finalize-invoices" class="btn btn-purple" type="button"
-                onclick="finalizeInvoicesFromModal(event)">
-                Generate Customer Invoice(s)
+              <button type="submit" class="btn btn-purple btn-sm">
+                Continue
               </button>
             </div>
+          </form>
+        </div>
+      </div>
+    </div>
 
+    <!-- Delete Shipment Batch Modal -->
+    <div class="modal fade" id="deleteShipmentModal" tabindex="-1" aria-labelledby="deleteShipmentLabel"
+      aria-hidden="true">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <form method="POST"
+            action="{{ url_for('logistics.delete_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}">
+            <div class="modal-header">
+              <h5 class="modal-title" id="deleteShipmentLabel">Delete Shipment</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              {% if selected_shipment %}
+              <p class="mb-0">Delete <strong>{{ selected_shipment.sl_id }}</strong>?</p>
+              <small class="text-muted">Packages stay in the system; only the batch is removed.</small>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              {% else %}
+              <p class="mb-0 text-muted">Select a shipment on the left first.</p>
+              {% endif %}
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-danger btn-sm" {% if not selected_shipment or
+                selected_shipment.is_archived %}disabled{% endif %}>Delete</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bulk Invoice Preview Modal -->
+    <div class="modal fade" id="bulkInvoicePreviewModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+
+          <div class="modal-header">
+            <h5 class="modal-title">Invoice Preview</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body">
+            <p id="detained-note" class="text-muted small mb-2"></p>
+
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>Select</th>
+                    <th>Customer</th>
+                    <th class="text-center">Packages</th>
+                    <th class="text-end">Total Due</th>
+                  </tr>
+                </thead>
+
+                <tbody id="inv-prev-tbody"></tbody>
+
+                <tfoot>
+                  <tr class="table-light">
+                    <th colspan="3" class="text-end">Total Amount Due</th>
+                    <th class="text-end" id="inv-prev-total">0.00</th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              Cancel
+            </button>
+            <button id="btn-finalize-invoices" class="btn btn-purple" type="button"
+              onclick="finalizeInvoicesFromModal(event)">
+              Generate Customer Invoice(s)
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ✅ Shipment Finance Invoice Preview Modal (Supplier Cost) -->
+    <div class="modal fade" id="shipmentFinanceInvoiceModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Shipment Finance Invoice</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+
+          <div class="modal-body" id="shipmentFinanceInvoiceBody">
+            <p class="text-muted mb-0">Loading shipment invoice…</p>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+              Close
+            </button>
+            <button type="button" class="btn btn-purple" id="btnPrintShipmentFinance">
+              Print / Save
+            </button>
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- ✅ Shipment Finance Invoice Preview Modal (Supplier Cost) -->
-      <div class="modal fade" id="shipmentFinanceInvoiceModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-          <div class="modal-content">
+    <!-- Rename Shipment Modal -->
+    <div class="modal fade" id="renameShipmentModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content">
+          <form method="POST"
+            action="{{ url_for('logistics.rename_shipment', shipment_id=selected_shipment.id if selected_shipment else 0) }}">
             <div class="modal-header">
-              <h5 class="modal-title">Shipment Finance Invoice</h5>
+              <h5 class="modal-title">Rename Shipment</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
 
-            <div class="modal-body" id="shipmentFinanceInvoiceBody">
-              <p class="text-muted mb-0">Loading shipment invoice…</p>
+            <div class="modal-body">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label class="form-label small">Shipment Name</label>
+              <input type="text" name="sl_name" class="form-control form-control-sm"
+                value="{{ selected_shipment.sl_name or selected_shipment.sl_id }}" required>
+              <div class="form-text mt-1">
+                This is just a display name. The system ID remains unchanged.
+              </div>
             </div>
 
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                Close
-              </button>
-              <button type="button" class="btn btn-purple" id="btnPrintShipmentFinance">
-                Print / Save
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Rename Shipment Modal -->
-      <div class="modal fade" id="renameShipmentModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-sm modal-dialog-centered">
-          <div class="modal-content">
-            <form method="POST"
-              action="{{ url_for('logistics.rename_shipment', shipment_id=selected_shipment.id if selected_shipment else 0) }}">
-              <div class="modal-header">
-                <h5 class="modal-title">Rename Shipment</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-              </div>
-
-              <div class="modal-body">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <label class="form-label small">Shipment Name</label>
-                <input type="text" name="sl_name" class="form-control form-control-sm"
-                  value="{{ selected_shipment.sl_name or selected_shipment.sl_id }}" required>
-                <div class="form-text mt-1">
-                  This is just a display name. The system ID remains unchanged.
-                </div>
-              </div>
-
-              <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-purple btn-sm">Save</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-
-    </div>
-    {% endif %}
-
-    {# ---------------- UPLOAD PACKAGES TAB ---------------- #}
-    {% if active_tab == 'uploadPackages' %}
-    <div class="tab-pane show active" id="uploadPackages" role="tabpanel" aria-labelledby="upload-tab">
-
-      <div class="card shadow-sm mt-3 border-0">
-
-        <div class="card-header text-white"
-          style="background-color:#4a148c; border-top-left-radius:.5rem; border-top-right-radius:.5rem;">
-          <h4 class="mb-0">Upload Packages from Excel/CSV</h4>
-        </div>
-
-        <div class="card-body p-4">
-
-          <!-- 1) Upload-for-Preview Form -->
-          <form id="uploadForm" method="POST" enctype="multipart/form-data"
-            action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
-
-            {{ upload_form.hidden_tag() }}
-            <input type="hidden" name="tab" value="uploadPackages">
-            <input type="hidden" name="stage" value="preview">
-
-            <div class="mb-3">
-              {{ upload_form.file.label(class_="form-label") }}
-              {{ upload_form.file(class_="form-control", accept=".xlsx,.csv") }}
-
-              {% for error in upload_form.file.errors %}
-              <div class="text-danger small">{{ error }}</div>
-              {% endfor %}
-            </div>
-
-            <div class="d-flex align-items-center gap-2">
-              {{ upload_form.submit(class_="btn btn-purple", id="uploadBtn", value="Preview All") }}
-
-              <a href="{{ url_for('static', filename='templates/sample_upload.xlsx') }}" class="btn btn-outline-purple">
-                Download Sample
-              </a>
-
-              <div id="spinner" class="spinner-border text-purple ms-2" role="status" style="display:none;">
-                <span class="visually-hidden">Uploading...</span>
-              </div>
+              <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-purple btn-sm">Save</button>
             </div>
           </form>
-
-          <!-- Messages -->
-          {% if message %}
-          <div class="alert alert-success mt-4">
-            {{ message }}
-          </div>
-          {% endif %}
-
-          {% if errors and errors|length %}
-          <div class="alert alert-danger mt-4">
-            <ul class="mb-0">
-              {% for error in errors %}
-              <li>{{ error }}</li>
-              {% endfor %}
-            </ul>
-          </div>
-          {% endif %}
-
-          <!-- 2) Full Preview Table + Confirm -->
-          {% if preview_headers and preview_rows %}
-
-          <hr class="my-4">
-
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <h5 class="mb-0">Preview All Rows</h5>
-
-            {% if summary_counts %}
-            <div class="small">
-              <span class="badge badge-purple">Total: {{ summary_counts.total }}</span>
-              <span class="badge badge-purple-soft">Valid: {{ summary_counts.valid }}</span>
-              <span class="badge bg-danger">Invalid: {{ summary_counts.invalid }}</span>
-            </div>
-            {% endif %}
-
-            {% if preview_token and summary_counts and summary_counts.invalid %}
-            <a class="btn btn-sm btn-outline-danger"
-              href="{{ url_for('logistics.download_preview_invalid', token=preview_token) }}">
-              <i class="fas fa-file-csv me-1"></i> Download Invalid Rows
-            </a>
-            {% endif %}
-          </div>
-
-          <div class="table-responsive border rounded shadow-sm">
-            <table id="previewTable" class="table table-sm table-bordered table-striped align-middle mb-0">
-
-              <thead class="bg-purple text-white">
-                <tr>
-                  <th style="width:30px;">
-                    <input type="checkbox" id="selectAllPreview">
-                  </th>
-
-                  {% for h in preview_headers %}
-                  <th>{{ h }}</th>
-                  {% endfor %}
-
-                  <th>Status</th>
-                  <th style="display:none;">__row_index</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {% for row in preview_rows %}
-                {% set i = loop.index0 %}
-                {% set errs = (preview_errors.get(i) or preview_errors.get(i|string)) if preview_errors else None %}
-
-                <tr class="{% if errs %}table-danger{% else %}table-light{% endif %}">
-                  <td>
-                    <input type="checkbox" class="row-select" value="{{ i }}" {% if not errs %}checked{% endif %}>
-                  </td>
-
-                  {% for h in preview_headers %}
-                  {% set val = row.get(h) %}
-                  <td
-                    class="{% if errs and ('Missing ' ~ h.replace('_',' ').title()) in errs %}bg-warning-subtle{% endif %}">
-                    {{ '' if val is none else val }}
-                  </td>
-                  {% endfor %}
-
-                  <td>
-                    {% if not errs %}
-                    <span class="badge badge-purple">Valid</span>
-                    {% else %}
-                    <span class="badge bg-danger">Invalid</span>
-                    <div class="small text-muted mt-1">
-                      {% for e in errs %}
-                      <div>• {{ e }}</div>
-                      {% endfor %}
-                    </div>
-                    {% endif %}
-                  </td>
-
-                  <td style="display:none;">{{ i }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-
-            </table>
-          </div>
-
-          <!-- Confirm form -->
-          <form id="confirmForm" method="POST"
-            action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
-            class="mt-3 d-flex flex-wrap align-items-end gap-2" onsubmit="return handleConfirmSubmit(event);">
-
-            {{ upload_form.csrf_token }}
-            <input type="hidden" name="tab" value="uploadPackages">
-            <input type="hidden" name="stage" value="confirm">
-            <input type="hidden" name="preview_token" value="{{ preview_token }}">
-            <input type="hidden" id="selectedIndicesInput" name="selected_indices" value="[]">
-
-            <div>
-              <label class="form-label mb-1 text-purple">Batch Size (optional)</label>
-              <input type="number" name="batch_size" class="form-control form-control-sm border-purple"
-                placeholder="e.g. 50">
-              <div class="form-text">Limit per submit to avoid timeouts.</div>
-            </div>
-
-            <div class="ms-auto d-flex align-items-center gap-2">
-              <button type="button" id="selectValidBtn" class="btn btn-outline-purple btn-sm">
-                Select All Valid
-              </button>
-
-              <button type="submit" class="btn btn-purple btn-sm">
-                <i class="fas fa-check-circle me-1"></i> Import Selected
-              </button>
-
-              <a href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
-                class="btn btn-outline-danger btn-sm"
-                onclick="return confirm('Cancel this upload and discard preview?');">
-                <i class="fas fa-times-circle me-1"></i> Cancel Upload
-              </a>
-            </div>
-          </form>
-
-          {% endif %}
-          {# end if preview_headers and preview_rows #}
-
         </div>
-        <!-- /card-body -->
-
       </div>
-      <!-- /card -->
-
     </div>
-    <!-- /uploadPackages tab-pane -->
-    {% endif %}
-
 
   </div>
+  {% endif %}
+
+  {# ---------------- UPLOAD PACKAGES TAB ---------------- #}
+  {% if active_tab == 'uploadPackages' %}
+  <div class="tab-pane show active" id="uploadPackages" role="tabpanel" aria-labelledby="upload-tab">
+
+    <div class="card shadow-sm mt-3 border-0">
+
+      <div class="card-header text-white"
+        style="background-color:#4a148c; border-top-left-radius:.5rem; border-top-right-radius:.5rem;">
+        <h4 class="mb-0">Upload Packages from Excel/CSV</h4>
+      </div>
+
+      <div class="card-body p-4">
+
+        <!-- 1) Upload-for-Preview Form -->
+        <form id="uploadForm" method="POST" enctype="multipart/form-data"
+          action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}">
+
+          {{ upload_form.hidden_tag() }}
+          <input type="hidden" name="tab" value="uploadPackages">
+          <input type="hidden" name="stage" value="preview">
+
+          <div class="mb-3">
+            {{ upload_form.file.label(class_="form-label") }}
+            {{ upload_form.file(class_="form-control", accept=".xlsx,.csv") }}
+
+            {% for error in upload_form.file.errors %}
+            <div class="text-danger small">{{ error }}</div>
+            {% endfor %}
+          </div>
+
+          <div class="d-flex align-items-center gap-2">
+            {{ upload_form.submit(class_="btn btn-purple", id="uploadBtn", value="Preview All") }}
+
+            <a href="{{ url_for('static', filename='templates/sample_upload.xlsx') }}" class="btn btn-outline-purple">
+              Download Sample
+            </a>
+
+            <div id="spinner" class="spinner-border text-purple ms-2" role="status" style="display:none;">
+              <span class="visually-hidden">Uploading...</span>
+            </div>
+          </div>
+        </form>
+
+        <!-- Messages -->
+        {% if message %}
+        <div class="alert alert-success mt-4">
+          {{ message }}
+        </div>
+        {% endif %}
+
+        {% if errors and errors|length %}
+        <div class="alert alert-danger mt-4">
+          <ul class="mb-0">
+            {% for error in errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        <!-- 2) Full Preview Table + Confirm -->
+        {% if preview_headers and preview_rows %}
+
+        <hr class="my-4">
+
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <h5 class="mb-0">Preview All Rows</h5>
+
+          {% if summary_counts %}
+          <div class="small">
+            <span class="badge badge-purple">Total: {{ summary_counts.total }}</span>
+            <span class="badge badge-purple-soft">Valid: {{ summary_counts.valid }}</span>
+            <span class="badge bg-danger">Invalid: {{ summary_counts.invalid }}</span>
+          </div>
+          {% endif %}
+
+          {% if preview_token and summary_counts and summary_counts.invalid %}
+          <a class="btn btn-sm btn-outline-danger"
+            href="{{ url_for('logistics.download_preview_invalid', token=preview_token) }}">
+            <i class="fas fa-file-csv me-1"></i> Download Invalid Rows
+          </a>
+          {% endif %}
+        </div>
+
+        <div class="table-responsive border rounded shadow-sm">
+          <table id="previewTable" class="table table-sm table-bordered table-striped align-middle mb-0">
+
+            <thead class="bg-purple text-white">
+              <tr>
+                <th style="width:30px;">
+                  <input type="checkbox" id="selectAllPreview">
+                </th>
+
+                {% for h in preview_headers %}
+                <th>{{ h }}</th>
+                {% endfor %}
+
+                <th>Status</th>
+                <th style="display:none;">__row_index</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {% for row in preview_rows %}
+              {% set i = loop.index0 %}
+              {% set errs = (preview_errors.get(i) or preview_errors.get(i|string)) if preview_errors else None %}
+
+              <tr class="{% if errs %}table-danger{% else %}table-light{% endif %}">
+                <td>
+                  <input type="checkbox" class="row-select" value="{{ i }}" {% if not errs %}checked{% endif %}>
+                </td>
+
+                {% for h in preview_headers %}
+                {% set val = row.get(h) %}
+                <td
+                  class="{% if errs and ('Missing ' ~ h.replace('_',' ').title()) in errs %}bg-warning-subtle{% endif %}">
+                  {{ '' if val is none else val }}
+                </td>
+                {% endfor %}
+
+                <td>
+                  {% if not errs %}
+                  <span class="badge badge-purple">Valid</span>
+                  {% else %}
+                  <span class="badge bg-danger">Invalid</span>
+                  <div class="small text-muted mt-1">
+                    {% for e in errs %}
+                    <div>• {{ e }}</div>
+                    {% endfor %}
+                  </div>
+                  {% endif %}
+                </td>
+
+                <td style="display:none;">{{ i }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+
+          </table>
+        </div>
+
+        <!-- Confirm form -->
+        <form id="confirmForm" method="POST"
+          action="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
+          class="mt-3 d-flex flex-wrap align-items-end gap-2" onsubmit="return handleConfirmSubmit(event);">
+
+          {{ upload_form.csrf_token }}
+          <input type="hidden" name="tab" value="uploadPackages">
+          <input type="hidden" name="stage" value="confirm">
+          <input type="hidden" name="preview_token" value="{{ preview_token }}">
+          <input type="hidden" id="selectedIndicesInput" name="selected_indices" value="[]">
+
+          <div>
+            <label class="form-label mb-1 text-purple">Batch Size (optional)</label>
+            <input type="number" name="batch_size" class="form-control form-control-sm border-purple"
+              placeholder="e.g. 50">
+            <div class="form-text">Limit per submit to avoid timeouts.</div>
+          </div>
+
+          <div class="ms-auto d-flex align-items-center gap-2">
+            <button type="button" id="selectValidBtn" class="btn btn-outline-purple btn-sm">
+              Select All Valid
+            </button>
+
+            <button type="submit" class="btn btn-purple btn-sm">
+              <i class="fas fa-check-circle me-1"></i> Import Selected
+            </button>
+
+            <a href="{{ url_for('logistics.logistics_dashboard', tab='uploadPackages') }}"
+              class="btn btn-outline-danger btn-sm"
+              onclick="return confirm('Cancel this upload and discard preview?');">
+              <i class="fas fa-times-circle me-1"></i> Cancel Upload
+            </a>
+          </div>
+        </form>
+
+        {% endif %}
+        {# end if preview_headers and preview_rows #}
+
+      </div>
+      <!-- /card-body -->
+
+    </div>
+    <!-- /card -->
+
+  </div>
+  <!-- /uploadPackages tab-pane -->
+  {% endif %}
+
+
+</div>
 </div>
 {% endblock %}
 {% block scripts %}

@@ -1912,6 +1912,7 @@ def manage_account(id: int):
     mobile    = (request.form.get('mobile') or '').strip()
     address   = (request.form.get('address') or '').strip()
     referral  = (request.form.get('referral_code') or '').strip()
+    trn       = (request.form.get('trn') or '').strip()
 
     # UI checkbox/radio -> store into DB field
     # (default enabled if missing)
@@ -1945,6 +1946,7 @@ def manage_account(id: int):
     old_mobile = user.mobile or ""
     old_address = user.address or ""
     old_referral = user.referral_code or ""
+    old_trn = user.trn or ""
     old_status = "Enabled" if user.is_enabled else "Disabled"
 
     # -------------------------------------------------
@@ -1955,6 +1957,7 @@ def manage_account(id: int):
     user.mobile = mobile
     user.address = address
     user.referral_code = referral or None
+    user.trn = trn or None
     user.is_enabled = is_enabled_val
 
     new_status = "Enabled" if user.is_enabled else "Disabled"
@@ -1986,6 +1989,9 @@ def manage_account(id: int):
         changes.append(
             f"Referral Code: {old_referral or 'None'} → {user.referral_code or 'None'}"
         )
+
+    if old_trn != (user.trn or ""):
+       changes.append("TRN updated")
 
     if old_status != new_status:
         changes.append(

@@ -808,21 +808,21 @@
                     {% if inv_status == 'paid' or owed == 0 %}
                     {% if inv.date_paid is defined and inv.date_paid %}
                     <small class="text-muted">
-                      Paid on {{ inv.date_paid.strftime('%Y-%m-%d') }}
+                      Paid on {{ to_jamaica(inv.date_paid).strftime('%Y-%m-%d') }}
                     </small>
                     {% elif inv.updated_at is defined and inv.updated_at %}
                     <small class="text-muted">
-                      Paid on {{ inv.updated_at.strftime('%Y-%m-%d') }}
+                      Paid on {{ to_jamaica(inv.updated_at).strftime('%Y-%m-%d') }}
                     </small>
                     {% endif %}
                     {% else %}
                     {% if inv.date_issued is defined and inv.date_issued %}
                     <small class="text-muted">
-                      Received {{ inv.date_issued.strftime('%Y-%m-%d') }}
+                      Received {{ to_jamaica(inv.date_issued).strftime('%Y-%m-%d') }}
                     </small>
                     {% elif inv.created_at is defined and inv.created_at %}
                     <small class="text-muted">
-                      Received {{ inv.created_at.strftime('%Y-%m-%d') }}
+                      Received {{ to_jamaica(inv.created_at).strftime('%Y-%m-%d') }}
                     </small>
                     {% endif %}
                     {% endif %}
@@ -966,8 +966,7 @@
 
                 <td>
                   {% if payment.payment_date %}
-                  {{ payment.payment_date.strftime("%Y-%m-%d %I:%M %p") if payment.payment_date.strftime is defined else
-                  payment.payment_date }}
+                  {{ to_jamaica(payment.payment_date).strftime("%Y-%m-%d %I:%M %p") }}
                   {% else %}
                   —
                   {% endif %}
@@ -1239,7 +1238,7 @@
                 </td>
                 <td>{{ msg.subject or '' }}</td>
                 <td>{{ msg.body or '' }}</td>
-                <td>{{ msg.created_at or '' }}</td>
+                <td>{{ to_jamaica(msg.created_at).strftime("%Y-%m-%d %I:%M %p") if msg.created_at else '' }}</td>
               </tr>
               {% else %}
               <tr>
@@ -1363,7 +1362,7 @@
                 </td>
                 <td>
                   {% if c.created_at %}
-                  {{ c.created_at.strftime("%Y-%m-%d %I:%M %p") if c.created_at.strftime is defined else c.created_at }}
+                  {{ to_jamaica(c.created_at).strftime("%Y-%m-%d %I:%M %p") }}
                   {% else %}
                   —
                   {% endif %}

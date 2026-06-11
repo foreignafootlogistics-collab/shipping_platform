@@ -198,6 +198,28 @@
         value="{{ last_name or '' }}">
     </div>
 
+    <div class="col-12 col-md-auto">
+      <label for="shipment_filter" class="form-label fw-semibold mb-1">Shipment Status</label>
+      <select id="shipment_filter" name="shipment_filter" class="form-select form-select-sm">
+        <option value="" {% if not shipment_filter %}selected{% endif %}>All Packages</option>
+        <option value="assigned" {% if shipment_filter=="assigned" %}selected{% endif %}>Assigned to Shipment</option>
+        <option value="unassigned" {% if shipment_filter=="unassigned" %}selected{% endif %}>Not Assigned to Shipment
+        </option>
+      </select>
+    </div>
+
+    <div class="col-12 col-md-auto">
+      <label for="shipment_id_filter" class="form-label fw-semibold mb-1">Shipment Batch</label>
+      <select id="shipment_id_filter" name="shipment_id_filter" class="form-select form-select-sm">
+        <option value="">All Shipments</option>
+        {% for s in shipments %}
+        <option value="{{ s.id }}" {% if shipment_id_filter|int==s.id %}selected{% endif %}>
+          {{ s.sl_name or s.sl_id }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
     <!-- Show Unassigned Only -->
     <div class="col-12 col-md-auto">
       <label class="form-check-label d-flex align-items-center" style="gap:.5rem; padding-top:.35rem;">
@@ -230,15 +252,7 @@
       </label>
     </div>
 
-    <div class="col-12 col-md-auto">
-      <label for="shipment_filter" class="form-label fw-semibold mb-1">Shipment Status</label>
-      <select id="shipment_filter" name="shipment_filter" class="form-select form-select-sm">
-        <option value="" {% if not shipment_filter %}selected{% endif %}>All Packages</option>
-        <option value="assigned" {% if shipment_filter=="assigned" %}selected{% endif %}>Assigned to Shipment</option>
-        <option value="unassigned" {% if shipment_filter=="unassigned" %}selected{% endif %}>Not Assigned to Shipment
-        </option>
-      </select>
-    </div>
+
 
     <!-- Toolbar row: left = actions, right = rows-per-page -->
     <div class="col-12">
@@ -270,7 +284,8 @@
                             unassigned_only='1' if unassigned_only else None,
                             epc_only='1' if epc_only else None,
                             not_notified_only='1' if not_notified_only else None,
-                            shipment_filter=shipment_filter) }}">
+                            shipment_filter=shipment_filter,
+                            shipment_id_filter=shipment_id_filter) }}">
             <i class="fas fa-download me-1"></i> Download Packages
           </a>
 

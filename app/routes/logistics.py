@@ -328,6 +328,7 @@ def _apply_pkg_filters(
     not_notified_only=None,
     subscription_only=None,
     shipment_filter=None,
+    shipment_id_filter=None,
 ):
     """
     Apply package filters to a SQLAlchemy query.
@@ -448,6 +449,13 @@ def _apply_pkg_filters(
 
     elif shipment_filter == "unassigned":
         q = q.filter(~Package.shipments.any())
+
+    if shipment_id_filter:
+        q = q.filter(
+            Package.shipments.any(
+                ShipmentLog.id == shipment_id_filter
+            )
+        )
 
     # -------------------------
     # EPC filter
@@ -1767,6 +1775,7 @@ def logistics_dashboard():
     not_notified_only = (request.args.get('not_notified_only') or '').lower() in ('1','true','on','yes')
     subscription_only = (request.args.get('subscription_only') or '').lower() in ('1','true','on','yes')
     shipment_filter = (request.args.get("shipment_filter") or "").strip().lower()
+    shipment_id_filter = request.args.get("shipment_id_filter", type=int)
 
     house = request.args.get('house', '', type=str)
     tracking = request.args.get('tracking', '', type=str)
@@ -1821,6 +1830,7 @@ def logistics_dashboard():
         unassigned_only=unassigned_only,
         subscription_only=subscription_only,
         shipment_filter=shipment_filter,
+        shipment_id_filter=shipment_id_filter,
     )
 
     pkg_q = pkg_q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).desc())
@@ -1918,6 +1928,7 @@ def logistics_dashboard():
         unassigned_only=unassigned_only,
         subscription_only=subscription_only,
         shipment_filter=shipment_filter,
+        shipment_id_filter=shipment_id_filter,
     )
 
     cnt, tw = totals_q.first()
@@ -1950,6 +1961,7 @@ def logistics_dashboard():
             unassigned_only=unassigned_only,
             subscription_only=subscription_only,
             shipment_filter=shipment_filter,
+            shipment_id_filter=shipment_id_filter,
         ).group_by(dtcol).order_by(dtcol.asc())
 
         for day, cnt, tw in dq.all():
@@ -2017,6 +2029,7 @@ def logistics_dashboard():
         not_notified_only=not_notified_only,
         subscription_only=subscription_only,
         shipment_filter=shipment_filter,
+        shipment_id_filter=shipment_id_filter,
 
         page=page,
         per_page=per_page,

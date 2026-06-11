@@ -35,6 +35,7 @@
       <input type="hidden" name="epc_only" value="{{ '1' if epc_only else '' }}">
       <input type="hidden" name="not_notified_only" value="{{ '1' if not_notified_only else '' }}">
       <input type="hidden" name="subscription_only" value="{{ '1' if subscription_only else '' }}">
+      <input type="hidden" name="shipment_filter" value="{{ shipment_filter or '' }}">
       <input type="hidden" name="return_to" id="returnToInput" value="">
 
       <div class="d-flex align-items-center action-toolbar shadow-sm">
@@ -229,6 +230,16 @@
       </label>
     </div>
 
+    <div class="col-12 col-md-auto">
+      <label for="shipment_filter" class="form-label fw-semibold mb-1">Shipment Status</label>
+      <select id="shipment_filter" name="shipment_filter" class="form-select form-select-sm">
+        <option value="" {% if not shipment_filter %}selected{% endif %}>All Packages</option>
+        <option value="assigned" {% if shipment_filter=="assigned" %}selected{% endif %}>Assigned to Shipment</option>
+        <option value="unassigned" {% if shipment_filter=="unassigned" %}selected{% endif %}>Not Assigned to Shipment
+        </option>
+      </select>
+    </div>
+
     <!-- Toolbar row: left = actions, right = rows-per-page -->
     <div class="col-12">
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -258,7 +269,8 @@
                             page=page,
                             unassigned_only='1' if unassigned_only else None,
                             epc_only='1' if epc_only else None,
-                            not_notified_only='1' if not_notified_only else None) }}">
+                            not_notified_only='1' if not_notified_only else None,
+                            shipment_filter=shipment_filter) }}">
             <i class="fas fa-download me-1"></i> Download Packages
           </a>
 

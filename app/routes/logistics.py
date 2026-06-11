@@ -327,6 +327,7 @@ def _apply_pkg_filters(
     unassigned_only=None,
     not_notified_only=None,
     subscription_only=None,
+    shipment_filter=None,
 ):
     """
     Apply package filters to a SQLAlchemy query.
@@ -438,6 +439,15 @@ def _apply_pkg_filters(
         q = q.filter(
             Package.subscription_applied.is_(True)            
         )
+
+    # -------------------------
+    # Shipment filter
+    # -------------------------
+    if shipment_filter == "assigned":
+        q = q.filter(Package.shipments.any())
+
+    elif shipment_filter == "unassigned":
+        q = q.filter(~Package.shipments.any())
 
     # -------------------------
     # EPC filter
@@ -1756,6 +1766,7 @@ def logistics_dashboard():
     epc_only = (request.args.get('epc_only') or '').lower() in ('1','true','on','yes')
     not_notified_only = (request.args.get('not_notified_only') or '').lower() in ('1','true','on','yes')
     subscription_only = (request.args.get('subscription_only') or '').lower() in ('1','true','on','yes')
+    shipment_filter = (request.args.get("shipment_filter") or "").strip().lower()
 
     house = request.args.get('house', '', type=str)
     tracking = request.args.get('tracking', '', type=str)
@@ -1809,6 +1820,7 @@ def logistics_dashboard():
         search=search,
         unassigned_only=unassigned_only,
         subscription_only=subscription_only,
+        shipment_filter=shipment_filter,
     )
 
     pkg_q = pkg_q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).desc())
@@ -1882,6 +1894,7 @@ def logistics_dashboard():
                 and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
                 and float(getattr(p, "customs_total", 0) or 0) > 0
             ),
+            "shipments": list(getattr(p, "shipments", [])),
         })
 
     # Agg totals for the current filter
@@ -1904,6 +1917,7 @@ def logistics_dashboard():
         search=search,
         unassigned_only=unassigned_only,
         subscription_only=subscription_only,
+        shipment_filter=shipment_filter,
     )
 
     cnt, tw = totals_q.first()
@@ -1935,6 +1949,7 @@ def logistics_dashboard():
             search=search,
             unassigned_only=unassigned_only,
             subscription_only=subscription_only,
+            shipment_filter=shipment_filter,
         ).group_by(dtcol).order_by(dtcol.asc())
 
         for day, cnt, tw in dq.all():
@@ -2001,6 +2016,7 @@ def logistics_dashboard():
         epc_only=epc_only,
         not_notified_only=not_notified_only,
         subscription_only=subscription_only,
+        shipment_filter=shipment_filter,
 
         page=page,
         per_page=per_page,

@@ -99,7 +99,22 @@ pkg.get('customer_notified_at') %}
     {% include 'partials/status_vars.html' %}
     {% include 'partials/status_tracker.html' with context %}
     <br>
-    <small class="text-muted">{{ _tracking or '-' }}</small>
+
+    <small class="text-muted">
+
+      {% if pkg.shipments and pkg.shipments|length > 0 %}
+      {% set first_shipment = pkg.shipments[0] %}
+
+      <a href="{{ url_for('logistics.logistics_dashboard',
+                          tab='shipmentLog') }}" class="text-primary text-decoration-none me-1"
+        data-bs-toggle="tooltip" title="Assigned to {{ first_shipment.sl_name or first_shipment.sl_id }}">
+        <i class="bi bi-truck"></i>
+      </a>
+      {% endif %}
+
+      {{ _tracking or '-' }}
+
+    </small>
 
 
     {% if pkg.subscription_covered %}

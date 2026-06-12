@@ -2797,6 +2797,8 @@ def download_packages():
     last      = request.args.get('last_name', '', type=str)
     search    = request.args.get('search', '', type=str)
     status    = request.args.get('status', '', type=str)
+    shipment_filter = (request.args.get("shipment_filter") or "").strip().lower()
+    shipment_id_filter = request.args.get("shipment_id_filter", type=int)
 
     # --- helper: turn "YYYY-MM-DD" into a real date() object ---
     def parse_date(s: str):
@@ -2859,6 +2861,19 @@ def download_packages():
         )
     if status:
         q = q.filter(Package.status == status)
+
+    if shipment_filter == "assigned":
+        q = q.filter(Package.shipments.any())
+
+    elif shipment_filter == "unassigned":
+        q = q.filter(~Package.shipments.any())
+
+    if shipment_id_filter:
+        q = q.filter(
+            Package.shipments.any(
+                ShipmentLog.id == shipment_id_filter
+            )
+        )
 
     rows = [
         {

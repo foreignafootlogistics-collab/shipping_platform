@@ -1848,6 +1848,7 @@ class PayrollItem(db.Model):
     nht = db.Column(db.Numeric(12, 2), default=0)
     education_tax = db.Column(db.Numeric(12, 2), default=0)
     other_deductions = db.Column(db.Numeric(12, 2), default=0)
+    pay_advance = db.Column(db.Numeric(12, 2), default=0)
 
 class AuditLog(db.Model):
     __tablename__ = "audit_logs"

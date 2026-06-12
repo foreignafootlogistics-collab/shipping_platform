@@ -2585,11 +2585,13 @@ def payroll_detail(run_id):
 def view_payslip(item_id):
     item = PayrollItem.query.get_or_404(item_id)
     run = PayrollRun.query.get(item.payroll_run_id)
+    emp = EmployeePayroll.query.filter_by(user_id=item.user_id).first()
 
     return render_template(
         "admin/finance/payslip.html",
         item=item,
-        run=run
+        run=run,
+        emp=emp
     )
 
 @finance_bp.route("/payroll/<int:run_id>/mark-paid", methods=["POST"])
@@ -2655,6 +2657,7 @@ def mark_payroll_paid(run_id):
 def payslip_pdf(item_id):
     item = PayrollItem.query.get_or_404(item_id)
     run = PayrollRun.query.get_or_404(item.payroll_run_id)
+    emp = EmployeePayroll.query.filter_by(user_id=item.user_id).first()
 
     html = render_template(
         "admin/finance/payslip.html",
@@ -2672,7 +2675,8 @@ def payslip_pdf(item_id):
         BytesIO(pdf),
         mimetype="application/pdf",
         as_attachment=True,
-        download_name=filename
+        download_name=filename,
+        emp=emp
     )
 
 
@@ -2681,6 +2685,7 @@ def payslip_pdf(item_id):
 def email_payslip(item_id):
     item = PayrollItem.query.get_or_404(item_id)
     run = PayrollRun.query.get_or_404(item.payroll_run_id)
+    emp = EmployeePayroll.query.filter_by(user_id=item.user_id).first()
 
     user = item.user
     if not user or not user.email:
@@ -2691,6 +2696,7 @@ def email_payslip(item_id):
         "admin/finance/payslip.html",
         item=item,
         run=run,
+        emp=emp,
         pdf_mode=True
     )
 

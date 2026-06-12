@@ -242,6 +242,9 @@
           <div class="value">{{ item.user.full_name }}</div>
           <div style="font-size:12px; color:#6b7280;">
             Employee ID: {{ item.user.employee_code or "—" }}
+            <div style="font-size:12px; color:#6b7280;">
+              Position: {{ emp.position_title if emp else "—" }}
+            </div>
           </div>
         </div>
 

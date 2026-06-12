@@ -2751,7 +2751,7 @@ def export_payroll(run_id):
     output = StringIO()
     writer = csv.writer(output)
 
-    writer.writerow(["Employee", "Gross", "Allowance", "Overtime", "Bonus", "NIS", "Tax", "Other Deductions", "Total Deductions", "Net Pay"])
+    writer.writerow(["Employee", "Gross", "Allowance", "Overtime", "Bonus", "NIS", "Tax", "Pay Advance", "Other Deductions", "Total Deductions", "Net Pay"])
 
     for item in items:
         writer.writerow([
@@ -2762,6 +2762,7 @@ def export_payroll(run_id):
             float(getattr(item, "bonus", 0) or 0),
             float(getattr(item, "nis", 0) or 0),
             float(getattr(item, "tax", 0) or 0),
+            float(getattr(item, "pay_advance", 0) or 0),
             float(getattr(item, "other_deductions", 0) or 0),
             float(item.deductions or 0),
             float(item.net_pay or 0),
@@ -2798,9 +2799,10 @@ def update_payroll_item(item_id):
     education_tax = money("education_tax")
     tax = money("tax")
     other_deductions = money("other_deductions")
+    pay_advance = money("pay_advance")
 
     gross_total = base_gross + allowance + overtime + bonus
-    deductions = nis + nht + education_tax + tax + other_deductions
+    deductions = nis + nht + education_tax + tax + other_deductions + pay_advance
     net_pay = gross_total - deductions
 
     if net_pay < 0:
@@ -2817,6 +2819,7 @@ def update_payroll_item(item_id):
     item.education_tax = round(education_tax, 2)
     item.tax = round(tax, 2)
     item.other_deductions = round(other_deductions, 2)
+    item.pay_advance = round(pay_advance, 2)
 
     item.deductions = round(deductions, 2)
     item.net_pay = round(net_pay, 2)
@@ -2829,7 +2832,6 @@ def update_payroll_item(item_id):
 
     flash("Payroll item updated successfully.", "success")
     return redirect(url_for("finance.payroll_detail", run_id=run.id))
-
 
 @finance_bp.route("/payroll/<int:run_id>/bulk-calc", methods=["POST"])
 @admin_required(roles=["finance"])
@@ -2860,8 +2862,9 @@ def bulk_calculate_payroll(run_id):
         tax = taxable_income * 0.25
 
         other_deductions = float(item.other_deductions or 0)
+        pay_advance = float(item.pay_advance or 0)
 
-        total_deductions = nis + nht + education_tax + tax + other_deductions
+        total_deductions = nis + nht + education_tax + tax + other_deductions + pay_advance
 
         item.nis = round(nis, 2)
         item.nht = round(nht, 2)

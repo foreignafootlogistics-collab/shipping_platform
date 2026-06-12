@@ -1,10 +1,14 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>Payslip - {{ item.user.full_name if item.user else '' }}</title>
 
   <style>
-    @page { size: A4; margin: 18mm; }
+    @page {
+      size: A4;
+      margin: 18mm;
+    }
 
     body {
       font-family: Arial, Helvetica, sans-serif;
@@ -35,7 +39,7 @@
       margin: 0 auto;
       background: #fff;
       border: 1px solid #d1d5db;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     }
 
     .header {
@@ -51,9 +55,13 @@
       align-items: center;
     }
 
-    .logo { width: 72px; }
+    .logo {
+      width: 72px;
+    }
 
-    .title-box { text-align: right; }
+    .title-box {
+      text-align: right;
+    }
 
     .title-box h1 {
       margin: 0;
@@ -79,8 +87,14 @@
       background: #fafafa;
     }
 
-    .label { font-size: 12px; color: #6b7280; }
-    .value { font-weight: bold; }
+    .label {
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .value {
+      font-weight: bold;
+    }
 
     /* 🔥 NEW SIDE-BY-SIDE TABLES */
     .dual-section {
@@ -107,7 +121,9 @@
       padding: 10px;
     }
 
-    .text-end { text-align: right; }
+    .text-end {
+      text-align: right;
+    }
 
     .summary {
       display: grid;
@@ -160,201 +176,217 @@
       max-width: 90%;
     }
 
-    .payslip > *:not(.watermark) {
+    .payslip>*:not(.watermark) {
       position: relative;
       z-index: 1;
     }
 
     @media print {
-      body { background: white; padding: 0; }
-      .toolbar { display: none; }
-      .payslip { border: none; box-shadow: none; }
+      body {
+        background: white;
+        padding: 0;
+      }
+
+      .toolbar {
+        display: none;
+      }
+
+      .payslip {
+        border: none;
+        box-shadow: none;
+      }
     }
   </style>
 </head>
 
 <body>
 
-<div class="toolbar">
-  <button class="btn" onclick="window.print()">Print Payslip</button>
-</div>
-
-<div class="payslip">
-
-  <div class="watermark">
-    <img src="{{ url_for('static', filename='logo.png') }}">
+  <div class="toolbar">
+    <button class="btn" onclick="window.print()">Print Payslip</button>
   </div>
 
-  <!-- HEADER -->
-  <div class="header">
-    <div class="company">
-      <img src="{{ url_for('static', filename='logo.png') }}" class="logo">
-      <div>
-        <h2>Foreign A Foot Logistics Limited</h2>
+  <div class="payslip">
+
+    <div class="watermark">
+      <img src="{{ url_for('static', filename='logo.png') }}">
+    </div>
+
+    <!-- HEADER -->
+    <div class="header">
+      <div class="company">
+        <img src="{{ url_for('static', filename='logo.png') }}" class="logo">
+        <div>
+          <h2>Foreign A Foot Logistics Limited</h2>
+          <p>
+            Cedar Grove, Portmore<br>
+            foreignafootlogistics@gmail.com<br>
+            876-560-7764
+          </p>
+        </div>
+      </div>
+
+      <div class="title-box">
+        <h1>PAYSLIP</h1>
         <p>
-          Cedar Grove, Portmore<br>
-          foreignafootlogistics@gmail.com<br>
-          876-560-7764
+          Period:<br>
+          <strong>{{ run.period_start }} → {{ run.period_end }}</strong>
         </p>
       </div>
     </div>
 
-    <div class="title-box">
-      <h1>PAYSLIP</h1>
-      <p>
-        Period:<br>
-        <strong>{{ run.period_start }} → {{ run.period_end }}</strong>
-      </p>
-    </div>
-  </div>
+    <!-- INFO -->
+    <div class="section">
+      <div class="grid">
+        <div class="info-box">
+          <div class="label">Employee</div>
+          <div class="value">{{ item.user.full_name }}</div>
+          <div style="font-size:12px; color:#6b7280;">
+            Employee ID: {{ item.user.employee_code or "—" }}
+          </div>
+        </div>
 
-  <!-- INFO -->
-  <div class="section">
-    <div class="grid">
-      <div class="info-box">
-        <div class="label">Employee</div>
-        <div class="value">{{ item.user.full_name }}</div>
-        <div style="font-size:12px; color:#6b7280;">
-          Employee ID: {{ item.user.employee_code or "—" }}
+        <div class="info-box">
+          <div class="label">Email</div>
+          <div class="value">{{ item.user.email }}</div>
+        </div>
+
+        <div class="info-box">
+          <div class="label">Payroll ID</div>
+          <div class="value">PAY-{{ "%05d"|format(item.id) }}</div>
+        </div>
+
+        <div class="info-box">
+          <div class="label">Status</div>
+          <div class="value">{{ run.status }}</div>
         </div>
       </div>
+    </div>
 
-      <div class="info-box">
-        <div class="label">Email</div>
-        <div class="value">{{ item.user.email }}</div>
-      </div>
+    <!-- 🔥 SIDE BY SIDE SECTION -->
+    <div class="section">
+      <div class="dual-section">
 
-      <div class="info-box">
-        <div class="label">Payroll ID</div>
-        <div class="value">PAY-{{ "%05d"|format(item.id) }}</div>
-      </div>
+        <!-- Earnings -->
+        <div>
+          <h3>Earnings</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th class="text-end">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
 
-      <div class="info-box">
-        <div class="label">Status</div>
-        <div class="value">{{ run.status }}</div>
+              {% set base = (item.gross_pay or 0) - (item.allowance or 0) - (item.overtime or 0) - (item.bonus or 0) %}
+
+              <tr>
+                <td>Basic Salary</td>
+                <td class="text-end">{{ "%.2f"|format(base) }}</td>
+              </tr>
+
+              <tr>
+                <td>Allowance</td>
+                <td class="text-end">{{ "%.2f"|format(item.allowance or 0) }}</td>
+              </tr>
+
+              <tr>
+                <td>Overtime</td>
+                <td class="text-end">{{ "%.2f"|format(item.overtime or 0) }}</td>
+              </tr>
+
+              <tr>
+                <td>Bonus</td>
+                <td class="text-end">{{ "%.2f"|format(item.bonus or 0) }}</td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Deductions -->
+        <div>
+          <h3>Deductions</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th class="text-end">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+
+              <tr>
+                <td>Income Tax / PAYE</td>
+                <td class="text-end">{{ "%.2f"|format(item.tax or 0) }}</td>
+              </tr>
+
+              <tr>
+                <td>NIS</td>
+                <td class="text-end">{{ "%.2f"|format(item.nis or 0) }}</td>
+              </tr>
+
+              <tr>
+                <td>NHT</td>
+                <td class="text-end">{{ "%.2f"|format(item.nht or 0) }}</td>
+              </tr>
+
+              <tr>
+                <td>Education Tax</td>
+                <td class="text-end">{{ "%.2f"|format(item.education_tax or 0) }}</td>
+              </tr>
+
+              <tr>
+                <td>Pay Advance</td>
+                <td class="text-end">{{ "%.2f"|format(item.pay_advance or 0) }}</td>
+              </tr>
+
+              <tr>
+                <td>Other Deductions</td>
+                <td class="text-end">{{ "%.2f"|format(item.other_deductions or 0) }}</td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+
       </div>
     </div>
-  </div>
 
-  <!-- 🔥 SIDE BY SIDE SECTION -->
-  <div class="section">
-    <div class="dual-section">
+    <!-- SUMMARY -->
+    <div class="section">
+      <div class="summary">
 
-      <!-- Earnings -->
+        <div class="summary-card">
+          <div class="label">Gross</div>
+          <div class="amount">JMD {{ "%.2f"|format(item.gross_pay or 0) }}</div>
+        </div>
+
+        <div class="summary-card">
+          <div class="label">Deductions</div>
+          <div class="amount">JMD {{ "%.2f"|format(item.deductions or 0) }}</div>
+        </div>
+
+        <div class="summary-card net">
+          <div class="label">Net Pay</div>
+          <div class="amount">JMD {{ "%.2f"|format(item.net_pay or 0) }}</div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="footer">
       <div>
-        <h3>Earnings</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Description</th>
-              <th class="text-end">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-
-            {% set base = (item.gross_pay or 0) - (item.allowance or 0) - (item.overtime or 0) - (item.bonus or 0) %}
-
-            <tr>
-              <td>Basic Salary</td>
-              <td class="text-end">{{ "%.2f"|format(base) }}</td>
-            </tr>
-
-            <tr>
-              <td>Allowance</td>
-              <td class="text-end">{{ "%.2f"|format(item.allowance or 0) }}</td>
-            </tr>
-
-            <tr>
-              <td>Overtime</td>
-              <td class="text-end">{{ "%.2f"|format(item.overtime or 0) }}</td>
-            </tr>
-
-            <tr>
-              <td>Bonus</td>
-              <td class="text-end">{{ "%.2f"|format(item.bonus or 0) }}</td>
-            </tr>
-
-          </tbody>
-        </table>
+        Generated by Foreign A Foot Logistics payroll system.
       </div>
-
-      <!-- Deductions -->
       <div>
-        <h3>Deductions</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Description</th>
-              <th class="text-end">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-
-            <tr>
-              <td>Income Tax / PAYE</td>
-              <td class="text-end">{{ "%.2f"|format(item.tax or 0) }}</td>
-            </tr>
-
-            <tr>
-              <td>NIS</td>
-              <td class="text-end">{{ "%.2f"|format(item.nis or 0) }}</td>
-            </tr>
-
-            <tr>
-              <td>NHT</td>
-              <td class="text-end">{{ "%.2f"|format(item.nht or 0) }}</td>
-            </tr>
-
-            <tr>
-              <td>Education Tax</td>
-              <td class="text-end">{{ "%.2f"|format(item.education_tax or 0) }}</td>
-            </tr>
-
-            <tr>
-              <td>Other Deductions</td>
-              <td class="text-end">{{ "%.2f"|format(item.other_deductions or 0) }}</td>
-            </tr>
-
-          </tbody>
-        </table>
+        ___________________<br>
+        Authorized Signature
       </div>
-
     </div>
+
   </div>
-
-  <!-- SUMMARY -->
-  <div class="section">
-    <div class="summary">
-
-      <div class="summary-card">
-        <div class="label">Gross</div>
-        <div class="amount">JMD {{ "%.2f"|format(item.gross_pay or 0) }}</div>
-      </div>
-
-      <div class="summary-card">
-        <div class="label">Deductions</div>
-        <div class="amount">JMD {{ "%.2f"|format(item.deductions or 0) }}</div>
-      </div>
-
-      <div class="summary-card net">
-        <div class="label">Net Pay</div>
-        <div class="amount">JMD {{ "%.2f"|format(item.net_pay or 0) }}</div>
-      </div>
-
-    </div>
-  </div>
-
-  <div class="footer">
-    <div>
-      Generated by Foreign A Foot Logistics payroll system.
-    </div>
-    <div>
-      ___________________<br>
-      Authorized Signature
-    </div>
-  </div>
-
-</div>
 
 </body>
+
 </html>

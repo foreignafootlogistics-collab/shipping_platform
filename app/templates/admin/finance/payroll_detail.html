@@ -233,6 +233,12 @@
                 class="form-control">
             </div>
 
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Pay Advance</label>
+              <input type="number" step="0.01" min="0" name="pay_advance" value="{{ item.pay_advance or 0 }}"
+                class="form-control">
+            </div>
+
             <div class="col-md-12 mb-3">
               <label class="form-label">Other Deductions</label>
               <input type="number" step="0.01" min="0" name="other_deductions" value="{{ item.other_deductions or 0 }}"

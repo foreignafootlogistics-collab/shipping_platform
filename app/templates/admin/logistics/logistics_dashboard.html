@@ -4249,9 +4249,7 @@ Not emailed yet"></i>
           `✅ ${data.message || "Package scanned successfully."}: ${data.tracking_number || scanValue}`
         );
         updateScanCounters(data);
-        setTimeout(() => {
-          window.location.reload();
-        }, 700);
+
 
       } else if (data.status === "already_scanned") {
 
@@ -4319,8 +4317,10 @@ Not emailed yet"></i>
       await phoneScanner.start(
         { facingMode: "environment" },
         {
-          fps: 10,
-          qrbox: { width: 280, height: 160 }
+          fps: 15,
+          qrbox: { width: 320, height: 180 },
+          aspectRatio: 1.777778,
+          disableFlip: false
         },
         async function (decodedText) {
           const input = document.getElementById("shipmentScannerInput");
@@ -4329,8 +4329,11 @@ Not emailed yet"></i>
             input.value = decodedText;
           }
 
-          await stopPhoneScanner();
           await scanShipmentPackage();
+
+          setTimeout(() => {
+            if (input) input.focus();
+          }, 300);
         }
       );
 

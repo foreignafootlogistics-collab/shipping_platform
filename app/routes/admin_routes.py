@@ -2406,12 +2406,18 @@ def view_invoice(invoice_id):
     preview_payments_total = float(payments_total or 0.0)
     preview_discount_total = float(discount_total or 0.0)
 
-    preview_balance_due = max(
-        float(preview_subtotal or 0)
-        - float(discount_total or 0)
-        - float(payments_total or 0),
-        0.0
-    )
+    saved_due = float(getattr(inv, "amount_due", 0) or 0)
+
+    if (inv.status or "").lower() == "paid" or saved_due <= 0.01:
+        preview_balance_due = 0.0
+        total_due = 0.0
+    else:
+        preview_balance_due = max(
+            float(preview_subtotal or 0)
+            - float(discount_total or 0)
+            - float(payments_total or 0),
+            0.0
+        )
 
     invoice_dict = {
         "id": inv.id,
@@ -2432,7 +2438,7 @@ def view_invoice(invoice_id):
         "payments_total": payments_total,
         "total_due": total_due,
         "description": getattr(inv, "description", "") or "",
-        "amount_due": float(getattr(inv, "amount_due", total_due) or 0.0),
+        "amount_due": float(saved_due if saved_due > 0.01 else 0.0),
         "packages": packages,
         "preview_subtotal": float(preview_subtotal),
         "preview_discount_total": float(preview_discount_total),

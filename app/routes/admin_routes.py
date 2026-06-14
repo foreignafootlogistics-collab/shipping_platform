@@ -2992,10 +2992,15 @@ def proforma_invoice_modal(invoice_id):
 
     _db_subtotal, discount_total, payments_total, _db_total_due = fetch_invoice_totals_pg(invoice_id)
 
-    balance_due = max(
-        live_subtotal - float(discount_total or 0) - float(payments_total or 0),
-        0.0
-    )
+    saved_due = float(getattr(inv, "amount_due", 0) or 0)
+
+    if (inv.status or "").lower() == "paid" or saved_due <= 0.01:
+        balance_due = 0.0
+    else:
+        balance_due = max(
+            live_subtotal - float(discount_total or 0) - float(payments_total or 0),
+            0.0
+        )
 
     invoice_dict = {
         "id": inv.id,
@@ -3052,6 +3057,9 @@ def invoice_inline(invoice_id):
     } for p in Package.query.filter_by(invoice_id=invoice_id).all()]
 
     subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(invoice_id)
+
+    if (inv.status or "").lower() == "paid":
+        total_due = 0.0
 
     invoice_dict = {
         "id": inv.id,
@@ -3142,7 +3150,15 @@ def email_proforma_invoice(invoice_id):
 
     live_subtotal = float(subtotal or 0.0)
     _db_subtotal, discount_total, payments_total, _db_total_due = fetch_invoice_totals_pg(invoice_id)
-    balance_due = max(live_subtotal - discount_total - payments_total, 0.0)
+    saved_due = float(getattr(inv, "amount_due", 0) or 0)
+
+    if (inv.status or "").lower() == "paid" or saved_due <= 0.01:
+        balance_due = 0.0
+    else:
+        balance_due = max(
+            live_subtotal - float(discount_total or 0) - float(payments_total or 0),
+            0.0
+        )
 
     invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
 

@@ -428,14 +428,7 @@ def checkout():
                 db.session.flush()
                 created_payment_ids.append(payment.id)
 
-                current_due = Decimal(str(invoice.amount_due or 0))
-
-                new_due = current_due - group_total
-
-                if new_due < Decimal("0.00"):
-                    new_due = Decimal("0.00")
-
-                invoice.amount_due = float(new_due)
+                current_due = Decimal(str(invoice.amount_due or 0))                
 
                 if discount_note:
                     invoice.description = (
@@ -443,11 +436,9 @@ def checkout():
                         f"\n{discount_note}"
                     ).strip()
 
-                if new_due == Decimal("0.00"):
-                    invoice.status = "paid"
-                    invoice.date_paid = now_utc
-                else:
-                    invoice.status = "unpaid"
+                invoice.amount_due = 0.00
+                invoice.status = "paid"
+                invoice.date_paid = now_utc
 
             else:
                 invoice.status = "unpaid"

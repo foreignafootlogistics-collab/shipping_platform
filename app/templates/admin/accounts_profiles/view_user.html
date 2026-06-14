@@ -750,11 +750,12 @@
             <tbody>
               {% for inv, paid_sum in invoices_rows %}
               {% set inv_status = (inv.status or 'unpaid')|lower %}
-              {# ---- Amount Due (robust fallback) ---- #}
+
+              {# Amount Due = invoice final total after discount #}
               {% set due =
               (inv.grand_total if inv.grand_total is defined and inv.grand_total is not none
-              else (inv.amount_due if inv.amount_due is defined and inv.amount_due is not none
-              else 0))
+              else inv.subtotal if inv.subtotal is defined and inv.subtotal is not none
+              else 0)
               %}
 
               {% set paid = paid_sum|float %}

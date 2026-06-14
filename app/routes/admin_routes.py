@@ -2404,7 +2404,11 @@ def view_invoice(invoice_id):
     subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(invoice_id)
 
     preview_payments_total = float(payments_total or 0.0)
-    preview_discount_total = float(discount_total or 0.0)
+    preview_discount_total = float(
+        getattr(inv, "discount_total", None)
+        if getattr(inv, "discount_total", None) not in (None, "")
+        else (discount_total or 0.0)
+    )
 
     saved_due = float(getattr(inv, "amount_due", 0) or 0)
 
@@ -2434,7 +2438,7 @@ def view_invoice(invoice_id):
         "customer_code": getattr(user, "registration_number", "") if user else "",
         "customer_name": getattr(user, "full_name", "") if user else "",
         "subtotal": subtotal,
-        "discount_total": discount_total,
+        "discount_total": preview_discount_total,
         "payments_total": payments_total,
         "total_due": total_due,
         "description": getattr(inv, "description", "") or "",
@@ -3017,7 +3021,11 @@ def proforma_invoice_modal(invoice_id):
         "branch": "Main Branch",
         "staff": getattr(current_user, "full_name", "FAFL ADMIN"),
         "subtotal": live_subtotal,
-        "discount_total": float(discount_total or 0.0),
+        "discount_total": float(
+            getattr(inv, "discount_total", None)
+            if getattr(inv, "discount_total", None) not in (None, "")
+            else (discount_total or 0.0)
+        ),
         "payments_total": float(payments_total or 0.0),
         "total_due": balance_due,
         "notes": getattr(inv, "description", "") or "",

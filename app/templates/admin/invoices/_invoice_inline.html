@@ -306,13 +306,35 @@ else 0 %}
             JMD {{ "%.2f"|format(invoice.preview_subtotal or 0) }}
           </span>
         </div>
+
         <div>Sub-Total:
           <span class="fw-semibold">
             JMD {{ "%.2f"|format(invoice.preview_subtotal or 0) }}
           </span>
         </div>
+
+        {% if (invoice.discount_total or 0) > 0 %}
+        <div>Discount:
+          <span class="fw-semibold text-success">
+            - JMD {{ "%.2f"|format(invoice.discount_total or 0) }}
+          </span>
+        </div>
+        {% endif %}
+
+        <div>Total:
+          <span class="fw-semibold">
+            JMD {{ "%.2f"|format((invoice.preview_subtotal or 0) - (invoice.discount_total or 0)) }}
+          </span>
+        </div>
+
+        <div>Payment:
+          <span class="fw-semibold">
+            JMD {{ "%.2f"|format(invoice.payments_total or 0) }}
+          </span>
+        </div>
+
         <div class="fs-6 mt-1">
-          Total Due:
+          Balance:
           <span class="fw-bold text-danger">
             JMD {{ "%.2f"|format(invoice.preview_total_due or 0) }}
           </span>

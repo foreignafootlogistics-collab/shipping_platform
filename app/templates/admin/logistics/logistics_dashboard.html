@@ -2453,11 +2453,17 @@ Not emailed yet"></i>
 
       // gather selected IDs (across all DT pages)
       let ids = [];
+
       if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-        ids = dt.$('.package-checkbox:checked').map(function () { return this.value; }).get();
+        ids = $('#shipmentTable tbody .package-checkbox:checked')
+          .map(function () { return this.value; })
+          .get();
       } else {
-        ids = Array.from(document.querySelectorAll('.package-checkbox:checked')).map(cb => cb.value);
+        ids = Array.from(document.querySelectorAll('#shipmentTable tbody .package-checkbox:checked'))
+          .map(cb => cb.value);
       }
+
+      ids = Array.from(new Set(ids)).filter(Boolean);
 
       // Shipment-level actions (no selection required)
       if (action === 'finance_invoice') {
@@ -2570,14 +2576,13 @@ Not emailed yet"></i>
      Select all helpers
      ========================== */
   function toggleShipmentSelectAll(master) {
-    if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-      dt.$('.package-checkbox').prop('checked', master.checked);
-      updateShipmentHeaderCheckbox();
-      return;
-    }
     const tbody = document.querySelector('#shipmentTable tbody');
     if (!tbody) return;
-    tbody.querySelectorAll('.package-checkbox').forEach(cb => cb.checked = master.checked);
+
+    tbody.querySelectorAll('.package-checkbox').forEach(cb => {
+      cb.checked = master.checked;
+    });
+
     updateShipmentHeaderCheckbox();
   }
 
@@ -2586,16 +2591,11 @@ Not emailed yet"></i>
     const tbody = document.querySelector('#shipmentTable tbody');
     if (!header || !tbody) return;
 
-    if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
-      const all = dt.$('.package-checkbox').length;
-      const chk = dt.$('.package-checkbox:checked').length;
-      header.checked = (all > 0 && all === chk);
-      return;
-    }
-
     const boxes = tbody.querySelectorAll('.package-checkbox');
     const checked = tbody.querySelectorAll('.package-checkbox:checked');
-    header.checked = (boxes.length > 0 && boxes.length === checked.length);
+
+    header.checked = boxes.length > 0 && boxes.length === checked.length;
+    header.indeterminate = checked.length > 0 && checked.length < boxes.length;
   }
 
   /* ============================================================

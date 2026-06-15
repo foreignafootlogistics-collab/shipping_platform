@@ -830,13 +830,17 @@
                   </div>
                 </td>
                 <td class="text-center">
-                  {% if (inv_status != 'paid') and (owed|float > 0) and (paid|float <= 0) %} title="Delete invoice"
+                  {% if (inv_status != 'paid') and (owed|float > 0) and (paid|float <= 0) %} <button type="button"
+                    class="btn btn-sm btn-outline-danger" title="Delete invoice"
                     onclick="openDeleteInvoiceModal({{ inv.id }}, '{{ (inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)))|e }}')">
                     <i class="bi bi-trash"></i>
                     </button>
+
                     {% else %}
-                    <i class="bi bi-lock text-muted" title="Cannot delete: payment exists"
+
+                    <i class="bi bi-lock text-muted" title="Cannot delete: invoice is paid or has no balance"
                       style="font-size: 1.1rem;"></i>
+
                     {% endif %}
                 </td>
                 </tr>

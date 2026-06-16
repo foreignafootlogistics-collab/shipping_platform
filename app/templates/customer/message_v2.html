@@ -1,4 +1,4 @@
-{% extends "layout_admin.html" %}
+{% extends "layout_customer.html" %}
 {% block title %}Messages{% endblock %}
 
 {% block content %}
@@ -25,38 +25,28 @@
                 </div>
                 <div>
                     <div class="fw-bold">Messages</div>
-                    <div class="small text-muted">FAFL Inbox</div>
+                    <div class="small text-muted">Customer Inbox</div>
                 </div>
             </div>
 
             <button class="btn btn-purple w-100 mt-3 compose-btn" data-bs-toggle="modal" data-bs-target="#composeModal">
-                <i class="bi bi-pencil-square me-1"></i> Compose
+                <i class="bi bi-pencil-square me-1"></i> New Message
             </button>
 
             <div class="msg-nav mt-4">
-                <a class="msg-nav-link {% if box=='inbox' and not unread_only and not include_archived %}active{% endif %}"
-                    href="{{ url_for('admin.messages', box='inbox', q=q, per_page=per_page) }}">
+                <a class="msg-nav-link {% if box=='inbox' %}active{% endif %}"
+                    href="{{ url_for('customer.view_messages', box='inbox', q=q, per_page=per_page) }}">
                     <span><i class="bi bi-inbox me-2"></i> Inbox</span>
                 </a>
 
-                <a class="msg-nav-link {% if box=='sent' and not unread_only and not include_archived %}active{% endif %}"
-                    href="{{ url_for('admin.messages', box='sent', q=q, per_page=per_page) }}">
+                <a class="msg-nav-link {% if box=='sent' %}active{% endif %}"
+                    href="{{ url_for('customer.view_messages', box='sent', q=q, per_page=per_page) }}">
                     <span><i class="bi bi-send me-2"></i> Sent</span>
                 </a>
 
-                <a class="msg-nav-link {% if box=='all' and not unread_only and not include_archived %}active{% endif %}"
-                    href="{{ url_for('admin.messages', box='all', q=q, per_page=per_page) }}">
+                <a class="msg-nav-link {% if box=='all' %}active{% endif %}"
+                    href="{{ url_for('customer.view_messages', box='all', q=q, per_page=per_page) }}">
                     <span><i class="bi bi-collection me-2"></i> All Mail</span>
-                </a>
-
-                <a class="msg-nav-link {% if unread_only %}active{% endif %}"
-                    href="{{ url_for('admin.messages', box=box, q=q, unread='1', archived='1' if include_archived else None, per_page=per_page) }}">
-                    <span><i class="bi bi-envelope-exclamation me-2"></i> Unread</span>
-                </a>
-
-                <a class="msg-nav-link {% if include_archived %}active{% endif %}"
-                    href="{{ url_for('admin.messages', box=box, q=q, archived='1', unread='1' if unread_only else None, per_page=per_page) }}">
-                    <span><i class="bi bi-archive me-2"></i> Archived</span>
                 </a>
             </div>
         </aside>
@@ -66,33 +56,21 @@
             <div class="msg-list-header">
                 <div>
                     <h4 class="mb-0">
-                        {% if include_archived %}
-                        Archived
-                        {% elif unread_only %}
-                        Unread
-                        {% elif box == 'sent' %}
-                        Sent
-                        {% elif box == 'all' %}
-                        All Mail
-                        {% else %}
-                        Inbox
-                        {% endif %}
+                        {% if box == 'sent' %}Sent{% elif box == 'all' %}All Mail{% else %}Inbox{% endif %}
                     </h4>
                     <div class="small text-muted">
-                        {{ pagination.total if pagination else rows|length }} message(s)
+                        {{ rows|length }} message(s)
                     </div>
                 </div>
 
                 <a class="btn btn-sm btn-outline-purple"
-                    href="{{ url_for('admin.messages', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, page=1, per_page=per_page) }}">
+                    href="{{ url_for('customer.view_messages', box=box, per_page=per_page) }}">
                     <i class="bi bi-arrow-clockwise"></i>
                 </a>
             </div>
 
-            <form class="msg-search" method="GET" action="{{ url_for('admin.messages') }}">
+            <form class="msg-search" method="GET" action="{{ url_for('customer.view_messages') }}">
                 <input type="hidden" name="box" value="{{ box }}">
-                {% if unread_only %}<input type="hidden" name="unread" value="1">{% endif %}
-                {% if include_archived %}<input type="hidden" name="archived" value="1">{% endif %}
                 <input type="hidden" name="per_page" value="{{ per_page }}">
 
                 <div class="input-group input-group-sm">
@@ -111,17 +89,21 @@
                 </div>
                 {% else %}
                 {% for row in rows %}
-                {% set m = row.m %}
-                {% set other = row.other %}
-                {% set is_sent = row.is_sent %}
+                {% set m = row[0] %}
+                {% set other = row[1] %}
+                {% set is_sent = (m.sender_id == current_user.id) %}
                 {% set is_unread = (m.recipient_id == current_user.id and not m.is_read) %}
                 {% set is_selected = selected_message and selected_message.id == m.id %}
 
                 <a class="msg-item {% if is_selected %}selected{% endif %} {% if is_unread %}unread{% endif %}"
-                    href="{{ url_for('admin.messages', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.page if pagination else 1, message_id=m.id) }}">
+                    href="{{ url_for('customer.view_messages', box=box, q=q, per_page=per_page, message_id=m.id) }}">
 
                     <div class="msg-avatar">
-                        {{ ((other.full_name if other else 'C')[:1])|upper }}
+                        {% if is_sent %}
+                        Y
+                        {% else %}
+                        A
+                        {% endif %}
                     </div>
 
                     <div class="msg-item-body">
@@ -129,16 +111,15 @@
                             <div class="msg-name-wrap">
                                 <div class="msg-name">
                                     {% if is_sent %}
-                                    <span class="text-muted">To:</span>
+                                    You
+                                    {% else %}
+                                    {{ other.full_name if other else "Administrator" }}
                                     {% endif %}
-                                    {{ other.full_name if other else "Customer" }}
                                 </div>
 
-                                {% if other and other.registration_number %}
                                 <div class="msg-reg">
-                                    {{ other.registration_number }}
+                                    {% if is_sent %}Sent to FAFL{% else %}Foreign A Foot Logistics{% endif %}
                                 </div>
-                                {% endif %}
                             </div>
 
                             <div class="msg-date">
@@ -163,6 +144,8 @@
 
                             {% if is_unread %}
                             <span class="badge unread-badge">Unread</span>
+                            {% else %}
+                            <span class="badge read-badge">Read</span>
                             {% endif %}
 
                             {% if m.attachments %}
@@ -176,26 +159,6 @@
                 {% endfor %}
                 {% endif %}
             </div>
-
-            {% if pagination %}
-            <div class="msg-pagination">
-                <div class="small text-muted">
-                    Page {{ pagination.page }} of {{ pagination.pages }} • {{ pagination.total }} total
-                </div>
-
-                <div class="btn-group btn-group-sm">
-                    <a class="btn btn-outline-secondary {% if not pagination.has_prev %}disabled{% endif %}"
-                        href="{{ url_for('admin.messages', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.prev_num) }}">
-                        <i class="bi bi-chevron-left"></i>
-                    </a>
-
-                    <a class="btn btn-outline-secondary {% if not pagination.has_next %}disabled{% endif %}"
-                        href="{{ url_for('admin.messages', box=box, q=q, unread='1' if unread_only else None, archived='1' if include_archived else None, per_page=per_page, page=pagination.next_num) }}">
-                        <i class="bi bi-chevron-right"></i>
-                    </a>
-                </div>
-            </div>
-            {% endif %}
         </section>
 
         <!-- RIGHT READING PANE -->
@@ -208,59 +171,30 @@
             <div class="read-header">
                 <div>
                     <h4 class="mb-1">{{ m.subject or "Message" }}</h4>
-
-                    {% if m.attachments %}
-                    <div class="small text-muted mb-1">
-                        <i class="bi bi-paperclip"></i>
-                        {{ m.attachments|length }} attachment(s)
-                    </div>
-                    {% endif %}
-
                     <div class="small text-muted">
                         Conversation with
-                        <strong>{{ other.full_name if other else "Customer" }}</strong>
-                        {% if other and other.registration_number %}
-                        • {{ other.registration_number }}
-                        {% endif %}
+                        <strong>
+                            {% if is_sent_selected %}
+                            Foreign A Foot Logistics
+                            {% else %}
+                            {{ other.full_name if other else "Administrator" }}
+                            {% endif %}
+                        </strong>
                     </div>
-                </div>
-
-                <div class="d-flex gap-2">
-                    <form method="POST" action="{{ url_for('admin.message_archive', message_id=m.id) }}"
-                        onsubmit="return confirm('Archive this message?');">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="box" value="{{ box }}">
-                        <input type="hidden" name="message_id" value="{{ m.id }}">
-                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
-                        <button class="btn btn-sm btn-soft-warning" title="Archive">
-                            <i class="bi bi-archive"></i>
-                        </button>
-                    </form>
-
-                    <form method="POST" action="{{ url_for('admin.message_delete', message_id=m.id) }}"
-                        onsubmit="return confirm('Delete this message?');">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="box" value="{{ box }}">
-                        <input type="hidden" name="message_id" value="{{ m.id }}">
-                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
-                        <button class="btn btn-sm btn-soft-danger" title="Delete">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </form>
                 </div>
             </div>
 
             <div class="read-meta">
                 <div class="msg-avatar lg">
-                    {{ ((other.full_name if other else 'C')[:1])|upper }}
+                    {% if is_sent_selected %}Y{% else %}A{% endif %}
                 </div>
 
                 <div>
                     <div class="fw-semibold">
                         {% if is_sent_selected %}
-                        Sent to {{ other.full_name if other else "Customer" }}
+                        Sent by You
                         {% else %}
-                        {{ other.full_name if other else "Customer" }}
+                        {{ other.full_name if other else "Administrator" }}
                         {% endif %}
                     </div>
                     <div class="small text-muted">
@@ -311,11 +245,11 @@
                         </div>
 
                         <div class="attachment-actions">
-                            <a href="{{ url_for('admin.view_message_attachment', attachment_id=a.id) }}" target="_blank"
-                                class="btn btn-sm btn-outline-primary">
+                            <a href="{{ url_for('customer.view_message_attachment', attachment_id=a.id) }}"
+                                target="_blank" class="btn btn-sm btn-outline-primary">
                                 View
                             </a>
-                            <a href="{{ url_for('admin.download_message_attachment', attachment_id=a.id) }}"
+                            <a href="{{ url_for('customer.download_message_attachment', attachment_id=a.id) }}"
                                 class="btn btn-sm btn-outline-dark">
                                 <i class="bi bi-download"></i>
                             </a>
@@ -329,14 +263,14 @@
             <div class="reply-card">
                 <div class="fw-semibold mb-2">Reply</div>
 
-                <form method="POST" action="{{ url_for('admin.message_reply', message_id=m.id) }}"
+                <form method="POST" action="{{ url_for('customer.customer_message_reply', msg_id=m.id) }}"
                     enctype="multipart/form-data">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <input type="text" name="subject" class="form-control form-control-sm mb-2"
                         value="Re: {{ m.subject or '' }}" placeholder="Subject">
 
-                    <textarea name="body" class="form-control mb-2" rows="6" placeholder="Write your reply..."
+                    <textarea name="body" class="form-control mb-2" rows="4" placeholder="Write your reply..."
                         required></textarea>
 
                     <input type="file" name="attachments" multiple class="form-control form-control-sm mb-3"
@@ -370,51 +304,23 @@
 
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="bi bi-pencil-square me-1"></i> Send Bulk Message
+                    <i class="bi bi-pencil-square me-1"></i> New Message
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
 
-            <form method="POST" action="{{ url_for('admin.messages') }}" enctype="multipart/form-data">
+            <form method="POST" action="{{ url_for('customer.view_messages') }}" enctype="multipart/form-data">
                 {{ form.hidden_tag() }}
 
                 <div class="modal-body">
                     <div class="mb-3">
                         {{ form.subject.label(class="form-label") }}
-                        {{ form.subject(class="form-control", placeholder="Enter subject") }}
+                        {{ form.subject(class="form-control", placeholder="Subject") }}
                     </div>
 
                     <div class="mb-3">
-                        {{ form.message.label(class="form-label") }}
-                        {{ form.message(class="form-control", rows="5", placeholder="Write your message...") }}
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Recipients</label>
-
-                        <div class="compose-recipient-actions mb-2">
-                            <input type="text" id="recipientSearch" class="form-control form-control-sm"
-                                placeholder="Search customers by name or email...">
-
-                            <button type="button" class="btn btn-sm btn-outline-primary" id="selectAllBtn">
-                                Select All
-                            </button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllBtn">
-                                Clear
-                            </button>
-
-                            <span class="badge selected-badge zero" id="selectedCountBadge">0</span>
-                        </div>
-
-                        <div id="recipientsBox" class="recipients-box">
-                            {% for value, label in form.user_ids.choices %}
-                            <div class="form-check recipient-item" data-label="{{ label|lower }}">
-                                <input class="form-check-input user-checkbox" type="checkbox"
-                                    name="{{ form.user_ids.name }}" value="{{ value }}" id="u_{{ value }}">
-                                <label class="form-check-label" for="u_{{ value }}">{{ label }}</label>
-                            </div>
-                            {% endfor %}
-                        </div>
+                        {{ form.body.label(class="form-label") }}
+                        {{ form.body(class="form-control", rows="5", placeholder="Write your message...") }}
                     </div>
 
                     <div class="mb-3">
@@ -456,9 +362,9 @@
 
     .messages-shell {
         display: grid;
-        grid-template-columns: 240px 380px minmax(650px, 1fr);
+        grid-template-columns: 210px 350px 1fr;
         gap: 16px;
-        max-width: 1650px;
+        max-width: 1450px;
         margin: 0 auto;
     }
 
@@ -522,28 +428,6 @@
 
     .btn-outline-purple:hover {
         background: var(--fafl-purple);
-        color: #fff;
-    }
-
-    .btn-soft-warning {
-        border-color: #f59e0b;
-        color: #b45309;
-        background: #fffbeb;
-    }
-
-    .btn-soft-warning:hover {
-        background: #f59e0b;
-        color: #fff;
-    }
-
-    .btn-soft-danger {
-        border-color: #ef4444;
-        color: #b91c1c;
-        background: #fef2f2;
-    }
-
-    .btn-soft-danger:hover {
-        background: #ef4444;
         color: #fff;
     }
 
@@ -616,14 +500,12 @@
 
     .msg-item.selected {
         background: #f3e8ff;
-        border-left: 5px solid var(--fafl-purple);
-        padding-left: 7px;
+        border-left: 4px solid var(--fafl-purple);
+        padding-left: 8px;
     }
 
     .msg-item.unread {
         background: #fff7d6;
-        border-left: 5px solid #FACC15;
-        padding-left: 7px;
     }
 
     .msg-avatar {
@@ -694,25 +576,21 @@
         color: #111827;
     }
 
+    .read-badge {
+        background: #15803D;
+        color: #fff;
+    }
+
     .attach-badge {
         background: #fff;
         color: var(--fafl-purple);
         border: 1px solid #d8b4fe;
     }
 
-    .msg-pagination {
-        border-top: 1px solid #f1f1f1;
-        padding: 10px 14px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
     .msg-reading-pane {
         height: calc(100vh - 120px);
         overflow-y: auto;
         padding: 22px;
-        position: relative;
     }
 
     .read-header {
@@ -720,11 +598,7 @@
         justify-content: space-between;
         gap: 12px;
         border-bottom: 1px solid #f1f1f1;
-        padding: 0 0 16px 0;
-        position: sticky;
-        top: -22px;
-        background: #fff;
-        z-index: 50;
+        padding-bottom: 16px;
     }
 
     .read-header h4 {
@@ -756,7 +630,6 @@
 
     .attachment-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
         gap: 12px;
     }
 
@@ -834,41 +707,6 @@
         overflow: hidden;
     }
 
-    .compose-recipient-actions {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-    }
-
-    .recipients-box {
-        max-height: 240px;
-        overflow-y: auto;
-        border: 1px solid #e5e7eb;
-        border-radius: 12px;
-        padding: 10px;
-    }
-
-    .selected-badge {
-        font-weight: 800;
-        padding: 6px 9px;
-    }
-
-    .selected-badge.zero {
-        background: #e5e7eb;
-        color: #374151;
-    }
-
-    .selected-badge.active {
-        background: var(--fafl-purple);
-        color: #fff;
-    }
-
-    @media (max-width: 1400px) {
-        .messages-shell {
-            grid-template-columns: 220px 340px 1fr;
-        }
-    }
-
     @media (max-width: 1200px) {
         .messages-shell {
             grid-template-columns: 190px 310px 1fr;
@@ -886,66 +724,6 @@
             height: auto;
             position: static;
         }
-
-        .read-header {
-            position: static;
-        }
     }
 </style>
-
-<script>
-    document.addEventListener("DOMContentLoaded", function () {
-        const container = document.getElementById("recipientsBox");
-        const items = Array.from(document.querySelectorAll(".recipient-item"));
-        const checkboxes = Array.from(document.querySelectorAll(".user-checkbox"));
-
-        const selectAllBtn = document.getElementById("selectAllBtn");
-        const deselectAllBtn = document.getElementById("deselectAllBtn");
-        const search = document.getElementById("recipientSearch");
-        const selectedCountBadge = document.getElementById("selectedCountBadge");
-
-        if (!container || !items.length) return;
-
-        function updateSelectedBadge() {
-            if (!selectedCountBadge) return;
-            const n = checkboxes.filter(cb => cb.checked).length;
-            selectedCountBadge.textContent = String(n);
-
-            if (n > 0) {
-                selectedCountBadge.classList.add("active");
-                selectedCountBadge.classList.remove("zero");
-            } else {
-                selectedCountBadge.classList.add("zero");
-                selectedCountBadge.classList.remove("active");
-            }
-        }
-
-        function applySearchFilter() {
-            const q = (search?.value || "").toLowerCase().trim();
-
-            items.forEach(item => {
-                const text = item.getAttribute("data-label") || "";
-                item.style.display = text.includes(q) ? "" : "none";
-            });
-        }
-
-        selectAllBtn?.addEventListener("click", () => {
-            checkboxes.forEach(cb => cb.checked = true);
-            updateSelectedBadge();
-        });
-
-        deselectAllBtn?.addEventListener("click", () => {
-            checkboxes.forEach(cb => cb.checked = false);
-            updateSelectedBadge();
-        });
-
-        checkboxes.forEach(cb => {
-            cb.addEventListener("change", updateSelectedBadge);
-        });
-
-        search?.addEventListener("input", applySearchFilter);
-
-        updateSelectedBadge();
-    });
-</script>
 {% endblock %}

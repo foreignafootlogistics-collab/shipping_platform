@@ -1750,7 +1750,7 @@ def view_messages():
                 continue
 
             original_name = (f.filename or "").strip()
-            if not allowed_file(original_name):
+            if not allowed_message_attachment(original_name):
                 continue
 
             try:
@@ -1830,14 +1830,52 @@ def view_messages():
         other = User.query.get(other_id)
         rows.append((m, other))
 
+    selected_id = request.args.get("message_id", type=int)
+
+    selected_message = None
+
+    if selected_id:
+        selected_message = (
+            DBMessage.query.filter(
+                sa.or_(
+                    DBMessage.sender_id == current_user.id,
+                    DBMessage.recipient_id == current_user.id
+                ),
+                DBMessage.id == selected_id
+            )
+            .first()
+        )
+
+    if not selected_message and rows:
+        selected_message = rows[0][0]  # because customer rows are tuples: (m, other)
+
+    selected_other = None
+
+    if selected_message:
+        other_id = (
+            selected_message.recipient_id
+            if selected_message.sender_id == current_user.id
+            else selected_message.sender_id
+        )
+        selected_other = User.query.get(other_id)
+
+        if (
+            selected_message.recipient_id == current_user.id
+            and not selected_message.is_read
+        ):
+            selected_message.is_read = True
+            db.session.commit()
+
     return render_template(
-        "customer/messages.html",
+        "customer/messages_v2.html",
         form=form,
         admin=admin,
         rows=rows,
         box=box,
         q=q,
         per_page=per_page,
+        selected_message=selected_message,
+        selected_other=selected_other,
     )
 
 
@@ -1879,7 +1917,7 @@ def customer_message_reply(msg_id):
     body = (request.form.get("body") or "").strip()
     if not body:
         flash("Message can't be empty.", "warning")
-        return redirect(url_for("customer.customer_message_detail", msg_id=msg_id))
+        return redirect(url_for("customer.view_messages", message_id=msg_id))
 
     subject = (request.form.get("subject") or "").strip() or f"Re: {original.subject}"
     recipient_id = original.sender_id if original.sender_id != current_user.id else original.recipient_id
@@ -1887,7 +1925,7 @@ def customer_message_reply(msg_id):
     dup = _is_duplicate_customer_message(current_user.id, recipient_id, subject, body)
     if dup:
         flash("Duplicate reply prevented.", "warning")
-        return redirect(url_for("customer.customer_message_detail", msg_id=msg_id))
+        return redirect(url_for("customer.view_messages", message_id=msg_id))
 
     msg = DBMessage(
         sender_id=current_user.id,
@@ -1908,7 +1946,7 @@ def customer_message_reply(msg_id):
             continue
 
         original_name = (f.filename or "").strip()
-        if not allowed_file(original_name):
+        if not allowed_message_attachment(original_name):
             continue
 
         try:
@@ -1932,7 +1970,7 @@ def customer_message_reply(msg_id):
     db.session.commit()
 
     flash("Reply sent.", "success")
-    return redirect(url_for("customer.customer_message_detail", msg_id=msg.id))
+    return redirect(url_for("customer.view_messages", box="sent", message_id=msg.id))
 
 
 @customer_bp.route("/messages/attachments/<int:attachment_id>")

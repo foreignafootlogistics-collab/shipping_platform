@@ -790,7 +790,11 @@ def messages():
     per_page = request.args.get("per_page", type=int) or 20
     per_page = max(10, min(per_page, 200))
 
-    base = Message.query
+    from sqlalchemy.orm import selectinload
+
+    base = Message.query.options(
+        selectinload(Message.attachments)
+    )
 
     if box == "sent":
         base = base.filter(Message.sender_id == current_user.id)
@@ -830,14 +834,26 @@ def messages():
     pagination = base.paginate(page=page, per_page=per_page, error_out=False)
     messages_list = pagination.items
 
+    user_ids = set()
+
+    for m in messages_list:
+        user_ids.add(m.sender_id)
+        user_ids.add(m.recipient_id)
+
+    users = {
+        u.id: u
+        for u in User.query.filter(User.id.in_(user_ids)).all()
+    }
+
     rows = []
+
     for m in messages_list:
         is_sent = (m.sender_id == current_user.id)
         other_id = m.recipient_id if is_sent else m.sender_id
-        other = User.query.get(other_id)
+
         rows.append({
             "m": m,
-            "other": other,
+            "other": users.get(other_id),
             "is_sent": is_sent,
         })
 
@@ -849,7 +865,16 @@ def messages():
     selected_message = None
 
     if selected_id:
-        selected_message = Message.query.get(selected_id)
+        selected_message = (
+            Message.query.filter(
+                sa.or_(
+                    Message.sender_id == current_user.id,
+                    Message.recipient_id == current_user.id
+                ),
+                Message.id == selected_id
+            )
+            .first()
+        )
 
     if not selected_message and rows:
         selected_message = rows[0]["m"]
@@ -872,7 +897,7 @@ def messages():
         and not selected_message.is_read
     ):
         selected_message.is_read = True
-        db.session.commit()
+        db.session.commit()    
 
     return render_template(
         "admin/messages_v2.html",
@@ -931,7 +956,7 @@ def message_reply(message_id):
     body = (request.form.get("body") or "").strip()
     if not body:
         flash("Message can't be empty.", "warning")
-        return redirect(url_for("admin.message_detail", message_id=message_id))
+        return redirect(url_for("admin.messages", message_id=message_id))
 
     subject = (request.form.get("subject") or "").strip() or f"Re: {original.subject}"
     recipient_id = original.sender_id if original.sender_id != current_user.id else original.recipient_id
@@ -990,7 +1015,7 @@ def message_reply(message_id):
         send_new_message_email(other.email, other.full_name, subject, preview, other.id)
 
     flash("Reply sent.", "success")
-    return redirect(url_for("admin.message_detail", message_id=msg.id))
+    return redirect(url_for("admin.messages", box="sent", message_id=msg.id))
 
 
 
@@ -1010,7 +1035,11 @@ def message_archive(message_id):
 
     db.session.commit()
     flash("Message archived.", "success")
-    return redirect(request.referrer or url_for("admin.messages"))
+    return redirect(url_for(
+        "admin.messages",
+        box=request.form.get("box") or "inbox",
+        page=request.form.get("page") or 1
+    ))
 
 
 @admin_bp.route("/messages/<int:message_id>/delete", methods=["POST"])
@@ -1029,7 +1058,11 @@ def message_delete(message_id):
 
     db.session.commit()
     flash("Message deleted.", "success")
-    return redirect(request.referrer or url_for("admin.messages"))
+    return redirect(url_for(
+        "admin.messages",
+        box=request.form.get("box") or "inbox",
+        page=request.form.get("page") or 1
+    ))
 
 
 @admin_bp.route("/messages/<int:message_id>/forward", methods=["POST"])
@@ -1057,7 +1090,7 @@ def message_forward(message_id):
 
     if not to_email:
         flash("Please select a customer or enter an email address to forward to.", "warning")
-        return redirect(url_for("admin.message_detail", message_id=message_id))
+        return redirect(url_for("admin.messages", message_id=message_id))
 
     # Date label
     created_label = ""
@@ -1125,7 +1158,7 @@ def message_forward(message_id):
     else:
         flash("Forward failed. Please try again.", "danger")
 
-    return redirect(url_for("admin.message_detail", message_id=message_id))
+    return redirect(url_for("admin.messages", message_id=message_id))
 
 
 @admin_bp.route("/messages/attachments/<int:attachment_id>")

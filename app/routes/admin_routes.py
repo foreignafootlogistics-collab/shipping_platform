@@ -841,8 +841,41 @@ def messages():
             "is_sent": is_sent,
         })
 
+    # ==================================
+    # Selected Message for Reading Pane
+    # ==================================
+    selected_id = request.args.get("message_id", type=int)
+
+    selected_message = None
+
+    if selected_id:
+        selected_message = Message.query.get(selected_id)
+
+    if not selected_message and rows:
+        selected_message = rows[0]["m"]
+
+    selected_other = None
+
+    if selected_message:
+        other_id = (
+            selected_message.recipient_id
+            if selected_message.sender_id == current_user.id
+            else selected_message.sender_id
+        )
+
+        selected_other = User.query.get(other_id)
+
+    # Auto mark as read
+    if (
+        selected_message
+        and selected_message.recipient_id == current_user.id
+        and not selected_message.is_read
+    ):
+        selected_message.is_read = True
+        db.session.commit()
+
     return render_template(
-        "admin/messages.html",
+        "admin/messages_v2.html",
         form=form,
         rows=rows,
         pagination=pagination,
@@ -851,6 +884,8 @@ def messages():
         unread_only=unread_only,
         include_archived=include_archived,
         per_page=per_page,
+        selected_message=selected_message,
+        selected_other=selected_other,
     )
 
 @admin_bp.route("/messages/<int:message_id>", methods=["GET"])
@@ -1191,6 +1226,7 @@ def download_message_attachment(attachment_id):
     resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
 # -------------------------
 # BULK ACTION HELPERS
 # -------------------------

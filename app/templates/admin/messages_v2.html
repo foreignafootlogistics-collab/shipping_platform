@@ -29,7 +29,7 @@
                 </div>
             </div>
 
-            <button class="btn btn-purple w-100 mt-3" data-bs-toggle="modal" data-bs-target="#composeModal">
+            <button class="btn btn-purple w-100 mt-3 compose-btn" data-bs-toggle="modal" data-bs-target="#composeModal">
                 <i class="bi bi-pencil-square me-1"></i> Compose
             </button>
 
@@ -61,7 +61,7 @@
             </div>
         </aside>
 
-        <!-- CENTER LIST -->
+        <!-- CENTER MESSAGE LIST -->
         <section class="msg-list-panel">
             <div class="msg-list-header">
                 <div>
@@ -73,7 +73,7 @@
                     </div>
                 </div>
 
-                <a class="btn btn-sm btn-outline-secondary"
+                <a class="btn btn-sm btn-outline-purple"
                     href="{{ url_for('admin.messages', box=box, page=1, per_page=per_page) }}">
                     <i class="bi bi-arrow-clockwise"></i>
                 </a>
@@ -116,11 +116,19 @@
 
                     <div class="msg-item-body">
                         <div class="d-flex justify-content-between align-items-start gap-2">
-                            <div class="msg-name">
-                                {% if is_sent %}
-                                <span class="text-muted">To:</span>
+                            <div class="msg-name-wrap">
+                                <div class="msg-name">
+                                    {% if is_sent %}
+                                    <span class="text-muted">To:</span>
+                                    {% endif %}
+                                    {{ other.full_name if other else "Customer" }}
+                                </div>
+
+                                {% if other and other.registration_number %}
+                                <div class="msg-reg">
+                                    {{ other.registration_number }}
+                                </div>
                                 {% endif %}
-                                {{ other.full_name if other else "Customer" }}
                             </div>
 
                             <div class="msg-date">
@@ -148,7 +156,7 @@
                             {% endif %}
 
                             {% if m.attachments %}
-                            <span class="badge bg-light text-dark border">
+                            <span class="badge attach-badge">
                                 <i class="bi bi-paperclip"></i> {{ m.attachments|length }}
                             </span>
                             {% endif %}
@@ -203,7 +211,7 @@
                     <form method="POST" action="{{ url_for('admin.message_archive', message_id=m.id) }}"
                         onsubmit="return confirm('Archive this message?');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button class="btn btn-sm btn-outline-warning">
+                        <button class="btn btn-sm btn-soft-warning" title="Archive">
                             <i class="bi bi-archive"></i>
                         </button>
                     </form>
@@ -211,7 +219,7 @@
                     <form method="POST" action="{{ url_for('admin.message_delete', message_id=m.id) }}"
                         onsubmit="return confirm('Delete this message?');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button class="btn btn-sm btn-outline-danger">
+                        <button class="btn btn-sm btn-soft-danger" title="Delete">
                             <i class="bi bi-trash"></i>
                         </button>
                     </form>
@@ -266,7 +274,16 @@
                             <div class="attachment-name">
                                 {{ a.original_name or "Attachment" }}
                             </div>
-                            <div class="small text-muted">Message attachment</div>
+                            <div class="small text-muted">
+                                {% if name.endswith('.pdf') %}
+                                PDF document
+                                {% elif name.endswith('.png') or name.endswith('.jpg') or name.endswith('.jpeg') or
+                                name.endswith('.webp') %}
+                                Image file
+                                {% else %}
+                                Message attachment
+                                {% endif %}
+                            </div>
                         </div>
 
                         <div class="attachment-actions">
@@ -395,17 +412,27 @@
 </div>
 
 <style>
+    :root {
+        --fafl-purple: #4A148C;
+        --fafl-purple-dark: #37106a;
+        --fafl-purple-soft: #f3e8ff;
+        --fafl-purple-bg: #f7f2ff;
+        --fafl-border: #e9d5ff;
+        --fafl-text: #111827;
+        --fafl-muted: #6b7280;
+    }
+
     .messages-v2-wrap {
         padding: 18px;
-        background: #f5f3ff;
+        background: var(--fafl-purple-bg);
         min-height: calc(100vh - 80px);
     }
 
     .messages-shell {
         display: grid;
-        grid-template-columns: 220px 380px 1fr;
+        grid-template-columns: 220px 320px 1.4fr;
         gap: 16px;
-        max-width: 1500px;
+        max-width: 1560px;
         margin: 0 auto;
     }
 
@@ -413,7 +440,7 @@
     .msg-list-panel,
     .msg-reading-pane {
         background: #fff;
-        border: 1px solid #e9d5ff;
+        border: 1px solid var(--fafl-border);
         border-radius: 18px;
         box-shadow: 0 10px 24px rgba(74, 20, 140, 0.08);
         overflow: hidden;
@@ -436,50 +463,91 @@
         width: 42px;
         height: 42px;
         border-radius: 14px;
-        background: #4A148C;
+        background: var(--fafl-purple);
         color: #fff;
         display: grid;
         place-items: center;
         font-size: 1.25rem;
     }
 
+    .compose-btn {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+    }
+
     .btn-purple {
-        background: #4A148C;
-        border-color: #4A148C;
+        background: var(--fafl-purple);
+        border-color: var(--fafl-purple);
         color: #fff;
+        font-weight: 700;
     }
 
     .btn-purple:hover {
-        background: #37106a;
-        border-color: #37106a;
+        background: var(--fafl-purple-dark);
+        border-color: var(--fafl-purple-dark);
+        color: #fff;
+    }
+
+    .btn-outline-purple {
+        border-color: var(--fafl-purple);
+        color: var(--fafl-purple);
+    }
+
+    .btn-outline-purple:hover {
+        background: var(--fafl-purple);
+        color: #fff;
+    }
+
+    .btn-soft-warning {
+        border-color: #f59e0b;
+        color: #b45309;
+        background: #fffbeb;
+    }
+
+    .btn-soft-warning:hover {
+        background: #f59e0b;
+        color: #fff;
+    }
+
+    .btn-soft-danger {
+        border-color: #ef4444;
+        color: #b91c1c;
+        background: #fef2f2;
+    }
+
+    .btn-soft-danger:hover {
+        background: #ef4444;
         color: #fff;
     }
 
     .msg-nav {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 8px;
     }
 
     .msg-nav-link {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 10px 12px;
+        padding: 11px 12px;
         border-radius: 12px;
         color: #374151;
         text-decoration: none;
-        font-weight: 600;
+        font-weight: 700;
+        transition: all .18s ease;
     }
 
     .msg-nav-link:hover {
-        background: #f3e8ff;
-        color: #4A148C;
+        background: var(--fafl-purple-soft);
+        color: var(--fafl-purple);
     }
 
     .msg-nav-link.active {
-        background: #4A148C;
+        background: var(--fafl-purple);
         color: #fff;
+        box-shadow: 0 8px 18px rgba(74, 20, 140, 0.22);
     }
 
     .msg-list-panel {
@@ -509,10 +577,11 @@
     .msg-item {
         display: flex;
         gap: 12px;
-        padding: 14px;
+        padding: 14px 12px;
         text-decoration: none;
         color: inherit;
         border-bottom: 1px solid #f3f4f6;
+        transition: all .16s ease;
     }
 
     .msg-item:hover {
@@ -521,7 +590,8 @@
 
     .msg-item.selected {
         background: #f3e8ff;
-        border-left: 4px solid #4A148C;
+        border-left: 4px solid var(--fafl-purple);
+        padding-left: 8px;
     }
 
     .msg-item.unread {
@@ -533,8 +603,8 @@
         height: 38px;
         border-radius: 14px;
         background: #ede9fe;
-        color: #4A148C;
-        font-weight: 800;
+        color: var(--fafl-purple);
+        font-weight: 900;
         display: grid;
         place-items: center;
         flex: 0 0 auto;
@@ -551,19 +621,31 @@
         flex: 1;
     }
 
+    .msg-name-wrap {
+        min-width: 0;
+        flex: 1;
+    }
+
     .msg-name,
     .msg-subject {
-        font-weight: 700;
-        color: #111827;
+        font-weight: 800;
+        color: var(--fafl-text);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
 
+    .msg-reg {
+        font-size: 0.75rem;
+        color: var(--fafl-muted);
+        font-weight: 600;
+        line-height: 1.15;
+    }
+
     .msg-date,
     .msg-preview {
         font-size: 0.78rem;
-        color: #6b7280;
+        color: var(--fafl-muted);
     }
 
     .msg-preview {
@@ -573,15 +655,21 @@
     }
 
     .msg-badges {
-        margin-top: 6px;
+        margin-top: 7px;
         display: flex;
-        gap: 5px;
+        gap: 6px;
         flex-wrap: wrap;
     }
 
     .unread-badge {
         background: #FACC15;
         color: #111827;
+    }
+
+    .attach-badge {
+        background: #fff;
+        color: var(--fafl-purple);
+        border: 1px solid #d8b4fe;
     }
 
     .msg-pagination {
@@ -595,7 +683,7 @@
     .msg-reading-pane {
         height: calc(100vh - 120px);
         overflow-y: auto;
-        padding: 20px;
+        padding: 22px;
     }
 
     .read-header {
@@ -604,6 +692,11 @@
         gap: 12px;
         border-bottom: 1px solid #f1f1f1;
         padding-bottom: 16px;
+    }
+
+    .read-header h4 {
+        font-weight: 800;
+        color: var(--fafl-text);
     }
 
     .read-meta {
@@ -616,41 +709,50 @@
     .read-body {
         white-space: pre-wrap;
         line-height: 1.75;
-        color: #111827;
+        color: var(--fafl-text);
         background: #fff;
         border: 1px solid #f3f4f6;
-        border-radius: 14px;
-        padding: 18px;
+        border-radius: 16px;
+        padding: 20px;
+        min-height: 140px;
     }
 
     .attachment-section {
-        margin-top: 18px;
+        margin-top: 20px;
     }
 
     .attachment-grid {
         display: grid;
-        gap: 10px;
+        gap: 12px;
     }
 
     .attachment-card {
         border: 1px solid #e5e7eb;
-        border-radius: 14px;
-        padding: 12px;
+        border-radius: 16px;
+        padding: 14px;
         display: flex;
         align-items: center;
         gap: 12px;
-        background: #f9fafb;
+        background: #faf5ff;
+        transition: all .2s ease;
+    }
+
+    .attachment-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(74, 20, 140, .12);
+        border-color: #d8b4fe;
     }
 
     .attachment-icon {
-        width: 42px;
-        height: 42px;
-        border-radius: 12px;
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
         background: #ede9fe;
-        color: #4A148C;
+        color: var(--fafl-purple);
         display: grid;
         place-items: center;
-        font-size: 1.3rem;
+        font-size: 1.45rem;
+        flex: 0 0 auto;
     }
 
     .attachment-info {
@@ -659,23 +761,29 @@
     }
 
     .attachment-name {
-        font-weight: 700;
+        font-weight: 800;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        color: var(--fafl-text);
     }
 
     .attachment-actions {
         display: flex;
         gap: 6px;
+        flex: 0 0 auto;
     }
 
     .reply-card {
-        margin-top: 18px;
-        border: 1px solid #e9d5ff;
-        border-radius: 16px;
-        padding: 16px;
+        margin-top: 20px;
+        border: 1px solid #d8b4fe;
+        border-radius: 18px;
+        padding: 18px;
         background: #faf5ff;
+    }
+
+    .reply-card textarea {
+        resize: vertical;
     }
 
     .empty-state,
@@ -689,6 +797,7 @@
 
     .compose-modal {
         border-radius: 18px;
+        overflow: hidden;
     }
 
     .compose-recipient-actions {
@@ -706,7 +815,8 @@
     }
 
     .selected-badge {
-        font-weight: 700;
+        font-weight: 800;
+        padding: 6px 9px;
     }
 
     .selected-badge.zero {
@@ -715,13 +825,13 @@
     }
 
     .selected-badge.active {
-        background: #4A148C;
+        background: var(--fafl-purple);
         color: #fff;
     }
 
     @media (max-width: 1200px) {
         .messages-shell {
-            grid-template-columns: 190px 330px 1fr;
+            grid-template-columns: 190px 300px 1fr;
         }
     }
 

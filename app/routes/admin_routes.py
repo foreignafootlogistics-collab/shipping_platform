@@ -1096,26 +1096,101 @@ def message_forward(message_id):
 @admin_bp.route("/messages/attachments/<int:attachment_id>")
 @admin_required
 def view_message_attachment(attachment_id):
+    import requests
+    from flask import Response
+    from werkzeug.utils import secure_filename
+
     a = MessageAttachment.query.get_or_404(attachment_id)
     m = a.message
 
     if m.sender_id != current_user.id and m.recipient_id != current_user.id:
         abort(403)
 
-    return redirect(a.file_url)
+    filename = secure_filename(a.original_name or f"message_attachment_{a.id}") or f"message_attachment_{a.id}"
+
+    # ✅ If Cloudinary/raw file lost the extension, force PDF fallback
+    if "." not in filename:
+        filename = f"{filename}.pdf"
+
+    try:
+        r = requests.get(a.file_url, stream=True, timeout=30)
+    except Exception:
+        abort(502)
+
+    if r.status_code != 200:
+        abort(404)
+
+    content_type = r.headers.get("Content-Type") or "application/octet-stream"
+
+    # ✅ Force correct PDF handling
+    if filename.lower().endswith(".pdf"):
+        content_type = "application/pdf"
+    elif filename.lower().endswith((".jpg", ".jpeg")):
+        content_type = "image/jpeg"
+    elif filename.lower().endswith(".png"):
+        content_type = "image/png"
+    elif filename.lower().endswith(".webp"):
+        content_type = "image/webp"
+
+    def generate():
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                yield chunk
+
+    resp = Response(generate(), mimetype=content_type)
+    resp.headers["Content-Disposition"] = f'inline; filename="{filename}"'
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @admin_bp.route("/messages/attachments/<int:attachment_id>/download")
 @admin_required
 def download_message_attachment(attachment_id):
+    import requests
+    from flask import Response
+    from werkzeug.utils import secure_filename
+
     a = MessageAttachment.query.get_or_404(attachment_id)
     m = a.message
 
     if m.sender_id != current_user.id and m.recipient_id != current_user.id:
         abort(403)
 
-    return redirect(a.file_url)
+    filename = secure_filename(a.original_name or f"message_attachment_{a.id}") or f"message_attachment_{a.id}"
 
+    # ✅ If Cloudinary/raw file lost the extension, force PDF fallback
+    if "." not in filename:
+        filename = f"{filename}.pdf"
+
+    try:
+        r = requests.get(a.file_url, stream=True, timeout=30)
+    except Exception:
+        abort(502)
+
+    if r.status_code != 200:
+        abort(404)
+
+    content_type = r.headers.get("Content-Type") or "application/octet-stream"
+
+    # ✅ Force correct PDF/image content type
+    if filename.lower().endswith(".pdf"):
+        content_type = "application/pdf"
+    elif filename.lower().endswith((".jpg", ".jpeg")):
+        content_type = "image/jpeg"
+    elif filename.lower().endswith(".png"):
+        content_type = "image/png"
+    elif filename.lower().endswith(".webp"):
+        content_type = "image/webp"
+
+    def generate():
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                yield chunk
+
+    resp = Response(generate(), mimetype=content_type)
+    resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 # -------------------------
 # BULK ACTION HELPERS
 # -------------------------

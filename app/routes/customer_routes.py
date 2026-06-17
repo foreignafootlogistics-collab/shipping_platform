@@ -1999,6 +1999,53 @@ def customer_message_reply(msg_id):
     flash("Reply sent.", "success")
     return redirect(url_for("customer.view_messages", box="sent", message_id=msg.id))
 
+@customer_bp.route("/messages/<int:msg_id>/archive", methods=["POST"])
+@login_required
+def customer_message_archive(msg_id):
+    m = DBMessage.query.get_or_404(msg_id)
+
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        flash("You do not have access to that message.", "danger")
+        return redirect(url_for("customer.view_messages"))
+
+    if m.sender_id == current_user.id:
+        m.archived_by_sender = True
+    if m.recipient_id == current_user.id:
+        m.archived_by_recipient = True
+
+    db.session.commit()
+    flash("Message archived.", "success")
+
+    return redirect(url_for(
+        "customer.view_messages",
+        box=request.form.get("box") or "inbox",
+        page=request.form.get("page") or 1
+    ))
+
+
+@customer_bp.route("/messages/<int:msg_id>/delete", methods=["POST"])
+@login_required
+def customer_message_delete(msg_id):
+    m = DBMessage.query.get_or_404(msg_id)
+
+    if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+        flash("You do not have access to that message.", "danger")
+        return redirect(url_for("customer.view_messages"))
+
+    if m.sender_id == current_user.id:
+        m.deleted_by_sender = True
+    if m.recipient_id == current_user.id:
+        m.deleted_by_recipient = True
+
+    db.session.commit()
+    flash("Message deleted.", "success")
+
+    return redirect(url_for(
+        "customer.view_messages",
+        box=request.form.get("box") or "inbox",
+        page=request.form.get("page") or 1
+    ))
+
 
 @customer_bp.route("/messages/attachments/<int:attachment_id>")
 @login_required

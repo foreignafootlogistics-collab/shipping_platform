@@ -248,6 +248,9 @@
 
                     <form method="POST" action="{{ url_for('customer.customer_message_archive', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="box" value="{{ box }}">
+                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
+
                         <button type="submit" class="btn btn-sm btn-outline-warning" title="Archive">
                             <i class="bi bi-archive"></i>
                         </button>
@@ -255,6 +258,9 @@
 
                     <form method="POST" action="{{ url_for('customer.customer_message_delete', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="box" value="{{ box }}">
+                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
+
                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                             <i class="bi bi-trash"></i>
                         </button>

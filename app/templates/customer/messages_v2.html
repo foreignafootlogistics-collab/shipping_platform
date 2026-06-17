@@ -268,14 +268,35 @@
 
                 <div class="d-flex gap-2">
 
+                    {% if include_deleted %}
+
+                    <form method="POST" action="{{ url_for('customer.customer_message_restore', msg_id=m.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-success" title="Restore">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                        </button>
+                    </form>
+
+                    {% elif include_archived %}
+
+                    <form method="POST" action="{{ url_for('customer.customer_message_unarchive', msg_id=m.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-success" title="Move to Inbox">
+                            <i class="bi bi-inbox"></i>
+                        </button>
+                    </form>
+
+                    <form method="POST" action="{{ url_for('customer.customer_message_delete', msg_id=m.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+
+                    {% else %}
+
                     <form method="POST" action="{{ url_for('customer.customer_message_archive', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="box" value="{{ box }}">
-                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
-                        <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
-                        <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
-                        <input type="hidden" name="q" value="{{ q }}">
-
                         <button type="submit" class="btn btn-sm btn-outline-warning" title="Archive">
                             <i class="bi bi-archive"></i>
                         </button>
@@ -283,16 +304,12 @@
 
                     <form method="POST" action="{{ url_for('customer.customer_message_delete', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="box" value="{{ box }}">
-                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
-                        <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
-                        <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
-                        <input type="hidden" name="q" value="{{ q }}">
-
                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                             <i class="bi bi-trash"></i>
                         </button>
                     </form>
+
+                    {% endif %}
 
                 </div>
 

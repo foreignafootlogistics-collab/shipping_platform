@@ -250,6 +250,9 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="box" value="{{ box }}">
                         <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
+                        <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
+                        <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
+                        <input type="hidden" name="q" value="{{ q }}">
 
                         <button type="submit" class="btn btn-sm btn-outline-warning" title="Archive">
                             <i class="bi bi-archive"></i>
@@ -260,6 +263,9 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="box" value="{{ box }}">
                         <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
+                        <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
+                        <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
+                        <input type="hidden" name="q" value="{{ q }}">
 
                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                             <i class="bi bi-trash"></i>

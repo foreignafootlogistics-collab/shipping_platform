@@ -2019,7 +2019,10 @@ def customer_message_archive(msg_id):
     return redirect(url_for(
         "customer.view_messages",
         box=request.form.get("box") or "inbox",
-        page=request.form.get("page") or 1
+        page=request.form.get("page") or 1,
+        unread=request.form.get("unread"),
+        archived=request.form.get("archived"),
+        q=request.form.get("q"),
     ))
 
 
@@ -2043,7 +2046,10 @@ def customer_message_delete(msg_id):
     return redirect(url_for(
         "customer.view_messages",
         box=request.form.get("box") or "inbox",
-        page=request.form.get("page") or 1
+        page=request.form.get("page") or 1,
+        unread=request.form.get("unread"),
+        archived=request.form.get("archived"),
+        q=request.form.get("q"),
     ))
 
 

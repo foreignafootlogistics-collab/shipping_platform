@@ -1789,6 +1789,10 @@ def view_messages():
     # ---- Gmail-style mailbox controls ----
     box = (request.args.get("box") or "inbox").lower()   # inbox | sent | all
     q = (request.args.get("q") or "").strip()
+    unread_only = request.args.get("unread") == "1"
+    include_archived = request.args.get("archived") == "1"
+    page = request.args.get("page", type=int) or 1
+
     try:
         per_page = int(request.args.get("per_page") or 20)
     except Exception:
@@ -1821,7 +1825,27 @@ def view_messages():
             )
         )
 
-    messages_list = base.order_by(DBMessage.created_at.desc()).limit(per_page).all()
+    base = base.filter(sa.and_(
+        sa.or_(DBMessage.sender_id != current_user.id, DBMessage.deleted_by_sender.is_(False)),
+        sa.or_(DBMessage.recipient_id != current_user.id, DBMessage.deleted_by_recipient.is_(False)),
+    ))
+
+    if not include_archived:
+        base = base.filter(sa.and_(
+            sa.or_(DBMessage.sender_id != current_user.id, DBMessage.archived_by_sender.is_(False)),
+            sa.or_(DBMessage.recipient_id != current_user.id, DBMessage.archived_by_recipient.is_(False)),
+        ))
+
+    if unread_only:
+        base = base.filter(
+            DBMessage.recipient_id == current_user.id,
+            DBMessage.is_read.is_(False)
+        )
+
+    base = base.order_by(DBMessage.created_at.desc())
+
+    pagination = base.paginate(page=page, per_page=per_page, error_out=False)
+    messages_list = pagination.items
 
     # For display (always show "Administrator" as the other side)
     rows = []
@@ -1876,6 +1900,9 @@ def view_messages():
         per_page=per_page,
         selected_message=selected_message,
         selected_other=selected_other,
+        pagination=pagination,
+        unread_only=unread_only,
+        include_archived=include_archived,
     )
 
 

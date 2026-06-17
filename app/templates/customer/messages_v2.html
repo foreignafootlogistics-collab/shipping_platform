@@ -48,6 +48,24 @@
                     href="{{ url_for('customer.view_messages', box='all', q=q, per_page=per_page) }}">
                     <span><i class="bi bi-collection me-2"></i> All Mail</span>
                 </a>
+
+                <a class="msg-nav-link {% if unread_only %}active{% endif %}" href="{{ url_for('customer.view_messages',
+                    box=box,
+                    q=q,
+                    unread='1',
+                    archived='1' if include_archived else None,
+                    per_page=per_page) }}">
+                    <span><i class="bi bi-envelope-exclamation me-2"></i> Unread</span>
+                </a>
+
+                <a class="msg-nav-link {% if include_archived %}active{% endif %}" href="{{ url_for('customer.view_messages',
+                    box=box,
+                    q=q,
+                    archived='1',
+                    unread='1' if unread_only else None,
+                    per_page=per_page) }}">
+                    <span><i class="bi bi-archive me-2"></i> Archived</span>
+                </a>
             </div>
         </aside>
 
@@ -56,10 +74,20 @@
             <div class="msg-list-header">
                 <div>
                     <h4 class="mb-0">
-                        {% if box == 'sent' %}Sent{% elif box == 'all' %}All Mail{% else %}Inbox{% endif %}
+                        {% if include_archived %}
+                        Archived
+                        {% elif unread_only %}
+                        Unread
+                        {% elif box == 'sent' %}
+                        Sent
+                        {% elif box == 'all' %}
+                        All Mail
+                        {% else %}
+                        Inbox
+                        {% endif %}
                     </h4>
                     <div class="small text-muted">
-                        {{ rows|length }} message(s)
+                        {{ pagination.total if pagination else rows|length }} message(s)
                     </div>
                 </div>
 
@@ -159,6 +187,37 @@
                 {% endfor %}
                 {% endif %}
             </div>
+
+            {% if pagination %}
+            <div class="msg-pagination">
+                <div class="small text-muted">
+                    Page {{ pagination.page }} of {{ pagination.pages }}
+                    • {{ pagination.total }} total
+                </div>
+
+                <div class="btn-group btn-group-sm">
+                    <a class="btn btn-outline-secondary {% if not pagination.has_prev %}disabled{% endif %}" href="{{ url_for('customer.view_messages',
+                            box=box,
+                            q=q,
+                            unread='1' if unread_only else None,
+                            archived='1' if include_archived else None,
+                            per_page=per_page,
+                            page=pagination.prev_num) }}">
+                        <i class="bi bi-chevron-left"></i>
+                    </a>
+
+                    <a class="btn btn-outline-secondary {% if not pagination.has_next %}disabled{% endif %}" href="{{ url_for('customer.view_messages',
+                            box=box,
+                            q=q,
+                            unread='1' if unread_only else None,
+                            archived='1' if include_archived else None,
+                            per_page=per_page,
+                            page=pagination.next_num) }}">
+                        <i class="bi bi-chevron-right"></i>
+                    </a>
+                </div>
+            </div>
+            {% endif %}
         </section>
 
         <!-- RIGHT READING PANE -->
@@ -169,8 +228,10 @@
             {% set is_sent_selected = (m.sender_id == current_user.id) %}
 
             <div class="read-header">
+
                 <div>
                     <h4 class="mb-1">{{ m.subject or "Message" }}</h4>
+
                     <div class="small text-muted">
                         Conversation with
                         <strong>
@@ -182,6 +243,25 @@
                         </strong>
                     </div>
                 </div>
+
+                <div class="d-flex gap-2">
+
+                    <form method="POST" action="{{ url_for('customer.customer_message_archive', msg_id=m.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-outline-warning" title="Archive">
+                            <i class="bi bi-archive"></i>
+                        </button>
+                    </form>
+
+                    <form method="POST" action="{{ url_for('customer.customer_message_delete', msg_id=m.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+
+                </div>
+
             </div>
 
             <div class="read-meta">
@@ -724,6 +804,14 @@
             height: auto;
             position: static;
         }
+    }
+
+    .msg-pagination {
+        border-top: 1px solid #f1f1f1;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
     }
 </style>
 {% endblock %}

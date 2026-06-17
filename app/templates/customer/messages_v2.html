@@ -3,7 +3,6 @@
 
 {% block content %}
 <div class="messages-v2-wrap">
-
     <div class="messages-shell">
 
         <!-- LEFT SIDEBAR -->
@@ -23,42 +22,33 @@
             </button>
 
             <div class="msg-nav mt-4">
-                <a class="msg-nav-link {% if box=='inbox' and not unread_only and not include_archived %}active{% endif %}"
+                <a class="msg-nav-link {% if box=='inbox' and not unread_only and not include_archived and not include_deleted %}active{% endif %}"
                     href="{{ url_for('customer.view_messages', box='inbox', q=q, per_page=per_page) }}">
                     <span><i class="bi bi-inbox me-2"></i> Inbox</span>
                 </a>
 
-                <a class="msg-nav-link {% if box=='sent' and not unread_only and not include_archived %}active{% endif %}"
+                <a class="msg-nav-link {% if box=='sent' and not unread_only and not include_archived and not include_deleted %}active{% endif %}"
                     href="{{ url_for('customer.view_messages', box='sent', q=q, per_page=per_page) }}">
                     <span><i class="bi bi-send me-2"></i> Sent</span>
                 </a>
 
-                <a class="msg-nav-link {% if box=='all' and not unread_only and not include_archived %}active{% endif %}"
+                <a class="msg-nav-link {% if box=='all' and not unread_only and not include_archived and not include_deleted %}active{% endif %}"
                     href="{{ url_for('customer.view_messages', box='all', q=q, per_page=per_page) }}">
                     <span><i class="bi bi-collection me-2"></i> All Mail</span>
                 </a>
 
-                <a class="msg-nav-link {% if unread_only and not include_archived %}active{% endif %}" href="{{ url_for('customer.view_messages',
-    box='inbox',
-    q=q,
-    unread='1',
-    per_page=per_page) }}">
+                <a class="msg-nav-link {% if unread_only and not include_archived and not include_deleted %}active{% endif %}"
+                    href="{{ url_for('customer.view_messages', box='inbox', q=q, unread='1', per_page=per_page) }}">
                     <span><i class="bi bi-envelope-exclamation me-2"></i> Unread</span>
                 </a>
 
-                <a class="msg-nav-link {% if include_archived %}active{% endif %}" href="{{ url_for('customer.view_messages',
-    box='inbox',
-    q=q,
-    archived='1',
-    per_page=per_page) }}">
+                <a class="msg-nav-link {% if include_archived and not include_deleted %}active{% endif %}"
+                    href="{{ url_for('customer.view_messages', box='inbox', q=q, archived='1', per_page=per_page) }}">
                     <span><i class="bi bi-archive me-2"></i> Archived</span>
                 </a>
 
-                <a class="msg-nav-link {% if include_deleted %}active{% endif %}" href="{{ url_for('customer.view_messages',
-        box='inbox',
-        q=q,
-        trash='1',
-        per_page=per_page) }}">
+                <a class="msg-nav-link {% if include_deleted %}active{% endif %}"
+                    href="{{ url_for('customer.view_messages', box='inbox', q=q, trash='1', per_page=per_page) }}">
                     <span><i class="bi bi-trash me-2"></i> Trash</span>
                 </a>
             </div>
@@ -69,7 +59,9 @@
             <div class="msg-list-header">
                 <div>
                     <h4 class="mb-0">
-                        {% if include_archived %}
+                        {% if include_deleted %}
+                        Trash
+                        {% elif include_archived %}
                         Archived
                         {% elif unread_only %}
                         Unread
@@ -86,16 +78,67 @@
                     </div>
                 </div>
 
-                <a class="btn btn-sm btn-outline-purple" href="{{ url_for(
-                        'customer.view_messages',
-                        box=box,
-                        q=q,
-                        unread='1' if unread_only else None,
-                        archived='1' if include_archived else None,
-                        per_page=per_page
-                    ) }}">
-                    <i class="bi bi-arrow-clockwise"></i>
-                </a>
+                <div class="header-actions">
+                    <div class="bulk-icon-bar" title="Bulk actions">
+                        <label class="icon-check" title="Select all">
+                            <input type="checkbox" id="selectAllMessages">
+                        </label>
+
+                        {% if include_deleted %}
+                        <button type="submit" form="bulkMessageForm"
+                            formaction="{{ url_for('customer.customer_messages_bulk_restore') }}"
+                            class="icon-action text-success" title="Restore selected">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                        </button>
+                        {% elif include_archived %}
+                        <button type="submit" form="bulkMessageForm"
+                            formaction="{{ url_for('customer.customer_messages_bulk_unarchive') }}"
+                            class="icon-action text-success" title="Move selected to inbox">
+                            <i class="bi bi-inbox"></i>
+                        </button>
+                        <button type="submit" form="bulkMessageForm"
+                            formaction="{{ url_for('customer.customer_messages_bulk_delete') }}"
+                            class="icon-action text-danger" title="Delete selected">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                        {% else %}
+                        <button type="submit" form="bulkMessageForm"
+                            formaction="{{ url_for('customer.customer_messages_bulk_archive') }}"
+                            class="icon-action text-warning" title="Archive selected">
+                            <i class="bi bi-archive"></i>
+                        </button>
+                        <button type="submit" form="bulkMessageForm"
+                            formaction="{{ url_for('customer.customer_messages_bulk_delete') }}"
+                            class="icon-action text-danger" title="Delete selected">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                        {% endif %}
+
+                        <button type="submit" form="bulkMessageForm"
+                            formaction="{{ url_for('customer.customer_messages_bulk_mark_read') }}"
+                            class="icon-action text-secondary" title="Mark selected as read">
+                            <i class="bi bi-envelope-open"></i>
+                        </button>
+
+                        <button type="submit" form="bulkMessageForm"
+                            formaction="{{ url_for('customer.customer_messages_bulk_mark_unread') }}"
+                            class="icon-action text-secondary" title="Mark selected as unread">
+                            <i class="bi bi-envelope"></i>
+                        </button>
+                    </div>
+
+                    <a class="btn btn-sm btn-outline-purple" title="Refresh" href="{{ url_for(
+                            'customer.view_messages',
+                            box=box,
+                            q=q,
+                            unread='1' if unread_only else None,
+                            archived='1' if include_archived else None,
+                            trash='1' if include_deleted else None,
+                            per_page=per_page
+                       ) }}">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </a>
+                </div>
             </div>
 
             <form class="msg-search" method="GET" action="{{ url_for('customer.view_messages') }}">
@@ -122,50 +165,6 @@
                 <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
                 <input type="hidden" name="trash" value="{{ '1' if include_deleted else '' }}">
 
-                <div class="bulk-toolbar">
-                    <label class="bulk-select">
-                        <input type="checkbox" id="selectAllMessages">
-                        <span>Select</span>
-                    </label>
-
-                    <div class="bulk-actions">
-                        {% if include_deleted %}
-                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_restore') }}"
-                            class="btn btn-sm btn-success">
-                            <i class="bi bi-arrow-counterclockwise"></i> Restore
-                        </button>
-                        {% elif include_archived %}
-                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_unarchive') }}"
-                            class="btn btn-sm btn-success">
-                            <i class="bi bi-inbox"></i> Move to Inbox
-                        </button>
-                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_delete') }}"
-                            class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-trash"></i> Delete
-                        </button>
-                        {% else %}
-                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_archive') }}"
-                            class="btn btn-sm btn-outline-warning">
-                            <i class="bi bi-archive"></i> Archive
-                        </button>
-                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_delete') }}"
-                            class="btn btn-sm btn-outline-danger">
-                            <i class="bi bi-trash"></i> Delete
-                        </button>
-                        {% endif %}
-
-                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_mark_read') }}"
-                            class="btn btn-sm btn-outline-secondary">
-                            Read
-                        </button>
-
-                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_mark_unread') }}"
-                            class="btn btn-sm btn-outline-secondary">
-                            Unread
-                        </button>
-                    </div>
-                </div>
-
                 <div class="msg-list">
                     {% if rows|length == 0 %}
                     <div class="empty-state">
@@ -181,23 +180,23 @@
                     {% set is_unread = (m.recipient_id == current_user.id and not m.is_read) %}
                     {% set is_selected = selected_message and selected_message.id == m.id %}
 
-                    <div class="msg-row-wrap">
+                    <div
+                        class="msg-row-wrap {% if is_selected %}selected{% endif %} {% if is_unread %}unread{% endif %}">
                         <div class="msg-check">
                             <input type="checkbox" class="message-checkbox" name="message_ids" value="{{ m.id }}">
                         </div>
 
-                        <a class="msg-item {% if is_selected %}selected{% endif %} {% if is_unread %}unread{% endif %}"
-                            href="{{ url_for(
-                    'customer.view_messages',
-                    box=box,
-                    q=q,
-                    unread='1' if unread_only else None,
-                    archived='1' if include_archived else None,
-                    trash='1' if include_deleted else None,
-                    per_page=per_page,
-                    page=pagination.page if pagination else 1,
-                    message_id=m.id
-               ) }}">
+                        <a class="msg-item" href="{{ url_for(
+                                'customer.view_messages',
+                                box=box,
+                                q=q,
+                                unread='1' if unread_only else None,
+                                archived='1' if include_archived else None,
+                                trash='1' if include_deleted else None,
+                                per_page=per_page,
+                                page=pagination.page if pagination else 1,
+                                message_id=m.id
+                           ) }}">
 
                             <div class="msg-avatar">
                                 {% if is_sent %}Y{% else %}A{% endif %}
@@ -258,31 +257,37 @@
                     {% endif %}
                 </div>
             </form>
+
             {% if pagination %}
             <div class="msg-pagination">
                 <div class="small text-muted">
-                    Page {{ pagination.page }} of {{ pagination.pages }}
-                    • {{ pagination.total }} total
+                    Page {{ pagination.page }} of {{ pagination.pages }} • {{ pagination.total }} total
                 </div>
 
                 <div class="btn-group btn-group-sm">
-                    <a class="btn btn-outline-secondary {% if not pagination.has_prev %}disabled{% endif %}" href="{{ url_for('customer.view_messages',
+                    <a class="btn btn-outline-secondary {% if not pagination.has_prev %}disabled{% endif %}" href="{{ url_for(
+                            'customer.view_messages',
                             box=box,
                             q=q,
                             unread='1' if unread_only else None,
                             archived='1' if include_archived else None,
+                            trash='1' if include_deleted else None,
                             per_page=per_page,
-                            page=pagination.prev_num) }}">
+                            page=pagination.prev_num
+                       ) }}">
                         <i class="bi bi-chevron-left"></i>
                     </a>
 
-                    <a class="btn btn-outline-secondary {% if not pagination.has_next %}disabled{% endif %}" href="{{ url_for('customer.view_messages',
+                    <a class="btn btn-outline-secondary {% if not pagination.has_next %}disabled{% endif %}" href="{{ url_for(
+                            'customer.view_messages',
                             box=box,
                             q=q,
                             unread='1' if unread_only else None,
                             archived='1' if include_archived else None,
+                            trash='1' if include_deleted else None,
                             per_page=per_page,
-                            page=pagination.next_num) }}">
+                            page=pagination.next_num
+                       ) }}">
                         <i class="bi bi-chevron-right"></i>
                     </a>
                 </div>
@@ -298,10 +303,8 @@
             {% set is_sent_selected = (m.sender_id == current_user.id) %}
 
             <div class="read-header">
-
                 <div>
                     <h4 class="mb-1">{{ m.subject or "Message" }}</h4>
-
                     <div class="small text-muted">
                         Conversation with
                         <strong>
@@ -315,52 +318,41 @@
                 </div>
 
                 <div class="d-flex gap-2">
-
                     {% if include_deleted %}
-
                     <form method="POST" action="{{ url_for('customer.customer_message_restore', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-success" title="Restore">
                             <i class="bi bi-arrow-counterclockwise"></i>
                         </button>
                     </form>
-
                     {% elif include_archived %}
-
                     <form method="POST" action="{{ url_for('customer.customer_message_unarchive', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-success" title="Move to Inbox">
                             <i class="bi bi-inbox"></i>
                         </button>
                     </form>
-
                     <form method="POST" action="{{ url_for('customer.customer_message_delete', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                             <i class="bi bi-trash"></i>
                         </button>
                     </form>
-
                     {% else %}
-
                     <form method="POST" action="{{ url_for('customer.customer_message_archive', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-outline-warning" title="Archive">
                             <i class="bi bi-archive"></i>
                         </button>
                     </form>
-
                     <form method="POST" action="{{ url_for('customer.customer_message_delete', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                             <i class="bi bi-trash"></i>
                         </button>
                     </form>
-
                     {% endif %}
-
                 </div>
-
             </div>
 
             <div class="read-meta">
@@ -394,9 +386,9 @@
 
                 <div class="attachment-grid">
                     {% for a in m.attachments %}
+                    {% set name = (a.original_name or '')|lower %}
                     <div class="attachment-card">
                         <div class="attachment-icon">
-                            {% set name = (a.original_name or '')|lower %}
                             {% if name.endswith('.pdf') %}
                             <i class="bi bi-file-earmark-pdf"></i>
                             {% elif name.endswith('.png') or name.endswith('.jpg') or name.endswith('.jpeg') or
@@ -463,7 +455,6 @@
                     </div>
                 </form>
             </div>
-
             {% else %}
             <div class="empty-reading-pane">
                 <i class="bi bi-chat-left-text fs-1 text-muted"></i>
@@ -480,7 +471,6 @@
 <div class="modal fade" id="composeModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content compose-modal">
-
             <div class="modal-header">
                 <h5 class="modal-title">
                     <i class="bi bi-pencil-square me-1"></i> New Message
@@ -517,7 +507,6 @@
                     </button>
                 </div>
             </form>
-
         </div>
     </div>
 </div>
@@ -541,10 +530,12 @@
 
     .messages-shell {
         display: grid;
-        grid-template-columns: 210px 350px 1fr;
+        grid-template-columns: 210px minmax(380px, 430px) minmax(650px, 1fr);
         gap: 16px;
-        max-width: 1450px;
+        max-width: 1600px;
         margin: 0 auto;
+        height: calc(100vh - 118px);
+        min-height: 650px;
     }
 
     .msg-sidebar,
@@ -555,13 +546,12 @@
         border-radius: 18px;
         box-shadow: 0 10px 24px rgba(74, 20, 140, 0.08);
         overflow: hidden;
+        min-height: 0;
     }
 
     .msg-sidebar {
         padding: 18px;
-        height: calc(100vh - 120px);
-        position: sticky;
-        top: 90px;
+        overflow-y: auto;
     }
 
     .msg-brand {
@@ -579,12 +569,6 @@
         display: grid;
         place-items: center;
         font-size: 1.25rem;
-    }
-
-    .compose-btn {
-        position: sticky;
-        top: 0;
-        z-index: 2;
     }
 
     .btn-purple {
@@ -640,51 +624,124 @@
     }
 
     .msg-list-panel {
-        height: calc(100vh - 120px);
         display: flex;
         flex-direction: column;
     }
 
     .msg-list-header {
-        padding: 18px;
+        padding: 16px;
         border-bottom: 1px solid #f1f1f1;
         display: flex;
         justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        flex: 0 0 auto;
+    }
+
+    .header-actions {
+        display: flex;
         align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+    }
+
+    .bulk-icon-bar {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid #d8b4fe;
+        border-radius: 10px;
+        overflow: hidden;
+        background: #fff;
+        box-shadow: 0 4px 12px rgba(74, 20, 140, 0.08);
+    }
+
+    .icon-check,
+    .icon-action {
+        width: 34px;
+        height: 32px;
+        display: grid;
+        place-items: center;
+        border: 0;
+        border-right: 1px solid #eee;
+        background: #fff;
+        margin: 0;
+        cursor: pointer;
+    }
+
+    .icon-action:last-child {
+        border-right: 0;
+    }
+
+    .icon-action:hover,
+    .icon-check:hover {
+        background: #faf5ff;
+    }
+
+    .icon-check input {
+        margin: 0;
     }
 
     .msg-search {
         padding: 12px 14px;
         border-bottom: 1px solid #f1f1f1;
+        flex: 0 0 auto;
+    }
+
+    #bulkMessageForm {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
     }
 
     .msg-list {
         overflow-y: auto;
-        flex: 1;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+    .msg-row-wrap {
+        display: flex;
+        align-items: stretch;
+        border-bottom: 1px solid #f3f4f6;
+        background: #fff;
+    }
+
+    .msg-row-wrap.selected {
+        background: #f3e8ff;
+        border-left: 4px solid var(--fafl-purple);
+    }
+
+    .msg-row-wrap.unread {
+        background: #fff7d6;
+    }
+
+    .msg-check {
+        width: 34px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 34px;
+        background: transparent;
+    }
+
+    .msg-check input {
+        margin: 0;
     }
 
     .msg-item {
+        flex: 1;
         display: flex;
         gap: 12px;
         padding: 14px 12px;
         text-decoration: none;
         color: inherit;
-        border-bottom: 1px solid #f3f4f6;
+        border-bottom: 0;
         transition: all .16s ease;
+        min-width: 0;
     }
 
     .msg-item:hover {
-        background: #faf5ff;
-    }
-
-    .msg-item.selected {
-        background: #f3e8ff;
-        border-left: 4px solid var(--fafl-purple);
-        padding-left: 8px;
-    }
-
-    .msg-item.unread {
-        background: #fff7d6;
+        background: rgba(250, 245, 255, 0.75);
     }
 
     .msg-avatar {
@@ -766,8 +823,17 @@
         border: 1px solid #d8b4fe;
     }
 
+    .msg-pagination {
+        border-top: 1px solid #f1f1f1;
+        padding: 10px 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex: 0 0 auto;
+        background: #fff;
+    }
+
     .msg-reading-pane {
-        height: calc(100vh - 120px);
         overflow-y: auto;
         padding: 22px;
     }
@@ -778,6 +844,10 @@
         gap: 12px;
         border-bottom: 1px solid #f1f1f1;
         padding-bottom: 16px;
+        position: sticky;
+        top: -22px;
+        background: #fff;
+        z-index: 20;
     }
 
     .read-header h4 {
@@ -874,7 +944,7 @@
 
     .empty-state,
     .empty-reading-pane {
-        height: 100%;
+        min-height: 300px;
         display: grid;
         place-items: center;
         text-align: center;
@@ -888,72 +958,30 @@
 
     @media (max-width: 1200px) {
         .messages-shell {
-            grid-template-columns: 190px 310px 1fr;
+            grid-template-columns: 190px 340px 1fr;
         }
     }
 
     @media (max-width: 992px) {
         .messages-shell {
             grid-template-columns: 1fr;
+            height: auto;
         }
 
         .msg-sidebar,
         .msg-list-panel,
         .msg-reading-pane {
             height: auto;
+            max-height: none;
+        }
+
+        .msg-reading-pane {
+            min-height: 500px;
+        }
+
+        .read-header {
             position: static;
         }
-    }
-
-    .msg-pagination {
-        border-top: 1px solid #f1f1f1;
-        padding: 10px 14px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
-    .bulk-toolbar {
-        padding: 10px 14px;
-        border-bottom: 1px solid #f1f1f1;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        background: #faf5ff;
-    }
-
-    .bulk-select {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: .82rem;
-        font-weight: 700;
-        color: var(--fafl-purple);
-    }
-
-    .bulk-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-    }
-
-    .msg-row-wrap {
-        display: flex;
-        align-items: stretch;
-        border-bottom: 1px solid #f3f4f6;
-    }
-
-    .msg-check {
-        width: 34px;
-        display: grid;
-        place-items: center;
-        background: #fff;
-    }
-
-    .msg-row-wrap .msg-item {
-        flex: 1;
-        border-bottom: 0;
     }
 </style>
 

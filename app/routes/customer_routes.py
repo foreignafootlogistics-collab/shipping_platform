@@ -2120,6 +2120,175 @@ def customer_message_unarchive(msg_id):
 
     return redirect(url_for("customer.view_messages", box="inbox"))
 
+def _customer_bulk_message_ids():
+    ids = request.form.getlist("message_ids")
+    return [int(x) for x in ids if str(x).isdigit()]
+
+
+def _customer_redirect_back_to_messages(default_box="inbox"):
+    return redirect(url_for(
+        "customer.view_messages",
+        box=request.form.get("box") or default_box,
+        q=request.form.get("q") or None,
+        unread=request.form.get("unread") or None,
+        archived=request.form.get("archived") or None,
+        trash=request.form.get("trash") or None,
+        per_page=request.form.get("per_page") or None,
+        page=request.form.get("page") or None,
+    ))
+
+
+@customer_bp.route("/messages/bulk-archive", methods=["POST"])
+@login_required
+def customer_messages_bulk_archive():
+    ids = _customer_bulk_message_ids()
+    if not ids:
+        flash("Select at least one message.", "warning")
+        return _customer_redirect_back_to_messages()
+
+    msgs = DBMessage.query.filter(DBMessage.id.in_(ids)).all()
+    changed = 0
+
+    for m in msgs:
+        if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+            continue
+
+        if m.sender_id == current_user.id:
+            m.archived_by_sender = True
+        if m.recipient_id == current_user.id:
+            m.archived_by_recipient = True
+
+        changed += 1
+
+    db.session.commit()
+    flash(f"Archived {changed} message(s).", "success")
+    return _customer_redirect_back_to_messages()
+
+
+@customer_bp.route("/messages/bulk-delete", methods=["POST"])
+@login_required
+def customer_messages_bulk_delete():
+    ids = _customer_bulk_message_ids()
+    if not ids:
+        flash("Select at least one message.", "warning")
+        return _customer_redirect_back_to_messages()
+
+    msgs = DBMessage.query.filter(DBMessage.id.in_(ids)).all()
+    changed = 0
+
+    for m in msgs:
+        if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+            continue
+
+        if m.sender_id == current_user.id:
+            m.deleted_by_sender = True
+        if m.recipient_id == current_user.id:
+            m.deleted_by_recipient = True
+
+        changed += 1
+
+    db.session.commit()
+    flash(f"Deleted {changed} message(s).", "success")
+    return _customer_redirect_back_to_messages()
+
+
+@customer_bp.route("/messages/bulk-restore", methods=["POST"])
+@login_required
+def customer_messages_bulk_restore():
+    ids = _customer_bulk_message_ids()
+    if not ids:
+        flash("Select at least one message.", "warning")
+        return _customer_redirect_back_to_messages()
+
+    msgs = DBMessage.query.filter(DBMessage.id.in_(ids)).all()
+    changed = 0
+
+    for m in msgs:
+        if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+            continue
+
+        if m.sender_id == current_user.id:
+            m.deleted_by_sender = False
+            m.archived_by_sender = False
+        if m.recipient_id == current_user.id:
+            m.deleted_by_recipient = False
+            m.archived_by_recipient = False
+
+        changed += 1
+
+    db.session.commit()
+    flash(f"Restored {changed} message(s).", "success")
+    return redirect(url_for("customer.view_messages", box="inbox"))
+
+
+@customer_bp.route("/messages/bulk-unarchive", methods=["POST"])
+@login_required
+def customer_messages_bulk_unarchive():
+    ids = _customer_bulk_message_ids()
+    if not ids:
+        flash("Select at least one message.", "warning")
+        return _customer_redirect_back_to_messages()
+
+    msgs = DBMessage.query.filter(DBMessage.id.in_(ids)).all()
+    changed = 0
+
+    for m in msgs:
+        if m.sender_id != current_user.id and m.recipient_id != current_user.id:
+            continue
+
+        if m.sender_id == current_user.id:
+            m.archived_by_sender = False
+        if m.recipient_id == current_user.id:
+            m.archived_by_recipient = False
+
+        changed += 1
+
+    db.session.commit()
+    flash(f"Moved {changed} message(s) to inbox.", "success")
+    return redirect(url_for("customer.view_messages", box="inbox"))
+
+
+@customer_bp.route("/messages/bulk-mark-read", methods=["POST"])
+@login_required
+def customer_messages_bulk_mark_read():
+    ids = _customer_bulk_message_ids()
+    if not ids:
+        flash("Select at least one message.", "warning")
+        return _customer_redirect_back_to_messages()
+
+    msgs = DBMessage.query.filter(DBMessage.id.in_(ids)).all()
+    changed = 0
+
+    for m in msgs:
+        if m.recipient_id == current_user.id and not m.is_read:
+            m.is_read = True
+            changed += 1
+
+    db.session.commit()
+    flash(f"Marked {changed} message(s) as read.", "success")
+    return _customer_redirect_back_to_messages()
+
+
+@customer_bp.route("/messages/bulk-mark-unread", methods=["POST"])
+@login_required
+def customer_messages_bulk_mark_unread():
+    ids = _customer_bulk_message_ids()
+    if not ids:
+        flash("Select at least one message.", "warning")
+        return _customer_redirect_back_to_messages()
+
+    msgs = DBMessage.query.filter(DBMessage.id.in_(ids)).all()
+    changed = 0
+
+    for m in msgs:
+        if m.recipient_id == current_user.id and m.is_read:
+            m.is_read = False
+            changed += 1
+
+    db.session.commit()
+    flash(f"Marked {changed} message(s) as unread.", "success")
+    return _customer_redirect_back_to_messages()
+
 @customer_bp.route("/messages/attachments/<int:attachment_id>")
 @login_required
 def view_message_attachment(attachment_id):

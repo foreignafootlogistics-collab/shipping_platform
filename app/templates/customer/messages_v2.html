@@ -103,6 +103,7 @@
                 <input type="hidden" name="per_page" value="{{ per_page }}">
                 <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
                 <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
+                <input type="hidden" name="trash" value="{{ '1' if include_deleted else '' }}">
 
                 <div class="input-group input-group-sm">
                     <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
@@ -111,94 +112,152 @@
                 </div>
             </form>
 
-            <div class="msg-list">
-                {% if rows|length == 0 %}
-                <div class="empty-state">
-                    <i class="bi bi-inbox fs-1 text-muted"></i>
-                    <div class="fw-semibold mt-2">No messages found</div>
-                    <div class="small text-muted">Try another filter or search term.</div>
-                </div>
-                {% else %}
-                {% for row in rows %}
-                {% set m = row[0] %}
-                {% set other = row[1] %}
-                {% set is_sent = (m.sender_id == current_user.id) %}
-                {% set is_unread = (m.recipient_id == current_user.id and not m.is_read) %}
-                {% set is_selected = selected_message and selected_message.id == m.id %}
+            <form method="POST" id="bulkMessageForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="box" value="{{ box }}">
+                <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
+                <input type="hidden" name="per_page" value="{{ per_page }}">
+                <input type="hidden" name="q" value="{{ q }}">
+                <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
+                <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
+                <input type="hidden" name="trash" value="{{ '1' if include_deleted else '' }}">
 
-                <a class="msg-item {% if is_selected %}selected{% endif %} {% if is_unread %}unread{% endif %}" href="{{ url_for(
-                         'customer.view_messages',
-                         box=box,
-                         q=q,
-                         unread='1' if unread_only else None,
-                         archived='1' if include_archived else None,
-                         per_page=per_page,
-                         page=pagination.page if pagination else 1,
-                         message_id=m.id
-                    ) }}">
+                <div class="bulk-toolbar">
+                    <label class="bulk-select">
+                        <input type="checkbox" id="selectAllMessages">
+                        <span>Select</span>
+                    </label>
 
-                    <div class="msg-avatar">
-                        {% if is_sent %}
-                        Y
+                    <div class="bulk-actions">
+                        {% if include_deleted %}
+                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_restore') }}"
+                            class="btn btn-sm btn-success">
+                            <i class="bi bi-arrow-counterclockwise"></i> Restore
+                        </button>
+                        {% elif include_archived %}
+                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_unarchive') }}"
+                            class="btn btn-sm btn-success">
+                            <i class="bi bi-inbox"></i> Move to Inbox
+                        </button>
+                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_delete') }}"
+                            class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-trash"></i> Delete
+                        </button>
                         {% else %}
-                        A
+                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_archive') }}"
+                            class="btn btn-sm btn-outline-warning">
+                            <i class="bi bi-archive"></i> Archive
+                        </button>
+                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_delete') }}"
+                            class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-trash"></i> Delete
+                        </button>
                         {% endif %}
-                    </div>
 
-                    <div class="msg-item-body">
-                        <div class="d-flex justify-content-between align-items-start gap-2">
-                            <div class="msg-name-wrap">
-                                <div class="msg-name">
+                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_mark_read') }}"
+                            class="btn btn-sm btn-outline-secondary">
+                            Read
+                        </button>
+
+                        <button type="submit" formaction="{{ url_for('customer.customer_messages_bulk_mark_unread') }}"
+                            class="btn btn-sm btn-outline-secondary">
+                            Unread
+                        </button>
+                    </div>
+                </div>
+
+                <div class="msg-list">
+                    {% if rows|length == 0 %}
+                    <div class="empty-state">
+                        <i class="bi bi-inbox fs-1 text-muted"></i>
+                        <div class="fw-semibold mt-2">No messages found</div>
+                        <div class="small text-muted">Try another filter or search term.</div>
+                    </div>
+                    {% else %}
+                    {% for row in rows %}
+                    {% set m = row[0] %}
+                    {% set other = row[1] %}
+                    {% set is_sent = (m.sender_id == current_user.id) %}
+                    {% set is_unread = (m.recipient_id == current_user.id and not m.is_read) %}
+                    {% set is_selected = selected_message and selected_message.id == m.id %}
+
+                    <div class="msg-row-wrap">
+                        <div class="msg-check">
+                            <input type="checkbox" class="message-checkbox" name="message_ids" value="{{ m.id }}">
+                        </div>
+
+                        <a class="msg-item {% if is_selected %}selected{% endif %} {% if is_unread %}unread{% endif %}"
+                            href="{{ url_for(
+                    'customer.view_messages',
+                    box=box,
+                    q=q,
+                    unread='1' if unread_only else None,
+                    archived='1' if include_archived else None,
+                    trash='1' if include_deleted else None,
+                    per_page=per_page,
+                    page=pagination.page if pagination else 1,
+                    message_id=m.id
+               ) }}">
+
+                            <div class="msg-avatar">
+                                {% if is_sent %}Y{% else %}A{% endif %}
+                            </div>
+
+                            <div class="msg-item-body">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <div class="msg-name-wrap">
+                                        <div class="msg-name">
+                                            {% if is_sent %}
+                                            You
+                                            {% else %}
+                                            {{ other.full_name if other else "Administrator" }}
+                                            {% endif %}
+                                        </div>
+
+                                        <div class="msg-reg">
+                                            {% if is_sent %}Sent to FAFL{% else %}Foreign A Foot Logistics{% endif %}
+                                        </div>
+                                    </div>
+
+                                    <div class="msg-date">
+                                        {{ to_jamaica(m.created_at).strftime('%b %d') if m.created_at else "" }}
+                                    </div>
+                                </div>
+
+                                <div class="msg-subject">
+                                    {{ m.subject or "Message" }}
+                                </div>
+
+                                <div class="msg-preview">
+                                    {{ (m.body or "")[:95] }}{% if (m.body or "")|length > 95 %}…{% endif %}
+                                </div>
+
+                                <div class="msg-badges">
                                     {% if is_sent %}
-                                    You
+                                    <span class="badge bg-secondary">Sent</span>
                                     {% else %}
-                                    {{ other.full_name if other else "Administrator" }}
+                                    <span class="badge bg-primary">Received</span>
+                                    {% endif %}
+
+                                    {% if is_unread %}
+                                    <span class="badge unread-badge">Unread</span>
+                                    {% else %}
+                                    <span class="badge read-badge">Read</span>
+                                    {% endif %}
+
+                                    {% if m.attachments %}
+                                    <span class="badge attach-badge">
+                                        <i class="bi bi-paperclip"></i> {{ m.attachments|length }}
+                                    </span>
                                     {% endif %}
                                 </div>
-
-                                <div class="msg-reg">
-                                    {% if is_sent %}Sent to FAFL{% else %}Foreign A Foot Logistics{% endif %}
-                                </div>
                             </div>
-
-                            <div class="msg-date">
-                                {{ to_jamaica(m.created_at).strftime('%b %d') if m.created_at else "" }}
-                            </div>
-                        </div>
-
-                        <div class="msg-subject">
-                            {{ m.subject or "Message" }}
-                        </div>
-
-                        <div class="msg-preview">
-                            {{ (m.body or "")[:95] }}{% if (m.body or "")|length > 95 %}…{% endif %}
-                        </div>
-
-                        <div class="msg-badges">
-                            {% if is_sent %}
-                            <span class="badge bg-secondary">Sent</span>
-                            {% else %}
-                            <span class="badge bg-primary">Received</span>
-                            {% endif %}
-
-                            {% if is_unread %}
-                            <span class="badge unread-badge">Unread</span>
-                            {% else %}
-                            <span class="badge read-badge">Read</span>
-                            {% endif %}
-
-                            {% if m.attachments %}
-                            <span class="badge attach-badge">
-                                <i class="bi bi-paperclip"></i> {{ m.attachments|length }}
-                            </span>
-                            {% endif %}
-                        </div>
+                        </a>
                     </div>
-                </a>
-                {% endfor %}
-                {% endif %}
-            </div>
-
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </form>
             {% if pagination %}
             <div class="msg-pagination">
                 <div class="small text-muted">
@@ -853,5 +912,72 @@
         align-items: center;
         justify-content: space-between;
     }
+
+    .bulk-toolbar {
+        padding: 10px 14px;
+        border-bottom: 1px solid #f1f1f1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        background: #faf5ff;
+    }
+
+    .bulk-select {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: .82rem;
+        font-weight: 700;
+        color: var(--fafl-purple);
+    }
+
+    .bulk-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .msg-row-wrap {
+        display: flex;
+        align-items: stretch;
+        border-bottom: 1px solid #f3f4f6;
+    }
+
+    .msg-check {
+        width: 34px;
+        display: grid;
+        place-items: center;
+        background: #fff;
+    }
+
+    .msg-row-wrap .msg-item {
+        flex: 1;
+        border-bottom: 0;
+    }
 </style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const selectAll = document.getElementById("selectAllMessages");
+        const checks = document.querySelectorAll(".message-checkbox");
+
+        if (selectAll) {
+            selectAll.addEventListener("change", function () {
+                checks.forEach(cb => cb.checked = selectAll.checked);
+            });
+        }
+
+        const bulkForm = document.getElementById("bulkMessageForm");
+        if (bulkForm) {
+            bulkForm.addEventListener("submit", function (e) {
+                const anyChecked = Array.from(checks).some(cb => cb.checked);
+                if (!anyChecked) {
+                    e.preventDefault();
+                    alert("Please select at least one message.");
+                }
+            });
+        }
+    });
+</script>
 {% endblock %}

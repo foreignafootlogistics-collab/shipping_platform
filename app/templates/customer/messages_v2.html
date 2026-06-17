@@ -4,17 +4,6 @@
 {% block content %}
 <div class="messages-v2-wrap">
 
-    {% with msgs = get_flashed_messages(with_categories=true) %}
-    {% if msgs %}
-    {% for category, message in msgs %}
-    <div class="alert alert-{{ category }} alert-dismissible fade show mb-3" role="alert">
-        {{ message }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
-    {% endfor %}
-    {% endif %}
-    {% endwith %}
-
     <div class="messages-shell">
 
         <!-- LEFT SIDEBAR -->

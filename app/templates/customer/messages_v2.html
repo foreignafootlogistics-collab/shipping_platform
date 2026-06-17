@@ -34,17 +34,17 @@
             </button>
 
             <div class="msg-nav mt-4">
-                <a class="msg-nav-link {% if box=='inbox' %}active{% endif %}"
+                <a class="msg-nav-link {% if box=='inbox' and not unread_only and not include_archived %}active{% endif %}"
                     href="{{ url_for('customer.view_messages', box='inbox', q=q, per_page=per_page) }}">
                     <span><i class="bi bi-inbox me-2"></i> Inbox</span>
                 </a>
 
-                <a class="msg-nav-link {% if box=='sent' %}active{% endif %}"
+                <a class="msg-nav-link {% if box=='sent' and not unread_only and not include_archived %}active{% endif %}"
                     href="{{ url_for('customer.view_messages', box='sent', q=q, per_page=per_page) }}">
                     <span><i class="bi bi-send me-2"></i> Sent</span>
                 </a>
 
-                <a class="msg-nav-link {% if box=='all' %}active{% endif %}"
+                <a class="msg-nav-link {% if box=='all' and not unread_only and not include_archived %}active{% endif %}"
                     href="{{ url_for('customer.view_messages', box='all', q=q, per_page=per_page) }}">
                     <span><i class="bi bi-collection me-2"></i> All Mail</span>
                 </a>
@@ -91,8 +91,14 @@
                     </div>
                 </div>
 
-                <a class="btn btn-sm btn-outline-purple"
-                    href="{{ url_for('customer.view_messages', box=box, per_page=per_page) }}">
+                <a class="btn btn-sm btn-outline-purple" href="{{ url_for(
+                        'customer.view_messages',
+                        box=box,
+                        q=q,
+                        unread='1' if unread_only else None,
+                        archived='1' if include_archived else None,
+                        per_page=per_page
+                    ) }}">
                     <i class="bi bi-arrow-clockwise"></i>
                 </a>
             </div>
@@ -100,6 +106,8 @@
             <form class="msg-search" method="GET" action="{{ url_for('customer.view_messages') }}">
                 <input type="hidden" name="box" value="{{ box }}">
                 <input type="hidden" name="per_page" value="{{ per_page }}">
+                <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
+                <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
 
                 <div class="input-group input-group-sm">
                     <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
@@ -123,8 +131,16 @@
                 {% set is_unread = (m.recipient_id == current_user.id and not m.is_read) %}
                 {% set is_selected = selected_message and selected_message.id == m.id %}
 
-                <a class="msg-item {% if is_selected %}selected{% endif %} {% if is_unread %}unread{% endif %}"
-                    href="{{ url_for('customer.view_messages', box=box, q=q, per_page=per_page, message_id=m.id) }}">
+                <a class="msg-item {% if is_selected %}selected{% endif %} {% if is_unread %}unread{% endif %}" href="{{ url_for(
+                         'customer.view_messages',
+                         box=box,
+                         q=q,
+                         unread='1' if unread_only else None,
+                         archived='1' if include_archived else None,
+                         per_page=per_page,
+                         page=pagination.page if pagination else 1,
+                         message_id=m.id
+                    ) }}">
 
                     <div class="msg-avatar">
                         {% if is_sent %}

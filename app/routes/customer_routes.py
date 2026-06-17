@@ -1843,7 +1843,18 @@ def view_messages():
             sa.or_(DBMessage.recipient_id != current_user.id, DBMessage.deleted_by_recipient.is_(False)),
         ))
 
-    if not include_archived:
+    if include_archived:
+        base = base.filter(sa.or_(
+            sa.and_(
+                DBMessage.sender_id == current_user.id,
+                DBMessage.archived_by_sender.is_(True)
+            ),
+            sa.and_(
+                DBMessage.recipient_id == current_user.id,
+                DBMessage.archived_by_recipient.is_(True)
+            )
+        ))
+    else:
         base = base.filter(sa.and_(
             sa.or_(DBMessage.sender_id != current_user.id, DBMessage.archived_by_sender.is_(False)),
             sa.or_(DBMessage.recipient_id != current_user.id, DBMessage.archived_by_recipient.is_(False)),

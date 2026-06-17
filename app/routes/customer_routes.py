@@ -1791,6 +1791,7 @@ def view_messages():
     q = (request.args.get("q") or "").strip()
     unread_only = request.args.get("unread") == "1"
     include_archived = request.args.get("archived") == "1"
+    include_deleted = request.args.get("trash") == "1"
     page = request.args.get("page", type=int) or 1
 
     try:
@@ -1825,10 +1826,22 @@ def view_messages():
             )
         )
 
-    base = base.filter(sa.and_(
-        sa.or_(DBMessage.sender_id != current_user.id, DBMessage.deleted_by_sender.is_(False)),
-        sa.or_(DBMessage.recipient_id != current_user.id, DBMessage.deleted_by_recipient.is_(False)),
-    ))
+    if include_deleted:
+        base = base.filter(sa.or_(
+            sa.and_(
+                DBMessage.sender_id == current_user.id,
+                DBMessage.deleted_by_sender.is_(True)
+            ),
+            sa.and_(
+                DBMessage.recipient_id == current_user.id,
+                DBMessage.deleted_by_recipient.is_(True)
+            )
+        ))
+    else:
+        base = base.filter(sa.and_(
+            sa.or_(DBMessage.sender_id != current_user.id, DBMessage.deleted_by_sender.is_(False)),
+            sa.or_(DBMessage.recipient_id != current_user.id, DBMessage.deleted_by_recipient.is_(False)),
+        ))
 
     if not include_archived:
         base = base.filter(sa.and_(
@@ -1903,6 +1916,7 @@ def view_messages():
         pagination=pagination,
         unread_only=unread_only,
         include_archived=include_archived,
+        include_deleted=include_deleted,
     )
 
 

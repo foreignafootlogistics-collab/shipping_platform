@@ -49,22 +49,28 @@
                     <span><i class="bi bi-collection me-2"></i> All Mail</span>
                 </a>
 
-                <a class="msg-nav-link {% if unread_only %}active{% endif %}" href="{{ url_for('customer.view_messages',
-                    box=box,
-                    q=q,
-                    unread='1',
-                    archived='1' if include_archived else None,
-                    per_page=per_page) }}">
+                <a class="msg-nav-link {% if unread_only and not include_archived %}active{% endif %}" href="{{ url_for('customer.view_messages',
+    box='inbox',
+    q=q,
+    unread='1',
+    per_page=per_page) }}">
                     <span><i class="bi bi-envelope-exclamation me-2"></i> Unread</span>
                 </a>
 
                 <a class="msg-nav-link {% if include_archived %}active{% endif %}" href="{{ url_for('customer.view_messages',
-                    box=box,
-                    q=q,
-                    archived='1',
-                    unread='1' if unread_only else None,
-                    per_page=per_page) }}">
+    box='inbox',
+    q=q,
+    archived='1',
+    per_page=per_page) }}">
                     <span><i class="bi bi-archive me-2"></i> Archived</span>
+                </a>
+
+                <a class="msg-nav-link {% if include_deleted %}active{% endif %}" href="{{ url_for('customer.view_messages',
+        box='inbox',
+        q=q,
+        trash='1',
+        per_page=per_page) }}">
+                    <span><i class="bi bi-trash me-2"></i> Trash</span>
                 </a>
             </div>
         </aside>

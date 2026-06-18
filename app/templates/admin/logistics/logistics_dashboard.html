@@ -95,13 +95,13 @@
                 <form method="POST" action="{{ url_for('logistics.admin_lock_prealert', prealert_id=p.id) }}"
                   class="d-inline">
 
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
                   <input type="hidden" name="lock_reason" value="Locked manually by admin">
 
                   <button type="submit" class="btn btn-sm p-0 border-0 bg-transparent" title="Click to lock pre-alert"
                     onclick="return confirm('Lock this pre-alert? Customer will no longer be able to edit it.');">
-
                     <i class="bi bi-unlock text-warning fs-5"></i>
-
                   </button>
                 </form>
                 {% endif %}

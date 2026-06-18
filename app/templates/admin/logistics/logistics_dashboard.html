@@ -2593,13 +2593,28 @@ Not emailed yet"></i>
     if (!window.jQuery) return;
     $(function () {
       if (hasDataTables() && $('#dashboardPrealertsTable').length) {
-        $('#dashboardPrealertsTable').DataTable({
+        const prealertDT = $('#dashboardPrealertsTable').DataTable({
           order: [[1, 'desc']],
           pageLength: 10,
+          lengthMenu: [[10, 25, 50, 100], [10, 25, 50, 100]],
           columnDefs: [
             { orderable: false, targets: 0 }
           ],
-          language: { emptyTable: "No pre-alert shipments found." }
+          pagingType: "simple_numbers",
+          language: {
+            emptyTable: "No pre-alert shipments found.",
+            paginate: {
+              previous: "«",
+              next: "»"
+            }
+          },
+          drawCallback: function () {
+            $('#dashboardPrealertsTable_paginate')
+              .addClass('pagination justify-content-end mt-2');
+
+            $('#dashboardPrealertsTable_paginate a')
+              .addClass('btn btn-sm btn-outline-secondary mx-1');
+          }
         });
       }
       if (document.getElementById('shipmentTable')) initShipmentTable();

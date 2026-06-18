@@ -1150,7 +1150,7 @@ def admin_lock_prealert(prealert_id):
 
     if pa.is_locked:
         flash("Pre-alert is already locked.", "info")
-        return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="prealert"))
+        return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="prealert"), code=303)
 
     pa.is_locked = True
     pa.locked_at = datetime.now(timezone.utc)
@@ -1160,7 +1160,7 @@ def admin_lock_prealert(prealert_id):
     db.session.commit()
 
     flash(f"Pre-alert PA-{pa.prealert_number} locked.", "success")
-    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="prealert"))
+    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="prealert"), code=303)
 
 
 @logistics_bp.route("/shipment-log/<int:shipment_id>/scan-package", methods=["POST"])

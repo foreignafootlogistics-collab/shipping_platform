@@ -1286,12 +1286,13 @@ def _bulk_ids_from_form():
 def _redirect_back_to_mailbox(default_box="inbox"):
     return redirect(url_for(
         "admin.messages",
-        box=(request.args.get("box") or default_box),
-        q=(request.args.get("q") or None),
-        unread=(request.args.get("unread") or None),
-        archived=(request.args.get("archived") or None),
-        per_page=(request.args.get("per_page") or None),
-        page=(request.args.get("page") or None),
+        box=(request.form.get("box") or default_box),
+        q=(request.form.get("q") or None),
+        unread=(request.form.get("unread") or None),
+        archived=(request.form.get("archived") or None),
+        trash=(request.form.get("trash") or None),
+        per_page=(request.form.get("per_page") or None),
+        page=(request.form.get("page") or None),
     ))
 
 
@@ -1375,8 +1376,11 @@ def messages_bulk_unarchive():
 
         if m.sender_id == current_user.id:
             m.archived_by_sender = False
+            m.deleted_by_sender = False
+
         if m.recipient_id == current_user.id:
             m.archived_by_recipient = False
+            m.deleted_by_recipient = False
 
         changed += 1
 

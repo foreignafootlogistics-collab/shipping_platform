@@ -959,6 +959,12 @@ class Prealert(db.Model):
     )
     linked_at = db.Column(db.DateTime(timezone=True), nullable=True)  # ✅ timezone-aware
 
+    # ✅ Manual admin lock for cases where package arrived but tracking did not match
+    is_locked = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    locked_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    locked_by_admin_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    lock_reason = db.Column(db.String(255), nullable=True)
+
     prealert_number = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

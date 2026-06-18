@@ -60,7 +60,7 @@ from app.models import (
     Message as DBMessage,  # 👈 avoid name clash with Flask-Mail
     MessageAttachment,
     Wallet, WalletTransaction, Payment, Settings,
-    Prealert, PackageAttachment,
+    Prealert, PackageAttachment, normalize_tracking,
 )
 
 from app.models import SubscriptionInvite, SubscriptionMember
@@ -378,6 +378,24 @@ def prealerts_create():
         # ✅ normalize tracking so it matches Package consistently
         tracking = normalize_tracking((form.tracking_number.data or "").strip())
 
+        # ✅ Prevent duplicate active pre-alerts for same customer + tracking
+        existing_pa = None
+        if tracking:
+            existing_pa = (Prealert.query
+                .filter(Prealert.customer_id == current_user.id)
+                .filter(Prealert.tracking_number == tracking)
+                .filter(Prealert.linked_package_id.is_(None))
+                .order_by(Prealert.id.desc())
+                .first())
+
+        if existing_pa:
+            flash(
+                f"A pre-alert already exists for tracking number {tracking}. "
+                f"Please use PA-{existing_pa.prealert_number} instead.",
+                "warning"
+            )
+            return redirect(url_for("customer.prealerts_view"))
+
         pa = Prealert(
             prealert_number=prealert_number,
             customer_id=current_user.id,
@@ -448,6 +466,76 @@ def prealerts_view():
                  .order_by(Prealert.created_at.desc()).all())
     return render_template('customer/prealerts_view.html', prealerts=prealerts)
 
+@customer_bp.route("/prealerts/<int:prealert_id>/edit", methods=["GET", "POST"])
+@login_required
+def prealerts_edit(prealert_id):
+    pa = Prealert.query.filter_by(
+        id=prealert_id,
+        customer_id=current_user.id
+    ).first_or_404()
+
+    # ✅ Once linked to a package, customer cannot edit it
+    if pa.linked_package_id:
+        flash("This pre-alert can no longer be edited because the package has already been received.", "warning")
+        return redirect(url_for("customer.prealerts_view"))
+
+    form = PreAlertForm(obj=pa)
+
+    if form.validate_on_submit():
+        tracking = normalize_tracking((form.tracking_number.data or "").strip())
+
+        # ✅ Prevent editing into another duplicate pre-alert
+        existing_pa = None
+        if tracking:
+            existing_pa = (
+                Prealert.query
+                .filter(Prealert.customer_id == current_user.id)
+                .filter(Prealert.tracking_number == tracking)
+                .filter(Prealert.id != pa.id)
+                .filter(Prealert.linked_package_id.is_(None))
+                .order_by(Prealert.id.desc())
+                .first()
+            )
+
+        if existing_pa:
+            flash(
+                f"A pre-alert already exists for tracking number {tracking}. "
+                f"Please use PA-{existing_pa.prealert_number} instead.",
+                "warning"
+            )
+            return redirect(url_for("customer.prealerts_view"))
+
+        pa.vendor_name = form.vendor_name.data
+        pa.courier_name = form.courier_name.data
+        pa.tracking_number = tracking
+        pa.purchase_date = form.purchase_date.data
+        pa.package_contents = form.package_contents.data
+        pa.item_value_usd = float(form.item_value_usd.data or 0)
+
+        # ✅ Optional invoice replacement
+        if form.invoice.data and getattr(form.invoice.data, "filename", ""):
+            f = form.invoice.data
+            original = (f.filename or "").strip()
+
+            if original and allowed_file(original):
+                from app.utils.cloudinary_storage import upload_prealert_invoice
+
+                invoice_url, invoice_public_id, invoice_resource_type = upload_prealert_invoice(f)
+
+                pa.invoice_filename = invoice_url
+                pa.invoice_original_name = original
+                pa.invoice_public_id = invoice_public_id
+                pa.invoice_resource_type = invoice_resource_type
+            else:
+                flash("Invalid invoice file type. Allowed: pdf, jpg, jpeg, png.", "warning")
+                return render_template("customer/prealerts_edit.html", form=form, prealert=pa)
+
+        db.session.commit()
+
+        flash(f"Pre-alert PA-{pa.prealert_number} updated successfully.", "success")
+        return redirect(url_for("customer.prealerts_view"))
+
+    return render_template("customer/prealerts_edit.html", form=form, prealert=pa)
 
 # -----------------------------
 # Packages

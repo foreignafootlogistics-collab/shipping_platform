@@ -809,6 +809,14 @@ def _try_link_prealert_invoice_to_package(pkg: Package) -> bool:
         if not pa:
             return False
 
+        # ✅ Use customer pre-alert invoice value when available
+        prealert_value = float(getattr(pa, "item_value_usd", 0) or 0)
+        if prealert_value > 0:
+            pkg.value = prealert_value
+
+            if hasattr(pkg, "declared_value"):
+                pkg.declared_value = prealert_value
+
         invoice_url = (getattr(pa, "invoice_filename", None) or "").strip()
         if not invoice_url:
             return False
@@ -843,6 +851,7 @@ def _try_link_prealert_invoice_to_package(pkg: Package) -> bool:
             if not getattr(pa, "linked_package_id", None):
                 pa.linked_package_id = pkg.id
                 pa.linked_at = datetime.now(timezone.utc)
+                pa.is_locked = True
             return True
 
         # Create attachment row from prealert invoice
@@ -862,6 +871,7 @@ def _try_link_prealert_invoice_to_package(pkg: Package) -> bool:
         # Mark prealert linked
         pa.linked_package_id = pkg.id
         pa.linked_at = datetime.now(timezone.utc)
+        pa.is_locked = True
 
         return True
 
@@ -1067,6 +1077,10 @@ def prealerts(user_id=None):
                 "item_value_usd": p.item_value_usd,
                 "invoice_filename": p.invoice_filename,                
                 "created_at": p.created_at,
+                "is_locked": p.is_locked,
+                "lock_reason": p.lock_reason,
+                "linked_package_id": p.linked_package_id,
+                "linked_at": p.linked_at,
             })
 
     # VIEW FOR ALL CUSTOMERS
@@ -1102,6 +1116,8 @@ def prealerts(user_id=None):
                 "invoice_resource_type": prealert.invoice_resource_type,
                 "linked_package_id": prealert.linked_package_id,
                 "linked_at": prealert.linked_at,
+                "is_locked": prealert.is_locked,
+                "lock_reason": prealert.lock_reason,
                 "created_at": prealert.created_at,
             })
     print("DEBUG prealerts count:", len(prealerts_data))
@@ -1126,6 +1142,25 @@ def admin_prealert_invoice(prealert_id):
 def admin_prealert_invoice_download(prealert_id):
     pa = Prealert.query.get_or_404(prealert_id)
     return serve_prealert_invoice_file(pa, download_name_prefix="prealert", as_attachment=True)
+
+@logistics_bp.route("/prealerts/<int:prealert_id>/lock", methods=["POST"])
+@admin_required
+def admin_lock_prealert(prealert_id):
+    pa = Prealert.query.get_or_404(prealert_id)
+
+    if pa.is_locked:
+        flash("Pre-alert is already locked.", "info")
+        return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="prealert"))
+
+    pa.is_locked = True
+    pa.locked_at = datetime.now(timezone.utc)
+    pa.locked_by_admin_id = current_user.id
+    pa.lock_reason = (request.form.get("lock_reason") or "Locked manually by admin").strip()
+
+    db.session.commit()
+
+    flash(f"Pre-alert PA-{pa.prealert_number} locked.", "success")
+    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="prealert"))
 
 
 @logistics_bp.route("/shipment-log/<int:shipment_id>/scan-package", methods=["POST"])
@@ -1373,7 +1408,11 @@ def logistics_dashboard():
                 "invoice_resource_type": prealert.invoice_resource_type,
                 "linked_package_id": prealert.linked_package_id,
                 "linked_at": prealert.linked_at,
-                "created_at": prealert.created_at,
+
+                "is_locked": prealert.is_locked,
+                "lock_reason": prealert.lock_reason,
+
+                "created_at": prealert.created_at,                
             })
 
         print("DEBUG dashboard prealerts count:", len(prealerts_data))

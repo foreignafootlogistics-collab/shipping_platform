@@ -3,118 +3,137 @@
 
 {% block content %}
 <div class="container mt-4">
-    <h3>📦 Your Pre-Alert Shipments</h3>
+  <h3>📦 Your Pre-Alert Shipments</h3>
 
-    <div class="d-flex justify-content-between mb-3">
-        <a href="{{ url_for('customer.prealerts_create') }}" class="btn btn-dashboard">
-          Create New Pre-Alert Shipment
-        </a>
-    </div>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <a href="{{ url_for('customer.prealerts_create') }}" class="btn btn-dashboard">
+      Create New Pre-Alert Shipment
+    </a>
 
-    <!-- Flash messages -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
+    <button id="editSelectedPrealertBtn" type="button" class="btn btn-outline-secondary btn-sm" disabled>
+      <i class="bi bi-pencil-square"></i> Edit Selected
+    </button>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-hover table-striped table-bordered align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th class="text-center" style="width: 50px;"></th>
+          <th>Pre-Alert #</th>
+          <th>Vendor</th>
+          <th>Courier</th>
+          <th>Tracking #</th>
+          <th>Purchase Date</th>
+          <th>Contents</th>
+          <th>Value (USD)</th>
+          <th>Invoice</th>
+          <th>Submitted On</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% if prealerts %}
+        {% for p in prealerts %}
+        <tr>
+          <td class="text-center">
+            {% if p.linked_package_id or p.is_locked %}
+            <i class="bi bi-lock-fill text-muted"
+              title="{% if p.linked_package_id %}Locked: linked to package{% else %}Locked by FAFL{% endif %}">
+            </i>
+            {% else %}
+            <input type="checkbox" class="form-check-input prealert-select" value="{{ p.id }}"
+              data-edit-url="{{ url_for('customer.prealerts_edit', prealert_id=p.id) }}">
+            {% endif %}
+          </td>
+
+          <td>
+            {% if p.prealert_number %}
+            PA-{{ "%05d"|format(p.prealert_number) }}
+            {% else %}
+            {{ p.id }}
+            {% endif %}
+          </td>
+
+          <td>{{ p.vendor_name or 'N/A' }}</td>
+          <td>{{ p.courier_name or 'N/A' }}</td>
+          <td>{{ p.tracking_number or 'N/A' }}</td>
+
+          <td>
+            {% if p.purchase_date %}
+            {{ p.purchase_date }}
+            {% else %}
+            N/A
+            {% endif %}
+          </td>
+
+          <td>{{ p.package_contents or 'N/A' }}</td>
+
+          <td>${{ "%.2f"|format(p.item_value_usd or 0) }}</td>
+
+          <td>
+            {% if p.invoice_filename %}
+            <a class="btn btn-sm btn-link p-0" href="{{ url_for('customer.prealert_invoice', prealert_id=p.id) }}"
+              target="_blank">View</a>
+
+            <a class="btn btn-sm btn-link p-0 ms-2"
+              href="{{ url_for('customer.prealert_invoice_download', prealert_id=p.id) }}">Download</a>
+            {% else %}
+            N/A
+            {% endif %}
+          </td>
+
+          <td>
+            {% if p.created_at %}
+            {{ to_jamaica(p.created_at).strftime("%Y-%m-%d %I:%M %p") }}
+            {% else %}
+            N/A
+            {% endif %}
+          </td>
+        </tr>
         {% endfor %}
-      {% endif %}
-    {% endwith %}
-
-    <div class="table-responsive">
-      <table class="table table-hover table-striped table-bordered align-middle">
-        <thead class="table-dark">
-          <tr>
-            <th>Pre-Alert #</th>
-            <th>Vendor</th>
-            <th>Courier</th>
-            <th>Tracking #</th>
-            <th>Purchase Date</th>
-            <th>Contents</th>
-            <th>Value (USD)</th>
-            <th>Invoice</th>
-            <th>Submitted On</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% if prealerts %}
-            {% for p in prealerts %}
-            <tr>
-              <!-- Pre-Alert # -->
-              <td>
-                {% if p.prealert_number %}
-                  PA-{{ "%05d"|format(p.prealert_number) }}
-                {% else %}
-                  {{ p.id }}
-                {% endif %}
-              </td>
-
-
-              <!-- Vendor -->
-              <td>{{ p.vendor_name or 'N/A' }}</td>
-
-              <!-- Courier -->
-              <td>{{ p.courier_name or 'N/A' }}</td>
-
-              <!-- Tracking # -->
-              <td>{{ p.tracking_number or 'N/A' }}</td>
-
-              <!-- Purchase Date -->
-              <td>
-                {% if p.purchase_date %}
-                  {{ p.purchase_date }}
-                  {# or, if it's a datetime and you want formatting:
-                     {{ p.purchase_date.strftime("%Y-%m-%d") }} #}
-                {% else %}
-                  N/A
-                {% endif %}
-              </td>
-
-              <!-- Contents -->
-              <td>{{ p.package_contents or 'N/A' }}</td>
-
-              <!-- Value (USD) -->
-              <td>
-                ${{ "%.2f"|format(p.item_value_usd or 0) }}
-              </td>
-
-              <!-- Invoice -->
-              <td>
-                {% if p.invoice_filename %}
-                  <a class="btn btn-sm btn-link p-0"
-                     href="{{ url_for('customer.prealert_invoice', prealert_id=p.id) }}"
-                     target="_blank">View</a>
-
-                  <a class="btn btn-sm btn-link p-0 ms-2"
-                     href="{{ url_for('customer.prealert_invoice_download', prealert_id=p.id) }}">Download</a>
-
-                {% else %}
-                  N/A
-                {% endif %}
-              </td>
-
-
-              <!-- Submitted On -->
-              <td>
-                {% if p.created_at %}
-                  {{ p.created_at }}
-                  {# or format if needed:
-                     {{ p.created_at.strftime("%Y-%m-%d %H:%M") }} #}
-                {% else %}
-                  N/A
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          {% else %}
-            <tr>
-              <td colspan="9" class="text-center text-muted">No pre-alert shipments available.</td>
-            </tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </div>
+        {% else %}
+        <tr>
+          <td colspan="10" class="text-center text-muted">
+            No pre-alert shipments available.
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
 </div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const checks = document.querySelectorAll(".prealert-select");
+    const btn = document.getElementById("editSelectedPrealertBtn");
+
+    function updateBtn() {
+      const selected = document.querySelectorAll(".prealert-select:checked");
+
+      checks.forEach(function (chk) {
+        chk.disabled = selected.length > 0 && !chk.checked;
+      });
+
+      btn.disabled = selected.length !== 1;
+
+      if (selected.length === 1) {
+        btn.dataset.editUrl = selected[0].dataset.editUrl;
+      } else {
+        delete btn.dataset.editUrl;
+      }
+    }
+
+    checks.forEach(function (chk) {
+      chk.addEventListener("change", updateBtn);
+    });
+
+    btn.addEventListener("click", function () {
+      if (btn.dataset.editUrl) {
+        window.location.href = btn.dataset.editUrl;
+      }
+    });
+  });
+</script>
 {% endblock %}

@@ -1,0 +1,104 @@
+{% extends "layout_customer.html" %}
+{% block title %}Edit Pre-Alert{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+  <h3>✏️ Edit Pre-Alert PA-{{ "%05d"|format(prealert.prealert_number or prealert.id) }}</h3>
+
+  <div class="d-flex justify-content-end mb-3">
+    <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-dashboard">
+      View All Pre-Alert Shipments
+    </a>
+  </div>
+
+  <div class="alert alert-note-purple" role="alert">
+    <strong>Note:</strong> You can edit this pre-alert until it is linked to a received package or locked by FAFL.
+  </div>
+
+  <form id="prealertEditForm" method="POST" enctype="multipart/form-data" class="mb-4">
+    {{ form.hidden_tag() }}
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        {{ form.vendor_name.label(class="form-label") }}
+        {{ form.vendor_name(class="form-control", autocomplete="organization") }}
+      </div>
+
+      <div class="col-md-6">
+        {{ form.courier_name.label(class="form-label") }}
+        {{ form.courier_name(class="form-control") }}
+      </div>
+
+      <div class="col-md-6">
+        {{ form.tracking_number.label(class="form-label") }}
+        {{ form.tracking_number(class="form-control", id="tracking_number", autocapitalize="characters", spellcheck="false") }}
+        <div class="form-text">Tip: Don’t include spaces. We’ll auto-trim for you.</div>
+      </div>
+
+      <div class="col-md-6">
+        {{ form.purchase_date.label(class="form-label") }}
+        {{ form.purchase_date(class="form-control") }}
+      </div>
+
+      <div class="col-md-6">
+        {{ form.package_contents.label(class="form-label") }}
+        {{ form.package_contents(class="form-control") }}
+      </div>
+
+      <div class="col-md-6">
+        {{ form.item_value_usd.label(class="form-label") }}
+        {{ form.item_value_usd(class="form-control") }}
+      </div>
+
+      <div class="col-md-12">
+        {{ form.invoice.label(class="form-label") }}
+        {{ form.invoice(class="form-control", accept=".jpg,.jpeg,.png,.pdf") }}
+        <div class="form-text">
+          Allowed formats: jpg, jpeg, png, pdf.
+          {% if prealert.invoice_filename %}
+            Current invoice:
+            <a href="{{ url_for('customer.prealert_invoice', prealert_id=prealert.id) }}" target="_blank">View</a>
+            |
+            <a href="{{ url_for('customer.prealert_invoice_download', prealert_id=prealert.id) }}">Download</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4 d-flex gap-2">
+      <button type="submit" class="btn btn-dashboard">Save Changes</button>
+      <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  const form = document.getElementById('prealertEditForm');
+  if (!form) return;
+
+  function trimEl(idOrName) {
+    const el = document.getElementById(idOrName) || form.querySelector(`[name="${idOrName}"]`);
+    if (!el || typeof el.value !== 'string') return;
+    el.value = el.value.trim();
+  }
+
+  form.addEventListener('submit', function () {
+    trimEl('vendor_name');
+    trimEl('courier_name');
+    trimEl('package_contents');
+
+    const t = document.getElementById('tracking_number') || form.querySelector('[name="tracking_number"]');
+    if (t && typeof t.value === 'string') {
+      t.value = t.value.trim().toUpperCase();
+    }
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerText = "Saving...";
+    }
+  });
+})();
+</script>
+{% endblock %}

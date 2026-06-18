@@ -785,6 +785,7 @@ def messages():
     q = (request.args.get("q") or "").strip()
     unread_only = request.args.get("unread") == "1"
     include_archived = request.args.get("archived") == "1"
+    include_deleted = request.args.get("trash") == "1"
 
     page = request.args.get("page", type=int) or 1
     per_page = request.args.get("per_page", type=int) or 20
@@ -806,12 +807,23 @@ def messages():
     else:
         base = base.filter(Message.recipient_id == current_user.id)
 
-    base = base.filter(sa.and_(
-        sa.or_(Message.sender_id != current_user.id, Message.deleted_by_sender.is_(False)),
-        sa.or_(Message.recipient_id != current_user.id, Message.deleted_by_recipient.is_(False)),
-    ))
+    if include_deleted:
+        base = base.filter(sa.or_(
+            sa.and_(Message.sender_id == current_user.id, Message.deleted_by_sender.is_(True)),
+            sa.and_(Message.recipient_id == current_user.id, Message.deleted_by_recipient.is_(True)),
+        ))
+    else:
+        base = base.filter(sa.and_(
+            sa.or_(Message.sender_id != current_user.id, Message.deleted_by_sender.is_(False)),
+            sa.or_(Message.recipient_id != current_user.id, Message.deleted_by_recipient.is_(False)),
+        ))
 
-    if not include_archived:
+    if include_archived:
+        base = base.filter(sa.or_(
+            sa.and_(Message.sender_id == current_user.id, Message.archived_by_sender.is_(True)),
+            sa.and_(Message.recipient_id == current_user.id, Message.archived_by_recipient.is_(True)),
+        ))
+    else:
         base = base.filter(sa.and_(
             sa.or_(Message.sender_id != current_user.id, Message.archived_by_sender.is_(False)),
             sa.or_(Message.recipient_id != current_user.id, Message.archived_by_recipient.is_(False)),
@@ -908,6 +920,7 @@ def messages():
         q=q,
         unread_only=unread_only,
         include_archived=include_archived,
+        include_deleted=include_deleted,
         per_page=per_page,
         selected_message=selected_message,
         selected_other=selected_other,

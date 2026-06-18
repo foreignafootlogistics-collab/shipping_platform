@@ -23,32 +23,32 @@
 
             <div class="msg-nav mt-4">
                 <a class="msg-nav-link {% if box=='inbox' and not unread_only and not include_archived and not include_deleted %}active{% endif %}"
-                    href="{{ url_for('customer.view_messages', box='inbox', q=q, per_page=per_page) }}">
+                    href="{{ url_for('customer.view_messages', box='inbox', q=None, per_page=per_page) }}">
                     <span><i class="bi bi-inbox me-2"></i> Inbox</span>
                 </a>
 
                 <a class="msg-nav-link {% if box=='sent' and not unread_only and not include_archived and not include_deleted %}active{% endif %}"
-                    href="{{ url_for('customer.view_messages', box='sent', q=q, per_page=per_page) }}">
+                    href="{{ url_for('customer.view_messages', box='sent', q=None, per_page=per_page) }}">
                     <span><i class="bi bi-send me-2"></i> Sent</span>
                 </a>
 
                 <a class="msg-nav-link {% if box=='all' and not unread_only and not include_archived and not include_deleted %}active{% endif %}"
-                    href="{{ url_for('customer.view_messages', box='all', q=q, per_page=per_page) }}">
+                    href="{{ url_for('customer.view_messages', box='all', q=None, per_page=per_page) }}">
                     <span><i class="bi bi-collection me-2"></i> All Mail</span>
                 </a>
 
                 <a class="msg-nav-link {% if unread_only and not include_archived and not include_deleted %}active{% endif %}"
-                    href="{{ url_for('customer.view_messages', box='inbox', q=q, unread='1', per_page=per_page) }}">
+                    href="{{ url_for('customer.view_messages', box='inbox', q=None, unread='1', per_page=per_page) }}">
                     <span><i class="bi bi-envelope-exclamation me-2"></i> Unread</span>
                 </a>
 
                 <a class="msg-nav-link {% if include_archived and not include_deleted %}active{% endif %}"
-                    href="{{ url_for('customer.view_messages', box='inbox', q=q, archived='1', per_page=per_page) }}">
+                    href="{{ url_for('customer.view_messages', box='all', q=None, archived='1', per_page=per_page) }}">
                     <span><i class="bi bi-archive me-2"></i> Archived</span>
                 </a>
 
                 <a class="msg-nav-link {% if include_deleted %}active{% endif %}"
-                    href="{{ url_for('customer.view_messages', box='inbox', q=q, trash='1', per_page=per_page) }}">
+                    href="{{ url_for('customer.view_messages', box='all', q=None, trash='1', per_page=per_page) }}">
                     <span><i class="bi bi-trash me-2"></i> Trash</span>
                 </a>
             </div>
@@ -319,38 +319,81 @@
 
                 <div class="d-flex gap-2">
                     {% if include_deleted %}
+
                     <form method="POST" action="{{ url_for('customer.customer_message_restore', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="box" value="{{ box }}">
+                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
+                        <input type="hidden" name="per_page" value="{{ per_page }}">
+                        <input type="hidden" name="q" value="{{ q }}">
+                        <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
+                        <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
+                        <input type="hidden" name="trash" value="{{ '1' if include_deleted else '' }}">
                         <button type="submit" class="btn btn-sm btn-success" title="Restore">
                             <i class="bi bi-arrow-counterclockwise"></i>
                         </button>
                     </form>
+
                     {% elif include_archived %}
+
                     <form method="POST" action="{{ url_for('customer.customer_message_unarchive', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="box" value="{{ box }}">
+                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
+                        <input type="hidden" name="per_page" value="{{ per_page }}">
+                        <input type="hidden" name="q" value="{{ q }}">
+                        <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
+                        <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
+                        <input type="hidden" name="trash" value="{{ '1' if include_deleted else '' }}">
                         <button type="submit" class="btn btn-sm btn-success" title="Move to Inbox">
                             <i class="bi bi-inbox"></i>
                         </button>
                     </form>
+
                     <form method="POST" action="{{ url_for('customer.customer_message_delete', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="box" value="{{ box }}">
+                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
+                        <input type="hidden" name="per_page" value="{{ per_page }}">
+                        <input type="hidden" name="q" value="{{ q }}">
+                        <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
+                        <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
+                        <input type="hidden" name="trash" value="{{ '1' if include_deleted else '' }}">
                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                             <i class="bi bi-trash"></i>
                         </button>
                     </form>
+
                     {% else %}
+
                     <form method="POST" action="{{ url_for('customer.customer_message_archive', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="box" value="{{ box }}">
+                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
+                        <input type="hidden" name="per_page" value="{{ per_page }}">
+                        <input type="hidden" name="q" value="{{ q }}">
+                        <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
+                        <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
+                        <input type="hidden" name="trash" value="{{ '1' if include_deleted else '' }}">
                         <button type="submit" class="btn btn-sm btn-outline-warning" title="Archive">
                             <i class="bi bi-archive"></i>
                         </button>
                     </form>
+
                     <form method="POST" action="{{ url_for('customer.customer_message_delete', msg_id=m.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="box" value="{{ box }}">
+                        <input type="hidden" name="page" value="{{ pagination.page if pagination else 1 }}">
+                        <input type="hidden" name="per_page" value="{{ per_page }}">
+                        <input type="hidden" name="q" value="{{ q }}">
+                        <input type="hidden" name="unread" value="{{ '1' if unread_only else '' }}">
+                        <input type="hidden" name="archived" value="{{ '1' if include_archived else '' }}">
+                        <input type="hidden" name="trash" value="{{ '1' if include_deleted else '' }}">
                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                             <i class="bi bi-trash"></i>
                         </button>
                     </form>
+
                     {% endif %}
                 </div>
             </div>

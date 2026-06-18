@@ -2048,6 +2048,8 @@ def customer_message_archive(msg_id):
         unread=request.form.get("unread"),
         archived=request.form.get("archived"),
         q=request.form.get("q"),
+        trash=request.form.get("trash"),
+        per_page=request.form.get("per_page"),
     ))
 
 
@@ -2075,6 +2077,8 @@ def customer_message_delete(msg_id):
         unread=request.form.get("unread"),
         archived=request.form.get("archived"),
         q=request.form.get("q"),
+        trash=request.form.get("trash"),
+        per_page=request.form.get("per_page"),
     ))
 
 @customer_bp.route("/messages/<int:msg_id>/restore", methods=["POST"])
@@ -2154,9 +2158,12 @@ def customer_messages_bulk_archive():
             continue
 
         if m.sender_id == current_user.id:
-            m.archived_by_sender = True
+            m.archived_by_sender = False
+            m.deleted_by_sender = False
+
         if m.recipient_id == current_user.id:
-            m.archived_by_recipient = True
+            m.archived_by_recipient = False
+            m.deleted_by_recipient = False
 
         changed += 1
 

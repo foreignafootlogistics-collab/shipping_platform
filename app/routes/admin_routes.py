@@ -1051,7 +1051,12 @@ def message_archive(message_id):
     return redirect(url_for(
         "admin.messages",
         box=request.form.get("box") or "inbox",
-        page=request.form.get("page") or 1
+        page=request.form.get("page") or 1,
+        q=request.form.get("q") or None,
+        unread=request.form.get("unread") or None,
+        archived=request.form.get("archived") or None,
+        trash=request.form.get("trash") or None,
+        per_page=request.form.get("per_page") or None,
     ))
 
 
@@ -1074,7 +1079,12 @@ def message_delete(message_id):
     return redirect(url_for(
         "admin.messages",
         box=request.form.get("box") or "inbox",
-        page=request.form.get("page") or 1
+        page=request.form.get("page") or 1,
+        q=request.form.get("q") or None,
+        unread=request.form.get("unread") or None,
+        archived=request.form.get("archived") or None,
+        trash=request.form.get("trash") or None,
+        per_page=request.form.get("per_page") or None,
     ))
 
 
@@ -1385,7 +1395,10 @@ def messages_bulk_unarchive():
         changed += 1
 
     db.session.commit()
-    flash(f"Moved {changed} message(s) to inbox.", "success")
+    if request.form.get("trash") == "1":
+        flash(f"Restored {changed} message(s).", "success")
+    else:
+        flash(f"Moved {changed} message(s) to inbox.", "success")
     return _redirect_back_to_mailbox()
 
 

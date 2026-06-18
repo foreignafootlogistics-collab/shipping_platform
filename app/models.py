@@ -72,7 +72,12 @@ class User(db.Model, UserMixin):
     )
     invoices = db.relationship('Invoice', back_populates='user', lazy='dynamic')
     packages = db.relationship('Package', back_populates='user', lazy='dynamic', foreign_keys='Package.user_id')
-    prealerts = db.relationship('Prealert', back_populates='user', lazy='dynamic')
+    prealerts = db.relationship(
+        "Prealert",
+        foreign_keys="Prealert.customer_id",
+        back_populates="user",
+        lazy="dynamic"
+    )
     scheduled_deliveries = db.relationship('ScheduledDelivery', back_populates='user', lazy='dynamic')
     authorized_pickups = db.relationship('AuthorizedPickup', back_populates='user', lazy='dynamic')
     notifications = db.relationship('Notification', back_populates='user', lazy='dynamic')
@@ -968,10 +973,19 @@ class Prealert(db.Model):
     prealert_number = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    user = db.relationship('User', back_populates='prealerts')
+    user = db.relationship(
+        "User",
+        foreign_keys=[customer_id],
+        back_populates="prealerts"
+    )
 
     # ✅ optional but helpful relationship
     linked_package = db.relationship("Package", foreign_keys=[linked_package_id])
+
+    locked_by_admin = db.relationship(
+        "User",
+        foreign_keys=[locked_by_admin_id]
+    )
 
     
     def __repr__(self):

@@ -768,10 +768,18 @@
         }
       }
 
-      // Run immediately + every 60 seconds
+      // Run on admin page load, but only once every 12 hours per browser
       document.addEventListener("DOMContentLoaded", function () {
-        check();
-        setInterval(check, 60000);
+        const lastCheckKey = "fafl_sd_alert_last_check_at";
+        const twelveHours = 12 * 60 * 60 * 1000;
+        const now = Date.now();
+
+        const lastCheck = parseInt(localStorage.getItem(lastCheckKey) || "0", 10);
+
+        if (!lastCheck || (now - lastCheck) >= twelveHours) {
+          check();
+          localStorage.setItem(lastCheckKey, now.toString());
+        }
       });
     })();
   </script>

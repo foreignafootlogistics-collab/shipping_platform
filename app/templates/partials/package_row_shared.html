@@ -38,51 +38,34 @@ pkg.get('customer_notified_at') %}
 
   {# ===================== ADMIN MODE ===================== #}
 
-  <td>
-    <input type="checkbox" name="package_ids" value="{{ _id }}" class="package-checkbox" form="bulkActionForm">
+  <td class="text-center align-middle">
+    <input type="checkbox" name="package_ids" value="{{ _id }}" class="package-checkbox form-check-input mb-2"
+      form="bulkActionForm">
 
-    <div class="mt-1">
+    {% set scanned_in = (pkg.received_scan_status == 'scanned') %}
+    {% set scanned_out = (pkg.delivery_scan_status == 'scanned') %}
 
-      <!-- Top row: invoice + attachment icons -->
-      <div class="d-flex align-items-center gap-1 mb-1">
-        {% if _invoice_id %}
-        <a href="#" onclick="viewInvoiceById({{ _invoice_id }}); return false;"
-          class="btn btn-sm btn-outline-purple p-1" style="width:28px;height:28px;line-height:1;"
-          title="View Existing Invoice">
-          <i class="fas fa-calculator" style="font-size:0.72rem;"></i>
-        </a>
-        {% else %}
-        <a href="#" onclick="viewInvoiceByUser({{ _user_id }}); return false;" class="btn btn-sm btn-outline-purple p-1"
-          style="width:28px;height:28px;line-height:1;" title="Preview Pro-forma Invoice">
-          <i class="fas fa-calculator" style="font-size:0.72rem;"></i>
-        </a>
-        {% endif %}
+    {% if scanned_in and scanned_out %}
+    {% set box_class = 'btn-purple' %}
+    {% set box_title = 'Scanned in and scanned out' %}
+    {% elif scanned_out %}
+    {% set box_class = 'btn-primary' %}
+    {% set box_title = 'Scanned out' %}
+    {% elif scanned_in %}
+    {% set box_class = 'btn-success' %}
+    {% set box_title = 'Scanned in' %}
+    {% else %}
+    {% set box_class = 'btn-outline-secondary' %}
+    {% set box_title = 'Not scanned yet' %}
+    {% endif %}
 
-        <button type="button" class="btn btn-sm btn-outline-secondary p-1 js-open-attach"
-          style="width:28px;height:28px;line-height:1;" title="Attach Invoice" data-bs-toggle="modal"
-          data-bs-target="#attachInvoiceModal" data-pkg-id="{{ _id }}" data-item-value="{{ '%.2f'|format(dv or 0) }}">
-          <i class="fas fa-paperclip" style="font-size:0.72rem;"></i>
-        </button>
-      </div>
-
-      <!-- Bottom row: scan in/out indicators -->
-      <div class="d-flex align-items-center gap-2">
-
-        <span data-bs-toggle="tooltip"
-          title="{% if pkg.received_scan_status == 'scanned' %}Received by Foreign A Foot{% else %}Not scanned in yet{% endif %}">
-          <i class="bi bi-box-arrow-in-down {% if pkg.received_scan_status == 'scanned' %}text-success{% else %}text-muted{% endif %}"
-            style="font-size:0.85rem;"></i>
-        </span>
-
-        <span data-bs-toggle="tooltip"
-          title="{% if pkg.delivery_scan_status == 'scanned' %}Released to Customer{% else %}Not scanned out yet{% endif %}">
-          <i class="bi bi-box-arrow-up {% if pkg.delivery_scan_status == 'scanned' %}text-primary{% else %}text-muted{% endif %}"
-            style="font-size:0.85rem;"></i>
-        </span>
-
-      </div>
-
-    </div>
+    <button type="button" class="btn btn-sm {{ box_class }} js-open-package-modal" title="{{ box_title }}"
+      data-bs-toggle="tooltip" data-pkg-id="{{ _id }}" data-user-id="{{ _user_id }}"
+      data-invoice-id="{{ _invoice_id or '' }}" data-item-value="{{ '%.2f'|format(dv or 0) }}"
+      data-house="{{ _house or '' }}" data-tracking="{{ _tracking or '' }}" data-status="{{ _status or '' }}"
+      data-description="{{ _desc or '' }}" data-weight="{{ _weight or 0 }}">
+      <i class="bi bi-box-seam"></i>
+    </button>
   </td>
 
   <td>

@@ -637,6 +637,57 @@
           <div><strong>Item Value:</strong> USD <span id="pkgActionValue">0.00</span></div>
         </div>
 
+        <hr>
+
+        <h6 class="fw-bold mb-2">
+          <i class="bi bi-truck me-1"></i>
+          Shipment Information
+        </h6>
+
+        <div class="row mb-3">
+
+          <div class="col-md-4">
+            <strong>Shipment:</strong><br>
+            <span id="pkgShipmentName">—</span>
+          </div>
+
+          <div class="col-md-4">
+            <strong>Assigned:</strong><br>
+            <span id="pkgShipmentAssigned">—</span>
+          </div>
+
+          <div class="col-md-4">
+            <strong>Status:</strong><br>
+            <span id="pkgShipmentStatus">—</span>
+          </div>
+
+        </div>
+
+        <hr>
+
+        <h6 class="fw-bold mb-2">
+          <i class="bi bi-upc-scan me-1"></i>
+          Scan Information
+        </h6>
+
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <strong>Received Scan:</strong><br>
+            <span id="pkgReceivedScanStatus">—</span><br>
+            <small class="text-muted" id="pkgReceivedScannedAt">—</small>
+          </div>
+
+          <div class="col-md-6">
+            <strong>Delivery Scan:</strong><br>
+            <span id="pkgDeliveryScanStatus">—</span><br>
+            <small class="text-muted" id="pkgDeliveryScannedAt">—</small>
+          </div>
+        </div>
+
+        <div class="text-center mb-3">
+          <span id="pkgFullyProcessed"></span>
+        </div>
+
         <div class="row g-2">
 
           <div class="col-12 col-md-6">
@@ -2089,6 +2140,38 @@
     document.getElementById('pkgTracking').textContent = btn.dataset.tracking || '—';
     document.getElementById('pkgStatus').textContent = btn.dataset.status || '—';
     document.getElementById('pkgWeight').textContent = btn.dataset.weight || '—';
+    document.getElementById('pkgShipmentName').textContent =
+      btn.dataset.shipmentName || 'Not Assigned';
+
+    document.getElementById('pkgShipmentAssigned').textContent =
+      btn.dataset.shipmentDate || '—';
+
+    document.getElementById('pkgShipmentStatus').textContent =
+      btn.dataset.shipmentStatus || 'Not Assigned';
+
+    const receivedScanStatus = btn.dataset.receivedScanStatus || 'not_scanned';
+    const deliveryScanStatus = btn.dataset.deliveryScanStatus || 'not_scanned';
+
+    document.getElementById('pkgReceivedScanStatus').innerHTML =
+      receivedScanStatus === 'scanned'
+        ? '<span class="badge bg-success"><i class="bi bi-box-arrow-in-down me-1"></i>Scanned In</span>'
+        : '<span class="badge bg-secondary"><i class="bi bi-box me-1"></i>Not Scanned</span>';
+
+    document.getElementById('pkgDeliveryScanStatus').innerHTML =
+      deliveryScanStatus === 'scanned'
+        ? '<span class="badge bg-primary"><i class="bi bi-box-arrow-up me-1"></i>Scanned Out</span>'
+        : '<span class="badge bg-secondary"><i class="bi bi-box me-1"></i>Not Scanned</span>';
+
+    document.getElementById('pkgReceivedScannedAt').textContent =
+      btn.dataset.receivedScannedAt || '—';
+
+    document.getElementById('pkgDeliveryScannedAt').textContent =
+      btn.dataset.deliveryScannedAt || '—';
+
+    document.getElementById('pkgFullyProcessed').innerHTML =
+      (receivedScanStatus === 'scanned' && deliveryScanStatus === 'scanned')
+        ? '<span class="badge btn-purple"><i class="bi bi-check2-square me-1"></i>Fully Processed</span>'
+        : '';
 
     bootstrap.Modal.getOrCreateInstance(
       document.getElementById('packageActionModal')

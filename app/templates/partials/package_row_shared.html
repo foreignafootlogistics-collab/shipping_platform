@@ -64,7 +64,14 @@ pkg.get('customer_notified_at') %}
       data-user-id="{{ _user_id }}" data-invoice-id="{{ _invoice_id or '' }}"
       data-item-value="{{ '%.2f'|format(dv or 0) }}" data-house="{{ _house or '' }}"
       data-tracking="{{ _tracking or '' }}" data-status="{{ _status or '' }}" data-description="{{ _desc or '' }}"
-      data-weight="{{ _weight or 0 }}">
+      data-weight="{{ _weight or 0 }}"
+      data-shipment-name="{% if pkg.shipments and pkg.shipments|length > 0 %}{{ pkg.shipments[0].sl_name or pkg.shipments[0].sl_id }}{% endif %}"
+      data-shipment-status="{% if pkg.shipments and pkg.shipments|length > 0 %}{% if pkg.shipments[0].is_archived %}Archived{% else %}Active{% endif %}{% endif %}"
+      data-shipment-date="{% if pkg.shipments and pkg.shipments|length > 0 and pkg.shipments[0].created_at %}{{ to_jamaica(pkg.shipments[0].created_at).strftime('%Y-%m-%d') }}{% endif %}"
+      data-received-scan-status="{{ pkg.received_scan_status or 'not_scanned' }}"
+      data-delivery-scan-status="{{ pkg.delivery_scan_status or 'not_scanned' }}"
+      data-received-scanned-at="{% if pkg.received_scanned_at %}{{ to_jamaica(pkg.received_scanned_at).strftime('%Y-%m-%d %I:%M %p') }}{% endif %}"
+      data-delivery-scanned-at="{% if pkg.delivery_scanned_at %}{{ to_jamaica(pkg.delivery_scanned_at).strftime('%Y-%m-%d %I:%M %p') }}{% endif %}">
       <i class="bi bi-box-seam"></i>
     </button>
   </td>

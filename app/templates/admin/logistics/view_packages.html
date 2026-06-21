@@ -611,6 +611,61 @@
   </div>
 </div>
 
+<div class="modal fade" id="packageActionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="bi bi-box-seam me-1"></i>
+          Package Actions
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="pkgActionId">
+        <input type="hidden" id="pkgActionUserId">
+        <input type="hidden" id="pkgActionInvoiceId">
+
+        <div class="alert alert-light border mb-3">
+          <div><strong>Package ID:</strong> <span id="pkgActionLabel">—</span></div>
+          <div><strong>House AWB:</strong> <span id="pkgHouseAwb">—</span></div>
+          <div><strong>Tracking:</strong> <span id="pkgTracking">—</span></div>
+          <div><strong>Status:</strong> <span id="pkgStatus">—</span></div>
+          <div><strong>Weight:</strong> <span id="pkgWeight">—</span></div>
+          <div><strong>Item Value:</strong> USD <span id="pkgActionValue">0.00</span></div>
+        </div>
+
+        <div class="row g-2">
+
+          <div class="col-12 col-md-6">
+            <button type="button" class="btn btn-outline-purple w-100" id="pkgOpenAttachBtn">
+              <i class="fas fa-paperclip me-1"></i>
+              Add Invoice / Update Item Value
+            </button>
+          </div>
+
+          <div class="col-12 col-md-6">
+            <button type="button" class="btn btn-outline-purple w-100" id="pkgOpenInvoiceBtn">
+              <i class="fas fa-calculator me-1"></i>
+              Invoice Preview
+            </button>
+          </div>
+
+        </div>
+
+        <hr>
+
+        <div class="small text-muted">
+          More package details, scan history, and documents can be added here next.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <!-- Bulk Invoice Preview Modal (shared) -->
 <div class="modal fade" id="bulkInvoicePreviewModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -1772,7 +1827,7 @@
 
       if (pkgIdInput) pkgIdInput.value = currentPkgId;
       if (pkgLbl) pkgLbl.textContent = currentPkgId || '—';
-      if (pkgValueLbl) pkgValueLbl.textContent = itemValue;
+      if (pkgValueLbl) pkgValueLbl.value = itemValue;
       if (fileInput) fileInput.value = '';
       if (statusEl) statusEl.textContent = 'Select a file to upload.';
 
@@ -1790,6 +1845,10 @@
 
       const fd = new FormData();
       if (csrf) fd.append('csrf_token', csrf);
+
+      const itemValue = document.getElementById('attachPkgValue')?.value || '';
+      fd.append('item_value', itemValue);
+
       for (const f of files) fd.append('attachments', f);
 
       if (statusEl) statusEl.textContent = 'Uploading…';
@@ -2010,6 +2069,61 @@
       }
     });
   })();
+
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.js-open-package-modal');
+    if (!btn) return;
+
+    const pkgId = btn.dataset.pkgId || '';
+    const userId = btn.dataset.userId || '';
+    const invoiceId = btn.dataset.invoiceId || '';
+    const itemValue = btn.dataset.itemValue || '0.00';
+
+    document.getElementById('pkgActionId').value = pkgId;
+    document.getElementById('pkgActionUserId').value = userId;
+    document.getElementById('pkgActionInvoiceId').value = invoiceId;
+
+    document.getElementById('pkgActionLabel').textContent = pkgId || '—';
+    document.getElementById('pkgActionValue').textContent = itemValue || '0.00';
+    document.getElementById('pkgHouseAwb').textContent = btn.dataset.house || '—';
+    document.getElementById('pkgTracking').textContent = btn.dataset.tracking || '—';
+    document.getElementById('pkgStatus').textContent = btn.dataset.status || '—';
+    document.getElementById('pkgWeight').textContent = btn.dataset.weight || '—';
+
+    bootstrap.Modal.getOrCreateInstance(
+      document.getElementById('packageActionModal')
+    ).show();
+  });
+
+  document.getElementById('pkgOpenAttachBtn')?.addEventListener('click', function () {
+    const pkgId = document.getElementById('pkgActionId').value;
+    const itemValue = document.getElementById('pkgActionValue').textContent || '0.00';
+
+    bootstrap.Modal.getInstance(document.getElementById('packageActionModal'))?.hide();
+
+    document.getElementById('attachPkgId').value = pkgId;
+    document.getElementById('attachPkgLabel').textContent = pkgId;
+    document.getElementById('attachPkgValue').value = itemValue;
+
+    bootstrap.Modal.getOrCreateInstance(
+      document.getElementById('attachInvoiceModal')
+    ).show();
+  });
+
+  document.getElementById('pkgOpenInvoiceBtn')?.addEventListener('click', function () {
+    const invoiceId = document.getElementById('pkgActionInvoiceId').value;
+    const userId = document.getElementById('pkgActionUserId').value;
+
+    bootstrap.Modal.getInstance(document.getElementById('packageActionModal'))?.hide();
+
+    if (invoiceId) {
+      viewInvoiceById(invoiceId);
+    } else if (userId) {
+      viewInvoiceByUser(userId);
+    } else {
+      alert('No customer found for this package.');
+    }
+  });
 </script>
 
 <style>

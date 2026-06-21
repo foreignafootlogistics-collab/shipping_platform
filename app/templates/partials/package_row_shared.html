@@ -59,11 +59,12 @@ pkg.get('customer_notified_at') %}
     {% set box_title = 'Not scanned yet' %}
     {% endif %}
 
-    <button type="button" class="btn btn-sm {{ box_class }} js-open-package-modal" title="{{ box_title }}"
-      data-bs-toggle="tooltip" data-pkg-id="{{ _id }}" data-user-id="{{ _user_id }}"
-      data-invoice-id="{{ _invoice_id or '' }}" data-item-value="{{ '%.2f'|format(dv or 0) }}"
-      data-house="{{ _house or '' }}" data-tracking="{{ _tracking or '' }}" data-status="{{ _status or '' }}"
-      data-description="{{ _desc or '' }}" data-weight="{{ _weight or 0 }}">
+    <button type="button" class="btn btn-sm {{ box_class }} js-open-package-modal"
+      onclick="openPackageActionModal(this)" title="{{ box_title }}" data-bs-toggle="tooltip" data-pkg-id="{{ _id }}"
+      data-user-id="{{ _user_id }}" data-invoice-id="{{ _invoice_id or '' }}"
+      data-item-value="{{ '%.2f'|format(dv or 0) }}" data-house="{{ _house or '' }}"
+      data-tracking="{{ _tracking or '' }}" data-status="{{ _status or '' }}" data-description="{{ _desc or '' }}"
+      data-weight="{{ _weight or 0 }}">
       <i class="bi bi-box-seam"></i>
     </button>
   </td>

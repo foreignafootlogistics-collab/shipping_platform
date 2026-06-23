@@ -81,6 +81,12 @@ class User(db.Model, UserMixin):
     scheduled_deliveries = db.relationship('ScheduledDelivery', back_populates='user', lazy='dynamic')
     authorized_pickups = db.relationship('AuthorizedPickup', back_populates='user', lazy='dynamic')
     notifications = db.relationship('Notification', back_populates='user', lazy='dynamic')
+    purchase_requests = db.relationship(
+        "PurchaseRequest",
+        foreign_keys="PurchaseRequest.user_id",
+        back_populates="user",
+        lazy="dynamic"
+    )
 
     @property
     def is_active(self):
@@ -590,6 +596,13 @@ class Package(db.Model):
         default="Warehouse",
         index=True
     )
+
+    purchase_request_id = db.Column(
+        db.Integer,
+        db.ForeignKey("purchase_requests.id"),
+        nullable=True,
+        index=True
+    )
   
     # --------------------------------------------------
     # Shipment Receiving Scan Tracking
@@ -676,6 +689,8 @@ class Package(db.Model):
         if tn is not None:
             kwargs["tracking_number"] = normalize_tracking(tn)
         super().__init__(*args, **kwargs)
+
+
 
 class PackageAttachment(db.Model):
     __tablename__ = "package_attachments"
@@ -1012,6 +1027,178 @@ pickup_packages = db.Table(
         primary_key=True
     ),
 )
+
+class PurchaseRequest(db.Model):
+    __tablename__ = "purchase_requests"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    request_number = db.Column(
+        db.String(30),
+        unique=True,
+        nullable=False,
+        index=True
+    )
+
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=False,
+        index=True
+    )
+
+    product_url = db.Column(db.Text, nullable=False)
+
+    store_name = db.Column(db.String(120))
+    item_name = db.Column(db.String(255))
+
+    quantity = db.Column(db.Integer, default=1)
+
+    color = db.Column(db.String(100))
+    size = db.Column(db.String(100))
+
+    item_price_usd = db.Column(db.Numeric(12,2), default=0)
+    service_fee_jmd = db.Column(db.Numeric(12,2), default=0)
+
+    quoted_item_price_usd = db.Column(db.Numeric(12,2))
+    quoted_service_fee_jmd = db.Column(db.Numeric(12,2))
+    quoted_at = db.Column(db.DateTime)
+
+    customer_fafl_number = db.Column(db.String(20))
+
+    order_number = db.Column(db.String(120))
+    merchant_tracking_number = db.Column(db.String(255))
+
+    notes = db.Column(db.Text)
+
+    status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="requested",
+        index=True
+    )
+
+    invoice_id = db.Column(
+        db.Integer,
+        db.ForeignKey("invoices.id"),
+        nullable=True,
+        index=True
+    )
+
+    package_id = db.Column(
+        db.Integer,
+        db.ForeignKey("packages.id"),
+        nullable=True,
+        index=True
+    )
+
+    purchased_by_admin_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True
+    )
+
+    purchased_at = db.Column(db.DateTime)
+
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+
+    user = db.relationship(
+        "User",
+        foreign_keys=[user_id],
+        back_populates="purchase_requests"
+    )
+
+    invoice = db.relationship(
+        "Invoice",
+        foreign_keys=[invoice_id]
+    )
+
+    package = db.relationship(
+        "Package",
+        foreign_keys=[package_id]
+    )
+
+    purchased_by = db.relationship(
+        "User",
+        foreign_keys=[purchased_by_admin_id]
+    )
+
+class PurchaseRequestItem(db.Model):
+    __tablename__ = "purchase_request_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    purchase_request_id = db.Column(
+        db.Integer,
+        db.ForeignKey("purchase_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    product_url = db.Column(db.Text, nullable=False)
+    store_name = db.Column(db.String(120))
+    item_name = db.Column(db.String(255))
+
+    quantity = db.Column(db.Integer, default=1)
+
+    color = db.Column(db.String(100))
+    size = db.Column(db.String(100))
+
+    notes = db.Column(db.Text)
+
+    item_price_usd = db.Column(db.Numeric(12, 2), default=0)
+    quoted_item_price_usd = db.Column(db.Numeric(12, 2))
+
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+
+    purchase_request = db.relationship(
+        "PurchaseRequest",
+        backref=db.backref(
+            "items",
+            lazy="select",
+            cascade="all, delete-orphan"
+        )
+    )
+
+class PurchaseRequestAttachment(db.Model):
+    __tablename__ = "purchase_request_attachments"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    purchase_request_id = db.Column(
+        db.Integer,
+        db.ForeignKey("purchase_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    file_url = db.Column(db.Text, nullable=False)
+
+    original_name = db.Column(db.String(255))
+
+    cloud_public_id = db.Column(db.String(255))
+    cloud_resource_type = db.Column(db.String(20))
+
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+
+    purchase_request = db.relationship(
+        "PurchaseRequest",
+        backref=db.backref(
+            "attachments",
+            lazy="select",
+            cascade="all, delete-orphan"
+        )
+    )
+
 
 class ScheduledPickup(db.Model):
     __tablename__ = "scheduled_pickups"
@@ -1800,6 +1987,24 @@ def generate_search_case_id(prefix: str = "SRC") -> str:
     seq = next_counter_value("search_case_seq")
     date_part = datetime.now(timezone.utc).strftime("%Y%m%d")
     return f"{prefix}-{date_part}-{seq:06d}"
+
+def generate_purchase_request_number(prefix: str = "PS") -> str:
+    seq = next_counter_value("purchase_request_seq")
+    return f"{prefix}{seq:06d}"
+
+def calculate_purchase_service_fee(item_value_usd, usd_to_jmd=162):
+    item_value_usd = float(item_value_usd or 0)
+
+    if item_value_usd <= 50:
+        return 1000
+    elif item_value_usd <= 100:
+        return 1500
+    elif item_value_usd <= 250:
+        return 2000
+    elif item_value_usd <= 500:
+        return 3500
+    else:
+        return round((item_value_usd * 0.05) * float(usd_to_jmd or 162), 2)
 
 
 class EmployeePayroll(db.Model):

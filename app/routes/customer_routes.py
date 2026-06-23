@@ -36,6 +36,7 @@ from app.utils.messages import make_thread_key
 from app.utils.message_notify import send_new_message_email
 from app.utils.email_utils import pick_admin_recipient
 from app.utils.subscription_utils import get_subscription_summary
+from app.utils.cloudinary_storage import upload_file
 from app.calculator_data import categories
 from app import mail
 from app.utils.files import allowed_file
@@ -61,6 +62,7 @@ from app.models import (
     MessageAttachment,
     Wallet, WalletTransaction, Payment, Settings,
     Prealert, PackageAttachment, normalize_tracking,
+    PurchaseRequest, generate_purchase_request_number, PurchaseRequestItem, PurchaseRequestAttachment,
 )
 
 from app.models import SubscriptionInvite, SubscriptionMember
@@ -1771,6 +1773,136 @@ def invoice_pdf(invoice_id):
     from app.utils.invoice_pdf import generate_invoice_pdf
     rel = generate_invoice_pdf(invoice_dict)
     return redirect(url_for("static", filename=rel))
+
+@customer_bp.route("/purchase-requests/new", methods=["GET", "POST"])
+@login_required
+def new_purchase_request():
+    if request.method == "POST":
+        product_urls = request.form.getlist("product_url[]")
+        store_name = (request.form.get("store_name") or "").strip()
+        item_names = request.form.getlist("item_name[]")
+        quantities = request.form.getlist("quantity[]")
+        colors = request.form.getlist("color[]")
+        sizes = request.form.getlist("size[]")
+        notes_list = request.form.getlist("notes[]")
+        screenshots = request.files.getlist("screenshots[]")
+
+        valid_indexes = [
+            i for i, u in enumerate(product_urls)
+            if (u or "").strip()
+        ]
+
+        if not valid_indexes:
+            flash("Please enter at least one product link.", "warning")
+            return redirect(url_for("customer.new_purchase_request"))
+
+        first_i = valid_indexes[0]
+
+        total_quantity = 0
+
+        for i in valid_indexes:
+            try:
+                qty = int(quantities[i]) if i < len(quantities) else 1
+            except Exception:
+                qty = 1
+
+            if qty < 1:
+                qty = 1
+
+            total_quantity += qty
+
+        pr = PurchaseRequest(
+            request_number=generate_purchase_request_number(),
+            user_id=current_user.id,
+            customer_fafl_number=current_user.registration_number,
+            product_url=(product_urls[first_i] or "").strip(),
+            store_name=store_name,
+            item_name=(item_names[first_i].strip() if first_i < len(item_names) else ""),
+            quantity=total_quantity,
+            status="requested",
+            created_at=datetime.utcnow(),
+        )
+
+        db.session.add(pr)
+        db.session.flush()
+
+        for i in valid_indexes:
+            try:
+                qty = int(quantities[i]) if i < len(quantities) else 1
+            except Exception:
+                qty = 1
+
+            if qty < 1:
+                qty = 1
+
+            item = PurchaseRequestItem(
+                purchase_request_id=pr.id,
+                product_url=(product_urls[i] or "").strip(),
+                store_name=store_name,
+                item_name=(item_names[i].strip() if i < len(item_names) else ""),
+                quantity=qty,
+                color=(colors[i].strip() if i < len(colors) else ""),
+                size=(sizes[i].strip() if i < len(sizes) else ""),
+                notes=(notes_list[i].strip() if i < len(notes_list) else ""),
+                created_at=datetime.utcnow(),
+            )
+
+            db.session.add(item)
+
+            if i < len(screenshots):
+                screenshot = screenshots[i]
+
+                if screenshot and screenshot.filename and screenshot.filename.strip():
+                    try:
+                        url, public_id, resource_type = upload_file(
+                            screenshot,
+                            folder="fafl/shop_for_me"
+                        )
+
+                        if url:
+                            attachment = PurchaseRequestAttachment(
+                                purchase_request_id=pr.id,
+                                file_url=url,
+                                original_name=screenshot.filename,
+                                cloud_public_id=public_id,
+                                cloud_resource_type=resource_type,
+                                created_at=datetime.utcnow(),
+                            )
+                            db.session.add(attachment)
+
+                    except Exception as e:
+                        current_app.logger.exception(
+                            "Shop For Me screenshot upload failed: %s", e
+                        )
+                        flash(
+                            "Your request was saved, but one screenshot could not be uploaded.",
+                            "warning"
+                        )
+
+        db.session.commit()
+
+        flash(
+            "Your Shop For Me request has been submitted. FAFL will review it and send you a quote.",
+            "success"
+        )
+        return redirect(url_for("customer.purchase_requests"))
+
+    return render_template("customer/new_purchase_request.html")
+
+@customer_bp.route("/purchase-requests")
+@login_required
+def purchase_requests():
+    requests_list = (
+        PurchaseRequest.query
+        .filter_by(user_id=current_user.id)
+        .order_by(PurchaseRequest.created_at.desc())
+        .all()
+    )
+
+    return render_template(
+        "customer/purchase_requests.html",
+        requests_list=requests_list
+    )
 
 # -----------------------------
 # Messaging

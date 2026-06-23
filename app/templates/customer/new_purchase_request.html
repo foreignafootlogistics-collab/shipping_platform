@@ -1,0 +1,188 @@
+{% extends "layout_customer.html" %}
+
+{% block content %}
+<div class="container py-4">
+
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:16px; overflow:hidden;">
+        <div class="card-body text-white p-4" style="background:#4a148c;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <h3 class="mb-1">
+                        <i class="fas fa-cart-plus me-2" style="color:#FACC15;"></i>
+                        Request Items
+                    </h3>
+                    <p class="mb-0">
+                        Add one or more items from the same store and FAFL will review them before purchase.
+                    </p>
+                </div>
+
+                <a href="{{ url_for('customer.purchase_requests') }}" class="btn fw-semibold"
+                    style="background:#FACC15;color:#2b1600;border:none;">
+                    Back to Shop For Me
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0" style="border-radius:16px;">
+        <div class="card-body p-4">
+
+            <div class="alert border-0 mb-4" style="background:#fff8db;color:#664d03;border-radius:12px;">
+                <strong>FAFL Shop For Me Service</strong><br>
+                Add multiple items from the same store only. If items are from different stores, please submit a
+                separate Shop For Me request.
+            </div>
+
+            <form method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">
+                        Store Name <span class="text-danger">*</span>
+                    </label>
+                    <input type="text" name="store_name" class="form-control" required
+                        placeholder="Amazon, Walmart, Temu, Shein etc.">
+
+                    <div class="form-text">
+                        This request is for one store only. Use “Add Another Item” only for items from this same store.
+                    </div>
+                </div>
+
+                <div id="items-wrapper">
+
+                    <div class="item-card border rounded-3 p-3 mb-3" style="border-color:#e5d8f5 !important;">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 class="mb-0" style="color:#4a148c;">
+                                <i class="fas fa-box-open me-2" style="color:#FACC15;"></i>
+                                Item 1
+                            </h5>
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-item d-none">
+                                Remove
+                            </button>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Product Link <span class="text-danger">*</span>
+                            </label>
+                            <input type="url" name="product_url[]" class="form-control" required
+                                placeholder="Paste product link here">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">
+                                Screenshot / Product Image <span class="text-muted">(optional)</span>
+                            </label>
+                            <input type="file" name="screenshots[]" class="form-control"
+                                accept=".jpg,.jpeg,.png,.webp,.pdf">
+                            <div class="form-text">
+                                Upload a screenshot if the item is from Instagram, TikTok, Facebook, WhatsApp, or a
+                                store app.
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Item Name</label>
+                            <input type="text" name="item_name[]" class="form-control"
+                                placeholder="Example: sneakers, air fryer, phone case">
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-semibold">Quantity</label>
+                                <input type="number" name="quantity[]" class="form-control" value="1" min="1">
+                            </div>
+
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-semibold">Size</label>
+                                <input type="text" name="size[]" class="form-control" placeholder="If applicable">
+                            </div>
+
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-semibold">Color</label>
+                                <input type="text" name="color[]" class="form-control" placeholder="If applicable">
+                            </div>
+                        </div>
+
+                        <div class="mb-2">
+                            <label class="form-label fw-semibold">Notes</label>
+                            <textarea name="notes[]" class="form-control" rows="3"
+                                placeholder="Any special instructions for this item?"></textarea>
+                        </div>
+                    </div>
+
+                </div>
+
+                <button type="button" id="add-item-btn" class="btn fw-semibold mb-4"
+                    style="background:#198754;color:#fff;border:none;">
+                    <i class="fas fa-plus me-1"></i> Add Another Item From Same Store
+                </button>
+
+                <div class="d-flex flex-wrap gap-2 mb-4">
+                    <span class="badge" style="background:#FACC15;color:#2b1600;">No Credit Card Needed</span>
+                    <span class="badge bg-success">We Buy It</span>
+                    <span class="badge" style="background:#4a148c;color:#fff;">You Track It</span>
+                </div>
+
+                <button type="submit" class="btn fw-semibold px-4" style="background:#4a148c;color:#fff;border:none;">
+                    Submit Request
+                </button>
+            </form>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const wrapper = document.getElementById("items-wrapper");
+        const addBtn = document.getElementById("add-item-btn");
+
+        function updateItemLabels() {
+            const cards = wrapper.querySelectorAll(".item-card");
+
+            cards.forEach((card, index) => {
+                const title = card.querySelector("h5");
+                const removeBtn = card.querySelector(".remove-item");
+
+                title.innerHTML = `
+                    <i class="fas fa-box-open me-2" style="color:#FACC15;"></i>
+                    Item ${index + 1}
+                `;
+
+                if (cards.length > 1) {
+                    removeBtn.classList.remove("d-none");
+                } else {
+                    removeBtn.classList.add("d-none");
+                }
+            });
+        }
+
+        addBtn.addEventListener("click", function () {
+            const firstCard = wrapper.querySelector(".item-card");
+            const newCard = firstCard.cloneNode(true);
+
+            newCard.querySelectorAll("input, textarea").forEach(field => {
+                if (field.type === "number") {
+                    field.value = 1;
+                } else {
+                    field.value = "";
+                }
+            });
+
+            wrapper.appendChild(newCard);
+            updateItemLabels();
+        });
+
+        wrapper.addEventListener("click", function (e) {
+            if (e.target.classList.contains("remove-item")) {
+                e.target.closest(".item-card").remove();
+                updateItemLabels();
+            }
+        });
+
+        updateItemLabels();
+    });
+</script>
+{% endblock %}

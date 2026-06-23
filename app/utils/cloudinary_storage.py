@@ -104,7 +104,7 @@ def upload_file(file_storage, folder="fafl/uploads"):
     ext = os.path.splitext(filename)[1].lower()  # ".pdf", ".jpg", etc
     base = os.path.splitext(filename)[0]         # "invoice_jl18nf" (no ext)
 
-    is_image = ext in (".jpg", ".jpeg", ".png")
+    is_image = ext in (".jpg", ".jpeg", ".png", ".webp")
     resource_type = "image" if is_image else "raw"
 
     # ✅ Critical: public_id must NOT include extension

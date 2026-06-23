@@ -1,0 +1,145 @@
+{% extends "layout_admin.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:16px; overflow:hidden;">
+        <div class="card-body text-white p-4" style="background:#4a148c;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <h3 class="mb-1">
+                        <i class="fas fa-cart-plus me-2" style="color:#FACC15;"></i>
+                        Shop For Me
+                    </h3>
+                    <p class="mb-0">Review customer purchase requests and prepare quotes.</p>
+                </div>
+
+                <span class="badge fs-6" style="background:#FACC15;color:#2b1600;">
+                    {{ requests_list|length }} Requests
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0" style="border-radius:16px;">
+        <div class="card-body">
+
+            <form method="GET" class="mb-3">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label fw-semibold">Status</label>
+                        <select name="status" class="form-select">
+                            <option value="all" {% if status=="all" %}selected{% endif %}>All</option>
+                            <option value="requested" {% if status=="requested" %}selected{% endif %}>Requested</option>
+                            <option value="quoted" {% if status=="quoted" %}selected{% endif %}>Quoted</option>
+                            <option value="awaiting_payment" {% if status=="awaiting_payment" %}selected{% endif %}>
+                                Awaiting Payment</option>
+                            <option value="paid" {% if status=="paid" %}selected{% endif %}>Paid</option>
+                            <option value="purchased" {% if status=="purchased" %}selected{% endif %}>Purchased</option>
+                            <option value="cancelled" {% if status=="cancelled" %}selected{% endif %}>Cancelled</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-2">
+                        <button type="submit" class="btn text-white w-100" style="background:#4a148c;">
+                            Filter
+                        </button>
+                    </div>
+                </div>
+            </form>
+
+            {% if requests_list %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead style="background:#f7f3fb;">
+                        <tr>
+                            <th>Request #</th>
+                            <th>Customer</th>
+                            <th>FAFL #</th>
+                            <th>Store</th>
+                            <th>Items</th>
+                            <th>Qty</th>
+                            <th>Status</th>
+                            <th>Submitted</th>
+                            <th class="text-end">Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for req in requests_list %}
+                        <tr>
+                            <td class="fw-semibold" style="color:#4a148c;">
+                                {{ req.request_number }}
+                            </td>
+
+                            <td>
+                                {% if req.user %}
+                                {{ req.user.full_name or req.user.email }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+
+                            <td>{{ req.customer_fafl_number or "-" }}</td>
+                            <td>{{ req.store_name or "-" }}</td>
+
+                            <td>
+                                {% if req.items %}
+                                {{ req.items|length }}
+                                {% else %}
+                                1
+                                {% endif %}
+                            </td>
+
+                            <td>{{ req.quantity or 1 }}</td>
+
+                            <td>
+                                {% set s = req.status %}
+                                {% if s in ['paid', 'ready_for_pickup', 'delivered'] %}
+                                <span class="badge bg-success text-capitalize">{{ s.replace("_", " ") }}</span>
+                                {% elif s in ['requested', 'quoted', 'awaiting_payment'] %}
+                                <span class="badge text-dark text-capitalize" style="background:#FACC15;">
+                                    {{ s.replace("_", " ") }}
+                                </span>
+                                {% elif s == 'purchased' %}
+                                <span class="badge text-white text-capitalize" style="background:#4a148c;">
+                                    {{ s.replace("_", " ") }}
+                                </span>
+                                {% elif s == 'cancelled' %}
+                                <span class="badge bg-danger text-capitalize">{{ s.replace("_", " ") }}</span>
+                                {% else %}
+                                <span class="badge bg-secondary text-capitalize">{{ s.replace("_", " ") }}</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if req.created_at %}
+                                {{ req.created_at.strftime("%Y-%m-%d") }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+
+                            <td class="text-end">
+                                <a href="{{ url_for('logistics.admin_shop_for_me_detail', request_id=req.id) }}"
+                                    class="btn btn-sm text-white" style="background:#4a148c;">
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <h5 class="fw-bold" style="color:#4a148c;">No Shop For Me requests found</h5>
+                <p class="text-muted mb-0">Customer requests will appear here once submitted.</p>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}

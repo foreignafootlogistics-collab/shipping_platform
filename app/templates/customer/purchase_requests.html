@@ -1,0 +1,125 @@
+{% extends "layout_customer.html" %}
+
+{% block content %}
+<div class="container py-4">
+
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:16px; overflow:hidden;">
+        <div class="card-body text-white p-4" style="background:#4a148c;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <h3 class="mb-1">
+                        <i class="fas fa-cart-plus me-2" style="color:#FACC15;"></i>
+                        Shop For Me
+                    </h3>
+                    <p class="mb-0">
+                        No credit card? Send us the product link and FAFL will shop for you.
+                    </p>
+                </div>
+
+                <a href="{{ url_for('customer.new_purchase_request') }}" class="btn fw-semibold"
+                    style="background:#FACC15;color:#2b1600;border:none;">
+                    Request an Item
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0" style="border-radius:16px;">
+        <div class="card-body p-4">
+
+            {% if requests_list %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead style="background:#f7f3fb;">
+                        <tr>
+                            <th>Request #</th>
+                            <th>Item</th>
+                            <th>Store</th>
+                            <th>Qty</th>
+                            <th>Status</th>
+                            <th>Submitted</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in requests_list %}
+                        <tr>
+                            <td class="fw-semibold" style="color:#4a148c;">
+                                {{ req.request_number }}
+                            </td>
+
+                            <td>
+                                {% if req.item_name %}
+                                {{ req.item_name }}
+                                {% else %}
+                                <a href="{{ req.product_url }}" target="_blank" style="color:#4a148c;">
+                                    View Item
+                                </a>
+                                {% endif %}
+                            </td>
+
+                            <td>{{ req.store_name or "-" }}</td>
+                            <td>{{ req.quantity or 1 }}</td>
+
+                            <td>
+                                {% set s = req.status %}
+                                {% if s in ['paid', 'ready_for_pickup', 'delivered'] %}
+                                <span class="badge bg-success text-capitalize">{{ s.replace("_", " ") }}</span>
+                                {% elif s in ['requested', 'quoted', 'awaiting_payment'] %}
+                                <span class="badge text-dark text-capitalize" style="background:#FACC15;">
+                                    {{ s.replace("_", " ") }}
+                                </span>
+                                {% elif s == 'purchased' %}
+                                <span class="badge text-white text-capitalize" style="background:#4a148c;">
+                                    {{ s.replace("_", " ") }}
+                                </span>
+                                {% elif s == 'cancelled' %}
+                                <span class="badge bg-danger text-capitalize">{{ s.replace("_", " ") }}</span>
+                                {% else %}
+                                <span class="badge bg-secondary text-capitalize">{{ s.replace("_", " ") }}</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if req.created_at %}
+                                {{ req.created_at.strftime("%Y-%m-%d") }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% else %}
+            <div class="text-center py-5">
+                <div class="mx-auto mb-3 d-flex align-items-center justify-content-center"
+                    style="width:82px;height:82px;border-radius:50%;background:#fff8db;">
+                    <i class="fas fa-shopping-cart fa-2x" style="color:#FACC15;"></i>
+                </div>
+
+                <h4 class="fw-bold mb-2" style="color:#4a148c;">Ready to Shop?</h4>
+
+                <p class="text-muted mb-4">
+                    Paste a link from Amazon, Walmart, Temu, Shein or any online store and we’ll handle the purchase.
+                </p>
+
+                <a href="{{ url_for('customer.new_purchase_request') }}" class="btn fw-semibold px-4"
+                    style="background:#4a148c;color:#fff;border:none;">
+                    Request Your First Item
+                </a>
+
+                <div class="mt-4 small">
+                    <span class="badge me-2" style="background:#FACC15;color:#2b1600;">No Credit Card Needed</span>
+                    <span class="badge bg-success me-2">We Buy It</span>
+                    <span class="badge" style="background:#4a148c;color:#fff;">You Track It</span>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}

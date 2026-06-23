@@ -16,7 +16,7 @@ from flask import stream_with_context
 
 from flask import (
     Blueprint, render_template, request, redirect, url_for,
-    flash, jsonify, send_file, Response, current_app, session, 
+    flash, jsonify, send_file, Response, current_app, session,
     abort, send_from_directory
 )
 from flask_login import login_required, current_user
@@ -41,6 +41,7 @@ from app.models import (
 )
 from app.models import Message as DBMessage
 from app.models import normalize_tracking
+from app.models import PurchaseRequest, PurchaseRequestItem, calculate_purchase_service_fee
 
 from app.forms import (
     PackageBulkActionForm, UploadPackageForm, PreAlertForm, InvoiceFinalizeForm,
@@ -2579,47 +2580,14 @@ def admin_view_package_attachment(attachment_id):
         or ""
     ).strip()
 
-    display_name = (
-        getattr(a, "original_name", None)
-        or getattr(a, "file_name", None)
-        or "attachment"
-    ).strip()
+    if not url:
+        abort(404)
 
-    safe_name = secure_filename(display_name) or "attachment"
-
+    # Cloudinary / remote files
     if url.startswith(("http://", "https://")):
-        r = requests.get(url, stream=True, timeout=30)
+        return redirect(url)
 
-        if r.status_code != 200:
-            abort(404)
-
-        lower = safe_name.lower()
-
-        if lower.endswith(".pdf"):
-            content_type = "application/pdf"
-        elif lower.endswith((".jpg", ".jpeg")):
-            content_type = "image/jpeg"
-        elif lower.endswith(".png"):
-            content_type = "image/png"
-        else:
-            content_type = r.headers.get("Content-Type") or "application/octet-stream"
-
-        def generate():
-            for chunk in r.iter_content(8192):
-                if chunk:
-                    yield chunk
-
-        resp = Response(
-            stream_with_context(generate()),
-            mimetype=content_type
-        )
-
-        resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
-        resp.headers["X-Content-Type-Options"] = "nosniff"
-
-        return resp
-
-    # legacy disk fallback (keep yours)
+    # Local legacy fallback
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
 
     if not upload_folder:
@@ -2631,6 +2599,7 @@ def admin_view_package_attachment(attachment_id):
         abort(404)
 
     return send_from_directory(upload_folder, url, as_attachment=False)
+
 
 @logistics_bp.route("/shipmentlog/<int:shipment_id>/print", methods=["GET"])
 @admin_required
@@ -7480,5 +7449,75 @@ def prepare_create_shipment():
     return redirect(url_for('logistics.logistics_dashboard', tab='view_packages', create_shipment=1))
 
 
+@logistics_bp.route("/shop-for-me", methods=["GET"])
+@admin_required
+def admin_shop_for_me():
+    status = (request.args.get("status") or "all").strip()
+
+    query = PurchaseRequest.query.order_by(PurchaseRequest.created_at.desc())
+
+    if status != "all":
+        query = query.filter(PurchaseRequest.status == status)
+
+    requests_list = query.all()
+
+    return render_template(
+        "admin/logistics/shop_for_me.html",
+        requests_list=requests_list,
+        status=status
+    )
+
+@logistics_bp.route("/shop-for-me/<int:request_id>", methods=["GET"])
+@admin_required
+def admin_shop_for_me_detail(request_id):
+    pr = PurchaseRequest.query.get_or_404(request_id)
+
+    return render_template(
+        "admin/logistics/shop_for_me_detail.html",
+        pr=pr
+    )
+
+@logistics_bp.route("/shop-for-me/<int:request_id>/quote", methods=["POST"])
+@admin_required
+def admin_shop_for_me_quote(request_id):
+    pr = PurchaseRequest.query.get_or_404(request_id)
+
+    item_total_usd_raw = (request.form.get("item_total_usd") or "").strip()
+    service_fee_jmd_raw = (request.form.get("service_fee_jmd") or "").strip()
+    quote_notes = (request.form.get("quote_notes") or "").strip()
+
+    try:
+        item_total_usd = Decimal(item_total_usd_raw)
+    except Exception:
+        flash("Please enter a valid item total in USD.", "danger")
+        return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+
+    settings = Settings.query.first()
+    usd_to_jmd = float(settings.usd_to_jmd or 162) if settings else 162
+
+    if service_fee_jmd_raw:
+        try:
+            service_fee_jmd = Decimal(service_fee_jmd_raw)
+        except Exception:
+            flash("Please enter a valid service fee.", "danger")
+            return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+    else:
+        service_fee_jmd = Decimal(str(calculate_purchase_service_fee(item_total_usd, usd_to_jmd)))
+
+    pr.item_price_usd = item_total_usd
+    pr.service_fee_jmd = service_fee_jmd
+    pr.quoted_item_price_usd = item_total_usd
+    pr.quoted_service_fee_jmd = service_fee_jmd
+    pr.quoted_at = datetime.utcnow()
+    pr.status = "quoted"
+
+    if quote_notes:
+        existing_notes = pr.notes or ""
+        pr.notes = (existing_notes + "\n\nQuote Notes: " + quote_notes).strip()
+
+    db.session.commit()
+
+    flash("Quote saved successfully.", "success")
+    return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
 
   

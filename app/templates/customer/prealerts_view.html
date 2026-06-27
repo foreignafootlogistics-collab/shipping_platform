@@ -15,7 +15,7 @@
         <i class="bi bi-pencil-square"></i> Edit Selected
       </button>
 
-      <form id="deleteSelectedPrealertForm" method="POST" style="display:inline;">
+      <form id="deleteSelectedPrealertForm" method="POST" action="">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button id="deleteSelectedPrealertBtn" type="submit" class="btn btn-outline-danger btn-sm" disabled>
           <i class="bi bi-trash"></i> Delete Selected
@@ -205,4 +205,4 @@
     });
   });
 </script>
-<input type="checkbox" class="form-check-input prealert-select" value="{{ p.id }}" {% endblock %}
+{% endblock %}

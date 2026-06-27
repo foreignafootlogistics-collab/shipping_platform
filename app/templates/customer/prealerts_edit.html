@@ -31,7 +31,8 @@
 
       <div class="col-md-6">
         {{ form.tracking_number.label(class="form-label") }}
-        {{ form.tracking_number(class="form-control", id="tracking_number", autocapitalize="characters", spellcheck="false") }}
+        {{ form.tracking_number(class="form-control", id="tracking_number", autocapitalize="characters",
+        spellcheck="false") }}
         <div class="form-text">Tip: Don’t include spaces. We’ll auto-trim for you.</div>
       </div>
 
@@ -51,17 +52,68 @@
       </div>
 
       <div class="col-md-12">
-        {{ form.invoice.label(class="form-label") }}
-        {{ form.invoice(class="form-control", accept=".jpg,.jpeg,.png,.pdf") }}
-        <div class="form-text">
-          Allowed formats: jpg, jpeg, png, pdf.
-          {% if prealert.invoice_filename %}
-            Current invoice:
-            <a href="{{ url_for('customer.prealert_invoice', prealert_id=prealert.id) }}" target="_blank">View</a>
-            |
-            <a href="{{ url_for('customer.prealert_invoice_download', prealert_id=prealert.id) }}">Download</a>
-          {% endif %}
+        <label class="form-label fw-semibold">Current Attachments</label>
+
+        {% if prealert.attachments and prealert.attachments|length > 0 %}
+        <div class="border rounded bg-light p-2 mb-3">
+          {% for a in prealert.attachments %}
+          <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+            <div>
+              <i class="bi bi-paperclip me-1"></i>
+              <strong>{{ a.original_name or 'Attachment' }}</strong>
+            </div>
+
+            <div class="d-flex gap-2">
+              {% if not (a.original_name or '').lower().endswith('.pdf') %}
+              <a class="btn btn-sm btn-outline-secondary"
+                href="{{ url_for('customer.prealert_attachment', attachment_id=a.id) }}" target="_blank">
+                View
+              </a>
+              {% endif %}
+
+              <a class="btn btn-sm btn-outline-secondary"
+                href="{{ url_for('customer.prealert_attachment_download', attachment_id=a.id) }}">
+                Download
+              </a>
+
+              <button type="submit" form="deleteAttachmentForm{{ a.id }}" class="btn btn-sm btn-outline-danger"
+                onclick="return confirm('Remove this attachment?');">
+                Remove
+              </button>
+            </div>
+          </div>
+          {% endfor %}
         </div>
+        {% elif prealert.invoice_filename %}
+        <div class="border rounded bg-light p-2 mb-3">
+          <i class="bi bi-paperclip me-1"></i>
+          {{ prealert.invoice_original_name or 'Current invoice' }}
+
+          <a class="btn btn-sm btn-link"
+            href="{{ url_for('customer.prealert_invoice_download', prealert_id=prealert.id) }}">
+            Download
+          </a>
+        </div>
+        {% else %}
+        <div class="text-muted mb-3">No attachments uploaded yet.</div>
+        {% endif %}
+
+        <label class="form-label fw-semibold">Add New Attachments</label>
+
+        <div id="attachmentInputs">
+          <div class="input-group mb-2 attachment-input-row">
+            <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
+            <button class="btn btn-outline-danger remove-attachment-btn" type="button" style="display:none;">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="button" id="addAttachmentBtn" class="btn btn-sm btn-outline-secondary mt-1">
+          <i class="bi bi-plus-circle me-1"></i> Add Another Attachment
+        </button>
+
+        <div class="form-text">Allowed formats: jpg, jpeg, png, pdf. Add each file separately.</div>
       </div>
     </div>
 
@@ -70,35 +122,87 @@
       <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-secondary">Cancel</a>
     </div>
   </form>
+
+  {% if prealert.attachments %}
+  {% for a in prealert.attachments %}
+  <form id="deleteAttachmentForm{{ a.id }}" method="POST"
+    action="{{ url_for('customer.prealert_attachment_delete', attachment_id=a.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  </form>
+  {% endfor %}
+  {% endif %}
 </div>
 
 <script>
-(function () {
-  const form = document.getElementById('prealertEditForm');
-  if (!form) return;
+  (function () {
+    const form = document.getElementById('prealertEditForm');
+    const attachmentWrap = document.getElementById('attachmentInputs');
+    const addBtn = document.getElementById('addAttachmentBtn');
 
-  function trimEl(idOrName) {
-    const el = document.getElementById(idOrName) || form.querySelector(`[name="${idOrName}"]`);
-    if (!el || typeof el.value !== 'string') return;
-    el.value = el.value.trim();
-  }
+    if (!form) return;
 
-  form.addEventListener('submit', function () {
-    trimEl('vendor_name');
-    trimEl('courier_name');
-    trimEl('package_contents');
-
-    const t = document.getElementById('tracking_number') || form.querySelector('[name="tracking_number"]');
-    if (t && typeof t.value === 'string') {
-      t.value = t.value.trim().toUpperCase();
+    function trimEl(idOrName) {
+      const el = document.getElementById(idOrName) || form.querySelector(`[name="${idOrName}"]`);
+      if (!el || typeof el.value !== 'string') return;
+      el.value = el.value.trim();
     }
 
-    const submitBtn = form.querySelector('button[type="submit"]');
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerText = "Saving...";
+    function updateRemoveButtons() {
+      const rows = attachmentWrap.querySelectorAll('.attachment-input-row');
+      rows.forEach(function (row) {
+        const btn = row.querySelector('.remove-attachment-btn');
+        if (btn) {
+          btn.style.display = rows.length > 1 ? '' : 'none';
+        }
+      });
     }
-  });
-})();
+
+    function addAttachmentInput() {
+      const row = document.createElement('div');
+      row.className = 'input-group mb-2 attachment-input-row';
+      row.innerHTML = `
+      <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
+      <button class="btn btn-outline-danger remove-attachment-btn" type="button">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    `;
+
+      attachmentWrap.appendChild(row);
+      updateRemoveButtons();
+    }
+
+    if (addBtn && attachmentWrap) {
+      addBtn.addEventListener('click', addAttachmentInput);
+
+      attachmentWrap.addEventListener('click', function (e) {
+        const btn = e.target.closest('.remove-attachment-btn');
+        if (!btn) return;
+
+        const row = btn.closest('.attachment-input-row');
+        if (row) row.remove();
+
+        updateRemoveButtons();
+      });
+
+      updateRemoveButtons();
+    }
+
+    form.addEventListener('submit', function () {
+      trimEl('vendor_name');
+      trimEl('courier_name');
+      trimEl('package_contents');
+
+      const t = document.getElementById('tracking_number') || form.querySelector('[name="tracking_number"]');
+      if (t && typeof t.value === 'string') {
+        t.value = t.value.trim().toUpperCase();
+      }
+
+      const submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerText = "Saving...";
+      }
+    });
+  })();
 </script>
 {% endblock %}

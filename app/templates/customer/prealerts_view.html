@@ -10,9 +10,18 @@
       Create New Pre-Alert Shipment
     </a>
 
-    <button id="editSelectedPrealertBtn" type="button" class="btn btn-outline-secondary btn-sm" disabled>
-      <i class="bi bi-pencil-square"></i> Edit Selected
-    </button>
+    <div class="d-flex gap-2">
+      <button id="editSelectedPrealertBtn" type="button" class="btn btn-outline-secondary btn-sm" disabled>
+        <i class="bi bi-pencil-square"></i> Edit Selected
+      </button>
+
+      <form id="deleteSelectedPrealertForm" method="POST" style="display:inline;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button id="deleteSelectedPrealertBtn" type="submit" class="btn btn-outline-danger btn-sm" disabled>
+          <i class="bi bi-trash"></i> Delete Selected
+        </button>
+      </form>
+    </div>
   </div>
 
   <div class="table-responsive">
@@ -43,7 +52,8 @@
             </i>
             {% else %}
             <input type="checkbox" class="form-check-input prealert-select" value="{{ p.id }}"
-              data-edit-url="{{ url_for('customer.prealerts_edit', prealert_id=p.id) }}">
+              data-edit-url="{{ url_for('customer.prealerts_edit', prealert_id=p.id) }}"
+              data-delete-url="{{ url_for('customer.prealerts_delete', prealert_id=p.id) }}">
             {% endif %}
           </td>
 
@@ -150,7 +160,9 @@
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     const checks = document.querySelectorAll(".prealert-select");
-    const btn = document.getElementById("editSelectedPrealertBtn");
+    const editBtn = document.getElementById("editSelectedPrealertBtn");
+    const deleteBtn = document.getElementById("deleteSelectedPrealertBtn");
+    const deleteForm = document.getElementById("deleteSelectedPrealertForm");
 
     function updateBtn() {
       const selected = document.querySelectorAll(".prealert-select:checked");
@@ -159,12 +171,15 @@
         chk.disabled = selected.length > 0 && !chk.checked;
       });
 
-      btn.disabled = selected.length !== 1;
+      editBtn.disabled = selected.length !== 1;
+      deleteBtn.disabled = selected.length !== 1;
 
       if (selected.length === 1) {
-        btn.dataset.editUrl = selected[0].dataset.editUrl;
+        editBtn.dataset.editUrl = selected[0].dataset.editUrl;
+        deleteForm.action = selected[0].dataset.deleteUrl;
       } else {
-        delete btn.dataset.editUrl;
+        delete editBtn.dataset.editUrl;
+        deleteForm.removeAttribute("action");
       }
     }
 
@@ -172,11 +187,22 @@
       chk.addEventListener("change", updateBtn);
     });
 
-    btn.addEventListener("click", function () {
-      if (btn.dataset.editUrl) {
-        window.location.href = btn.dataset.editUrl;
+    editBtn.addEventListener("click", function () {
+      if (editBtn.dataset.editUrl) {
+        window.location.href = editBtn.dataset.editUrl;
+      }
+    });
+
+    deleteForm.addEventListener("submit", function (e) {
+      if (!deleteForm.action) {
+        e.preventDefault();
+        return;
+      }
+
+      if (!confirm("Delete this pre-alert? This will also remove its uploaded attachments.")) {
+        e.preventDefault();
       }
     });
   });
 </script>
-{% endblock %}
+<input type="checkbox" class="form-check-input prealert-select" value="{{ p.id }}" {% endblock %}

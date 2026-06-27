@@ -553,9 +553,9 @@ def prealerts_edit(prealert_id):
         customer_id=current_user.id
     ).first_or_404()
 
-    # ✅ Once linked to a package, customer cannot edit it
-    if pa.linked_package_id:
-        flash("This pre-alert can no longer be edited because the package has already been received.", "warning")
+    # ✅ Once linked or locked, customer cannot edit it
+    if pa.linked_package_id or pa.is_locked:
+        flash("This pre-alert can no longer be edited because it is locked or linked to a package.", "warning")
         return redirect(url_for("customer.prealerts_view"))
 
     form = PreAlertForm(obj=pa)
@@ -563,7 +563,6 @@ def prealerts_edit(prealert_id):
     if form.validate_on_submit():
         tracking = normalize_tracking((form.tracking_number.data or "").strip())
 
-        # ✅ Prevent editing into another duplicate pre-alert
         existing_pa = None
         if tracking:
             existing_pa = (
@@ -591,23 +590,40 @@ def prealerts_edit(prealert_id):
         pa.package_contents = form.package_contents.data
         pa.item_value_usd = float(form.item_value_usd.data or 0)
 
-        # ✅ Optional invoice replacement
-        if form.invoice.data and getattr(form.invoice.data, "filename", ""):
-            f = form.invoice.data
+        # ✅ Add new attachments without deleting existing ones
+        files = request.files.getlist("invoices")
+
+        for f in files:
+            if not f or not getattr(f, "filename", ""):
+                continue
+
             original = (f.filename or "").strip()
 
-            if original and allowed_file(original):
-                from app.utils.cloudinary_storage import upload_prealert_invoice
+            if not original:
+                continue
 
-                invoice_url, invoice_public_id, invoice_resource_type = upload_prealert_invoice(f)
+            if not allowed_file(original):
+                flash("Invalid invoice file type. Allowed: pdf, jpg, jpeg, png.", "warning")
+                return render_template("customer/prealerts_edit.html", form=form, prealert=pa)
 
+            from app.utils.cloudinary_storage import upload_prealert_invoice
+
+            invoice_url, invoice_public_id, invoice_resource_type = upload_prealert_invoice(f)
+
+            # Keep old single invoice field compatible
+            if not pa.invoice_filename:
                 pa.invoice_filename = invoice_url
                 pa.invoice_original_name = original
                 pa.invoice_public_id = invoice_public_id
                 pa.invoice_resource_type = invoice_resource_type
-            else:
-                flash("Invalid invoice file type. Allowed: pdf, jpg, jpeg, png.", "warning")
-                return render_template("customer/prealerts_edit.html", form=form, prealert=pa)
+
+            db.session.add(PrealertAttachment(
+                prealert_id=pa.id,
+                file_url=invoice_url,
+                original_name=original,
+                cloud_public_id=invoice_public_id,
+                cloud_resource_type=invoice_resource_type,
+            ))
 
         db.session.commit()
 
@@ -615,6 +631,7 @@ def prealerts_edit(prealert_id):
         return redirect(url_for("customer.prealerts_view"))
 
     return render_template("customer/prealerts_edit.html", form=form, prealert=pa)
+
 
 @customer_bp.route("/prealerts/attachment/<int:attachment_id>")
 @login_required
@@ -657,6 +674,44 @@ def prealert_attachment_download(attachment_id):
         as_attachment=True,
         download_name=filename
     )
+
+@customer_bp.route("/prealerts/<int:prealert_id>/delete", methods=["POST"])
+@login_required
+def prealerts_delete(prealert_id):
+    pa = Prealert.query.filter_by(
+        id=prealert_id,
+        customer_id=current_user.id
+    ).first_or_404()
+
+    if pa.linked_package_id or pa.is_locked:
+        flash("This pre-alert cannot be deleted because it is locked or linked to a package.", "warning")
+        return redirect(url_for("customer.prealerts_view"))
+
+    db.session.delete(pa)
+    db.session.commit()
+
+    flash(f"Pre-alert PA-{pa.prealert_number} deleted successfully.", "success")
+    return redirect(url_for("customer.prealerts_view"))
+
+
+@customer_bp.route("/prealerts/attachment/<int:attachment_id>/delete", methods=["POST"])
+@login_required
+def prealert_attachment_delete(attachment_id):
+    att = PrealertAttachment.query.get_or_404(attachment_id)
+    pa = att.prealert
+
+    if pa.customer_id != current_user.id:
+        abort(403)
+
+    if pa.linked_package_id or pa.is_locked:
+        flash("Attachments cannot be removed because this pre-alert is locked or linked to a package.", "warning")
+        return redirect(url_for("customer.prealerts_view"))
+
+    db.session.delete(att)
+    db.session.commit()
+
+    flash("Attachment removed successfully.", "success")
+    return redirect(url_for("customer.prealerts_edit", prealert_id=pa.id))
 
 # -----------------------------
 # Packages

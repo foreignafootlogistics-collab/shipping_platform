@@ -58,9 +58,22 @@
       </div>
 
       <div class="col-md-12">
-        <label class="form-label" for="invoices">Invoices / Attachments</label>
-        <input class="form-control" type="file" id="invoices" name="invoices" accept=".jpg,.jpeg,.png,.pdf" multiple>
-        <div class="form-text">Allowed formats: jpg, jpeg, png, pdf. You can select multiple files.</div>
+        <label class="form-label">Invoices / Attachments</label>
+
+        <div id="attachmentInputs">
+          <div class="input-group mb-2 attachment-input-row">
+            <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
+            <button class="btn btn-outline-danger remove-attachment-btn" type="button" style="display:none;">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="button" id="addAttachmentBtn" class="btn btn-sm btn-outline-secondary mt-1">
+          <i class="bi bi-plus-circle me-1"></i> Add Another Attachment
+        </button>
+
+        <div class="form-text">Allowed formats: jpg, jpeg, png, pdf. Add each file separately.</div>
       </div>
     </div>
 
@@ -74,12 +87,55 @@
 <script>
   (function () {
     const form = document.getElementById('prealertCreateForm');
+    const attachmentWrap = document.getElementById('attachmentInputs');
+    const addBtn = document.getElementById('addAttachmentBtn');
+
     if (!form) return;
 
     function trimEl(idOrName) {
       const el = document.getElementById(idOrName) || form.querySelector(`[name="${idOrName}"]`);
       if (!el || typeof el.value !== 'string') return;
       el.value = el.value.trim();
+    }
+
+    function updateRemoveButtons() {
+      const rows = attachmentWrap.querySelectorAll('.attachment-input-row');
+      rows.forEach(function (row, index) {
+        const btn = row.querySelector('.remove-attachment-btn');
+        if (btn) {
+          btn.style.display = rows.length > 1 ? '' : 'none';
+        }
+      });
+    }
+
+    function addAttachmentInput() {
+      const row = document.createElement('div');
+      row.className = 'input-group mb-2 attachment-input-row';
+      row.innerHTML = `
+        <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
+        <button class="btn btn-outline-danger remove-attachment-btn" type="button">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      `;
+
+      attachmentWrap.appendChild(row);
+      updateRemoveButtons();
+    }
+
+    if (addBtn && attachmentWrap) {
+      addBtn.addEventListener('click', addAttachmentInput);
+
+      attachmentWrap.addEventListener('click', function (e) {
+        const btn = e.target.closest('.remove-attachment-btn');
+        if (!btn) return;
+
+        const row = btn.closest('.attachment-input-row');
+        if (row) row.remove();
+
+        updateRemoveButtons();
+      });
+
+      updateRemoveButtons();
     }
 
     form.addEventListener('submit', function () {

@@ -99,14 +99,12 @@
                     {{ a.original_name or 'Attachment' }}
                   </div>
 
-                  {% if not a.is_pdf %}
                   <a class="btn btn-sm btn-link p-0"
                     href="{{ url_for('customer.prealert_attachment', attachment_id=a.id) }}" target="_blank">
                     View
                   </a>
-                  {% endif %}
 
-                  <a class="btn btn-sm btn-link p-0 {% if not a.is_pdf %}ms-2{% endif %}"
+                  <a class="btn btn-sm btn-link p-0 ms-2"
                     href="{{ url_for('customer.prealert_attachment_download', attachment_id=a.id) }}">
                     Download
                   </a>

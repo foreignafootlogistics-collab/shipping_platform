@@ -641,7 +641,28 @@ def prealert_attachment(attachment_id):
     if att.prealert.customer_id != current_user.id:
         abort(403)
 
-    return redirect(att.file_url)
+    import requests
+    import mimetypes
+    from io import BytesIO
+    from flask import send_file
+
+    filename = att.original_name or f"prealert_attachment_{att.id}"
+
+    response = requests.get(att.file_url, timeout=30)
+    response.raise_for_status()
+
+    mime_type = (
+        mimetypes.guess_type(filename)[0]
+        or response.headers.get("Content-Type")
+        or "application/octet-stream"
+    )
+
+    return send_file(
+        BytesIO(response.content),
+        mimetype=mime_type,
+        as_attachment=False,
+        download_name=filename
+    )
 
 
 @customer_bp.route("/prealerts/attachment/<int:attachment_id>/download")

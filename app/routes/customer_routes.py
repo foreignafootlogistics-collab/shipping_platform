@@ -40,6 +40,7 @@ from app.utils.cloudinary_storage import upload_file
 from app.calculator_data import categories
 from app import mail
 from app.utils.files import allowed_file
+from app.utils.time import to_jamaica
 from app.extensions import db, csrf
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.calculator_data import get_freight
@@ -62,7 +63,7 @@ from app.models import (
     MessageAttachment,
     Wallet, WalletTransaction, Payment, Settings,
     Prealert, PackageAttachment, normalize_tracking,
-    PurchaseRequest, generate_purchase_request_number, PurchaseRequestItem, PurchaseRequestAttachment,
+    PurchaseRequest, generate_purchase_request_number, PurchaseRequestItem, PurchaseRequestAttachment, PrealertAttachment
 )
 
 from app.models import SubscriptionInvite, SubscriptionMember
@@ -354,41 +355,64 @@ def prealerts_create():
     form = PreAlertForm()
 
     if form.validate_on_submit():
-        invoice_url = None
-        invoice_public_id = None
-        invoice_resource_type = None
-        invoice_original_name = None
+        uploaded_invoices = []
 
         # ----------------------------
-        # Upload invoice (optional)
+        # Upload invoices / attachments optional
+        # New multiple-upload field: name="invoices"
+        # Keeps old single invoice fields for compatibility.
         # ----------------------------
-        if form.invoice.data and getattr(form.invoice.data, "filename", ""):
-            f = form.invoice.data
+        files = request.files.getlist("invoices")
+
+        # Fallback for old form.invoice if needed
+        if (not files or all(not getattr(f, "filename", "") for f in files)) and form.invoice.data and getattr(form.invoice.data, "filename", ""):
+            files = [form.invoice.data]
+
+        for f in files:
+            if not f or not getattr(f, "filename", ""):
+                continue
+
             original = (f.filename or "").strip()
 
-            if original and allowed_file(original):
-                from app.utils.cloudinary_storage import upload_prealert_invoice
+            if not original:
+                continue
 
-                invoice_original_name = original
-                invoice_url, invoice_public_id, invoice_resource_type = upload_prealert_invoice(f)
-            else:
+            if not allowed_file(original):
                 flash("Invalid invoice file type. Allowed: pdf, jpg, jpeg, png.", "warning")
                 return render_template('customer/prealerts_create.html', form=form)
 
+            from app.utils.cloudinary_storage import upload_prealert_invoice
+
+            invoice_url, invoice_public_id, invoice_resource_type = upload_prealert_invoice(f)
+
+            uploaded_invoices.append({
+                "url": invoice_url,
+                "original_name": original,
+                "public_id": invoice_public_id,
+                "resource_type": invoice_resource_type,
+            })
+
+        first_invoice = uploaded_invoices[0] if uploaded_invoices else None
+
+        invoice_url = first_invoice["url"] if first_invoice else None
+        invoice_original_name = first_invoice["original_name"] if first_invoice else None
+        invoice_public_id = first_invoice["public_id"] if first_invoice else None
+        invoice_resource_type = first_invoice["resource_type"] if first_invoice else None
+
         prealert_number = generate_prealert_number()
 
-        # ✅ normalize tracking so it matches Package consistently
         tracking = normalize_tracking((form.tracking_number.data or "").strip())
 
-        # ✅ Prevent duplicate active pre-alerts for same customer + tracking
         existing_pa = None
         if tracking:
-            existing_pa = (Prealert.query
+            existing_pa = (
+                Prealert.query
                 .filter(Prealert.customer_id == current_user.id)
                 .filter(Prealert.tracking_number == tracking)
                 .filter(Prealert.linked_package_id.is_(None))
                 .order_by(Prealert.id.desc())
-                .first())
+                .first()
+            )
 
         if existing_pa:
             flash(
@@ -408,7 +432,7 @@ def prealerts_create():
             package_contents=form.package_contents.data,
             item_value_usd=float(form.item_value_usd.data or 0),
 
-            # invoice fields
+            # Keeps old single invoice fields working
             invoice_filename=invoice_url,
             invoice_original_name=invoice_original_name,
             invoice_public_id=invoice_public_id,
@@ -418,6 +442,18 @@ def prealerts_create():
         )
 
         db.session.add(pa)
+        db.session.flush()
+
+        # Save all uploaded files in the new attachment table
+        for item in uploaded_invoices:
+            db.session.add(PrealertAttachment(
+                prealert_id=pa.id,
+                file_url=item["url"],
+                original_name=item["original_name"],
+                cloud_public_id=item["public_id"],
+                cloud_resource_type=item["resource_type"],
+            ))
+
         db.session.commit()
 
         # ----------------------------
@@ -427,12 +463,13 @@ def prealerts_create():
             if tracking and invoice_url:
                 from app.utils.prealert_sync import sync_prealert_invoice_to_package
 
-                # ✅ IMPORTANT: exact match on normalized tracking
-                pkg = (Package.query
-                       .filter(Package.user_id == current_user.id)
-                       .filter(Package.tracking_number == tracking)
-                       .order_by(Package.id.desc())
-                       .first())
+                pkg = (
+                    Package.query
+                    .filter(Package.user_id == current_user.id)
+                    .filter(Package.tracking_number == tracking)
+                    .order_by(Package.id.desc())
+                    .first()
+                )
 
                 if pkg:
                     synced = sync_prealert_invoice_to_package(pkg)
@@ -1303,7 +1340,12 @@ def view_bills():
 def bill_invoice_modal(invoice_id):
     inv = Invoice.query.filter_by(id=invoice_id, user_id=current_user.id).first_or_404()
 
-    pkgs = Package.query.filter_by(invoice_id=inv.id).order_by(Package.id.asc()).all()
+    pkgs = (
+        Package.query
+        .filter_by(invoice_id=inv.id)
+        .order_by(Package.id.asc())
+        .all()
+    )
 
     def _num(x):
         try:
@@ -1312,6 +1354,7 @@ def bill_invoice_modal(invoice_id):
             return 0.0
 
     packages = []
+
     for p in pkgs:
         w_raw = _num(getattr(p, "weight", 0))
         w = int(ceil(w_raw))
@@ -1329,8 +1372,6 @@ def bill_invoice_modal(invoice_id):
         else:
             freight = _num(getattr(p, "freight_fee", getattr(p, "freight", 0)))
             handling = _num(getattr(p, "storage_fee", getattr(p, "handling", 0)))
-
-        bad_address_fee = _num(getattr(p, "bad_address_fee", 0))
 
         packages.append({
             "house_awb": p.house_awb or "",
@@ -1351,19 +1392,82 @@ def bill_invoice_modal(invoice_id):
             "subscription_result": getattr(p, "subscription_result", None),
             "subscription_label": (
                 "Subscription Covered"
-                if bool(getattr(p, "subscription_applied", False)) and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                if bool(getattr(p, "subscription_applied", False))
+                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
                 else "Subscriber Rate"
                 if (getattr(p, "subscription_result", "") or "") == "subscription_exhausted"
                 else ""
             ),
         })
 
-    subtotal = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
+    # ---------------------------------------
+    # Shop For Me invoice support
+    # ---------------------------------------
+    shop_request = PurchaseRequest.query.filter_by(invoice_id=inv.id).first()
+    is_shop_for_me = bool(shop_request)
+
+    shop_item_total_usd = 0.0
+    shop_item_total_jmd = 0.0
+    shop_service_fee_jmd = 0.0
+    shop_total = 0.0
+    usd_rate = 162.0
+
+    if shop_request:
+        shop_item_total_usd = _num(shop_request.quoted_item_price_usd)
+        shop_service_fee_jmd = _num(shop_request.quoted_service_fee_jmd)
+
+        try:
+            from app.models import Settings
+            settings = Settings.query.get(1)
+            usd_rate = _num(getattr(settings, "usd_to_jmd", 162)) or 162.0
+        except Exception:
+            usd_rate = 162.0
+
+        shop_item_total_jmd = shop_item_total_usd * usd_rate
+        shop_total = shop_item_total_jmd + shop_service_fee_jmd
+
+        packages = [{
+            "house_awb": inv.invoice_number or f"SHOP-{shop_request.request_number}",
+            "description": "Shop For Me Purchase",
+            "weight": 0,
+            "value": shop_item_total_usd,
+            "freight": 0,
+            "handling": 0,
+            "other_charges": shop_service_fee_jmd,
+            "bad_address_fee": 0,
+            "duty": 0,
+            "scf": 0,
+            "envl": 0,
+            "caf": 0,
+            "gct": 0,
+            "discount_due": 0,
+            "subscription_applied": False,
+            "subscription_result": None,
+            "subscription_label": "",
+        }]
+
+    if shop_request:
+        subtotal = float(shop_total)
+    else:
+        subtotal = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
+
     discount_total = _num(getattr(inv, "discount_total", 0))
 
-    amount_due = _num(getattr(inv, "amount_due", 0))
-    if amount_due <= 0:
-        amount_due = max(subtotal - discount_total, 0)
+    pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
+    payments_total = (
+        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
+        .filter(Payment.invoice_id == inv.id)
+        .scalar()
+        or 0.0
+    )
+
+    amount_due = max(
+        float(subtotal) - float(discount_total) - float(payments_total or 0),
+        0.0
+    )
+
+    if (getattr(inv, "status", "") or "").lower() == "paid":
+        amount_due = 0.0
 
     dt = inv.date_issued or inv.date_submitted or inv.created_at
 
@@ -1377,15 +1481,31 @@ def bill_invoice_modal(invoice_id):
         "customer_name": current_user.full_name,
         "subtotal": float(subtotal),
         "discount_total": float(discount_total),
+        "payments_total": float(payments_total or 0),
         "total_due": float(amount_due),
         "packages": packages,
+
+        # Shop For Me fields for template support
+        "is_shop_for_me": is_shop_for_me,
+        "shop_request_number": shop_request.request_number if shop_request else "",
+        "shop_item_total_usd": float(shop_item_total_usd),
+        "shop_item_total_jmd": float(shop_item_total_jmd),
+        "shop_service_fee_jmd": float(shop_service_fee_jmd),
+        "shop_total": float(shop_total),
+        "shop_usd_rate": float(usd_rate),
     }
 
     wants_panel = request.headers.get("X-Panel") == "1"
     if wants_panel:
-        return render_template("customer/transactions/_invoice_panel_body.html", invoice=invoice_dict)
+        return render_template(
+            "customer/transactions/_invoice_panel_body.html",
+            invoice=invoice_dict
+        )
 
-    return render_template("customer/transactions/_invoice_modal_body.html", invoice=invoice_dict)
+    return render_template(
+        "customer/transactions/_invoice_modal_body.html",
+        invoice=invoice_dict
+    )
 
 
 
@@ -1589,8 +1709,8 @@ def view_invoice_customer(invoice_id):
             return float(default)
 
     packages = []
-    for p in pkgs:
 
+    for p in pkgs:
         is_subscription_covered = (
             bool(getattr(p, "subscription_applied", False))
             and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
@@ -1604,27 +1724,50 @@ def view_invoice_customer(invoice_id):
             storage = _num(getattr(p, "storage_fee", getattr(p, "handling", 0)))
 
         packages.append({
-            "house_awb":       p.house_awb or "",
-            "description":     p.description or "",
-            "weight":          int(math.ceil(_num(getattr(p, "weight", 0)))),
-            "value":           _num(getattr(p, "value", getattr(p, "value_usd", 0))),
-            "freight":         freight,
-            "storage":         storage,
-            "other_charges":   _num(getattr(p, "other_charges", 0)),
+            "house_awb": p.house_awb or "",
+            "description": p.description or "",
+            "weight": int(math.ceil(_num(getattr(p, "weight", 0)))),
+            "value": _num(getattr(p, "value", getattr(p, "value_usd", 0))),
+            "freight": freight,
+            "storage": storage,
+            "other_charges": _num(getattr(p, "other_charges", 0)),
             "bad_address_fee": _num(getattr(p, "bad_address_fee", 0)),
-            "duty":            _num(getattr(p, "duty", 0)),
-            "scf":             _num(getattr(p, "scf", 0)),
-            "envl":            _num(getattr(p, "envl", 0)),
-            "caf":             _num(getattr(p, "caf", 0)),
-            "gct":             _num(getattr(p, "gct", 0)),
-            "discount_due":    _num(getattr(p, "discount_due", 0)),
+            "duty": _num(getattr(p, "duty", 0)),
+            "scf": _num(getattr(p, "scf", 0)),
+            "envl": _num(getattr(p, "envl", 0)),
+            "caf": _num(getattr(p, "caf", 0)),
+            "gct": _num(getattr(p, "gct", 0)),
+            "discount_due": _num(getattr(p, "discount_due", 0)),
         })
 
-    subtotal = (
-        _num(getattr(inv, "subtotal", None))
-        or _num(getattr(inv, "grand_total", 0))
-        or _num(getattr(inv, "amount", 0))
-    )
+    shop_request = PurchaseRequest.query.filter_by(invoice_id=inv.id).first()
+    is_shop_for_me = bool(shop_request)
+
+    shop_item_total_usd = 0.0
+    shop_item_total_jmd = 0.0
+    shop_service_fee_jmd = 0.0
+    shop_total = 0.0
+    shop_usd_rate = 162.0
+
+    if shop_request:
+        shop_item_total_usd = _num(shop_request.quoted_item_price_usd)
+        shop_service_fee_jmd = _num(shop_request.quoted_service_fee_jmd)
+
+        from app.models import Settings
+        settings = Settings.query.get(1)
+        shop_usd_rate = _num(getattr(settings, "usd_to_jmd", 162)) or 162.0
+
+        shop_item_total_jmd = shop_item_total_usd * shop_usd_rate
+        shop_total = shop_item_total_jmd + shop_service_fee_jmd
+        subtotal = shop_total
+        packages = []
+    else:
+        subtotal = (
+            _num(getattr(inv, "subtotal", None))
+            or _num(getattr(inv, "grand_total", 0))
+            or _num(getattr(inv, "amount", 0))
+        )
+
     discount_total = _num(getattr(inv, "discount_total", 0))
 
     pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
@@ -1636,31 +1779,39 @@ def view_invoice_customer(invoice_id):
     )
 
     total_due = max(
-        (_num(getattr(inv, "grand_total", subtotal)) or subtotal)
-        - discount_total
-        - float(payments_total),
+        float(subtotal) - float(discount_total) - float(payments_total),
         0.0
     )
 
+    if (getattr(inv, "status", "") or "").lower() == "paid":
+        total_due = 0.0
+
     invoice_dict = {
-        "id":             inv.id,
+        "id": inv.id,
         "invoice_number": inv.invoice_number,
-        "date":           inv.date_submitted or inv.created_at or datetime.utcnow(),
-        "customer_code":  current_user.registration_number,
-        "customer_name":  current_user.full_name,
-        "status":         getattr(inv, "status", None),
-        "subtotal":       float(subtotal),
+        "date": inv.date_submitted or inv.created_at or datetime.utcnow(),
+        "customer_code": current_user.registration_number,
+        "customer_name": current_user.full_name,
+        "status": getattr(inv, "status", None),
+        "subtotal": float(subtotal),
         "discount_total": float(discount_total),
         "payments_total": float(payments_total),
-        "total_due":      float(total_due),
-        "packages":       packages,
-        "branch":         getattr(inv, "branch", None),
-        "staff":          getattr(inv, "staff", None),
-        "notes":          getattr(inv, "notes", None),
+        "total_due": float(total_due),
+        "packages": packages,
+        "branch": getattr(inv, "branch", None),
+        "staff": getattr(inv, "staff", None),
+        "notes": getattr(inv, "notes", None),
+
+        "is_shop_for_me": is_shop_for_me,
+        "shop_request_number": shop_request.request_number if shop_request else "",
+        "shop_item_total_usd": float(shop_item_total_usd),
+        "shop_item_total_jmd": float(shop_item_total_jmd),
+        "shop_service_fee_jmd": float(shop_service_fee_jmd),
+        "shop_total": float(shop_total),
+        "shop_usd_rate": float(shop_usd_rate),
     }
 
     return render_template("customer/invoices/view_invoice.html", invoice=invoice_dict)
-
 
 @customer_bp.route("/invoices/<int:invoice_id>/pdf")
 @customer_required
@@ -1903,6 +2054,77 @@ def purchase_requests():
         "customer/purchase_requests.html",
         requests_list=requests_list
     )
+
+
+@customer_bp.route("/purchase-requests/<int:request_id>")
+@login_required
+def purchase_request_detail(request_id):
+    pr = PurchaseRequest.query.filter_by(
+        id=request_id,
+        user_id=current_user.id
+    ).first_or_404()
+
+    return render_template(
+        "customer/purchase_request_detail.html",
+        pr=pr
+    )
+
+@customer_bp.route("/purchase-requests/<int:request_id>/approve", methods=["POST"])
+@login_required
+def approve_purchase_request_quote(request_id):
+    pr = PurchaseRequest.query.filter_by(
+        id=request_id,
+        user_id=current_user.id
+    ).first_or_404()
+
+    if pr.status != "quoted":
+        flash("Only quoted requests can be approved.", "warning")
+        return redirect(url_for("customer.purchase_request_detail", request_id=pr.id))
+
+    if not pr.quoted_at:
+        pr.status = "quote_expired"
+        db.session.commit()
+
+        flash(
+            "This quote has expired. Please wait for FAFL to send an updated quote.",
+            "warning"
+        )
+        return redirect(url_for("customer.purchase_request_detail", request_id=pr.id))
+
+    if to_jamaica(pr.quoted_at).date() != to_jamaica(datetime.utcnow()).date():
+        pr.status = "quote_expired"
+        db.session.commit()
+
+        flash(
+            "This quote has expired. Please wait for FAFL to send an updated quote.",
+            "warning"
+        )
+        return redirect(url_for("customer.purchase_request_detail", request_id=pr.id))
+
+    pr.status = "awaiting_payment"
+    db.session.commit()
+
+    flash("Quote approved. Please make payment so FAFL can purchase your item.", "success")
+    return redirect(url_for("customer.purchase_request_detail", request_id=pr.id))
+
+
+@customer_bp.route("/purchase-requests/<int:request_id>/decline", methods=["POST"])
+@login_required
+def decline_purchase_request_quote(request_id):
+    pr = PurchaseRequest.query.filter_by(
+        id=request_id,
+        user_id=current_user.id
+    ).first_or_404()
+
+    if pr.status != "quoted":
+        flash("Only quoted requests can be declined.", "warning")
+        return redirect(url_for("customer.purchase_request_detail", request_id=pr.id))
+
+    pr.status = "cancelled"
+    db.session.commit()
+
+    flash("Quote declined. Your Shop For Me request has been cancelled.", "info")
+    return redirect(url_for("customer.purchase_requests"))
 
 # -----------------------------
 # Messaging

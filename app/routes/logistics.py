@@ -36,8 +36,8 @@ from weasyprint import HTML
 from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
 from app.models import (
-    Prealert, User, ScheduledDelivery, ShipmentLog, Invoice, ShipmentArchiveLog, Settings,
-    Package, Payment, shipment_packages, ScheduledPickup, PackageAttachment, ShipmentScanLog
+    Prealert, PrealertAttachment, User, ScheduledDelivery, ShipmentLog, Invoice, ShipmentArchiveLog, Settings,
+    Package, Payment, shipment_packages, ScheduledPickup, PackageAttachment, ShipmentScanLog, 
 )
 from app.models import Message as DBMessage
 from app.models import normalize_tracking
@@ -56,6 +56,7 @@ from app.utils.delivery_engine import (
     build_delivery_details,
     calculate_real_distance,
 )
+from app.utils.invoice_totals import fetch_invoice_totals_pg
 
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
@@ -1045,7 +1046,6 @@ def prealerts(user_id=None):
     customer_name = None
     registration_number = None
 
-    # VIEW FOR A SINGLE CUSTOMER
     if user_id:
         customer = db.session.get(User, user_id)
         if not customer:
@@ -1063,8 +1063,19 @@ def prealerts(user_id=None):
         registration_number = customer.registration_number
 
         prealerts_data = []
+
         for p in rows:
-            code_number = p.prealert_number or p.id  # fallback for old rows
+            code_number = p.prealert_number or p.id
+
+            attachments = [
+                {
+                    "id": a.id,
+                    "file_url": a.file_url,
+                    "original_name": a.original_name,
+                }
+                for a in getattr(p, "attachments", [])
+            ]
+
             prealerts_data.append({
                 "id": p.id,
                 "code": f"PA-{code_number:05d}",
@@ -1076,7 +1087,17 @@ def prealerts(user_id=None):
                 "purchase_date": p.purchase_date,
                 "package_contents": p.package_contents,
                 "item_value_usd": p.item_value_usd,
-                "invoice_filename": p.invoice_filename,                
+
+                # old single invoice fields
+                "invoice_filename": p.invoice_filename,
+                "invoice_original_name": p.invoice_original_name,
+                "invoice_public_id": p.invoice_public_id,
+                "invoice_resource_type": p.invoice_resource_type,
+
+                # new multiple attachments
+                "attachments": attachments,
+                "attachment_count": len(attachments),
+
                 "created_at": p.created_at,
                 "is_locked": p.is_locked,
                 "lock_reason": p.lock_reason,
@@ -1084,7 +1105,6 @@ def prealerts(user_id=None):
                 "linked_at": p.linked_at,
             })
 
-    # VIEW FOR ALL CUSTOMERS
     else:
         rows = (
             db.session.query(
@@ -1098,8 +1118,19 @@ def prealerts(user_id=None):
         )
 
         prealerts_data = []
+
         for prealert, full_name, reg_no in rows:
             code_number = prealert.prealert_number or prealert.id
+
+            attachments = [
+                {
+                    "id": a.id,
+                    "file_url": a.file_url,
+                    "original_name": a.original_name,
+                }
+                for a in getattr(prealert, "attachments", [])
+            ]
+
             prealerts_data.append({
                 "id": prealert.id,
                 "code": f"PA-{code_number:05d}",
@@ -1111,19 +1142,26 @@ def prealerts(user_id=None):
                 "purchase_date": prealert.purchase_date,
                 "package_contents": prealert.package_contents,
                 "item_value_usd": prealert.item_value_usd,
+
+                # old single invoice fields
                 "invoice_filename": prealert.invoice_filename,
                 "invoice_original_name": prealert.invoice_original_name,
                 "invoice_public_id": prealert.invoice_public_id,
                 "invoice_resource_type": prealert.invoice_resource_type,
+
+                # new multiple attachments
+                "attachments": attachments,
+                "attachment_count": len(attachments),
+
                 "linked_package_id": prealert.linked_package_id,
                 "linked_at": prealert.linked_at,
                 "is_locked": prealert.is_locked,
                 "lock_reason": prealert.lock_reason,
                 "created_at": prealert.created_at,
             })
+
     print("DEBUG prealerts count:", len(prealerts_data))
 
-    # If there are no rows at all, prealerts_data will just be []
     return render_template(
         "admin/logistics/prealerts.html",
         prealerts=prealerts_data,
@@ -1162,6 +1200,19 @@ def admin_lock_prealert(prealert_id):
 
     flash(f"Pre-alert PA-{pa.prealert_number} locked.", "success")
     return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="prealert"), code=303)
+
+@logistics_bp.route("/prealerts/attachment/<int:attachment_id>")
+@admin_required
+def admin_prealert_attachment(attachment_id):
+    att = PrealertAttachment.query.get_or_404(attachment_id)
+    return redirect(att.file_url)
+
+
+@logistics_bp.route("/prealerts/attachment/<int:attachment_id>/download")
+@admin_required
+def admin_prealert_attachment_download(attachment_id):
+    att = PrealertAttachment.query.get_or_404(attachment_id)
+    return redirect(att.file_url)
 
 
 @logistics_bp.route("/shipment-log/<int:shipment_id>/scan-package", methods=["POST"])
@@ -2583,9 +2634,40 @@ def admin_view_package_attachment(attachment_id):
     if not url:
         abort(404)
 
+    display_name = (
+        getattr(a, "original_name", None)
+        or getattr(a, "file_name", None)
+        or "attachment"
+    ).strip()
+
+    safe_name = secure_filename(display_name) or "attachment"
+
     # Cloudinary / remote files
+    # Serve through Flask so browser uses original filename.
     if url.startswith(("http://", "https://")):
-        return redirect(url)
+        try:
+            r = requests.get(url, timeout=30)
+        except Exception:
+            current_app.logger.exception("[PACKAGE ATTACHMENT] Remote fetch failed")
+            abort(502)
+
+        if r.status_code != 200:
+            current_app.logger.warning(
+                "[PACKAGE ATTACHMENT] Remote status=%s attachment_id=%s url=%s",
+                r.status_code,
+                attachment_id,
+                url,
+            )
+            abort(404)
+
+        resp = Response(r.content)
+        resp.headers["Content-Type"] = (
+            r.headers.get("Content-Type") or "application/octet-stream"
+        )
+        resp.headers["Content-Disposition"] = f'inline; filename="{safe_name}"'
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+
+        return resp
 
     # Local legacy fallback
     upload_folder = current_app.config.get("INVOICE_UPLOAD_FOLDER")
@@ -2598,9 +2680,12 @@ def admin_view_package_attachment(attachment_id):
     if not os.path.exists(fp):
         abort(404)
 
-    return send_from_directory(upload_folder, url, as_attachment=False)
-
-
+    return send_from_directory(
+        upload_folder,
+        url,
+        as_attachment=False,
+        download_name=safe_name
+    )
 @logistics_bp.route("/shipmentlog/<int:shipment_id>/print", methods=["GET"])
 @admin_required
 def print_shipment_log(shipment_id):
@@ -7493,7 +7578,7 @@ def admin_shop_for_me_quote(request_id):
         return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
 
     settings = Settings.query.first()
-    usd_to_jmd = float(settings.usd_to_jmd or 162) if settings else 162
+    usd_to_jmd = Decimal(str(settings.usd_to_jmd or 162)) if settings else Decimal("162")
 
     if service_fee_jmd_raw:
         try:
@@ -7504,11 +7589,41 @@ def admin_shop_for_me_quote(request_id):
     else:
         service_fee_jmd = Decimal(str(calculate_purchase_service_fee(item_total_usd, usd_to_jmd)))
 
+    item_total_jmd = item_total_usd * usd_to_jmd
+    total_due_jmd = item_total_jmd + service_fee_jmd
+
+    now_utc = datetime.now(timezone.utc)
+    invoice_number = f"SHOP-{pr.request_number}"
+
+    inv = pr.invoice
+
+    if not inv:
+        inv = Invoice(
+            user_id=pr.user_id,
+            invoice_number=invoice_number,
+            date_submitted=now_utc,
+            date_issued=now_utc,
+            created_at=now_utc,
+            status="unpaid",            
+            grand_total=total_due_jmd,
+            amount_due=total_due_jmd,
+            description=f"Shop For Me Quote {pr.request_number}",
+        )
+        db.session.add(inv)
+        db.session.flush()
+        pr.invoice_id = inv.id
+    else:
+        inv.date_issued = now_utc
+        inv.status = "unpaid"        
+        inv.grand_total = total_due_jmd
+        inv.amount_due = total_due_jmd
+        inv.description = f"Shop For Me Quote {pr.request_number}"
+
     pr.item_price_usd = item_total_usd
     pr.service_fee_jmd = service_fee_jmd
     pr.quoted_item_price_usd = item_total_usd
     pr.quoted_service_fee_jmd = service_fee_jmd
-    pr.quoted_at = datetime.utcnow()
+    pr.quoted_at = now_utc
     pr.status = "quoted"
 
     if quote_notes:
@@ -7517,7 +7632,106 @@ def admin_shop_for_me_quote(request_id):
 
     db.session.commit()
 
-    flash("Quote saved successfully.", "success")
+    flash(f"Quote saved and invoice {invoice_number} created.", "success")
     return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
 
-  
+
+@logistics_bp.route("/shop-for-me/<int:request_id>/mark-paid", methods=["POST"])
+@admin_required
+def admin_shop_for_me_mark_paid(request_id):
+    pr = PurchaseRequest.query.get_or_404(request_id)
+
+    if not pr.invoice_id or not pr.invoice:
+        flash("No invoice is linked to this Shop For Me request.", "warning")
+        return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+
+    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(pr.invoice_id)
+
+    inv = pr.invoice
+    inv.amount_due = float(total_due or 0)
+
+    if float(total_due or 0) <= 0 or (inv.status or "").lower() == "paid":
+        pr.status = "paid"
+        inv.status = "paid"
+        inv.amount_due = 0
+        if hasattr(inv, "date_paid") and not inv.date_paid:
+            inv.date_paid = datetime.now(timezone.utc)
+
+        db.session.commit()
+        flash("Shop For Me request marked as paid based on linked invoice.", "success")
+    else:
+        db.session.commit()
+        flash(
+            f"Invoice is not fully paid yet. Balance due: JMD {float(total_due or 0):,.2f}",
+            "warning"
+        )
+
+    return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+
+@logistics_bp.route("/shop-for-me/<int:request_id>/mark-purchased", methods=["POST"])
+@admin_required
+def admin_shop_for_me_mark_purchased(request_id):
+    pr = PurchaseRequest.query.get_or_404(request_id)
+
+    if pr.status != "paid":
+        flash("Only paid Shop For Me requests can be marked as purchased.", "warning")
+        return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+
+    order_number = (request.form.get("order_number") or "").strip()
+    merchant_tracking_number = (request.form.get("merchant_tracking_number") or "").strip()
+
+    if not order_number:
+        flash("Please enter the store order number.", "warning")
+        return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+
+    if not merchant_tracking_number:
+        flash("Please enter the merchant tracking number.", "warning")
+        return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+
+    now_utc = datetime.now(timezone.utc)
+    jamaica_date = to_jamaica(now_utc).date()
+
+    item_names = []
+    for item in pr.items:
+        label = item.item_name or item.product_url or "Item"
+        qty = item.quantity or 1
+        item_names.append(f"{label} x{qty}")
+
+    contents = f"Shop For Me {pr.request_number}: " + ", ".join(item_names)
+    contents = contents[:255]
+
+    pa = Prealert(
+        customer_id=pr.user_id,
+        vendor_name=pr.store_name or "Shop For Me",
+        courier_name="Merchant",
+        tracking_number=merchant_tracking_number,
+        package_contents=contents,
+        purchase_date=jamaica_date,
+        item_value_usd=float(pr.quoted_item_price_usd or 0),
+        created_at=now_utc,
+
+        is_locked=True,
+        locked_at=now_utc,
+        locked_by_admin_id=current_user.id,
+        lock_reason=f"Auto-created from Shop For Me request {pr.request_number}",
+    )
+
+    db.session.add(pa)
+    db.session.flush()
+
+    # If you have a prealert number generator, use that instead.
+    pa.prealert_number = 100000 + pa.id
+
+    pr.order_number = order_number
+    pr.merchant_tracking_number = merchant_tracking_number
+    pr.purchased_by_admin_id = current_user.id
+    pr.purchased_at = now_utc
+    pr.status = "purchased"
+
+    db.session.commit()
+
+    flash(
+        f"Shop For Me request marked as purchased and pre-alert PA-{pa.prealert_number} created.",
+        "success"
+    )
+    return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))

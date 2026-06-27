@@ -52,7 +52,7 @@ from sqlalchemy import func, extract, asc
 from app.extensions import db
 from app.models import (
     User, Wallet, Message, MessageAttachment, ScheduledDelivery,
-    WalletTransaction, Package, Invoice, Notification, Payment,
+    WalletTransaction, Package, Invoice, Notification, Payment, PurchaseRequest, 
     RateBracket, Discount, shipment_packages, Prealert, ShipmentLog, AuditLog
 )
 from app.routes.admin_auth_routes import admin_required
@@ -2573,6 +2573,28 @@ def view_invoice(invoice_id):
             "amount_due": due,
         })
 
+    if not packages and (inv.invoice_number or "").startswith("SHOP-"):
+        shop_total = float(inv.grand_total or inv.amount_due or 0)
+
+        packages.append({
+            "id": None,
+            "house_awb": inv.invoice_number,
+            "description": inv.description or "Shop For Me Quote",
+            "tracking_number": "",
+            "weight": 0,
+            "value_usd": 0,
+            "freight_fee": 0,
+            "storage_fee": 0,
+            "duty": 0,
+            "scf": 0,
+            "envl": 0,
+            "caf": 0,
+            "gct": 0,
+            "stamp": 0,
+            "other_charges": 0,
+            "amount_due": shop_total,
+        })
+
     preview_subtotal = sum(float(x.get("amount_due", 0) or 0) for x in packages)
 
     subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(invoice_id)
@@ -2844,6 +2866,23 @@ def add_payment(invoice_id):
         flash(msg, "warning")
         return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
 
+    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
+    current_due = float(total_due or inv.amount_due or inv.grand_total or 0)
+
+    if current_due <= 0:
+        msg = "This invoice is already fully paid."
+        if is_ajax:
+            return jsonify({"ok": False, "error": msg}), 400
+        flash(msg, "warning")
+        return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
+
+    if amount > current_due:
+        msg = f"Payment cannot exceed balance due of JMD {current_due:,.2f}."
+        if is_ajax:
+            return jsonify({"ok": False, "error": msg}), 400
+        flash(msg, "warning")
+        return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
+
     # Build notes safely
     notes_parts = []
     if extra_notes:
@@ -2933,13 +2972,18 @@ def add_payment(invoice_id):
         if hasattr(inv, "date_paid"):
             inv.date_paid = datetime.now(timezone.utc)
 
+        shop_request = PurchaseRequest.query.filter_by(invoice_id=inv.id).first()
+
+        if shop_request:
+            shop_request.status = "paid"
+
         if previous_status != "paid":
             lock_delivered_packages_for_invoice(inv.id, reason="Invoice fully paid")
 
     elif 0 < new_due < base_total:
         inv.status = "partial"
     else:
-        inv.status = "unpaid"
+        inv.status = "unpaid"    
 
     db.session.commit()
 
@@ -3098,12 +3142,7 @@ def proforma_invoice_modal(invoice_id):
                 bad_address_fee = 500.0
 
             if val <= 100:
-                duty = 0.0
-                gct = 0.0
-                scf = 0.0
-                envl = 0.0
-                caf = 0.0
-                stamp = 0.0
+                duty = gct = scf = envl = caf = stamp = 0.0
             else:
                 duty = float(getattr(p, "duty", 0) or 0)
                 gct = float(getattr(p, "gct", 0) or 0)
@@ -3123,6 +3162,7 @@ def proforma_invoice_modal(invoice_id):
             stamp = float(getattr(p, "stamp", 0) or 0)
             other = float(getattr(p, "other_charges", 0) or 0)
             bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0)
+
             if (
                 bool(getattr(p, "epc", False))
                 or bool(getattr(p, "bad_address", False))
@@ -3130,16 +3170,8 @@ def proforma_invoice_modal(invoice_id):
                 bad_address_fee = 500.0
 
         total_jmd = (
-            freight
-            + handling
-            + bad_address_fee
-            + other
-            + duty
-            + gct
-            + scf
-            + envl
-            + caf
-            + stamp
+            freight + handling + bad_address_fee + other +
+            duty + gct + scf + envl + caf + stamp
         )
 
         subtotal += total_jmd
@@ -3206,6 +3238,34 @@ def proforma_invoice_modal(invoice_id):
         "packages": items,
     }
 
+    shop_request = PurchaseRequest.query.filter_by(invoice_id=inv.id).first()
+
+    if shop_request:
+        item_total_usd = float(shop_request.quoted_item_price_usd or 0)
+        service_fee_jmd = float(shop_request.quoted_service_fee_jmd or 0)
+        usd_rate = float(getattr(settings, "usd_to_jmd", 162) or 162)
+
+        item_total_jmd = item_total_usd * usd_rate
+        total_due_now = item_total_jmd + service_fee_jmd
+
+        invoice_dict.update({
+            "item_total_usd": item_total_usd,
+            "item_total_jmd": item_total_jmd,
+            "service_fee_jmd": service_fee_jmd,
+            "total_due_now": total_due_now,
+            "balance_due": balance_due,
+            "usd_rate": usd_rate,
+        })
+
+        return render_template(
+            "admin/invoices/_shop_for_me_invoice_core.html",
+            invoice=invoice_dict,
+            settings=settings,
+            USD_TO_JMD=effective_usd_to_jmd,
+            logo_data_uri=logo_data_uri,
+            logo_url=logo_url,
+        )
+
     return render_template(
         "admin/invoices/_invoice_core.html",
         invoice=invoice_dict,
@@ -3234,6 +3294,8 @@ def invoice_inline(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
     user = inv.user if hasattr(inv, "user") else None
 
+    is_shop_invoice = (inv.invoice_number or "").startswith("SHOP-")
+
     packages = [{
         "id": p.id,
         "house_awb": p.house_awb,
@@ -3244,27 +3306,77 @@ def invoice_inline(invoice_id):
         "amount_due": float(getattr(p, "amount_due", 0) or 0),
     } for p in Package.query.filter_by(invoice_id=invoice_id).all()]
 
-    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(invoice_id)
+    if is_shop_invoice and not packages:
+        shop_total = float(inv.grand_total or inv.amount_due or 0)
 
-    if (inv.status or "").lower() == "paid":
-        total_due = 0.0
+        packages.append({
+            "id": None,
+            "house_awb": inv.invoice_number,
+            "description": inv.description or "Shop For Me Quote",
+            "merchant": "Shop For Me",
+            "weight": 0,
+            "value_usd": 0,
+            "amount_due": shop_total,
+        })
+
+        subtotal = shop_total
+        discount_total = float(getattr(inv, "discount_total", 0) or 0)
+
+        pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
+        payments_total = (
+            db.session.query(func.coalesce(func.sum(pay_col), 0.0))
+            .filter(Payment.invoice_id == inv.id)
+            .scalar()
+            or 0.0
+        )
+
+        if (inv.status or "").lower() == "paid":
+            total_due = 0.0
+        else:
+            total_due = max(subtotal - discount_total - float(payments_total or 0), 0.0)
+
+    else:
+        subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(invoice_id)
+
+        if (inv.status or "").lower() == "paid":
+            total_due = 0.0
 
     invoice_dict = {
         "id": inv.id,
         "user_id": inv.user_id,
+
+        # ✅ Send both keys so template always finds correct invoice number
+        "invoice_number": inv.invoice_number,
         "number": inv.invoice_number,
+
         "date": inv.date_submitted or inv.created_at or datetime.utcnow(),
+        "date_issued": inv.date_issued or inv.date_submitted or inv.created_at or datetime.utcnow(),
+
         "customer_code": getattr(user, "registration_number", "") if user else "",
         "customer_name": getattr(user, "full_name", "") if user else "",
-        "subtotal": subtotal,
-        "discount_total": discount_total,
-        "payments_total": payments_total,
-        "total_due": total_due,
+
+        "subtotal": float(subtotal or 0),
+        "grand_total": float(inv.grand_total or subtotal or 0),
+        "discount_total": float(discount_total or 0),
+        "payments_total": float(payments_total or 0),
+        "total_due": float(total_due or 0),
+        "amount_due": float(total_due or 0),
+
+        # ✅ These are what _invoice_inline.html uses
+        "preview_subtotal": float(subtotal or 0),
+        "preview_discount_total": float(discount_total or 0),
+        "preview_payments_total": float(payments_total or 0),
+        "preview_total_due": float(total_due or 0),
+
         "packages": packages,
         "description": getattr(inv, "description", "") or "",
     }
-    return render_template("admin/invoices/_invoice_inline.html",
-                           invoice=invoice_dict, USD_TO_JMD=USD_TO_JMD)
+
+    return render_template(
+        "admin/invoices/_invoice_inline.html",
+        invoice=invoice_dict,
+        USD_TO_JMD=USD_TO_JMD,
+    )
 
 @admin_bp.route("/invoice/<int:invoice_id>/email-proforma", methods=["POST"])
 @login_required

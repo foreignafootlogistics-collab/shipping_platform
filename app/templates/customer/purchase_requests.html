@@ -43,8 +43,11 @@
                     <tbody>
                         {% for req in requests_list %}
                         <tr>
-                            <td class="fw-semibold" style="color:#4a148c;">
-                                {{ req.request_number }}
+                            <td class="fw-semibold">
+                                <a href="{{ url_for('customer.purchase_request_detail', request_id=req.id) }}"
+                                    style="color:#4a148c;text-decoration:none;">
+                                    {{ req.request_number }}
+                                </a>
                             </td>
 
                             <td>
@@ -71,6 +74,10 @@
                                 {% elif s == 'purchased' %}
                                 <span class="badge text-white text-capitalize" style="background:#4a148c;">
                                     {{ s.replace("_", " ") }}
+                                </span>
+                                {% elif s == 'quote_expired' %}
+                                <span class="badge bg-danger">
+                                    Quote Expired
                                 </span>
                                 {% elif s == 'cancelled' %}
                                 <span class="badge bg-danger text-capitalize">{{ s.replace("_", " ") }}</span>

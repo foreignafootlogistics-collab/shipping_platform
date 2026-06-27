@@ -36,6 +36,9 @@
                                 Awaiting Payment</option>
                             <option value="paid" {% if status=="paid" %}selected{% endif %}>Paid</option>
                             <option value="purchased" {% if status=="purchased" %}selected{% endif %}>Purchased</option>
+                            <option value="quote_expired" {% if status=="quote_expired" %}selected{% endif %}>
+                                Quote Expired
+                            </option>
                             <option value="cancelled" {% if status=="cancelled" %}selected{% endif %}>Cancelled</option>
                         </select>
                     </div>
@@ -67,7 +70,7 @@
 
                     <tbody>
                         {% for req in requests_list %}
-                        <tr>
+                        <tr {% if req.status=='quote_expired' %} style="background:#fff5f5;" {% endif %}>
                             <td class="fw-semibold" style="color:#4a148c;">
                                 {{ req.request_number }}
                             </td>
@@ -105,8 +108,15 @@
                                 <span class="badge text-white text-capitalize" style="background:#4a148c;">
                                     {{ s.replace("_", " ") }}
                                 </span>
+                                {% elif s == 'quote_expired' %}
+                                <span class="badge bg-danger">
+                                    Quote Expired
+                                </span>
+
                                 {% elif s == 'cancelled' %}
-                                <span class="badge bg-danger text-capitalize">{{ s.replace("_", " ") }}</span>
+                                <span class="badge bg-danger text-capitalize">
+                                    {{ s.replace("_", " ") }}
+                                </span>
                                 {% else %}
                                 <span class="badge bg-secondary text-capitalize">{{ s.replace("_", " ") }}</span>
                                 {% endif %}

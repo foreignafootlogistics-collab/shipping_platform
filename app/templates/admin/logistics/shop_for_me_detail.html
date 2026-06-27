@@ -91,15 +91,22 @@
                             Send Quote
                         </button>
 
-                        <a href="#" class="btn btn-success">
-                            <i class="fas fa-dollar-sign me-1"></i>
-                            Mark Paid
-                        </a>
 
-                        <a href="#" class="btn" style="background:#FACC15;color:#2b1600;">
+                        <button type="button" class="btn" style="background:#FACC15;color:#2b1600;"
+                            data-bs-toggle="modal" data-bs-target="#purchasedModal" {% if pr.status !='paid'
+                            %}disabled{% endif %}>
                             <i class="fas fa-shopping-cart me-1"></i>
                             Mark Purchased
-                        </a>
+                        </button>
+
+                        {% if pr.invoice_id %}
+                        <button type="button" class="btn btn-outline-primary w-100"
+                            onclick="openInvoiceModal({{ pr.invoice_id }})">
+
+                            <i class="fas fa-file-invoice me-1"></i>
+                            Invoice & Payments
+                        </button>
+                        {% endif %}
 
                         <a href="#" class="btn btn-outline-danger">
                             <i class="fas fa-times-circle me-1"></i>
@@ -151,6 +158,33 @@
 
                 </div>
             </div>
+
+            {% if pr.status in ["quoted", "awaiting_payment", "paid", "purchased"] %}
+            <div class="card shadow-sm border-0 mb-3" style="border-radius:16px;">
+                <div class="card-body">
+                    <h5 class="fw-bold mb-3" style="color:#4a148c;">Quote</h5>
+
+                    <p class="mb-1">
+                        <strong>Item Total USD:</strong>
+                        US${{ "%.2f"|format(pr.quoted_item_price_usd or 0) }}
+                    </p>
+
+                    <p class="mb-1">
+                        <strong>Service Fee JMD:</strong>
+                        J${{ "%.2f"|format(pr.quoted_service_fee_jmd or 0) }}
+                    </p>
+
+                    <p class="mb-0">
+                        <strong>Quoted On:</strong>
+                        {% if pr.quoted_at %}
+                        {{ pr.quoted_at.strftime("%Y-%m-%d") }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+            {% endif %}
 
             <!-- Requested Items -->
             <div class="card shadow-sm border-0" style="border-radius:16px;">
@@ -322,4 +356,104 @@
         </form>
     </div>
 </div>
+
+<div class="modal fade" id="purchasedModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="POST" action="{{ url_for('logistics.admin_shop_for_me_mark_purchased', request_id=pr.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="modal-content">
+                <div class="modal-header" style="background:#4a148c;color:#fff;">
+                    <h5 class="modal-title">Mark Purchased - {{ pr.request_number }}</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Store Order Number</label>
+                        <input type="text" name="order_number" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Merchant Tracking Number</label>
+                        <input type="text" name="merchant_tracking_number" class="form-control" required>
+                        <div class="form-text">
+                            This tracking number will be used to auto-create the customer pre-alert.
+                        </div>
+                    </div>
+
+                    <div class="alert mb-0" style="background:#fff8db;color:#664d03;border:1px solid #FACC15;">
+                        This will create a locked pre-alert for the customer and move this request to Purchased.
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        Cancel
+                    </button>
+                    <button type="submit" class="btn text-white" style="background:#4a148c;">
+                        Confirm Purchased
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+<!-- Invoice Modal -->
+<div class="modal fade" id="invoiceModal" tabindex="-1">
+
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+
+        <div class="modal-content">
+
+            <div class="modal-header">
+
+                <h5 class="modal-title">
+                    Invoice
+                </h5>
+
+                <button class="btn-close" data-bs-dismiss="modal">
+                </button>
+
+            </div>
+
+            <div class="modal-body" id="invoiceModalBody">
+
+                <div class="text-center py-5">
+
+                    <div class="spinner-border text-primary"></div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+<script>
+
+    function openInvoiceModal(invoiceId) {
+
+        const modal = new bootstrap.Modal(
+            document.getElementById("invoiceModal")
+        );
+
+        modal.show();
+
+        document.getElementById("invoiceModalBody").innerHTML =
+            '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+
+        fetch("/admin/invoices/" + invoiceId + "/inline")
+            .then(r => r.text())
+            .then(html => {
+
+                document.getElementById("invoiceModalBody").innerHTML = html;
+
+            });
+
+    }
+
+</script>
 {% endblock %}

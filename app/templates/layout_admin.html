@@ -226,6 +226,17 @@
                       {% endif %}
                     </a>
                   </li>
+                  <li class="nav-item">
+                    <a class="nav-link
+        {{ 'active' if request.endpoint in [
+            'logistics.admin_shop_for_me',
+            'logistics.admin_shop_for_me_detail'
+        ] else '' }}" href="{{ url_for('logistics.admin_shop_for_me') }}">
+
+                      <i class="fas fa-cart-plus me-2"></i>
+                      Shop For Me
+                    </a>
+                  </li>
 
                 </ul>
               </div>

@@ -11,7 +11,6 @@
     </a>
   </div>
 
-  <!-- Important Note -->
   <div class="alert alert-note-purple" role="alert">
     <strong>Note:</strong> All uploaded invoices <em>must include</em> the following details:
     <ul class="mb-0">
@@ -59,13 +58,12 @@
       </div>
 
       <div class="col-md-12">
-        {{ form.invoice.label(class="form-label") }}
-        {{ form.invoice(class="form-control", accept=".jpg,.jpeg,.png,.pdf") }}
-        <div class="form-text">Allowed formats: jpg, jpeg, png, pdf</div>
+        <label class="form-label" for="invoices">Invoices / Attachments</label>
+        <input class="form-control" type="file" id="invoices" name="invoices" accept=".jpg,.jpeg,.png,.pdf" multiple>
+        <div class="form-text">Allowed formats: jpg, jpeg, png, pdf. You can select multiple files.</div>
       </div>
     </div>
 
-    <!-- Buttons container -->
     <div class="mt-4 d-flex gap-2">
       {{ form.submit(class="btn btn-dashboard") }}
       <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-secondary">Cancel</a>
@@ -85,18 +83,15 @@
     }
 
     form.addEventListener('submit', function () {
-      // Trim common text fields
       trimEl('vendor_name');
       trimEl('courier_name');
       trimEl('package_contents');
 
-      // Tracking: trim + uppercase to avoid mismatches
       const t = document.getElementById('tracking_number') || form.querySelector('[name="tracking_number"]');
       if (t && typeof t.value === 'string') {
         t.value = t.value.trim().toUpperCase();
       }
 
-      // ✅ Prevent double-submit
       const submitBtn = form.querySelector('input[type="submit"], button[type="submit"]');
       if (submitBtn) {
         submitBtn.disabled = true;

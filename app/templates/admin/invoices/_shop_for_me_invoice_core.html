@@ -1,0 +1,58 @@
+<div class="p-3">
+    <div class="d-flex justify-content-between mb-3">
+        <div>
+            <h5 class="mb-1">Foreign A Foot Logistics Limited</h5>
+            <div class="small text-muted">Shop For Me Proforma Invoice</div>
+        </div>
+
+        <div class="text-end small">
+            <strong>Invoice:</strong> {{ invoice.number }}<br>
+            <strong>Date:</strong> {{ invoice.date.strftime("%b %d, %Y") }}<br>
+            <strong>Customer:</strong> {{ invoice.customer_code }} {{ invoice.customer_name }}
+        </div>
+    </div>
+
+    <hr>
+
+    <h6 class="fw-bold" style="color:#4a148c;">Shop For Me Charges</h6>
+
+    <table class="table table-sm">
+        <tbody>
+            <tr>
+                <td>Item Cost</td>
+                <td class="text-end">US${{ "%.2f"|format(invoice.item_total_usd or 0) }}</td>
+            </tr>
+            <tr>
+                <td>Item Cost in JMD</td>
+                <td class="text-end">JMD {{ "%.2f"|format(invoice.item_total_jmd or 0) }}</td>
+            </tr>
+            <tr>
+                <td>Shop For Me Service Fee</td>
+                <td class="text-end">JMD {{ "%.2f"|format(invoice.service_fee_jmd or 0) }}</td>
+            </tr>
+            <tr class="fw-bold">
+                <td>Total Due Now</td>
+                <td class="text-end">JMD {{ "%.2f"|format(invoice.total_due_now or 0) }}</td>
+            </tr>
+            <tr>
+                <td>Payment</td>
+                <td class="text-end">JMD {{ "%.2f"|format(invoice.payments_total or 0) }}</td>
+            </tr>
+            <tr class="fw-bold">
+                <td>Balance</td>
+                <td class="text-end text-danger">JMD {{ "%.2f"|format(invoice.balance_due or 0) }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="alert mt-3" style="background:#fff8db;color:#664d03;border:1px solid #FACC15;">
+        Freight, customs and shipping charges are <strong>not included</strong>.
+        They will be invoiced separately when the package arrives in Jamaica.
+    </div>
+
+    <div class="text-end mt-3">
+        <button class="btn btn-outline-secondary" onclick="window.print()">
+            <i class="bi bi-printer"></i> Print
+        </button>
+    </div>
+</div>

@@ -1028,6 +1028,39 @@ pickup_packages = db.Table(
     ),
 )
 
+class PrealertAttachment(db.Model):
+    __tablename__ = "prealert_attachments"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    prealert_id = db.Column(
+        db.Integer,
+        db.ForeignKey("prealerts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    file_url = db.Column(db.Text, nullable=False)
+    original_name = db.Column(db.String(255))
+
+    cloud_public_id = db.Column(db.String(255), nullable=True)
+    cloud_resource_type = db.Column(db.String(20), nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+    prealert = db.relationship(
+        "Prealert",
+        backref=db.backref(
+            "attachments",
+            lazy="select",
+            cascade="all, delete-orphan"
+        )
+    )
+
 class PurchaseRequest(db.Model):
     __tablename__ = "purchase_requests"
 

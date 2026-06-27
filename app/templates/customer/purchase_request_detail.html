@@ -1,0 +1,177 @@
+{% extends "layout_customer.html" %}
+
+{% block content %}
+<div class="container py-4">
+
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:16px; overflow:hidden;">
+        <div class="card-body text-white p-4" style="background:#4a148c;">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div>
+                    <h3 class="mb-1">
+                        <i class="fas fa-cart-plus me-2" style="color:#FACC15;"></i>
+                        {{ pr.request_number }}
+                    </h3>
+                    <p class="mb-0">Shop For Me Request Details</p>
+                </div>
+
+                <a href="{{ url_for('customer.purchase_requests') }}" class="btn fw-semibold"
+                    style="background:#FACC15;color:#2b1600;border:none;">
+                    Back
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-3" style="border-radius:16px;">
+        <div class="card-body">
+            <h5 class="fw-bold mb-3" style="color:#4a148c;">Request Summary</h5>
+
+            <p class="mb-1"><strong>Store:</strong> {{ pr.store_name or "-" }}</p>
+            <p class="mb-1"><strong>Total Qty:</strong> {{ pr.quantity or 1 }}</p>
+            <p class="mb-1">
+                <strong>Status:</strong>
+                {% if pr.status == "quote_expired" %}
+                <span class="badge bg-danger">
+                    Quote Expired
+                </span>
+                {% elif pr.status in ["paid", "purchased"] %}
+                <span class="badge bg-success text-capitalize">
+                    {{ pr.status.replace("_", " ") }}
+                </span>
+                {% elif pr.status == "awaiting_payment" %}
+                <span class="badge text-dark text-capitalize" style="background:#FACC15;">
+                    Awaiting Payment
+                </span>
+                {% else %}
+                <span class="badge text-dark text-capitalize" style="background:#FACC15;">
+                    {{ pr.status.replace("_", " ") }}
+                </span>
+                {% endif %}
+            </p>
+            <p class="mb-0">
+                <strong>Submitted:</strong>
+                {% if pr.created_at %}
+                {{ pr.created_at.strftime("%Y-%m-%d") }}
+                {% else %}
+                -
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    {% if pr.status in ["quoted", "awaiting_payment", "paid", "purchased", "quote_expired"] %}
+    {% set usd_rate = 162 %}
+    {% set item_usd = pr.quoted_item_price_usd or 0 %}
+    {% set service_fee = pr.quoted_service_fee_jmd or 0 %}
+    {% set item_jmd = item_usd|float * usd_rate %}
+    {% set total_due = item_jmd + service_fee|float %}
+
+    <div class="card shadow-sm border-0 mb-3" style="border-radius:16px;">
+        <div class="card-body">
+            <h5 class="fw-bold mb-3" style="color:#4a148c;">Quote Summary</h5>
+
+            <p class="mb-1">
+                <strong>Item Total USD:</strong>
+                US${{ "%.2f"|format(item_usd) }}
+            </p>
+
+            <p class="mb-1">
+                <strong>Item Cost in JMD:</strong>
+                J${{ "{:,.2f}".format(item_jmd) }}
+            </p>
+
+            <p class="mb-1">
+                <strong>Shop For Me Service Fee:</strong>
+                J${{ "{:,.2f}".format(service_fee|float) }}
+            </p>
+
+            <hr>
+
+            <h5 class="fw-bold mb-2" style="color:#198754;">
+                Total Due Now: J${{ "{:,.2f}".format(total_due) }}
+            </h5>
+
+            <div class="alert mb-0 mt-3" style="background:#fff8db;color:#664d03;border:1px solid #FACC15;">
+
+                <strong>Please note:</strong>
+                Freight/shipping charges and customs charges are separate and will be billed when the package is ready
+                for pickup.
+
+                <hr>
+
+                <strong>Quote validity:</strong>
+                This quote is valid for today only.
+                If not approved and paid today, FAFL will need to provide a new quote because online prices may change.
+            </div>
+            {% if pr.status == "quoted" %}
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <form method="POST" action="{{ url_for('customer.approve_purchase_request_quote', request_id=pr.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-success fw-semibold">
+                        Approve Quote
+                    </button>
+                </form>
+
+                <form method="POST" action="{{ url_for('customer.decline_purchase_request_quote', request_id=pr.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-outline-danger fw-semibold">
+                        Decline Quote
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm border-0 mb-3" style="border-radius:16px;">
+        <div class="card-body">
+            <h5 class="fw-bold mb-3" style="color:#4a148c;">Items</h5>
+
+            {% if pr.items %}
+            {% for item in pr.items %}
+            <div class="border rounded-3 p-3 mb-3" style="border-color:#e5d8f5 !important;">
+                <div class="d-flex justify-content-between">
+                    <h6 class="fw-bold" style="color:#4a148c;">Item {{ loop.index }}</h6>
+                    <span class="badge bg-success">Qty {{ item.quantity or 1 }}</span>
+                </div>
+
+                <p class="mb-1"><strong>Item:</strong> {{ item.item_name or "-" }}</p>
+                <p class="mb-1"><strong>Size:</strong> {{ item.size or "-" }}</p>
+                <p class="mb-1"><strong>Color:</strong> {{ item.color or "-" }}</p>
+                <p class="mb-1"><strong>Notes:</strong> {{ item.notes or "-" }}</p>
+                <p class="mb-0">
+                    <strong>Link:</strong>
+                    <a href="{{ item.product_url }}" target="_blank" style="color:#4a148c;">
+                        Open Product
+                    </a>
+                </p>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p class="text-muted">No item details found.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if pr.attachments %}
+    <div class="card shadow-sm border-0" style="border-radius:16px;">
+        <div class="card-body">
+            <h5 class="fw-bold mb-3" style="color:#4a148c;">Screenshots</h5>
+
+            <div class="row g-3">
+                {% for a in pr.attachments %}
+                <div class="col-md-4">
+                    <a href="{{ a.file_url }}" target="_blank">
+                        <img src="{{ a.file_url }}" class="img-fluid rounded border"
+                            style="max-height:200px;width:100%;object-fit:cover;">
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

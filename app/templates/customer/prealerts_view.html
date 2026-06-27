@@ -73,34 +73,46 @@
 
           <td>
             {% if p.attachments and p.attachments|length > 0 %}
-            <div class="d-flex flex-column gap-2">
-              {% for a in p.attachments %}
-              <div class="border rounded p-2 bg-light">
-                <div class="small fw-semibold text-dark">
-                  <i class="bi bi-paperclip me-1"></i>
-                  {{ a.original_name or 'Attachment' }}
-                </div>
 
-                <a class="btn btn-sm btn-link p-0"
-                  href="{{ url_for('customer.prealert_attachment', attachment_id=a.id) }}" target="_blank">
-                  View
-                </a>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                aria-expanded="false">
+                <i class="bi bi-paperclip"></i>
+                {{ p.attachments|length }}
+              </button>
 
-                <a class="btn btn-sm btn-link p-0 ms-2"
-                  href="{{ url_for('customer.prealert_attachment_download', attachment_id=a.id) }}">
-                  Download
-                </a>
-              </div>
-              {% endfor %}
+              <ul class="dropdown-menu p-2" style="min-width: 260px;">
+                {% for a in p.attachments %}
+                <li class="mb-2">
+                  <div class="small fw-semibold text-wrap">
+                    <i class="bi bi-paperclip me-1"></i>
+                    {{ a.original_name or 'Attachment' }}
+                  </div>
+
+                  {% if not a.is_pdf %}
+                  <a class="btn btn-sm btn-link p-0"
+                    href="{{ url_for('customer.prealert_attachment', attachment_id=a.id) }}" target="_blank">
+                    View
+                  </a>
+                  {% endif %}
+
+                  <a class="btn btn-sm btn-link p-0 {% if not a.is_pdf %}ms-2{% endif %}"
+                    href="{{ url_for('customer.prealert_attachment_download', attachment_id=a.id) }}">
+                    Download
+                  </a>
+                </li>
+
+                {% if not loop.last %}
+                <li>
+                  <hr class="dropdown-divider">
+                </li>
+                {% endif %}
+                {% endfor %}
+              </ul>
             </div>
 
             {% elif p.invoice_filename %}
-            <a class="btn btn-sm btn-link p-0" href="{{ url_for('customer.prealert_invoice', prealert_id=p.id) }}"
-              target="_blank">
-              View
-            </a>
-
-            <a class="btn btn-sm btn-link p-0 ms-2"
+            <a class="btn btn-sm btn-link p-0"
               href="{{ url_for('customer.prealert_invoice_download', prealert_id=p.id) }}">
               Download
             </a>

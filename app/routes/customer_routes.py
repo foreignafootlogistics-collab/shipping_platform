@@ -515,6 +515,7 @@ def prealerts_view():
                 "id": a.id,
                 "file_url": a.file_url,
                 "original_name": a.original_name,
+                "is_pdf": (a.original_name or "").lower().endswith(".pdf"),
             }
             for a in getattr(p, "attachments", [])
         ]

@@ -500,9 +500,48 @@ def prealert_invoice_download(prealert_id):
 @customer_bp.route('/prealerts/view')
 @login_required
 def prealerts_view():
-    prealerts = (Prealert.query
-                 .filter_by(customer_id=current_user.id)
-                 .order_by(Prealert.created_at.desc()).all())
+    rows = (
+        Prealert.query
+        .filter_by(customer_id=current_user.id)
+        .order_by(Prealert.created_at.desc())
+        .all()
+    )
+
+    prealerts = []
+
+    for p in rows:
+        attachments = [
+            {
+                "id": a.id,
+                "file_url": a.file_url,
+                "original_name": a.original_name,
+            }
+            for a in getattr(p, "attachments", [])
+        ]
+
+        prealerts.append({
+            "id": p.id,
+            "prealert_number": p.prealert_number,
+            "vendor_name": p.vendor_name,
+            "courier_name": p.courier_name,
+            "tracking_number": p.tracking_number,
+            "purchase_date": p.purchase_date,
+            "package_contents": p.package_contents,
+            "item_value_usd": p.item_value_usd,
+
+            # old single invoice backup
+            "invoice_filename": p.invoice_filename,
+            "invoice_original_name": p.invoice_original_name,
+
+            # new multiple attachments
+            "attachments": attachments,
+            "attachment_count": len(attachments),
+
+            "linked_package_id": p.linked_package_id,
+            "created_at": p.created_at,
+            "is_locked": p.is_locked,
+        })
+
     return render_template('customer/prealerts_view.html', prealerts=prealerts)
 
 @customer_bp.route("/prealerts/<int:prealert_id>/edit", methods=["GET", "POST"])
@@ -575,6 +614,27 @@ def prealerts_edit(prealert_id):
         return redirect(url_for("customer.prealerts_view"))
 
     return render_template("customer/prealerts_edit.html", form=form, prealert=pa)
+
+@customer_bp.route("/prealerts/attachment/<int:attachment_id>")
+@login_required
+def prealert_attachment(attachment_id):
+    att = PrealertAttachment.query.get_or_404(attachment_id)
+
+    if att.prealert.customer_id != current_user.id:
+        abort(403)
+
+    return redirect(att.file_url)
+
+
+@customer_bp.route("/prealerts/attachment/<int:attachment_id>/download")
+@login_required
+def prealert_attachment_download(attachment_id):
+    att = PrealertAttachment.query.get_or_404(attachment_id)
+
+    if att.prealert.customer_id != current_user.id:
+        abort(403)
+
+    return redirect(att.file_url)
 
 # -----------------------------
 # Packages

@@ -1071,8 +1071,7 @@ def prealerts(user_id=None):
                 {
                     "id": a.id,
                     "file_url": a.file_url,
-                    "original_name": a.original_name,
-                    "is_pdf": (a.original_name or "").lower().endswith(".pdf"),
+                    "original_name": a.original_name,                    
                 }
                 for a in getattr(p, "attachments", [])
             ]
@@ -1127,8 +1126,7 @@ def prealerts(user_id=None):
                 {
                     "id": a.id,
                     "file_url": a.file_url,
-                    "original_name": a.original_name,
-                    "is_pdf": (a.original_name or "").lower().endswith(".pdf"),
+                    "original_name": a.original_name,                    
                 }
                 for a in getattr(prealert, "attachments", [])
             ]
@@ -2391,6 +2389,37 @@ def create_single_package_from_view():
         unassigned_only=request.form.get("return_unassigned_only") or None,
         epc_only=request.form.get("return_epc_only") or None,
     ))
+
+
+@logistics_bp.route("/packages/<int:package_id>/update-details", methods=["POST"])
+@admin_required
+def update_package_details(package_id):
+    pkg = Package.query.get_or_404(package_id)
+
+    try:
+        weight = (request.form.get("weight") or "").strip()
+        value = (request.form.get("value") or "").strip()
+
+        if weight:
+            pkg.weight = float(weight)
+
+        if value:
+            pkg.value = float(value)
+            if hasattr(pkg, "declared_value"):
+                pkg.declared_value = float(value)
+
+        pkg.tracking_number = (request.form.get("tracking_number") or "").strip()
+        pkg.house_awb = (request.form.get("house_awb") or "").strip()
+        pkg.description = (request.form.get("description") or "").strip()
+        pkg.status = (request.form.get("status") or pkg.status or "Overseas").strip()
+
+        db.session.commit()
+        return jsonify(success=True)
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(success=False, error=str(e)), 400
+
 # --------------------------------------------------------------------------------------
 # Bulk Assign to user (code/email) + optional reset Unassigned -> Overseas
 # --------------------------------------------------------------------------------------

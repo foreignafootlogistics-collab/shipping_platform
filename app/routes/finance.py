@@ -7,6 +7,7 @@ from flask import current_app, abort
 from flask import send_file
 from io import BytesIO
 from urllib.parse import quote
+from html import escape
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, abort, current_app, make_response, jsonify
 from datetime import datetime, date, timedelta, timezone
@@ -1068,7 +1069,7 @@ def unpaid_users_reminder_preview():
 
 @finance_bp.route(
     "/collections/send-reminders",
-    methods=["POST"]
+    methods=["POST"],
 )
 @admin_required(roles=["finance"])
 def send_collections_reminders():
@@ -1109,7 +1110,6 @@ def send_collections_reminders():
             .subquery()
         )
 
-        # Keep this consistent with the PDF report.
         billed_amount = func.coalesce(
             Invoice.grand_total,
             Invoice.amount_due,
@@ -1246,45 +1246,47 @@ def send_collections_reminders():
                     or f"INV{row.invoice_id:05d}"
                 ),
                 "invoice_date": invoice_date_display,
-                "balance_due": balance_due,
+                "balance_due": round(
+                    balance_due,
+                    2,
+                ),
             })
 
-            grouped[user_id]["total_due"] += (
-                balance_due
-            )
+            grouped[user_id]["total_due"] += balance_due
 
         # -----------------------------------------
-        # Send one email per customer
+        # Send one grouped email per customer
         # -----------------------------------------
         emails_sent = 0
         emails_failed = 0
         customers_skipped = 0
         invoices_included = 0
         total_outstanding = 0.0
-
         failed_recipients = []
 
         for group in grouped.values():
-            email = group["customer_email"]
+            email = (
+                group.get("customer_email") or ""
+            ).strip()
 
             if not email:
                 customers_skipped += 1
                 continue
 
             customer_name = (
-                group["customer_name"]
+                group.get("customer_name")
                 or "Customer"
             )
 
             registration_number = (
-                group["registration_number"]
+                group.get("registration_number")
                 or ""
             )
 
-            invoices = group["invoices"]
+            invoices = group.get("invoices") or []
 
             customer_total = round(
-                float(group["total_due"] or 0),
+                float(group.get("total_due") or 0.0),
                 2,
             )
 
@@ -1295,55 +1297,172 @@ def send_collections_reminders():
             invoices_included += len(invoices)
             total_outstanding += customer_total
 
-            # Plain text invoice list
+            safe_customer_name = escape(
+                str(customer_name)
+            )
+
+            safe_registration_number = escape(
+                str(registration_number)
+            )
+
+            # -----------------------------------------
+            # Plain-text invoice list
+            # -----------------------------------------
             invoice_lines_plain = "\n".join(
                 (
                     f"- {invoice['invoice_number']}"
                     + (
                         f" ({invoice['invoice_date']})"
-                        if invoice["invoice_date"]
+                        if invoice.get("invoice_date")
                         else ""
                     )
                     + (
                         f": JMD "
-                        f"{invoice['balance_due']:,.2f}"
+                        f"{float(invoice.get('balance_due') or 0):,.2f}"
                     )
                 )
                 for invoice in invoices
             )
 
-            # HTML invoice rows
-            invoice_rows_html = "".join(
-                f"""
-                <tr>
-                  <td style="
-                    padding:12px;
-                    border-bottom:1px solid #e5e7eb;
-                  ">
-                    <strong>
-                      {invoice["invoice_number"]}
-                    </strong>
-                    <div style="
-                      color:#6b7280;
-                      font-size:12px;
-                      margin-top:3px;
-                    ">
-                      {invoice["invoice_date"] or ""}
-                    </div>
-                  </td>
+            # -----------------------------------------
+            # Mobile-friendly invoice cards
+            # -----------------------------------------
+            invoice_cards = []
 
-                  <td style="
-                    padding:12px;
-                    border-bottom:1px solid #e5e7eb;
-                    text-align:right;
-                    font-weight:700;
-                    white-space:nowrap;
-                  ">
-                    JMD {invoice["balance_due"]:,.2f}
-                  </td>
-                </tr>
-                """
-                for invoice in invoices
+            for invoice in invoices:
+                safe_invoice_number = escape(
+                    str(
+                        invoice.get("invoice_number")
+                        or "Invoice"
+                    )
+                )
+
+                invoice_date_value = (
+                    invoice.get("invoice_date")
+                    or ""
+                )
+
+                invoice_date_html = ""
+
+                if invoice_date_value:
+                    invoice_date_html = f"""
+                    <tr>
+                      <td style="
+                        padding:0 14px 12px 14px;
+                        font-family:Arial,Helvetica,sans-serif;
+                        font-size:12px;
+                        line-height:1.4;
+                        color:#6b7280;
+                      ">
+                        {escape(str(invoice_date_value))}
+                      </td>
+                    </tr>
+                    """
+
+                invoice_balance = float(
+                    invoice.get("balance_due") or 0.0
+                )
+
+                invoice_cards.append(f"""
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                  style="
+                    width:100%;
+                    max-width:100%;
+                    border-collapse:separate;
+                    border-spacing:0;
+                    margin:0 0 12px 0;
+                    border:1px solid #e5e7eb;
+                    border-radius:12px;
+                    background:#ffffff;
+                  "
+                >
+                  <tr>
+                    <td style="
+                      padding:14px 14px 5px 14px;
+                      font-family:Arial,Helvetica,sans-serif;
+                      font-size:11px;
+                      line-height:1.4;
+                      text-transform:uppercase;
+                      letter-spacing:0.04em;
+                      color:#6b7280;
+                    ">
+                      Invoice
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="
+                      padding:0 14px 10px 14px;
+                      font-family:Arial,Helvetica,sans-serif;
+                      font-size:15px;
+                      line-height:1.45;
+                      font-weight:700;
+                      color:#111827;
+                      word-break:break-word;
+                      overflow-wrap:anywhere;
+                    ">
+                      {safe_invoice_number}
+                    </td>
+                  </tr>
+
+                  {invoice_date_html}
+
+                  <tr>
+                    <td style="
+                      padding:12px 14px;
+                      background:#f8f5ff;
+                      border-top:1px solid #ede9fe;
+                      font-family:Arial,Helvetica,sans-serif;
+                    ">
+                      <table
+                        role="presentation"
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        style="
+                          width:100%;
+                          max-width:100%;
+                          border-collapse:collapse;
+                        "
+                      >
+                        <tr>
+                          <td style="
+                            padding:0;
+                            font-family:Arial,Helvetica,sans-serif;
+                            font-size:13px;
+                            line-height:1.4;
+                            color:#4b5563;
+                          ">
+                            Outstanding
+                          </td>
+
+                          <td
+                            align="right"
+                            style="
+                              padding:0 0 0 8px;
+                              font-family:Arial,Helvetica,sans-serif;
+                              font-size:16px;
+                              line-height:1.4;
+                              font-weight:800;
+                              color:#4a148c;
+                              white-space:nowrap;
+                            "
+                          >
+                            JMD {invoice_balance:,.2f}
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+                """)
+
+            invoice_cards_html = "".join(
+                invoice_cards
             )
 
             subject = (
@@ -1377,180 +1496,257 @@ Foreign A Foot Logistics Limited
 Bringing the World to You
 """.strip()
 
+            registration_block = ""
+
+            if registration_number:
+                registration_block = f"""
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                  style="
+                    width:100%;
+                    max-width:100%;
+                    border-collapse:collapse;
+                    margin:0 0 20px 0;
+                    background:#f9fafb;
+                    border-radius:10px;
+                  "
+                >
+                  <tr>
+                    <td style="
+                      padding:12px 14px;
+                      font-family:Arial,Helvetica,sans-serif;
+                      font-size:12px;
+                      line-height:1.5;
+                      color:#6b7280;
+                    ">
+                      Customer number<br>
+
+                      <strong style="
+                        font-size:14px;
+                        color:#4a148c;
+                        word-break:break-word;
+                        overflow-wrap:anywhere;
+                      ">
+                        {safe_registration_number}
+                      </strong>
+                    </td>
+                  </tr>
+                </table>
+                """
+
+            # -----------------------------------------
+            # Mobile-first HTML email body
+            # -----------------------------------------
             html_body = f"""
-<div style="
-  margin:0;
-  padding:24px;
-  background:#f5f3f8;
-  font-family:Arial,Helvetica,sans-serif;
-  color:#374151;
-">
+            <table
+              role="presentation"
+              width="100%"
+              cellpadding="0"
+              cellspacing="0"
+              style="
+                width:100%;
+                max-width:100%;
+                border-collapse:collapse;
+                margin:0;
+                padding:0;
+              "
+            >
+              <tr>
+                <td style="
+                  width:100%;
+                  max-width:100%;
+                  padding:0;
+                  font-family:Arial,Helvetica,sans-serif;
+                  color:#374151;
+                  overflow-wrap:anywhere;
+                ">
 
-  <div style="
-    max-width:680px;
-    margin:0 auto;
-    background:#ffffff;
-    border-radius:18px;
-    overflow:hidden;
-    box-shadow:0 8px 30px rgba(0,0,0,0.08);
-  ">
+                  <h1 style="
+                    margin:0 0 8px 0;
+                    font-family:Arial,Helvetica,sans-serif;
+                    font-size:22px;
+                    line-height:1.3;
+                    font-weight:800;
+                    color:#4a148c;
+                  ">
+                    Outstanding Payment Reminder
+                  </h1>
 
-    <div style="
-      padding:26px 30px;
-      background:linear-gradient(
-        135deg,
-        #4a148c,
-        #6a1b9a
-      );
-      color:#ffffff;
-    ">
-      <h2 style="
-        margin:0 0 6px;
-        font-size:24px;
-      ">
-        Outstanding Payment Reminder
-      </h2>
+                  <p style="
+                    margin:0 0 22px 0;
+                    font-size:13px;
+                    line-height:1.5;
+                    color:#6b7280;
+                  ">
+                    Bringing the World to You
+                  </p>
 
-      <p style="
-        margin:0;
-        opacity:0.9;
-      ">
-        Foreign A Foot Logistics Limited
-      </p>
-    </div>
+                  <p style="
+                    margin:0 0 14px 0;
+                    font-size:15px;
+                    line-height:1.65;
+                    color:#374151;
+                  ">
+                    Dear
+                    <strong>{safe_customer_name}</strong>,
+                  </p>
 
-    <div style="padding:30px;">
+                  <p style="
+                    margin:0 0 16px 0;
+                    font-size:15px;
+                    line-height:1.65;
+                    color:#374151;
+                  ">
+                    This is a friendly reminder regarding the
+                    outstanding invoice balance on your
+                    Foreign A Foot Logistics account.
+                  </p>
 
-      <p style="margin-top:0;">
-        Dear <strong>{customer_name}</strong>,
-      </p>
+                  {registration_block}
 
-      <p>
-        This is a friendly reminder regarding
-        the outstanding invoice balance on your
-        Foreign A Foot Logistics account.
-      </p>
+                  <h2 style="
+                    margin:0 0 12px 0;
+                    font-size:16px;
+                    line-height:1.4;
+                    font-weight:800;
+                    color:#111827;
+                  ">
+                    Outstanding Invoices
+                  </h2>
 
-      {
-        f'''
-        <p style="
-          color:#6b7280;
-          font-size:14px;
-        ">
-          Customer number:
-          <strong>{registration_number}</strong>
-        </p>
-        '''
-        if registration_number
-        else ""
-      }
+                  {invoice_cards_html}
 
-      <table style="
-        width:100%;
-        border-collapse:collapse;
-        margin-top:22px;
-      ">
-        <thead>
-          <tr style="background:#f9fafb;">
-            <th style="
-              padding:12px;
-              text-align:left;
-              color:#4b5563;
-            ">
-              Invoice
-            </th>
+                  <table
+                    role="presentation"
+                    width="100%"
+                    cellpadding="0"
+                    cellspacing="0"
+                    style="
+                      width:100%;
+                      max-width:100%;
+                      border-collapse:separate;
+                      border-spacing:0;
+                      margin:20px 0 0 0;
+                      background:#f3e8ff;
+                      border-radius:12px;
+                    "
+                  >
+                    <tr>
+                      <td style="
+                        padding:16px 16px 4px 16px;
+                        font-size:13px;
+                        line-height:1.4;
+                        color:#4a148c;
+                      ">
+                        Total outstanding
+                      </td>
+                    </tr>
 
-            <th style="
-              padding:12px;
-              text-align:right;
-              color:#4b5563;
-            ">
-              Balance
-            </th>
-          </tr>
-        </thead>
+                    <tr>
+                      <td style="
+                        padding:0 16px 16px 16px;
+                        font-size:26px;
+                        line-height:1.25;
+                        font-weight:900;
+                        color:#4a148c;
+                        word-break:break-word;
+                        overflow-wrap:anywhere;
+                      ">
+                        JMD {customer_total:,.2f}
+                      </td>
+                    </tr>
+                  </table>
 
-        <tbody>
-          {invoice_rows_html}
-        </tbody>
-      </table>
+                  <table
+                    role="presentation"
+                    width="100%"
+                    cellpadding="0"
+                    cellspacing="0"
+                    style="
+                      width:100%;
+                      max-width:100%;
+                      border-collapse:separate;
+                      border-spacing:0;
+                      margin:22px 0 0 0;
+                      background:#fff8d7;
+                      border:1px solid #f5dd72;
+                      border-radius:12px;
+                    "
+                  >
+                    <tr>
+                      <td style="
+                        padding:16px;
+                        font-family:Arial,Helvetica,sans-serif;
+                      ">
+                        <h3 style="
+                          margin:0 0 9px 0;
+                          font-size:16px;
+                          line-height:1.4;
+                          font-weight:800;
+                          color:#6b4f00;
+                        ">
+                          Payment Policy
+                        </h3>
 
-      <div style="
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        margin-top:20px;
-        padding:18px;
-        background:#f3e8ff;
-        border-radius:12px;
-        color:#4a148c;
-      ">
-        <strong>Total outstanding</strong>
+                        <p style="
+                          margin:0 0 10px 0;
+                          font-size:14px;
+                          line-height:1.65;
+                          color:#6b5b1e;
+                        ">
+                          Payment is due upon receipt of your
+                          invoice unless prior arrangements
+                          have been made.
+                        </p>
 
-        <strong style="font-size:20px;">
-          JMD {customer_total:,.2f}
-        </strong>
-      </div>
+                        <p style="
+                          margin:0;
+                          font-size:14px;
+                          line-height:1.65;
+                          color:#6b5b1e;
+                        ">
+                          Accounts with outstanding balances
+                          may experience delays in the release
+                          of packages until payment has been
+                          received.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
 
-      <div style="
-        margin-top:26px;
-        padding:20px;
-        background:#fff8d7;
-        border:1px solid #f5dd72;
-        border-radius:12px;
-      ">
-        <h3 style="
-          margin:0 0 10px;
-          color:#6b4f00;
-          font-size:17px;
-        ">
-          Payment Policy
-        </h3>
+                  <p style="
+                    margin:22px 0 0 0;
+                    font-size:14px;
+                    line-height:1.65;
+                    color:#374151;
+                  ">
+                    If payment has already been made, please
+                    disregard this reminder or contact us with
+                    your proof of payment.
+                  </p>
 
-        <p style="
-          margin:0 0 10px;
-          color:#6b5b1e;
-          line-height:1.6;
-        ">
-          Payment is due upon receipt of your
-          invoice unless prior arrangements have
-          been made.
-        </p>
+                  <p style="
+                    margin:24px 0 0 0;
+                    font-size:14px;
+                    line-height:1.7;
+                    color:#374151;
+                  ">
+                    Thank you,<br>
+                    <strong>
+                      Foreign A Foot Logistics Limited
+                    </strong><br>
+                    <span style="color:#6b7280;">
+                      Bringing the World to You
+                    </span>
+                  </p>
 
-        <p style="
-          margin:0;
-          color:#6b5b1e;
-          line-height:1.6;
-        ">
-          Accounts with outstanding balances may
-          experience delays in the release of
-          packages until payment has been received.
-        </p>
-      </div>
-
-      <p style="
-        margin-top:24px;
-        line-height:1.6;
-      ">
-        If payment has already been made, please
-        disregard this reminder or contact us with
-        your proof of payment.
-      </p>
-
-      <p style="margin-bottom:0;">
-        Thank you,<br>
-        <strong>
-          Foreign A Foot Logistics Limited
-        </strong><br>
-        <span style="color:#6b7280;">
-          Bringing the World to You
-        </span>
-      </p>
-
-    </div>
-  </div>
-</div>
-""".strip()
+                </td>
+              </tr>
+            </table>
+            """.strip()
 
             try:
                 ok = send_email(
@@ -1567,6 +1763,14 @@ Bringing the World to You
                     emails_failed += 1
                     failed_recipients.append(email)
 
+                    current_app.logger.error(
+                        "send_email returned False for "
+                        "collections reminder. "
+                        "User ID: %s, recipient: %s",
+                        group["user_id"],
+                        email,
+                    )
+
             except Exception as email_error:
                 emails_failed += 1
                 failed_recipients.append(email)
@@ -1582,12 +1786,12 @@ Bringing the World to You
         # Audit log
         # -----------------------------------------
         audit_description = (
-            f"Bulk outstanding balance reminders "
+            "Bulk outstanding balance reminders "
             f"processed. Sent: {emails_sent}; "
             f"Failed: {emails_failed}; "
             f"Skipped: {customers_skipped}; "
             f"Invoices included: {invoices_included}; "
-            f"Outstanding represented: "
+            "Outstanding represented: "
             f"JMD {total_outstanding:,.2f}."
         )
 
@@ -1638,11 +1842,9 @@ Bringing the World to You
         return jsonify({
             "success": False,
             "error": (
-                "The reminder emails could not be "
-                "processed."
+                "The reminder emails could not be processed."
             ),
         }), 500
-
 
 @finance_bp.route("/unpaid_invoices/mark_paid_bulk", methods=["POST"])
 @admin_required(roles=["finance"])

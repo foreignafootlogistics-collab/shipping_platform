@@ -8,7 +8,7 @@ from flask import send_file
 from io import BytesIO
 from urllib.parse import quote
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, abort, current_app, make_response
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, send_file, abort, current_app, make_response, jsonify
 from datetime import datetime, date, timedelta, timezone
 from calendar import monthrange
 from weasyprint import HTML
@@ -826,6 +826,822 @@ def _render_unpaid_users_pdf(send_email: bool = False):
     resp.headers["Content-Disposition"] = 'inline; filename="unpaid_users_report.pdf"'
     return resp
 
+
+@finance_bp.route("/unpaid-users-summary", methods=["GET"])
+@admin_required(roles=["finance"])
+def unpaid_users_summary():
+    search = (request.args.get("search") or "").strip() or None
+    date_from = (request.args.get("date_from") or "").strip() or None
+    date_to = (request.args.get("date_to") or "").strip() or None
+
+    try:
+        rows, grand_total, total_customers = _get_unpaid_user_rows(
+            search=search,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        valid_rows = [
+            row for row in rows
+            if float(row.get("unpaid_total") or 0) > 0
+        ]
+
+        total_invoices = sum(
+            int(row.get("unpaid_count") or 0)
+            for row in valid_rows
+        )
+
+        customers_with_email = sum(
+            1 for row in valid_rows
+            if (row.get("email") or "").strip()
+        )
+
+        customers_without_email = (
+            len(valid_rows) - customers_with_email
+        )
+
+        return jsonify({
+            "success": True,
+            "customer_count": int(total_customers or 0),
+            "invoice_count": int(total_invoices or 0),
+            "grand_total": round(float(grand_total or 0), 2),
+            "customers_with_email": customers_with_email,
+            "customers_without_email": customers_without_email,
+        })
+
+    except Exception as exc:
+        current_app.logger.exception(
+            "Unable to load unpaid customer summary: %s",
+            exc,
+        )
+
+        return jsonify({
+            "success": False,
+            "error": "Unable to load the collections summary.",
+        }), 500
+
+
+@finance_bp.route("/unpaid-users-reminder-preview", methods=["GET"])
+@admin_required(roles=["finance"])
+def unpaid_users_reminder_preview():
+    search = (request.args.get("search") or "").strip() or None
+    date_from = (request.args.get("date_from") or "").strip() or None
+    date_to = (request.args.get("date_to") or "").strip() or None
+
+    try:
+        # Sum completed payments per invoice.
+        payment_sum = (
+            db.session.query(
+                Payment.invoice_id.label("invoice_id"),
+                func.coalesce(
+                    func.sum(Payment.amount_jmd),
+                    0.0
+                ).label("paid_total"),
+            )
+            .filter(
+                func.lower(
+                    func.coalesce(Payment.status, "completed")
+                ) == "completed"
+            )
+            .group_by(Payment.invoice_id)
+            .subquery()
+        )
+
+        billed_amount = func.coalesce(
+            Invoice.grand_total,
+            Invoice.amount_due,
+            Invoice.amount,
+            0.0,
+        )
+
+        remaining_balance = func.greatest(
+            billed_amount -
+            func.coalesce(payment_sum.c.paid_total, 0.0),
+            0.0,
+        )
+
+        issued_date = func.coalesce(
+            Invoice.date_issued,
+            Invoice.date_submitted,
+            Invoice.created_at,
+        )
+
+        query = (
+            db.session.query(
+                User.id.label("user_id"),
+                User.full_name.label("customer_name"),
+                User.email.label("customer_email"),
+                User.registration_number.label("registration_number"),
+                Invoice.id.label("invoice_id"),
+                Invoice.invoice_number.label("invoice_number"),
+                issued_date.label("invoice_date"),
+                remaining_balance.label("balance_due"),
+            )
+            .join(User, User.id == Invoice.user_id)
+            .outerjoin(
+                payment_sum,
+                payment_sum.c.invoice_id == Invoice.id,
+            )
+            .filter(
+                func.lower(Invoice.status).in_(
+                    ("pending", "unpaid", "issued", "partial")
+                )
+            )
+            .filter(remaining_balance > 0)
+        )
+
+        if search:
+            like = f"%{search}%"
+
+            query = query.filter(
+                or_(
+                    User.full_name.ilike(like),
+                    User.email.ilike(like),
+                    User.registration_number.ilike(like),
+                )
+            )
+
+        if date_from:
+            query = query.filter(
+                func.date(issued_date) >= date_from
+            )
+
+        if date_to:
+            query = query.filter(
+                func.date(issued_date) <= date_to
+            )
+
+        results = (
+            query
+            .order_by(
+                User.full_name.asc(),
+                issued_date.asc(),
+                Invoice.id.asc(),
+            )
+            .all()
+        )
+
+        grouped = {}
+
+        for row in results:
+            if row.user_id not in grouped:
+                grouped[row.user_id] = {
+                    "user_id": row.user_id,
+                    "customer_name": row.customer_name or "Customer",
+                    "customer_email": row.customer_email or "",
+                    "registration_number": (
+                        row.registration_number or ""
+                    ),
+                    "invoices": [],
+                    "total_due": 0.0,
+                }
+
+            balance_due = float(row.balance_due or 0.0)
+
+            invoice_date_value = row.invoice_date
+
+            if invoice_date_value:
+                try:
+                    invoice_date_display = (
+                        invoice_date_value.strftime("%b %d, %Y")
+                    )
+                except Exception:
+                    invoice_date_display = str(
+                        invoice_date_value
+                    )
+            else:
+                invoice_date_display = ""
+
+            grouped[row.user_id]["invoices"].append({
+                "invoice_id": row.invoice_id,
+                "invoice_number": (
+                    row.invoice_number
+                    or f"INV{row.invoice_id:05d}"
+                ),
+                "invoice_date": invoice_date_display,
+                "balance_due": round(balance_due, 2),
+            })
+
+            grouped[row.user_id]["total_due"] += balance_due
+
+        customers = []
+
+        for group in grouped.values():
+            if not group["customer_email"]:
+                continue
+
+            group["total_due"] = round(
+                group["total_due"],
+                2,
+            )
+
+            customers.append(group)
+
+        grand_total = sum(
+            customer["total_due"]
+            for customer in customers
+        )
+
+        invoice_count = sum(
+            len(customer["invoices"])
+            for customer in customers
+        )
+
+        return jsonify({
+            "success": True,
+            "customer_count": len(customers),
+            "invoice_count": invoice_count,
+            "grand_total": round(grand_total, 2),
+            "customers": customers,
+        })
+
+    except Exception as exc:
+        current_app.logger.exception(
+            "Unable to create unpaid reminder preview: %s",
+            exc,
+        )
+
+        return jsonify({
+            "success": False,
+            "error": "Unable to prepare the reminder preview.",
+        }), 500
+
+@finance_bp.route(
+    "/collections/send-reminders",
+    methods=["POST"]
+)
+@admin_required(roles=["finance"])
+def send_collections_reminders():
+    data = request.get_json(silent=True) or {}
+
+    search = (data.get("search") or "").strip() or None
+    date_from = (data.get("date_from") or "").strip() or None
+    date_to = (data.get("date_to") or "").strip() or None
+
+    open_statuses = (
+        "pending",
+        "unpaid",
+        "issued",
+        "partial",
+    )
+
+    try:
+        # -----------------------------------------
+        # Completed payments grouped by invoice
+        # -----------------------------------------
+        payment_sum = (
+            db.session.query(
+                Payment.invoice_id.label("invoice_id"),
+                func.coalesce(
+                    func.sum(Payment.amount_jmd),
+                    0.0,
+                ).label("paid_total"),
+            )
+            .filter(
+                func.lower(
+                    func.coalesce(
+                        Payment.status,
+                        "completed",
+                    )
+                ) == "completed"
+            )
+            .group_by(Payment.invoice_id)
+            .subquery()
+        )
+
+        # Keep this consistent with the PDF report.
+        billed_amount = func.coalesce(
+            Invoice.grand_total,
+            Invoice.amount_due,
+            Invoice.amount,
+            0.0,
+        )
+
+        remaining_balance = func.greatest(
+            billed_amount
+            - func.coalesce(
+                payment_sum.c.paid_total,
+                0.0,
+            ),
+            0.0,
+        )
+
+        issued_date = func.coalesce(
+            Invoice.date_issued,
+            Invoice.date_submitted,
+            Invoice.created_at,
+        )
+
+        query = (
+            db.session.query(
+                User.id.label("user_id"),
+                User.full_name.label("customer_name"),
+                User.email.label("customer_email"),
+                User.registration_number.label(
+                    "registration_number"
+                ),
+                Invoice.id.label("invoice_id"),
+                Invoice.invoice_number.label(
+                    "invoice_number"
+                ),
+                issued_date.label("invoice_date"),
+                remaining_balance.label("balance_due"),
+            )
+            .join(
+                User,
+                User.id == Invoice.user_id,
+            )
+            .outerjoin(
+                payment_sum,
+                payment_sum.c.invoice_id == Invoice.id,
+            )
+            .filter(
+                func.lower(Invoice.status).in_(
+                    open_statuses
+                )
+            )
+            .filter(remaining_balance > 0)
+        )
+
+        # -----------------------------------------
+        # Apply the same filters as the preview
+        # -----------------------------------------
+        if search:
+            like = f"%{search}%"
+
+            query = query.filter(
+                or_(
+                    User.full_name.ilike(like),
+                    User.email.ilike(like),
+                    User.registration_number.ilike(like),
+                )
+            )
+
+        if date_from:
+            query = query.filter(
+                func.date(issued_date) >= date_from
+            )
+
+        if date_to:
+            query = query.filter(
+                func.date(issued_date) <= date_to
+            )
+
+        rows = (
+            query
+            .order_by(
+                User.full_name.asc(),
+                issued_date.asc(),
+                Invoice.id.asc(),
+            )
+            .all()
+        )
+
+        # -----------------------------------------
+        # Group invoices by customer
+        # -----------------------------------------
+        grouped = {}
+
+        for row in rows:
+            user_id = int(row.user_id)
+
+            if user_id not in grouped:
+                grouped[user_id] = {
+                    "user_id": user_id,
+                    "customer_name": (
+                        row.customer_name or "Customer"
+                    ),
+                    "customer_email": (
+                        row.customer_email or ""
+                    ).strip(),
+                    "registration_number": (
+                        row.registration_number or ""
+                    ),
+                    "invoices": [],
+                    "total_due": 0.0,
+                }
+
+            balance_due = float(
+                row.balance_due or 0.0
+            )
+
+            invoice_date_display = ""
+
+            if row.invoice_date:
+                try:
+                    invoice_date_display = (
+                        row.invoice_date.strftime(
+                            "%b %d, %Y"
+                        )
+                    )
+                except Exception:
+                    invoice_date_display = str(
+                        row.invoice_date
+                    )
+
+            grouped[user_id]["invoices"].append({
+                "invoice_id": row.invoice_id,
+                "invoice_number": (
+                    row.invoice_number
+                    or f"INV{row.invoice_id:05d}"
+                ),
+                "invoice_date": invoice_date_display,
+                "balance_due": balance_due,
+            })
+
+            grouped[user_id]["total_due"] += (
+                balance_due
+            )
+
+        # -----------------------------------------
+        # Send one email per customer
+        # -----------------------------------------
+        emails_sent = 0
+        emails_failed = 0
+        customers_skipped = 0
+        invoices_included = 0
+        total_outstanding = 0.0
+
+        failed_recipients = []
+
+        for group in grouped.values():
+            email = group["customer_email"]
+
+            if not email:
+                customers_skipped += 1
+                continue
+
+            customer_name = (
+                group["customer_name"]
+                or "Customer"
+            )
+
+            registration_number = (
+                group["registration_number"]
+                or ""
+            )
+
+            invoices = group["invoices"]
+
+            customer_total = round(
+                float(group["total_due"] or 0),
+                2,
+            )
+
+            if customer_total <= 0 or not invoices:
+                customers_skipped += 1
+                continue
+
+            invoices_included += len(invoices)
+            total_outstanding += customer_total
+
+            # Plain text invoice list
+            invoice_lines_plain = "\n".join(
+                (
+                    f"- {invoice['invoice_number']}"
+                    + (
+                        f" ({invoice['invoice_date']})"
+                        if invoice["invoice_date"]
+                        else ""
+                    )
+                    + (
+                        f": JMD "
+                        f"{invoice['balance_due']:,.2f}"
+                    )
+                )
+                for invoice in invoices
+            )
+
+            # HTML invoice rows
+            invoice_rows_html = "".join(
+                f"""
+                <tr>
+                  <td style="
+                    padding:12px;
+                    border-bottom:1px solid #e5e7eb;
+                  ">
+                    <strong>
+                      {invoice["invoice_number"]}
+                    </strong>
+                    <div style="
+                      color:#6b7280;
+                      font-size:12px;
+                      margin-top:3px;
+                    ">
+                      {invoice["invoice_date"] or ""}
+                    </div>
+                  </td>
+
+                  <td style="
+                    padding:12px;
+                    border-bottom:1px solid #e5e7eb;
+                    text-align:right;
+                    font-weight:700;
+                    white-space:nowrap;
+                  ">
+                    JMD {invoice["balance_due"]:,.2f}
+                  </td>
+                </tr>
+                """
+                for invoice in invoices
+            )
+
+            subject = (
+                "Payment Reminder – "
+                "Outstanding Invoice Balance"
+            )
+
+            plain_body = f"""
+Dear {customer_name},
+
+This is a friendly reminder from Foreign A Foot Logistics Limited regarding the outstanding invoice balance on your account.
+
+Customer number: {registration_number or "N/A"}
+
+Outstanding invoices:
+
+{invoice_lines_plain}
+
+Total outstanding: JMD {customer_total:,.2f}
+
+PAYMENT POLICY
+
+Payment is due upon receipt of your invoice unless prior arrangements have been made.
+
+Accounts with outstanding balances may experience delays in the release of packages until payment has been received.
+
+If payment has already been made, please disregard this reminder or contact us with your proof of payment.
+
+Thank you,
+Foreign A Foot Logistics Limited
+Bringing the World to You
+""".strip()
+
+            html_body = f"""
+<div style="
+  margin:0;
+  padding:24px;
+  background:#f5f3f8;
+  font-family:Arial,Helvetica,sans-serif;
+  color:#374151;
+">
+
+  <div style="
+    max-width:680px;
+    margin:0 auto;
+    background:#ffffff;
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow:0 8px 30px rgba(0,0,0,0.08);
+  ">
+
+    <div style="
+      padding:26px 30px;
+      background:linear-gradient(
+        135deg,
+        #4a148c,
+        #6a1b9a
+      );
+      color:#ffffff;
+    ">
+      <h2 style="
+        margin:0 0 6px;
+        font-size:24px;
+      ">
+        Outstanding Payment Reminder
+      </h2>
+
+      <p style="
+        margin:0;
+        opacity:0.9;
+      ">
+        Foreign A Foot Logistics Limited
+      </p>
+    </div>
+
+    <div style="padding:30px;">
+
+      <p style="margin-top:0;">
+        Dear <strong>{customer_name}</strong>,
+      </p>
+
+      <p>
+        This is a friendly reminder regarding
+        the outstanding invoice balance on your
+        Foreign A Foot Logistics account.
+      </p>
+
+      {
+        f'''
+        <p style="
+          color:#6b7280;
+          font-size:14px;
+        ">
+          Customer number:
+          <strong>{registration_number}</strong>
+        </p>
+        '''
+        if registration_number
+        else ""
+      }
+
+      <table style="
+        width:100%;
+        border-collapse:collapse;
+        margin-top:22px;
+      ">
+        <thead>
+          <tr style="background:#f9fafb;">
+            <th style="
+              padding:12px;
+              text-align:left;
+              color:#4b5563;
+            ">
+              Invoice
+            </th>
+
+            <th style="
+              padding:12px;
+              text-align:right;
+              color:#4b5563;
+            ">
+              Balance
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {invoice_rows_html}
+        </tbody>
+      </table>
+
+      <div style="
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        margin-top:20px;
+        padding:18px;
+        background:#f3e8ff;
+        border-radius:12px;
+        color:#4a148c;
+      ">
+        <strong>Total outstanding</strong>
+
+        <strong style="font-size:20px;">
+          JMD {customer_total:,.2f}
+        </strong>
+      </div>
+
+      <div style="
+        margin-top:26px;
+        padding:20px;
+        background:#fff8d7;
+        border:1px solid #f5dd72;
+        border-radius:12px;
+      ">
+        <h3 style="
+          margin:0 0 10px;
+          color:#6b4f00;
+          font-size:17px;
+        ">
+          Payment Policy
+        </h3>
+
+        <p style="
+          margin:0 0 10px;
+          color:#6b5b1e;
+          line-height:1.6;
+        ">
+          Payment is due upon receipt of your
+          invoice unless prior arrangements have
+          been made.
+        </p>
+
+        <p style="
+          margin:0;
+          color:#6b5b1e;
+          line-height:1.6;
+        ">
+          Accounts with outstanding balances may
+          experience delays in the release of
+          packages until payment has been received.
+        </p>
+      </div>
+
+      <p style="
+        margin-top:24px;
+        line-height:1.6;
+      ">
+        If payment has already been made, please
+        disregard this reminder or contact us with
+        your proof of payment.
+      </p>
+
+      <p style="margin-bottom:0;">
+        Thank you,<br>
+        <strong>
+          Foreign A Foot Logistics Limited
+        </strong><br>
+        <span style="color:#6b7280;">
+          Bringing the World to You
+        </span>
+      </p>
+
+    </div>
+  </div>
+</div>
+""".strip()
+
+            try:
+                ok = send_email(
+                    to_email=email,
+                    subject=subject,
+                    plain_body=plain_body,
+                    html_body=html_body,
+                    recipient_user_id=group["user_id"],
+                )
+
+                if ok:
+                    emails_sent += 1
+                else:
+                    emails_failed += 1
+                    failed_recipients.append(email)
+
+            except Exception as email_error:
+                emails_failed += 1
+                failed_recipients.append(email)
+
+                current_app.logger.exception(
+                    "Collections reminder failed for "
+                    "user %s: %s",
+                    group["user_id"],
+                    email_error,
+                )
+
+        # -----------------------------------------
+        # Audit log
+        # -----------------------------------------
+        audit_description = (
+            f"Bulk outstanding balance reminders "
+            f"processed. Sent: {emails_sent}; "
+            f"Failed: {emails_failed}; "
+            f"Skipped: {customers_skipped}; "
+            f"Invoices included: {invoices_included}; "
+            f"Outstanding represented: "
+            f"JMD {total_outstanding:,.2f}."
+        )
+
+        db.session.add(
+            AuditLog(
+                module="Finance",
+                action="Bulk Payment Reminders Sent",
+                admin_id=current_user.id,
+                user_id=None,
+                entity_type="CollectionsReminder",
+                entity_id=None,
+                reason="Outstanding balance follow-up",
+                description=audit_description,
+                old_value=None,
+                new_value=(
+                    f"Sent: {emails_sent}; "
+                    f"Failed: {emails_failed}; "
+                    f"Skipped: {customers_skipped}"
+                ),
+            )
+        )
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "emails_sent": emails_sent,
+            "emails_failed": emails_failed,
+            "customers_skipped": customers_skipped,
+            "invoice_count": invoices_included,
+            "grand_total": round(
+                total_outstanding,
+                2,
+            ),
+            "failed_recipients": (
+                failed_recipients[:10]
+            ),
+        })
+
+    except Exception as exc:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Bulk collections reminders failed: %s",
+            exc,
+        )
+
+        return jsonify({
+            "success": False,
+            "error": (
+                "The reminder emails could not be "
+                "processed."
+            ),
+        }), 500
 
 
 @finance_bp.route("/unpaid_invoices/mark_paid_bulk", methods=["POST"])

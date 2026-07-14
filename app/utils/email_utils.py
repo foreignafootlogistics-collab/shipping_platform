@@ -407,6 +407,16 @@ def send_email_smtp(
             print(f"⚠️ Unknown error attempt {attempt}/{MAX_RETRIES} to {to_email}: {last_err}. Sleeping {sleep_for}s")
             time.sleep(sleep_for)
 
+    import traceback
+
+    print("=" * 80)
+    print("EMAIL FAILURE")
+    print("Recipient:", to_email)
+    print("Subject:", subject)
+    print("Last Error:", last_err)
+    traceback.print_exc()
+    print("=" * 80)
+
     print(f"❌ Email sending failed to {to_email}: {last_err}")
     return False
 

@@ -246,6 +246,240 @@
 
   </form>
 
+  <!-- ===========================
+Finance Collections Toolbar
+=========================== -->
+  <div id="collectionsToolbar" class="collections-toolbar mb-4" style="display:none;">
+
+    <div class="collections-left">
+
+      <div class="collection-card">
+        <small>Customers Owing</small>
+        <strong id="collectionCustomers">0</strong>
+      </div>
+
+      <div class="collection-card">
+        <small>Outstanding Invoices</small>
+        <strong id="collectionInvoices">0</strong>
+      </div>
+
+      <div class="collection-card">
+        <small>Outstanding Balance</small>
+        <strong id="collectionTotal">J$0.00</strong>
+      </div>
+
+    </div>
+
+    <div class="collections-right">
+      <button id="btnPreviewReminder" type="button" class="btn collections-reminder-btn" data-bs-toggle="modal"
+        data-bs-target="#paymentReminderModal">
+
+        <i class="fas fa-envelope me-2"></i>
+        Send Reminder Emails
+      </button>
+
+    </div>
+
+  </div>
+
+  <!-- Payment Reminder Confirmation Modal -->
+  <div class="modal fade" id="paymentReminderModal" tabindex="-1" aria-labelledby="paymentReminderModalLabel"
+    aria-hidden="true">
+
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content reminder-modal-content">
+
+        <div class="modal-header reminder-modal-header">
+          <div>
+            <h5 class="modal-title" id="paymentReminderModalLabel">
+              <i class="fas fa-envelope-open-text me-2"></i>
+              Outstanding Payment Reminder
+            </h5>
+
+            <p class="mb-0">
+              Review the reminder details before continuing.
+            </p>
+          </div>
+
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close">
+          </button>
+        </div>
+
+        <div class="modal-body p-4">
+
+          <div class="row g-3 mb-4">
+
+            <div class="col-md-4">
+              <div class="reminder-summary-card">
+                <small>Recipients</small>
+                <strong id="modalCustomerCount">0</strong>
+                <span>customers</span>
+              </div>
+            </div>
+
+            <div class="col-md-4">
+              <div class="reminder-summary-card">
+                <small>Outstanding Invoices</small>
+                <strong id="modalInvoiceCount">0</strong>
+                <span>invoices</span>
+              </div>
+            </div>
+
+            <div class="col-md-4">
+              <div class="reminder-summary-card">
+                <small>Total Outstanding</small>
+                <strong id="modalOutstandingTotal">J$0.00</strong>
+                <span>combined balance</span>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="reminder-information-box">
+            <div class="reminder-info-icon">
+              <i class="fas fa-info-circle"></i>
+            </div>
+
+            <div>
+              <strong>One email will be sent to each customer.</strong>
+
+              <p class="mb-0">
+                Customers with multiple unpaid invoices will receive one
+                combined reminder listing all outstanding invoices.
+              </p>
+            </div>
+          </div>
+
+          <div class="email-preview-box mt-4">
+
+            <div class="email-preview-heading">
+              <div>
+                <small>Email subject</small>
+                <strong>
+                  Payment Reminder – Outstanding Invoice Balance
+                </strong>
+              </div>
+
+              <span class="preview-badge">Preview</span>
+            </div>
+
+            <div class="email-preview-body">
+
+              <p>Dear Customer,</p>
+
+              <p>
+                This is a friendly reminder from
+                <strong>Foreign A Foot Logistics Limited</strong>
+                regarding the outstanding invoice balance on your account.
+              </p>
+
+              <div class="real-preview-header mb-3">
+                <div>
+                  <small class="text-muted">Previewing customer</small>
+
+                  <h5 id="previewCustomerName" class="mb-0">
+                    Customer
+                  </h5>
+
+                  <small id="previewCustomerEmail" class="text-muted">
+                    customer@email.com
+                  </small>
+                </div>
+
+                <span id="previewCustomerPosition" class="preview-badge">
+                  1 of 1
+                </span>
+              </div>
+
+              <div id="previewInvoiceList">
+                <div class="text-muted">
+                  Loading outstanding invoices…
+                </div>
+              </div>
+
+              <div class="preview-total-row">
+                <span>Total outstanding</span>
+
+                <strong id="previewCustomerTotal">
+                  JMD $0.00
+                </strong>
+              </div>
+
+              <div class="preview-navigation mt-3">
+                <button type="button" id="previousPreviewCustomer" class="btn btn-light">
+
+                  <i class="fas fa-chevron-left me-1"></i>
+                  Previous
+                </button>
+
+                <button type="button" id="nextPreviewCustomer" class="btn btn-light">
+
+                  Next
+                  <i class="fas fa-chevron-right ms-1"></i>
+                </button>
+              </div>
+
+              <h6 class="mt-4">Payment Policy</h6>
+
+              <p>
+                Payment is due upon receipt of your invoice unless prior
+                arrangements have been made. Accounts with outstanding
+                balances may experience delays in the release of packages
+                until payment has been received.
+              </p>
+
+              <p>
+                If payment has already been made, please disregard this
+                reminder.
+              </p>
+
+              <p class="mb-0">
+                Thank you,<br>
+                <strong>Foreign A Foot Logistics Limited</strong>
+              </p>
+
+            </div>
+          </div>
+
+        </div>
+
+        <div id="reminderSendResult" class="px-4 pb-3" style="display:none;">
+
+          <div id="reminderSendResultBox" class="reminder-send-result">
+
+            <div class="reminder-result-icon">
+              <i class="fas fa-check-circle"></i>
+            </div>
+
+            <div>
+              <h5 id="reminderResultTitle">
+                Reminder emails processed
+              </h5>
+
+              <p id="reminderResultMessage" class="mb-0">
+              </p>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="modal-footer border-0 px-4 pb-4">
+
+          <button type="button" class="btn btn-light reminder-cancel-btn" data-bs-dismiss="modal">
+            Cancel
+          </button>
+
+          <button type="button" id="btnContinueReminder" class="btn collections-reminder-btn">
+            <i class="fas fa-eye me-2"></i>
+            Continue to Final Preview
+          </button>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <!-- Users Table -->
   <div class="modern-table-wrapper">
     <div class="table-responsive mobile-table-scroll">
@@ -910,49 +1144,390 @@ MOBILE RESPONSIVE
     }
 
   }
+
+  .collections-toolbar {
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 20px;
+
+    background: #4a148c;
+
+    color: white;
+
+    border-radius: 18px;
+
+    box-shadow: 0 8px 24px rgba(74, 20, 140, .18);
+
+  }
+
+  .collections-left {
+
+    display: flex;
+    gap: 18px;
+
+  }
+
+  .collection-card {
+
+    background: rgba(255, 255, 255, .12);
+
+    padding: 12px 20px;
+
+    border-radius: 14px;
+
+  }
+
+  .collection-card small {
+
+    display: block;
+
+    opacity: .85;
+
+  }
+
+  .collection-card strong {
+
+    display: block;
+
+    font-size: 1.4rem;
+
+  }
+
+  @media(max-width:768px) {
+
+    .collections-toolbar {
+
+      flex-direction: column;
+
+      gap: 18px;
+
+    }
+
+    .collections-left {
+
+      width: 100%;
+
+      justify-content: space-between;
+
+    }
+
+    .collections-right {
+
+      width: 100%;
+
+    }
+
+    .collections-right button {
+
+      width: 100%;
+
+    }
+
+  }
+
+  .collections-reminder-btn {
+    background: #facc15;
+    border: none;
+    color: #4a148c;
+    border-radius: 14px;
+    padding: 12px 20px;
+    font-weight: 800;
+  }
+
+  .collections-reminder-btn:hover,
+  .collections-reminder-btn:focus {
+    background: #fde047;
+    color: #4a148c;
+  }
+
+  .reminder-modal-content {
+    border: none;
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: 0 24px 70px rgba(17, 24, 39, 0.25);
+  }
+
+  .reminder-modal-header {
+    background: linear-gradient(135deg, #4a148c, #6a1b9a);
+    color: white;
+    border: none;
+    padding: 24px 28px;
+  }
+
+  .reminder-modal-header h5 {
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+
+  .reminder-modal-header p {
+    opacity: 0.85;
+    font-size: 0.9rem;
+  }
+
+  .reminder-summary-card {
+    background: #f8f5ff;
+    border: 1px solid #e9ddff;
+    border-radius: 16px;
+    padding: 18px;
+    height: 100%;
+  }
+
+  .reminder-summary-card small {
+    display: block;
+    color: #6b7280;
+    margin-bottom: 5px;
+  }
+
+  .reminder-summary-card strong {
+    display: block;
+    color: #4a148c;
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .reminder-summary-card span {
+    display: block;
+    margin-top: 4px;
+    color: #6b7280;
+    font-size: 0.8rem;
+  }
+
+  .reminder-information-box {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    background: #fff8d7;
+    border: 1px solid #f5dd72;
+    border-radius: 16px;
+    padding: 18px;
+  }
+
+  .reminder-info-icon {
+    color: #a16207;
+    font-size: 1.25rem;
+  }
+
+  .reminder-information-box p {
+    color: #6b5b1e;
+    margin-top: 4px;
+  }
+
+  .email-preview-box {
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  .email-preview-heading {
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .email-preview-heading small {
+    display: block;
+    color: #6b7280;
+  }
+
+  .email-preview-heading strong {
+    display: block;
+    color: #111827;
+  }
+
+  .preview-badge {
+    background: #ede9fe;
+    color: #5b21b6;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .email-preview-body {
+    padding: 22px;
+    color: #374151;
+  }
+
+  .preview-invoice-row,
+  .preview-total-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    padding: 12px 0;
+  }
+
+  .preview-invoice-row {
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .preview-total-row {
+    margin-top: 8px;
+    border-radius: 12px;
+    background: #f3e8ff;
+    color: #4a148c;
+    padding: 14px 16px;
+  }
+
+  .reminder-cancel-btn {
+    border-radius: 12px;
+    padding: 11px 20px;
+  }
+
+  @media (max-width: 768px) {
+    .collections-left {
+      flex-direction: column;
+    }
+
+    .collection-card {
+      width: 100%;
+    }
+
+    .email-preview-heading,
+    .preview-invoice-row,
+    .preview-total-row {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+
+  .real-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+  }
+
+  .real-preview-header h5 {
+    color: #4a148c;
+    font-weight: 800;
+  }
+
+  .preview-navigation {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .preview-navigation .btn {
+    border-radius: 12px;
+    font-weight: 700;
+  }
+
+  .preview-invoice-date {
+    display: block;
+    color: #6b7280;
+    font-size: 0.78rem;
+    margin-top: 2px;
+  }
+
+  @media (max-width: 768px) {
+
+    .real-preview-header,
+    .preview-navigation {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+
+  .reminder-send-result {
+    display: flex;
+    gap: 15px;
+    align-items: flex-start;
+    padding: 18px;
+    border-radius: 16px;
+    background: #dcfce7;
+    border: 1px solid #86efac;
+    color: #166534;
+  }
+
+  .reminder-send-result.is-error {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #991b1b;
+  }
+
+  .reminder-result-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
+  .reminder-send-result h5 {
+    margin: 0 0 5px;
+    font-weight: 800;
+  }
 </style>
 
 <script>
-  // Show Password Script
+  // ==========================================
+  // Show / Hide Password
+  // ==========================================
   document.getElementById('togglePassword')?.addEventListener('click', function () {
+
     const passwordInput = document.getElementById('password');
     const icon = this.querySelector('i');
+
     if (!passwordInput || !icon) return;
 
     if (passwordInput.type === 'password') {
+
       passwordInput.type = 'text';
       icon.classList.replace('fa-eye', 'fa-eye-slash');
+
     } else {
+
       passwordInput.type = 'password';
       icon.classList.replace('fa-eye-slash', 'fa-eye');
+
     }
+
   });
 
-  // Reg # sort toggle
+  // ==========================================
+  // Registration Number Sorting
+  // ==========================================
+
   const regSortLink = document.getElementById('regSortLink');
   let currentSort = "{{ sort_by or 'recent' }}";
 
   function buildUrlWithParams(params = {}) {
+
     const url = new URL(window.location.href);
 
     Object.entries(params).forEach(([k, v]) => {
+
       if (v === null || v === undefined || v === '') {
+
         url.searchParams.delete(k);
+
       } else {
+
         url.searchParams.set(k, String(v));
+
       }
+
     });
 
     return url.toString();
+
   }
 
   function getParam(name) {
+
     const url = new URL(window.location.href);
+
     return url.searchParams.get(name);
+
   }
 
-  // Set arrow highlighting on load
   (function initArrowState() {
+
     if (!regSortLink) return;
 
     regSortLink.classList.remove('asc', 'desc');
@@ -964,19 +1539,27 @@ MOBILE RESPONSIVE
     if (currentSort === 'alphabetical_desc') {
       regSortLink.classList.add('desc');
     }
+
   })();
 
   regSortLink?.addEventListener('click', function (e) {
+
     e.preventDefault();
 
     let newSort;
 
     if (currentSort === 'recent') {
+
       newSort = 'alphabetical_asc';
+
     } else if (currentSort === 'alphabetical_asc') {
+
       newSort = 'alphabetical_desc';
+
     } else {
+
       newSort = 'recent';
+
     }
 
     const search = getParam('search') || "{{ search or '' }}";
@@ -994,14 +1577,663 @@ MOBILE RESPONSIVE
     }
 
     const nextUrl = buildUrlWithParams({
+
       sort: newSort,
       search: search || null,
       unpaid_only: unpaidOnly === '1' ? '1' : null,
       page: page || '1'
+
     });
 
     window.location.href = nextUrl;
+
   });
+
+  // ==========================================
+  // Finance Collections Summary
+  // ==========================================
+
+  async function loadCollectionsSummary() {
+
+    const unpaidCheckbox = document.getElementById("unpaidOnlyChk");
+    const toolbar = document.getElementById("collectionsToolbar");
+
+    if (!unpaidCheckbox || !toolbar) return;
+
+    if (!unpaidCheckbox.checked) {
+
+      toolbar.style.display = "none";
+      return;
+
+    }
+
+    try {
+
+      const params = new URLSearchParams();
+
+      const searchInput =
+        document.querySelector('input[name="search"]');
+
+      if (searchInput && searchInput.value.trim() !== "") {
+
+        params.set("search", searchInput.value.trim());
+
+      }
+
+      const endpoint =
+        "/finance/unpaid-users-summary" +
+        (params.toString() ? "?" + params.toString() : "");
+
+      const response = await fetch(endpoint, {
+
+        headers: {
+          "X-Requested-With": "XMLHttpRequest"
+        }
+
+      });
+
+      if (!response.ok) {
+
+        throw new Error("Unable to load collections summary.");
+
+      }
+
+      const data = await response.json();
+
+      if (!data.success) {
+
+        throw new Error(data.error);
+
+      }
+
+      const formattedTotal = Number(
+        data.grand_total || 0
+      ).toLocaleString("en-JM", {
+
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+
+      });
+
+      // ==========================
+      // Toolbar
+      // ==========================
+
+      document.getElementById("collectionCustomers").textContent =
+        data.customer_count || 0;
+
+      document.getElementById("collectionInvoices").textContent =
+        data.invoice_count || 0;
+
+      document.getElementById("collectionTotal").textContent =
+        "J$" + formattedTotal;
+
+      // ==========================
+      // Reminder Modal
+      // ==========================
+
+      const modalCustomer =
+        document.getElementById("modalCustomerCount");
+
+      if (modalCustomer) {
+
+        modalCustomer.textContent =
+          data.customers_with_email || 0;
+
+      }
+
+      const modalInvoice =
+        document.getElementById("modalInvoiceCount");
+
+      if (modalInvoice) {
+
+        modalInvoice.textContent =
+          data.invoice_count || 0;
+
+      }
+
+      const modalOutstanding =
+        document.getElementById("modalOutstandingTotal");
+
+      if (modalOutstanding) {
+
+        modalOutstanding.textContent =
+          "J$" + formattedTotal;
+
+      }
+
+      toolbar.style.display = "flex";
+
+    }
+
+    catch (err) {
+
+      console.error(err);
+
+      toolbar.style.display = "none";
+
+    }
+
+  }
+
+  // ==========================================
+  // Events
+  // ==========================================
+
+  loadCollectionsSummary();
+
+  document
+    .getElementById("unpaidOnlyChk")
+    ?.addEventListener("change", loadCollectionsSummary);
+
+
+  // ==========================================
+  // Real Customer Reminder Preview
+  // ==========================================
+
+  let reminderPreviewCustomers = [];
+  let currentReminderPreviewIndex = 0;
+
+  function formatJmd(value) {
+    return "JMD $" + Number(value || 0).toLocaleString(
+      "en-JM",
+      {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }
+    );
+  }
+
+  function renderReminderCustomerPreview() {
+    if (!reminderPreviewCustomers.length) return;
+
+    const customer =
+      reminderPreviewCustomers[currentReminderPreviewIndex];
+
+    const customerName =
+      document.getElementById("previewCustomerName");
+
+    const customerEmail =
+      document.getElementById("previewCustomerEmail");
+
+    const customerPosition =
+      document.getElementById("previewCustomerPosition");
+
+    const invoiceList =
+      document.getElementById("previewInvoiceList");
+
+    const customerTotal =
+      document.getElementById("previewCustomerTotal");
+
+    const previousButton =
+      document.getElementById("previousPreviewCustomer");
+
+    const nextButton =
+      document.getElementById("nextPreviewCustomer");
+
+    if (customerName) {
+      customerName.textContent =
+        customer.customer_name || "Customer";
+    }
+
+    if (customerEmail) {
+      customerEmail.textContent =
+        customer.customer_email || "";
+    }
+
+    if (customerPosition) {
+      customerPosition.textContent =
+        `${currentReminderPreviewIndex + 1} of ` +
+        reminderPreviewCustomers.length;
+    }
+
+    if (invoiceList) {
+      invoiceList.innerHTML = "";
+
+      customer.invoices.forEach(function (invoice) {
+        const row = document.createElement("div");
+
+        row.className = "preview-invoice-row";
+
+        const details = document.createElement("div");
+
+        const invoiceNumber = document.createElement("span");
+
+        invoiceNumber.textContent =
+          invoice.invoice_number || "Invoice";
+
+        details.appendChild(invoiceNumber);
+
+        if (invoice.invoice_date) {
+          const invoiceDate = document.createElement("small");
+
+          invoiceDate.className = "preview-invoice-date";
+
+          invoiceDate.textContent =
+            invoice.invoice_date;
+
+          details.appendChild(invoiceDate);
+        }
+
+        const balance = document.createElement("strong");
+
+        balance.textContent =
+          formatJmd(invoice.balance_due);
+
+        row.appendChild(details);
+        row.appendChild(balance);
+
+        invoiceList.appendChild(row);
+      });
+    }
+
+    if (customerTotal) {
+      customerTotal.textContent =
+        formatJmd(customer.total_due);
+    }
+
+    if (previousButton) {
+      previousButton.disabled =
+        currentReminderPreviewIndex === 0;
+    }
+
+    if (nextButton) {
+      nextButton.disabled =
+        currentReminderPreviewIndex ===
+        reminderPreviewCustomers.length - 1;
+    }
+  }
+
+  async function loadRealReminderPreview() {
+    const continueButton =
+      document.getElementById("btnContinueReminder");
+
+    if (!continueButton) return;
+
+    const originalButtonHtml =
+      continueButton.innerHTML;
+
+    continueButton.disabled = true;
+
+    continueButton.innerHTML =
+      '<i class="fas fa-spinner fa-spin me-2"></i>' +
+      'Loading Preview';
+
+    try {
+      const params = new URLSearchParams();
+
+      const searchInput =
+        document.querySelector('input[name="search"]');
+
+      if (
+        searchInput &&
+        searchInput.value.trim() !== ""
+      ) {
+        params.set(
+          "search",
+          searchInput.value.trim()
+        );
+      }
+
+      const endpoint =
+        "/finance/unpaid-users-reminder-preview" +
+        (
+          params.toString()
+            ? "?" + params.toString()
+            : ""
+        );
+
+      const response = await fetch(endpoint, {
+        headers: {
+          "X-Requested-With": "XMLHttpRequest"
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          "Unable to load the customer preview."
+        );
+      }
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(
+          data.error ||
+          "Unable to load the customer preview."
+        );
+      }
+
+      reminderPreviewCustomers =
+        data.customers || [];
+
+      currentReminderPreviewIndex = 0;
+
+      if (!reminderPreviewCustomers.length) {
+        throw new Error(
+          "No customers with valid email addresses were found."
+        );
+      }
+
+      renderReminderCustomerPreview();
+
+      continueButton.innerHTML =
+        '<i class="fas fa-paper-plane me-2"></i>' +
+        `Send ${data.customer_count} Reminder Emails`;
+
+      continueButton.dataset.previewLoaded = "1";
+
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error.message ||
+        "Unable to load the reminder preview."
+      );
+
+      continueButton.innerHTML =
+        originalButtonHtml;
+
+      continueButton.dataset.previewLoaded = "0";
+
+    } finally {
+      continueButton.disabled = false;
+    }
+  }
+
+  document
+    .getElementById("previousPreviewCustomer")
+    ?.addEventListener("click", function () {
+      if (currentReminderPreviewIndex <= 0) return;
+
+      currentReminderPreviewIndex -= 1;
+
+      renderReminderCustomerPreview();
+    });
+
+  document
+    .getElementById("nextPreviewCustomer")
+    ?.addEventListener("click", function () {
+      if (
+        currentReminderPreviewIndex >=
+        reminderPreviewCustomers.length - 1
+      ) {
+        return;
+      }
+
+      currentReminderPreviewIndex += 1;
+
+      renderReminderCustomerPreview();
+    });
+
+  // ==========================================
+  // Send Collection Reminder Emails
+  // ==========================================
+
+  let collectionReminderSending = false;
+
+  function getCollectionsFilterPayload() {
+    const searchInput =
+      document.querySelector('input[name="search"]');
+
+    const dateFromInput =
+      document.querySelector('input[name="date_from"]');
+
+    const dateToInput =
+      document.querySelector('input[name="date_to"]');
+
+    return {
+      search: searchInput
+        ? searchInput.value.trim()
+        : "",
+
+      date_from: dateFromInput
+        ? dateFromInput.value.trim()
+        : "",
+
+      date_to: dateToInput
+        ? dateToInput.value.trim()
+        : ""
+    };
+  }
+
+  function showReminderResult(
+    success,
+    title,
+    message
+  ) {
+    const resultWrapper =
+      document.getElementById(
+        "reminderSendResult"
+      );
+
+    const resultBox =
+      document.getElementById(
+        "reminderSendResultBox"
+      );
+
+    const resultTitle =
+      document.getElementById(
+        "reminderResultTitle"
+      );
+
+    const resultMessage =
+      document.getElementById(
+        "reminderResultMessage"
+      );
+
+    const resultIcon =
+      resultBox?.querySelector(
+        ".reminder-result-icon i"
+      );
+
+    if (
+      !resultWrapper ||
+      !resultBox ||
+      !resultTitle ||
+      !resultMessage
+    ) {
+      return;
+    }
+
+    resultBox.classList.toggle(
+      "is-error",
+      !success
+    );
+
+    resultTitle.textContent = title;
+    resultMessage.textContent = message;
+
+    if (resultIcon) {
+      resultIcon.className = success
+        ? "fas fa-check-circle"
+        : "fas fa-exclamation-circle";
+    }
+
+    resultWrapper.style.display = "block";
+    resultWrapper.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest"
+    });
+  }
+
+  async function sendCollectionReminders() {
+    const sendButton =
+      document.getElementById(
+        "btnContinueReminder"
+      );
+
+    if (
+      !sendButton ||
+      collectionReminderSending
+    ) {
+      return;
+    }
+
+    const recipientCount =
+      reminderPreviewCustomers.length;
+
+    if (!recipientCount) {
+      alert(
+        "Load the reminder preview before sending."
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Send reminder emails to ` +
+      `${recipientCount} customers?\n\n` +
+      `Each customer will receive one email ` +
+      `listing all outstanding invoices.\n\n` +
+      `This action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    collectionReminderSending = true;
+
+    const originalButtonHtml =
+      sendButton.innerHTML;
+
+    sendButton.disabled = true;
+    sendButton.innerHTML =
+      '<i class="fas fa-spinner fa-spin me-2"></i>' +
+      `Sending ${recipientCount} Emails...`;
+
+    const resultWrapper =
+      document.getElementById(
+        "reminderSendResult"
+      );
+
+    if (resultWrapper) {
+      resultWrapper.style.display = "none";
+    }
+
+    try {
+      const response = await fetch(
+        "/finance/collections/send-reminders",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With":
+              "XMLHttpRequest",
+            "X-CSRFToken":
+              "{{ csrf_token() }}"
+          },
+
+          body: JSON.stringify(
+            getCollectionsFilterPayload()
+          )
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error ||
+          "The reminder emails could not be sent."
+        );
+      }
+
+      const formattedTotal = Number(
+        data.grand_total || 0
+      ).toLocaleString("en-JM", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+
+      const allSuccessful =
+        Number(data.emails_failed || 0) === 0 &&
+        Number(data.emails_sent || 0) > 0;
+
+      const resultTitle = allSuccessful
+        ? "Reminder emails sent successfully"
+        : "Some reminder emails failed";
+
+      let resultMessage =
+        `${data.emails_sent} sent, ` +
+        `${data.emails_failed} failed and ` +
+        `${data.customers_skipped} skipped. ` +
+        `${data.invoice_count} invoices were included, ` +
+        `representing J$${formattedTotal}.`;
+
+      if (
+        Array.isArray(data.failed_recipients) &&
+        data.failed_recipients.length
+      ) {
+        resultMessage +=
+          ` Failed recipient(s): ` +
+          data.failed_recipients.join(", ");
+      }
+
+      showReminderResult(
+        allSuccessful,
+        resultTitle,
+        resultMessage
+      );
+
+      if (allSuccessful) {
+        sendButton.innerHTML =
+          '<i class="fas fa-check me-2"></i>' +
+          `${data.emails_sent} Emails Sent`;
+
+        sendButton.disabled = true;
+      } else {
+        sendButton.innerHTML =
+          '<i class="fas fa-exclamation-triangle me-2"></i>' +
+          `${data.emails_failed} Email Failed`;
+
+        sendButton.disabled = false;
+      }
+
+      // Prevent accidentally sending the same batch
+      // again without reloading the preview.
+      if (allSuccessful) {
+        sendButton.dataset.previewLoaded = "0";
+
+        reminderPreviewCustomers = [];
+        currentReminderPreviewIndex = 0;
+      }
+
+      // Reload the collections figures.
+      await loadCollectionsSummary();
+
+    } catch (error) {
+      console.error(error);
+
+      showReminderResult(
+        false,
+        "Reminder sending failed",
+        error.message ||
+        "The reminder emails could not be sent."
+      );
+
+      sendButton.disabled = false;
+      sendButton.innerHTML =
+        originalButtonHtml;
+
+    } finally {
+      collectionReminderSending = false;
+    }
+  }
+
+  document
+    .getElementById("btnContinueReminder")
+    ?.addEventListener("click", function () {
+      const previewLoaded =
+        this.dataset.previewLoaded === "1";
+
+      if (!previewLoaded) {
+        loadRealReminderPreview();
+        return;
+      }
+
+      sendCollectionReminders();
+    });
+
 </script>
 
 {% endblock %}

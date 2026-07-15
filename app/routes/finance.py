@@ -1074,6 +1074,17 @@ def unpaid_users_reminder_preview():
 @admin_required(roles=["finance"])
 def send_collections_reminders():
     data = request.get_json(silent=True) or {}
+    raw_excluded_user_ids = (
+        data.get("excluded_user_ids") or []
+    )
+
+    excluded_user_ids = set()
+
+    for value in raw_excluded_user_ids:
+        try:
+            excluded_user_ids.add(int(value))
+        except (TypeError, ValueError):
+            continue
 
     search = (data.get("search") or "").strip() or None
     date_from = (data.get("date_from") or "").strip() or None
@@ -1265,6 +1276,11 @@ def send_collections_reminders():
         failed_recipients = []
 
         for group in grouped.values():
+            user_id = int(group["user_id"])
+
+            if user_id in excluded_user_ids:
+                customers_skipped += 1
+                continue
             email = (
                 group.get("customer_email") or ""
             ).strip()
@@ -1789,7 +1805,7 @@ Bringing the World to You
             "Bulk outstanding balance reminders "
             f"processed. Sent: {emails_sent}; "
             f"Failed: {emails_failed}; "
-            f"Skipped: {customers_skipped}; "
+            f"Excluded: {customers_skipped}; "
             f"Invoices included: {invoices_included}; "
             "Outstanding represented: "
             f"JMD {total_outstanding:,.2f}."
@@ -1809,7 +1825,7 @@ Bringing the World to You
                 new_value=(
                     f"Sent: {emails_sent}; "
                     f"Failed: {emails_failed}; "
-                    f"Skipped: {customers_skipped}"
+                    f"Excluded: {customers_skipped}"
                 ),
             )
         )

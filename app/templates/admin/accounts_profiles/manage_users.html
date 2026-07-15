@@ -374,6 +374,7 @@ Finance Collections Toolbar
               </p>
 
               <div class="real-preview-header mb-3">
+
                 <div>
                   <small class="text-muted">Previewing customer</small>
 
@@ -389,6 +390,29 @@ Finance Collections Toolbar
                 <span id="previewCustomerPosition" class="preview-badge">
                   1 of 1
                 </span>
+              </div>
+
+              <div class="exclude-customer-box mb-3">
+
+                <div class="form-check">
+
+                  <input class="form-check-input" type="checkbox" id="excludePreviewCustomer">
+
+                  <label class="form-check-label" for="excludePreviewCustomer">
+
+                    <strong>
+                      Skip this customer
+                    </strong>
+
+                    <span class="d-block text-muted small mt-1">
+                      This customer will not receive a reminder email during this send.
+                      They will remain in the outstanding list.
+                    </span>
+
+                  </label>
+
+                </div>
+
               </div>
 
               <div id="previewInvoiceList">
@@ -1784,6 +1808,35 @@ MOBILE RESPONSIVE
       width: 100%;
     }
   }
+
+  .exclude-customer-box {
+    padding: 14px 16px;
+    border: 1px solid #fed7aa;
+    border-radius: 14px;
+    background: #fff7ed;
+  }
+
+  .exclude-customer-box .form-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0;
+  }
+
+  .exclude-customer-box .form-check-input {
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+
+  .exclude-customer-box .form-check-input:checked {
+    background-color: #ea580c;
+    border-color: #ea580c;
+  }
+
+  .exclude-customer-box .form-check-label {
+    color: #9a3412;
+    cursor: pointer;
+  }
 </style>
 
 <script>
@@ -2055,6 +2108,7 @@ MOBILE RESPONSIVE
 
   let reminderPreviewCustomers = [];
   let currentReminderPreviewIndex = 0;
+  let excludedReminderCustomerIds = new Set();
 
   function formatJmd(value) {
     return "JMD $" + Number(value || 0).toLocaleString(
@@ -2164,6 +2218,15 @@ MOBILE RESPONSIVE
         currentReminderPreviewIndex ===
         reminderPreviewCustomers.length - 1;
     }
+    const excludeCheckbox =
+      document.getElementById("excludePreviewCustomer");
+
+    if (excludeCheckbox) {
+      const customerId = Number(customer.user_id);
+
+      excludeCheckbox.checked =
+        excludedReminderCustomerIds.has(customerId);
+    }
   }
 
   async function loadRealReminderPreview() {
@@ -2230,6 +2293,7 @@ MOBILE RESPONSIVE
         data.customers || [];
 
       currentReminderPreviewIndex = 0;
+      excludedReminderCustomerIds.clear();
 
       if (!reminderPreviewCustomers.length) {
         throw new Error(
@@ -2239,11 +2303,9 @@ MOBILE RESPONSIVE
 
       renderReminderCustomerPreview();
 
-      continueButton.innerHTML =
-        '<i class="fas fa-paper-plane me-2"></i>' +
-        `Send ${data.customer_count} Reminder Emails`;
-
       continueButton.dataset.previewLoaded = "1";
+
+      updateReminderSendButtonCount();
 
     } catch (error) {
       console.error(error);
@@ -2288,6 +2350,27 @@ MOBILE RESPONSIVE
       renderReminderCustomerPreview();
     });
 
+  document
+    .getElementById("excludePreviewCustomer")
+    ?.addEventListener("change", function () {
+      if (!reminderPreviewCustomers.length) return;
+
+      const customer =
+        reminderPreviewCustomers[currentReminderPreviewIndex];
+
+      const customerId = Number(customer.user_id);
+
+      if (!customerId) return;
+
+      if (this.checked) {
+        excludedReminderCustomerIds.add(customerId);
+      } else {
+        excludedReminderCustomerIds.delete(customerId);
+      }
+
+      updateReminderSendButtonCount();
+    });
+
   // ==========================================
   // Send Collection Reminder Emails
   // ==========================================
@@ -2315,7 +2398,10 @@ MOBILE RESPONSIVE
 
       date_to: dateToInput
         ? dateToInput.value.trim()
-        : ""
+        : "",
+
+      excluded_user_ids:
+        Array.from(excludedReminderCustomerIds)
     };
   }
 
@@ -2379,6 +2465,29 @@ MOBILE RESPONSIVE
     });
   }
 
+  function updateReminderSendButtonCount() {
+    const sendButton =
+      document.getElementById("btnContinueReminder");
+
+    if (!sendButton) return;
+
+    const totalCustomers =
+      reminderPreviewCustomers.length;
+
+    const excludedCount =
+      excludedReminderCustomerIds.size;
+
+    const includedCount =
+      Math.max(totalCustomers - excludedCount, 0);
+
+    if (sendButton.dataset.previewLoaded === "1") {
+      sendButton.innerHTML =
+        '<i class="fas fa-paper-plane me-2"></i>' +
+        `Send ${includedCount} ` +
+        `${includedCount === 1 ? "Reminder Email" : "Reminder Emails"}`;
+    }
+  }
+
   async function sendCollectionReminders() {
     const sendButton =
       document.getElementById(
@@ -2392,21 +2501,35 @@ MOBILE RESPONSIVE
       return;
     }
 
-    const recipientCount =
-      reminderPreviewCustomers.length;
+    const recipientCount = Math.max(
+      reminderPreviewCustomers.length -
+      excludedReminderCustomerIds.size,
+      0
+    );
 
-    if (!recipientCount) {
+    if (reminderPreviewCustomers.length === 0) {
       alert(
         "Load the reminder preview before sending."
       );
       return;
     }
 
+    if (recipientCount === 0) {
+      alert(
+        "All customers have been excluded. Select at least one customer before sending."
+      );
+      return;
+    }
+
+    const excludedCount =
+      excludedReminderCustomerIds.size;
+
     const confirmed = window.confirm(
-      `Send reminder emails to ` +
-      `${recipientCount} customers?\n\n` +
-      `Each customer will receive one email ` +
-      `listing all outstanding invoices.\n\n` +
+      `Send reminder emails to ${recipientCount} customers?\n\n` +
+      `${excludedCount} ${excludedCount === 1 ? "customer" : "customers"
+      } will be excluded from this reminder batch.\n\n` +
+      `Each included customer will receive one email listing ` +
+      `all outstanding invoices.\n\n` +
       `This action cannot be undone.`
     );
 
@@ -2478,7 +2601,7 @@ MOBILE RESPONSIVE
       let resultMessage =
         `${data.emails_sent} sent, ` +
         `${data.emails_failed} failed and ` +
-        `${data.customers_skipped} skipped. ` +
+        `${data.customers_skipped} excluded. ` +
         `${data.invoice_count} invoices were included, ` +
         `representing J$${formattedTotal}.`;
 
@@ -2515,10 +2638,19 @@ MOBILE RESPONSIVE
       // Prevent accidentally sending the same batch
       // again without reloading the preview.
       if (allSuccessful) {
+
         sendButton.dataset.previewLoaded = "0";
 
         reminderPreviewCustomers = [];
         currentReminderPreviewIndex = 0;
+        excludedReminderCustomerIds.clear();
+
+        const excludeCheckbox =
+          document.getElementById("excludePreviewCustomer");
+
+        if (excludeCheckbox) {
+          excludeCheckbox.checked = false;
+        }
       }
 
       // Reload the collections figures.

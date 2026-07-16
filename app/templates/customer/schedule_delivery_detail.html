@@ -3,11 +3,16 @@
 
 {% block content %}
 <style>
+    .delivery-page {
+        max-width: 1220px;
+        margin: 0 auto;
+    }
+
     .delivery-hero {
         border-radius: 18px;
         background: linear-gradient(135deg, #4a148c, #6a1b9a);
         color: #fff;
-        padding: 22px;
+        padding: 24px;
         box-shadow: 0 12px 28px rgba(74, 20, 140, .18);
     }
 
@@ -15,39 +20,48 @@
         border: 0;
         border-radius: 18px;
         box-shadow: 0 10px 24px rgba(17, 24, 39, .08);
+        overflow: hidden;
     }
 
     .info-label {
-        font-size: .78rem;
+        font-size: .76rem;
         color: #6b7280;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: .02em;
+        letter-spacing: .03em;
+        margin-bottom: 3px;
     }
 
     .info-value {
         font-weight: 700;
         color: #111827;
+        overflow-wrap: anywhere;
     }
 
     .timeline {
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 10px;
-        flex-wrap: wrap;
     }
 
     .timeline-step {
-        flex: 1 1 150px;
         border-radius: 14px;
-        padding: 12px;
+        padding: 13px;
         background: #f3f4f6;
         border: 1px solid #e5e7eb;
+        min-height: 94px;
     }
 
     .timeline-step.active {
         background: #ecfdf5;
         border-color: #86efac;
         color: #065f46;
+    }
+
+    .timeline-step.warning {
+        background: #fff7ed;
+        border-color: #fdba74;
+        color: #9a3412;
     }
 
     .tracking-pill {
@@ -59,104 +73,314 @@
         color: #3730a3;
         font-weight: 700;
         font-size: .85rem;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .summary-box {
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: 14px;
+        background: #f9fafb;
+    }
+
+    .summary-box .value {
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: #111827;
+    }
+
+    .money-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 9px 0;
+        border-bottom: 1px solid #e5e7eb;
+    }
+
+    .money-row:last-child {
+        border-bottom: 0;
+    }
+
+    .money-row.total {
+        margin-top: 4px;
+        padding-top: 14px;
+        border-top: 2px solid #d1d5db;
+        border-bottom: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+    }
+
+    .package-table {
+        min-width: 760px;
+    }
+
+    .action-stack .btn {
+        width: 100%;
+    }
+
+    @media (max-width: 991.98px) {
+        .timeline {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .summary-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 767.98px) {
+        .delivery-page {
+            padding-left: 4px;
+            padding-right: 4px;
+        }
+
+        .delivery-hero {
+            padding: 18px;
+            border-radius: 14px;
+        }
+
+        .delivery-hero h2 {
+            font-size: 1.55rem;
+            overflow-wrap: anywhere;
+        }
+
+        .delivery-hero .hero-status {
+            width: 100%;
+            text-align: left !important;
+        }
+
+        .timeline {
+            grid-template-columns: 1fr;
+        }
+
+        .soft-card {
+            border-radius: 14px;
+        }
+
+        .card-body {
+            padding: 16px;
+        }
+
+        .info-value {
+            font-size: .96rem;
+        }
+
+        .table-responsive {
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .package-table {
+            min-width: 700px;
+        }
+
+        .money-row {
+            font-size: .95rem;
+        }
     }
 </style>
 
-<div class="container mt-4 mb-5">
+{% set delivery_status = delivery.status or "Scheduled" %}
+{% set fee_status = delivery.fee_status or "Unpaid" %}
+{% set zone = delivery.area_zone or "dynamic" %}
 
+{# Calculate assigned package balance and billable weight safely #}
+{% set totals = namespace(package_balance=0.0, total_weight=0) %}
+
+{% for pkg in packages %}
+{% set package_due = pkg.amount_due or 0 %}
+{% set raw_weight = pkg.weight or 0 %}
+{% set billable_weight = ((raw_weight|round(0, 'ceil'))|int) %}
+
+{% set totals.package_balance = totals.package_balance + package_due %}
+{% set totals.total_weight = totals.total_weight + billable_weight %}
+{% endfor %}
+
+{% if delivery_status in ["Cancelled", "Canceled"] %}
+{% set delivery_fee_due = 0 %}
+{% elif fee_status|lower in ["paid", "waived", "refunded"] %}
+{% set delivery_fee_due = 0 %}
+{% else %}
+{% set delivery_fee_due = delivery.delivery_fee or 0 %}
+{% endif %}
+
+{% set expected_collection = totals.package_balance + delivery_fee_due %}
+
+<div class="container mt-4 mb-5 delivery-page">
+
+    <!-- Hero -->
     <div class="delivery-hero mb-4">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+
             <div>
-                <div class="small opacity-75">Delivery Request</div>
+                <div class="small opacity-75">
+                    Delivery Request
+                </div>
+
                 <h2 class="mb-1">
                     {{ delivery.invoice_number or "Delivery #" ~ delivery.id }}
                 </h2>
 
                 <div class="opacity-75">
                     Scheduled for
+
                     <strong>
                         {{ delivery.scheduled_date.strftime("%B %d, %Y") if delivery.scheduled_date else "—" }}
                     </strong>
-                    ·
-                    <strong>
-                        {% if delivery.scheduled_time_from and delivery.scheduled_time_to %}
-                        {{ delivery.scheduled_time_from }} - {{ delivery.scheduled_time_to }}
-                        {% else %}
-                        {{ delivery.scheduled_time or "9:00 AM - 5:00 PM" }}
-                        {% endif %}
-                    </strong>
+
+                    <span class="mx-1">•</span>
+
+                    <strong>9:00 AM – 5:00 PM</strong>
                 </div>
             </div>
 
-            <div class="text-end">
-                {% set status = delivery.status or "Scheduled" %}
-                {% if status == "Delivered" %}
-                <span class="badge bg-success fs-6">Delivered</span>
-                {% elif status == "Out for Delivery" %}
-                <span class="badge bg-warning text-dark fs-6">Out for Delivery</span>
-                {% elif status in ["Cancelled", "Canceled"] %}
-                <span class="badge bg-danger fs-6">Cancelled</span>
+            <div class="text-end hero-status">
+                {% if delivery_status == "Delivered" %}
+                <span class="badge bg-success fs-6">
+                    Delivered
+                </span>
+
+                {% elif delivery_status == "Out for Delivery" %}
+                <span class="badge bg-warning text-dark fs-6">
+                    Out for Delivery
+                </span>
+
+                {% elif delivery_status == "Delivery Attempted" %}
+                <span class="badge bg-warning text-dark fs-6">
+                    Delivery Attempted
+                </span>
+
+                {% elif delivery_status in ["Cancelled", "Canceled"] %}
+                <span class="badge bg-danger fs-6">
+                    Cancelled
+                </span>
+
                 {% else %}
-                <span class="badge bg-light text-dark fs-6">Scheduled</span>
+                <span class="badge bg-light text-dark fs-6">
+                    Scheduled
+                </span>
                 {% endif %}
             </div>
+
         </div>
     </div>
 
+    <!-- Pending reschedule -->
     {% if delivery.reschedule_status == "pending" %}
     <div class="alert alert-warning soft-card">
-        <strong>Reschedule Request Pending</strong><br>
-        Requested new date:
-        <strong>{{ delivery.requested_new_date.strftime("%B %d, %Y") if delivery.requested_new_date else "—"
-            }}</strong><br>
-        Reason: {{ delivery.reschedule_reason or "—" }}
+        <strong>Reschedule Request Pending</strong>
+
+        <div class="mt-1">
+            Requested new date:
+            <strong>
+                {{ delivery.requested_new_date.strftime("%B %d, %Y") if delivery.requested_new_date else "—" }}
+            </strong>
+        </div>
+
+        <div>
+            Reason:
+            {{ delivery.reschedule_reason or "—" }}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Attempted delivery notice -->
+    {% if delivery_status == "Delivery Attempted" %}
+    <div class="alert alert-warning soft-card">
+        <strong>Delivery Attempted</strong>
+
+        <div class="mt-1">
+            Our driver attempted to complete this delivery but was unable
+            to hand over the packages. Please contact Foreign A Foot
+            Logistics to arrange the next step. A redelivery fee may apply.
+        </div>
     </div>
     {% endif %}
 
     <div class="row g-4">
 
+        <!-- Main content -->
         <div class="col-lg-8">
 
+            <!-- Delivery information -->
             <div class="card soft-card mb-4">
                 <div class="card-body">
-                    <h5 class="mb-3">Delivery Information</h5>
+
+                    <h5 class="mb-3">
+                        Delivery Information
+                    </h5>
 
                     <div class="row g-3">
+
                         <div class="col-md-6">
                             <div class="info-label">Address</div>
-                            <div class="info-value">{{ delivery.location or "—" }}</div>
+
+                            <div class="info-value">
+                                {{ delivery.location or "—" }}
+                            </div>
                         </div>
 
                         <div class="col-md-6">
-                            <div class="info-label">Directions / Landmark</div>
-                            <div class="info-value">{{ delivery.direction or "—" }}</div>
+                            <div class="info-label">
+                                Directions / Landmark
+                            </div>
+
+                            <div class="info-value">
+                                {{ delivery.direction or "—" }}
+                            </div>
                         </div>
 
                         <div class="col-md-4">
-                            <div class="info-label">Person Receiving</div>
-                            <div class="info-value">{{ delivery.person_receiving or "—" }}</div>
+                            <div class="info-label">
+                                Person Receiving
+                            </div>
+
+                            <div class="info-value">
+                                {{ delivery.person_receiving or "—" }}
+                            </div>
                         </div>
 
                         <div class="col-md-4">
-                            <div class="info-label">Mobile Number</div>
-                            <div class="info-value">{{ delivery.mobile_number or "—" }}</div>
+                            <div class="info-label">
+                                Mobile Number
+                            </div>
+
+                            <div class="info-value">
+                                {{ delivery.mobile_number or "—" }}
+                            </div>
                         </div>
 
                         <div class="col-md-4">
                             <div class="info-label">Parish</div>
-                            <div class="info-value">{{ delivery.delivery_parish or "—" }}</div>
+
+                            <div class="info-value">
+                                {{ delivery.delivery_parish or "—" }}
+                            </div>
                         </div>
 
                         <div class="col-md-4">
-                            <div class="info-label">Dispatch Branch</div>
-                            <div class="info-value">{{ delivery.delivery_branch or "—" }}</div>
+                            <div class="info-label">
+                                Dispatch Branch
+                            </div>
+
+                            <div class="info-value">
+                                {{ delivery.delivery_branch or "—" }}
+                            </div>
                         </div>
 
                         <div class="col-md-4">
                             <div class="info-label">Distance</div>
+
                             <div class="info-value">
-                                {% if delivery.distance_km %}
-                                {{ "%.2f"|format(delivery.distance_km) }} KM
+                                {% if delivery.distance_km is not none %}
+                                {{ "%.1f"|format(delivery.distance_km) }} KM
                                 {% else %}
                                 —
                                 {% endif %}
@@ -165,81 +389,228 @@
 
                         <div class="col-md-4">
                             <div class="info-label">Coverage</div>
-                            {% if delivery.is_free_delivery %}
-                            <span class="badge bg-success">Core Delivery Zone</span>
-                            {% elif delivery.delivery_type == "admin_review" %}
-                            <span class="badge bg-danger">Manual Review Area</span>
-                            {% else %}
-                            <span class="badge bg-primary">Extended Delivery Zone</span>
-                            {% endif %}
+
+                            {% if delivery.delivery_type == "admin_review" %}
+                            <span class="badge bg-danger">
+                                Manual Review Area
+                            </span>
+
+                            {% elif zone == "kgn_core" %}
+                            <span class="badge bg-dark">
+                                Kingston Core
+                            </span>
+
+                            {% elif zone == "kgn_outside" %}
+                            <span class="badge bg-secondary">
+                                Kingston Outside
+                            </span>
+
+                            {% elif zone == "pm_core" %}
+                            <span class="badge bg-primary">
+                                Portmore Core
+                            </span>
+
+                            {% elif zone == "pm_outside" %}
+                            <span class="badge bg-info text-dark">
+                                Portmore Outside
+                            </span>
+
+                            {% elif delivery.delivery_parish == "Kingston"
+                            and (delivery.distance_km or 0) <= 5 %} <span class="badge bg-dark">
+                                Kingston Core
+                                </span>
+
+                                {% elif delivery.delivery_parish == "St. Catherine"
+                                and (delivery.distance_km or 0) <= 5 %} <span class="badge bg-primary">
+                                    Portmore Core
+                                    </span>
+
+                                    {% elif delivery.delivery_parish == "Kingston" %}
+                                    <span class="badge bg-secondary">
+                                        Kingston Outside
+                                    </span>
+
+                                    {% else %}
+                                    <span class="badge bg-info text-dark">
+                                        Portmore Outside
+                                    </span>
+                                    {% endif %}
                         </div>
+
                     </div>
                 </div>
             </div>
 
+            <!-- Delivery status -->
             <div class="card soft-card mb-4">
                 <div class="card-body">
-                    <h5 class="mb-3">Delivery Status</h5>
+
+                    <h5 class="mb-3">
+                        Delivery Status
+                    </h5>
 
                     {% if delivery.delivered_at %}
                     <div class="alert alert-success py-2 mb-3">
-                        <strong>Delivered Successfully</strong><br>
+                        <strong>Delivered Successfully</strong>
+
+                        <br>
+
                         Completed on:
-                        {{ delivery.delivered_at.strftime("%B %d, %Y at %I:%M %p UTC") }}
+
+                        {{ to_jamaica(delivery.delivered_at).strftime("%B %d, %Y at %I:%M %p") }}
                     </div>
                     {% endif %}
 
-                    {% set st = delivery.status or "Scheduled" %}
                     <div class="timeline">
-                        <div
-                            class="timeline-step {% if st in ['Scheduled','Out for Delivery','Delivered'] %}active{% endif %}">
-                            <div class="fw-bold">1. Scheduled</div>
-                            <div class="small">Your delivery request has been created.</div>
+
+                        <div class="timeline-step active">
+                            <div class="fw-bold">
+                                1. Request Submitted
+                            </div>
+
+                            <div class="small">
+                                Your delivery request was received.
+                            </div>
                         </div>
 
-                        <div class="timeline-step {% if st in ['Out for Delivery','Delivered'] %}active{% endif %}">
-                            <div class="fw-bold">2. Out for Delivery</div>
-                            <div class="small">Your package is on the road.</div>
+                        <div class="timeline-step
+                            {% if delivery_status in [
+                                'Scheduled',
+                                'Out for Delivery',
+                                'Delivery Attempted',
+                                'Delivered'
+                            ] %}
+                                active
+                            {% endif %}
+                        ">
+                            <div class="fw-bold">
+                                2. Scheduled
+                            </div>
+
+                            <div class="small">
+                                Delivery date and details confirmed.
+                            </div>
                         </div>
 
-                        <div class="timeline-step {% if st == 'Delivered' %}active{% endif %}">
-                            <div class="fw-bold">3. Delivered</div>
-                            <div class="small">Delivery completed.</div>
+                        <div class="timeline-step
+                            {% if delivery_status in [
+                                'Out for Delivery',
+                                'Delivery Attempted',
+                                'Delivered'
+                            ] %}
+                                active
+                            {% endif %}
+                        ">
+                            <div class="fw-bold">
+                                3. Out for Delivery
+                            </div>
+
+                            <div class="small">
+                                Your packages are on the road.
+                            </div>
                         </div>
+
+                        <div class="timeline-step
+                            {% if delivery_status == 'Delivered' %}
+                                active
+                            {% elif delivery_status == 'Delivery Attempted' %}
+                                warning
+                            {% endif %}
+                        ">
+                            <div class="fw-bold">
+                                4.
+                                {% if delivery_status == "Delivery Attempted" %}
+                                Attempted
+                                {% else %}
+                                Delivered
+                                {% endif %}
+                            </div>
+
+                            <div class="small">
+                                {% if delivery_status == "Delivery Attempted" %}
+                                Delivery could not be completed.
+                                {% else %}
+                                Delivery successfully completed.
+                                {% endif %}
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>
 
+            <!-- Package summary -->
             <div class="card soft-card mb-4">
                 <div class="card-body">
-                    <h5 class="mb-3">Missed Delivery Policy</h5>
-                    <div class="small text-muted">
-                        Please ensure the receiver is available during the delivery window.
-                        If the driver arrives and no one is available, Foreign A Foot Logistics may return the package
-                        to branch.
-                        A redelivery fee may apply for another delivery attempt.
+
+                    <h5 class="mb-3">
+                        Package Summary
+                    </h5>
+
+                    <div class="summary-grid">
+
+                        <div class="summary-box">
+                            <div class="info-label">
+                                Assigned Packages
+                            </div>
+
+                            <div class="value">
+                                {{ packages|length }}
+                            </div>
+                        </div>
+
+                        <div class="summary-box">
+                            <div class="info-label">
+                                Total Billable Weight
+                            </div>
+
+                            <div class="value">
+                                {{ totals.total_weight }} lb
+                            </div>
+                        </div>
+
+                        <div class="summary-box">
+                            <div class="info-label">
+                                Package Balance
+                            </div>
+
+                            <div class="value">
+                                JMD {{ "{:,.2f}".format(totals.package_balance) }}
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>
 
-            <div class="card soft-card">
+            <!-- Assigned packages -->
+            <div class="card soft-card mb-4">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="mb-0">Assigned Packages</h5>
-                        <span class="badge bg-dark">{{ packages|length }} package(s)</span>
+
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <h5 class="mb-0">
+                            Assigned Packages
+                        </h5>
+
+                        <span class="badge bg-dark">
+                            {{ packages|length }} package(s)
+                        </span>
                     </div>
 
                     {% if packages %}
                     <div class="table-responsive">
-                        <table class="table table-bordered align-middle">
+                        <table class="table table-bordered align-middle package-table">
+
                             <thead class="table-dark">
                                 <tr>
                                     <th>Tracking #</th>
                                     <th>Description</th>
-                                    <th> Billable Weight</th>
+                                    <th>Billable Weight</th>
+                                    <th>Package Balance</th>
                                     <th>Status</th>
                                 </tr>
                             </thead>
+
                             <tbody>
                                 {% for pkg in packages %}
                                 <tr>
@@ -248,85 +619,208 @@
                                             {{ pkg.tracking_number or pkg.house_awb or "No Tracking" }}
                                         </span>
                                     </td>
-                                    <td>{{ pkg.description or "—" }}</td>
-                                    <td>{{ ((pkg.weight or 0)|round(0, 'ceil'))|int }} lb</td>
-                                    <td>{{ pkg.status or "—" }}</td>
+
+                                    <td>
+                                        {{ pkg.description or "—" }}
+                                    </td>
+
+                                    <td class="text-nowrap">
+                                        {{ ((pkg.weight or 0)|round(0, 'ceil'))|int }} lb
+                                    </td>
+
+                                    <td class="text-nowrap fw-semibold">
+                                        JMD {{ "{:,.2f}".format(pkg.amount_due or 0) }}
+                                    </td>
+
+                                    <td>
+                                        {{ pkg.status or "—" }}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
+
                         </table>
                     </div>
+
                     {% else %}
                     <div class="alert alert-info mb-0">
                         No packages have been assigned to this delivery yet.
                     </div>
                     {% endif %}
+
+                </div>
+            </div>
+
+            <!-- Missed delivery policy -->
+            <div class="card soft-card">
+                <div class="card-body">
+
+                    <h5 class="mb-3">
+                        Missed Delivery Policy
+                    </h5>
+
+                    <div class="small text-muted">
+                        Please ensure that the receiver is available between
+                        9:00 AM and 5:00 PM. If our driver arrives and no one is
+                        available to receive the packages, the delivery may be
+                        marked as attempted and the packages returned to the
+                        dispatch branch. A new delivery request and applicable
+                        redelivery fee may be required.
+                    </div>
+
                 </div>
             </div>
 
         </div>
 
+        <!-- Sidebar -->
         <div class="col-lg-4">
 
+            <!-- Amount due -->
             <div class="card soft-card mb-4">
                 <div class="card-body">
-                    <h5 class="mb-3">Delivery Fee</h5>
 
-                    <div class="display-6 fw-bold">
-                        {{ delivery.fee_currency or "JMD" }}
-                        {{ "%.2f"|format(delivery.delivery_fee or 0) }}
+                    <h5 class="mb-3">
+                        Amount Due
+                    </h5>
+
+                    <div class="money-row">
+                        <span>Package Balance</span>
+
+                        <strong>
+                            JMD {{ "{:,.2f}".format(totals.package_balance) }}
+                        </strong>
                     </div>
 
-                    <div class="mt-2">
-                        {% set fs = delivery.fee_status or "Unpaid" %}
-                        {% if fs|lower == "paid" %}
-                        <span class="badge bg-success">Paid</span>
-                        {% elif fs|lower == "waived" %}
-                        <span class="badge bg-secondary">Waived</span>
-                        {% else %}
-                        <span class="badge bg-warning text-dark">Unpaid</span>
-                        {% endif %}
+                    <div class="money-row">
+                        <span>Delivery Fee</span>
+
+                        <div class="text-end">
+                            <strong>
+                                {{ delivery.fee_currency or "JMD" }}
+                                {{ "{:,.2f}".format(delivery.delivery_fee or 0) }}
+                            </strong>
+
+                            <div class="small mt-1">
+                                {% if delivery_status in ["Cancelled", "Canceled"] %}
+                                <span class="text-muted">
+                                    Cancelled — not payable
+                                </span>
+
+                                {% elif fee_status|lower == "paid" %}
+                                <span class="text-success">
+                                    Paid
+                                </span>
+
+                                {% elif fee_status|lower == "waived" %}
+                                <span class="text-success">
+                                    Free Delivery
+                                </span>
+
+                                {% elif fee_status|lower == "refunded" %}
+                                <span class="text-info">
+                                    Refunded
+                                </span>
+
+                                {% else %}
+                                <span class="text-danger">
+                                    Pay on Delivery
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
 
-                    <hr>
+                    <div class="money-row total">
+                        <span>Expected Collection</span>
 
-                    <div class="small text-muted">
-                        Delivery fee must be settled before or upon delivery unless waived as a free delivery route.
+                        <span>
+                            JMD {{ "{:,.2f}".format(expected_collection) }}
+                        </span>
                     </div>
+
+                    {% if delivery.paid_at %}
+                    <div class="small text-muted mt-3">
+                        Delivery fee payment recorded on:
+
+                        <strong>
+                            {{ to_jamaica(delivery.paid_at).strftime("%B %d, %Y at %I:%M %p") }}
+                        </strong>
+                    </div>
+                    {% endif %}
+
+                    <div class="small text-muted mt-3">
+                        Package balances and any unpaid delivery fee may be
+                        collected before or upon delivery.
+                    </div>
+
                 </div>
             </div>
 
-            <div class="card soft-card mb-4">
+            <!-- Help and actions -->
+            <div class="card soft-card">
                 <div class="card-body">
-                    <h5 class="mb-3">Need Help?</h5>
+
+                    <h5 class="mb-3">
+                        Need Help?
+                    </h5>
+
                     <p class="small text-muted mb-3">
-                        Contact Foreign A Foot Logistics if you need to update the receiver name, phone number, or
-                        delivery instructions.
+                        Contact Foreign A Foot Logistics if you need to update
+                        the receiver name, mobile number or delivery
+                        instructions.
                     </p>
 
-                    <a href="{{ url_for('customer.schedule_delivery_overview') }}"
-                        class="btn btn-outline-secondary w-100 mb-2">
-                        Back to Deliveries
-                    </a>
+                    <div class="d-grid gap-2 action-stack">
 
-                    {% if (delivery.status or "Scheduled") in ["Scheduled", "Pending"] %}
-                    {% if delivery.reschedule_status == "pending" %}
-                    <div class="alert alert-warning py-2 small mb-2">
-                        Reschedule request pending approval.
+                        <a href="{{ url_for('customer.schedule_delivery_overview') }}"
+                            class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left me-1"></i>
+                            Back to Deliveries
+                        </a>
+
+                        <a href="{{ url_for(
+                            'customer.delivery_invoice_view',
+                            delivery_id=delivery.id
+                        ) }}" class="btn btn-outline-primary">
+                            <i class="bi bi-receipt-cutoff me-1"></i>
+                            View Delivery Invoice
+                        </a>
+
+                        {% if delivery_status in ["Scheduled", "Pending"] %}
+
+                        {% if delivery.reschedule_status == "pending" %}
+                        <div class="alert alert-warning py-2 small mb-0">
+                            Reschedule request pending approval.
+                        </div>
+
+                        {% else %}
+                        <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal"
+                            data-bs-target="#rescheduleModal">
+                            <i class="bi bi-calendar-event me-1"></i>
+                            Request Reschedule
+                        </button>
+                        {% endif %}
+
+                        {% endif %}
+
+                        {% if delivery_status in ["Scheduled", "Pending"] %}
+                        <button type="button" class="btn btn-danger" onclick="cancelDelivery({{ delivery.id }})">
+                            <i class="bi bi-x-circle me-1"></i>
+                            Cancel Delivery
+                        </button>
+                        {% endif %}
+
                     </div>
-                    {% else %}
-                    <button class="btn btn-outline-primary w-100 mb-2" data-bs-toggle="modal"
-                        data-bs-target="#rescheduleModal">
-                        Request Reschedule
-                    </button>
-                    {% endif %}
+
+                    {% if delivery_status in ["Scheduled", "Pending"] %}
+                    <div class="small text-muted mt-3">
+                        Reschedule requests should be submitted before
+                        dispatch. Additional changes or redelivery may
+                        attract another delivery fee.
+                    </div>
                     {% endif %}
 
-                    {% if (delivery.status or "Scheduled") in ["Scheduled", "Out for Delivery"] %}
-                    <button class="btn btn-danger w-100" onclick="cancelDelivery({{ delivery.id }})">
-                        Cancel Delivery
-                    </button>
-                    {% endif %}
                 </div>
             </div>
 
@@ -335,31 +829,47 @@
     </div>
 </div>
 
-<div class="modal fade" id="rescheduleModal" tabindex="-1">
-    <div class="modal-dialog">
+<!-- Reschedule Modal -->
+<div class="modal fade" id="rescheduleModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
+
             <form id="rescheduleForm">
+
                 <div class="modal-header">
-                    <h5 class="modal-title">Request Delivery Reschedule</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    <h5 class="modal-title">
+                        Request Delivery Reschedule
+                    </h5>
+
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                    </button>
                 </div>
 
                 <div class="modal-body">
+
                     <div class="mb-3">
-                        <label class="form-label">Requested New Date</label>
+                        <label class="form-label">
+                            Requested New Date
+                        </label>
+
                         <input type="date" name="requested_new_date" class="form-control" required>
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label">Reason</label>
+                        <label class="form-label">
+                            Reason
+                        </label>
+
                         <textarea name="reason" class="form-control" rows="4"
                             placeholder="Please explain why you need to reschedule." required></textarea>
                     </div>
 
-                    <div class="alert alert-info small">
-                        Reschedule requests are not automatic. Foreign A Foot Logistics will review and approve the
-                        request.
+                    <div class="alert alert-info small mb-0">
+                        Reschedule requests are subject to review and are not
+                        automatically approved. Requests should be submitted
+                        before the delivery is dispatched.
                     </div>
+
                 </div>
 
                 <div class="modal-footer">
@@ -367,73 +877,113 @@
                         Cancel
                     </button>
 
-                    <button type="submit" class="btn btn-primary">
+                    <button type="submit" class="btn btn-primary" id="submitRescheduleBtn">
                         Submit Request
                     </button>
                 </div>
+
             </form>
+
         </div>
     </div>
 </div>
 
 <script>
     async function cancelDelivery(deliveryId) {
-        if (!confirm("Cancel this scheduled delivery?")) return;
+        const confirmed = confirm(
+            "Are you sure you want to cancel this scheduled delivery?"
+        );
+
+        if (!confirmed) return;
 
         const csrfToken = "{{ csrf_token() }}";
 
         try {
-            const res = await fetch(`/customer/schedule-delivery/${deliveryId}/cancel`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-CSRFToken": csrfToken
-                }
-            });
-
-            const data = await res.json().catch(() => ({}));
-
-            if (!res.ok || !data.success) {
-                alert(data.message || "Failed to cancel.");
-                return;
-            }
-
-            window.location.href = "{{ url_for('customer.schedule_delivery_overview') }}";
-        } catch (e) {
-            alert("Network error.");
-        }
-    }
-
-    document.getElementById("rescheduleForm")?.addEventListener("submit", async function (e) {
-        e.preventDefault();
-
-        const formData = new FormData(this);
-
-        try {
             const res = await fetch(
-                "/customer/schedule-delivery/{{ delivery.id }}/request-reschedule",
+                `/customer/schedule-delivery/${deliveryId}/cancel`,
                 {
                     method: "POST",
                     headers: {
-                        "X-CSRFToken": "{{ csrf_token() }}"
-                    },
-                    body: formData
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken
+                    }
                 }
             );
 
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok || !data.success) {
-                alert(data.message || "Failed to submit request.");
+                alert(data.message || "Failed to cancel the delivery.");
                 return;
             }
 
-            alert(data.message || "Reschedule request submitted.");
-            window.location.reload();
+            window.location.href =
+                "{{ url_for('customer.schedule_delivery_overview') }}";
 
-        } catch (err) {
-            alert("Network error while submitting request.");
+        } catch (error) {
+            console.error("Cancel delivery error:", error);
+            alert("Network error while cancelling the delivery.");
         }
-    });
+    }
+
+    document
+        .getElementById("rescheduleForm")
+        ?.addEventListener("submit", async function (event) {
+
+            event.preventDefault();
+
+            const submitButton =
+                document.getElementById("submitRescheduleBtn");
+
+            const formData = new FormData(this);
+
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.textContent = "Submitting...";
+            }
+
+            try {
+                const res = await fetch(
+                    "/customer/schedule-delivery/{{ delivery.id }}/request-reschedule",
+                    {
+                        method: "POST",
+                        headers: {
+                            "X-CSRFToken": "{{ csrf_token() }}"
+                        },
+                        body: formData
+                    }
+                );
+
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok || !data.success) {
+                    alert(
+                        data.message ||
+                        "Failed to submit the reschedule request."
+                    );
+                    return;
+                }
+
+                alert(
+                    data.message ||
+                    "Reschedule request submitted successfully."
+                );
+
+                window.location.reload();
+
+            } catch (error) {
+                console.error("Reschedule request error:", error);
+
+                alert(
+                    "Network error while submitting the reschedule request."
+                );
+
+            } finally {
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.textContent = "Submit Request";
+                }
+            }
+        });
 </script>
 {% endblock %}

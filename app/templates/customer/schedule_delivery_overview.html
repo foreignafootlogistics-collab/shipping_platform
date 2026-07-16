@@ -2,12 +2,165 @@
 {% block title %}Schedule Delivery{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-  <h2>Schedule Delivery</h2>
-  <p>Arrange to have your packages delivered at a date and time convenient for you.</p>
+<style>
+  .delivery-form-table,
+  .delivery-list-table {
+    min-width: 1050px;
+  }
 
-  <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3"
-    style="border-radius: 14px;">
+  .delivery-actions {
+    min-width: 210px;
+  }
+
+  @media (max-width: 767.98px) {
+    .container {
+      padding-left: 12px;
+      padding-right: 12px;
+    }
+
+    .delivery-page-title {
+      font-size: 1.55rem;
+    }
+
+    .delivery-fee-banner {
+      align-items: flex-start !important;
+    }
+
+    .delivery-fee-banner .badge {
+      margin-top: 6px;
+    }
+
+    /*
+     * Turn the scheduling table into a mobile form.
+     */
+    .delivery-form-wrapper {
+      overflow: visible;
+    }
+
+    .delivery-form-table {
+      min-width: 0;
+      width: 100%;
+      border: 0;
+    }
+
+    .delivery-form-table thead {
+      display: none;
+    }
+
+    .delivery-form-table,
+    .delivery-form-table tbody,
+    .delivery-form-table tr,
+    .delivery-form-table td {
+      display: block;
+      width: 100%;
+    }
+
+    .delivery-form-table tr {
+      border: 0;
+    }
+
+    .delivery-form-table td {
+      border: 0;
+      padding: 8px 0;
+    }
+
+    .delivery-form-table td::before {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: #6c757d;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .delivery-form-table td:nth-child(1)::before {
+      content: "Schedule Date";
+    }
+
+    .delivery-form-table td:nth-child(2)::before {
+      content: "Delivery Hours";
+    }
+
+    .delivery-form-table td:nth-child(3)::before {
+      content: "Location / Address";
+    }
+
+    .delivery-form-table td:nth-child(4)::before {
+      content: "Delivery Parish";
+    }
+
+    .delivery-form-table td:nth-child(5)::before {
+      content: "Delivery Coverage";
+    }
+
+    .delivery-form-table td:nth-child(6)::before {
+      content: "Directions / Landmark";
+    }
+
+    .delivery-form-table td:nth-child(7)::before {
+      content: "Receiver Mobile";
+    }
+
+    .delivery-form-table td:nth-child(8)::before {
+      content: "Person Receiving";
+    }
+
+    #deliveryEstimateBox {
+      width: 100%;
+    }
+
+    /*
+     * Keep delivery history horizontally scrollable.
+     */
+    .delivery-list-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .delivery-list-table {
+      min-width: 980px;
+    }
+
+    .delivery-list-table th,
+    .delivery-list-table td {
+      white-space: normal;
+      vertical-align: top;
+    }
+
+    .delivery-actions {
+      min-width: 180px;
+    }
+
+    .delivery-actions .btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    #scheduleDeliveryBtn {
+      width: 100%;
+    }
+
+    #scheduleDeliveryForm .d-flex.gap-2 {
+      flex-direction: column;
+    }
+
+    #saveScheduleDelivery,
+    #cancelScheduleDelivery {
+      width: 100%;
+    }
+  }
+</style>
+<div class="container mt-4">
+  <h2 class="delivery-page-title">Schedule Delivery</h2>
+  <p>
+    Arrange to have your packages delivered on your preferred date.
+    Deliveries are completed between 9:00 AM and 5:00 PM.
+  </p>
+
+  <div
+    class="alert alert-warning delivery-fee-banner d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3"
+    style="border-radius:14px;">
     <div class="d-flex align-items-center gap-2">
       <span style="font-size:1.1rem;">🚚</span>
       <div>
@@ -15,20 +168,13 @@
           Delivery Fee: {{ fee_currency }} {{ "%.2f"|format(delivery_fee|float) }}
         </div>
         <div class="small text-muted">
-          This fee will be added to your delivery request and must be paid before delivery unless it is a free delivery
-          day.
+          Your delivery fee is calculated from the delivery address, distance,
+          coverage zone and scheduled date. Payment may be collected on delivery
+          unless the request qualifies for free delivery.
         </div>
       </div>
     </div>
-    <span class="badge bg-dark">Payable on request</span>
-  </div>
-
-  <div class="alert alert-secondary d-flex align-items-center gap-2 mb-3" style="border-radius:14px;">
-    <span style="font-size:1.1rem;">ℹ️</span>
-    <div>
-      <div class="fw-bold">Delivery scheduling is temporarily disabled.</div>
-      <div class="small text-muted">Please contact FAFL support to request a delivery.</div>
-    </div>
+    <span class="badge bg-dark">Enter address for estimate</span>
   </div>
 
   <button id="scheduleDeliveryBtn" class="btn btn-dashboard mb-3">
@@ -44,99 +190,112 @@
       Also provide the receiver’s name and mobile number.
     </div>
 
-    <table class="table table-bordered align-middle">
-      <thead>
-        <tr>
-          <th>Schedule Date</th>
-          <th>Delivery Window</th>
-          <th>Location (Address)</th>
-          <th>Delivery Parish</th>
-          <th>Delivery Coverage</th>
-          <th>Directions</th>
-          <th>Mobile #</th>
-          <th>Person Receiving</th>
-        </tr>
-      </thead>
+    <div class="row g-3">
 
-      <tbody>
-        <tr>
-          <td>
-            <input type="date" id="deliveryDate" class="form-control" required>
-          </td>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Schedule Date</label>
+        <input type="date" id="deliveryDate" class="form-control" required>
+      </div>
 
-          <td>
-            <div class="fw-semibold">9:00 AM – 5:00 PM</div>
-            <div class="small text-muted">Fixed window</div>
-          </td>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Delivery Hours</label>
 
-          <td>
-            <input type="text" id="deliveryLocation" class="form-control"
-              placeholder="Example: 12 Hope Road, Kingston 6, Jamaica" required>
+        <div class="form-control bg-light">
+          <div class="fw-semibold">9:00 AM – 5:00 PM</div>
+        </div>
 
-            <div class="form-text text-muted">
-              Enter full address: house/lot number, street/road, community, parish, Jamaica.
-            </div>
+        <div class="form-text">
+          Deliveries are completed within this fixed window.
+        </div>
+      </div>
 
-            <div id="addressWarning" class="form-text text-danger fw-semibold" style="display:none;">
-              Please enter a more complete address with street/road and house/lot number if available.
-            </div>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Delivery Parish</label>
 
-            <div id="deliveryEstimateBox" class="alert alert-info mt-2" style="display:none; border-radius:14px;">
-              <div class="fw-bold mb-1">
-                Delivery Estimate
-              </div>
+        <select id="deliveryParish" class="form-select" required>
+          <option value="">-- Select Parish --</option>
+          <option value="Kingston">Kingston</option>
+          <option value="St. Catherine">St. Catherine</option>
+        </select>
 
-              <div id="deliveryEstimateText">
-                Calculating...
-              </div>
-            </div>
-          </td>
+        <div class="form-text">
+          Used to choose the dispatch branch and delivery rules.
+        </div>
+      </div>
 
-          <td>
-            <select id="deliveryParish" class="form-select" required>
-              <option value="">-- Select Parish --</option>
-              <option value="Kingston">Kingston</option>
-              <option value="St. Catherine">St. Catherine</option>
-            </select>
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Delivery Coverage</label>
 
-            <div class="form-text text-muted">
-              Used to calculate the correct delivery branch and free delivery days.
-            </div>
-          </td>
+        <div class="pt-2">
+          <span id="deliveryCoverageText" class="badge bg-secondary">
+            Enter address to calculate coverage.
+          </span>
+        </div>
 
-          <td>
-            <div id="deliveryCoverageText" class="badge bg-secondary">
-              Enter address to calculate coverage.
-            </div>
+        <input type="hidden" id="deliveryZone" value="dynamic">
 
-            <input type="hidden" id="deliveryZone" value="dynamic">
+        <div id="zoneHint" class="form-text">
+          Calculated automatically from the delivery address.
+        </div>
+      </div>
 
-            <div id="zoneHint" class="form-text text-muted">
-              Coverage is calculated automatically from your address and distance.
-            </div>
-          </td>
+      <div class="col-md-6">
+        <label class="form-label fw-semibold">Location / Full Address</label>
 
-          <td>
-            <input type="text" id="deliveryDirections" class="form-control"
-              placeholder="Gate color, landmark, apartment, etc.">
-          </td>
+        <input type="text" id="deliveryLocation" class="form-control"
+          placeholder="Example: 12 Hope Road, Kingston 6, Jamaica" required>
 
-          <td>
-            <input type="text" id="deliveryMobile" class="form-control" placeholder="876-000-0000" required>
-            <div class="form-text text-muted">
-              Receiver contact number required.
-            </div>
-          </td>
+        <div class="form-text">
+          Include house or lot number, street or road, community, parish and Jamaica.
+        </div>
 
-          <td>
-            <input type="text" id="deliveryPerson" class="form-control" placeholder="Full name" required>
-            <div class="form-text text-muted">
-              Name of person collecting is required.
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+        <div id="addressWarning" class="form-text text-danger fw-semibold" style="display:none;">
+          Please enter a more complete address with street or road and house or lot number if available.
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label fw-semibold">Directions / Landmark</label>
+
+        <input type="text" id="deliveryDirections" class="form-control"
+          placeholder="Gate colour, landmark, apartment, building, etc.">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label fw-semibold">Receiver Mobile Number</label>
+
+        <input type="text" id="deliveryMobile" class="form-control" placeholder="876-000-0000" required>
+
+        <div class="form-text">
+          Enter the telephone number for the person receiving the delivery.
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label fw-semibold">Person Receiving</label>
+
+        <input type="text" id="deliveryPerson" class="form-control" placeholder="Full name" required>
+
+        <div class="form-text">
+          Enter the full name of the person receiving the packages.
+        </div>
+      </div>
+
+      <div class="col-12">
+        <div id="deliveryEstimateBox" class="alert alert-info mb-0" style="display:none; border-radius:14px;">
+
+          <div class="fw-bold mb-2">
+            Delivery Estimate
+          </div>
+
+          <div id="deliveryEstimateText">
+            Calculating...
+          </div>
+
+        </div>
+      </div>
+
+    </div>
 
     <div class="d-flex gap-2">
       <button type="button" class="btn btn-success" id="saveScheduleDelivery">Save</button>
@@ -146,426 +305,705 @@
     <div id="scheduleDeliveryMsg" class="alert alert-danger mt-3" style="display:none;"></div>
   </div>
 
-  <h4 class="mt-5">Upcoming Scheduled Deliveries</h4>
+  <div class="mt-5 mb-3">
+    <h4 class="mb-1">Scheduled Deliveries</h4>
+    <div class="small text-muted">
+      All deliveries are completed between 9:00 AM and 5:00 PM on the scheduled date.
+    </div>
+  </div>
 
-  <table class="table table-striped" id="scheduledDeliveriesList">
-    <thead>
-      <tr>
-        <th>Invoice #</th>
-        <th>Date</th>
-        <th>Time</th>
-        <th>Location</th>
-        <th>Person Receiving</th>
-        <th>Delivery Fee</th>
-        <th>Fee Status</th>
-        <th>Action</th>
-      </tr>
-    </thead>
+  <div class="table-responsive delivery-list-wrapper">
+    <table class="table table-striped table-bordered align-middle delivery-list-table" id="scheduledDeliveriesList">
 
-    <tbody>
-      {% for delivery in deliveries %}
-      <tr>
-        <td class="fw-semibold">
-          <a href="{{ url_for('customer.schedule_delivery_detail', delivery_id=delivery.id) }}"
-            class="text-decoration-none fw-bold">
-            {{ delivery.invoice_number or "Delivery #" ~ delivery.id }}
-          </a>
-        </td>
+      <thead class="table-dark">
+        <tr>
+          <th>Invoice #</th>
+          <th>Date</th>
+          <th>Status</th>
+          <th>Location / Receiver</th>
+          <th>Coverage</th>
+          <th>Delivery Fee</th>
+          <th class="delivery-actions">Actions</th>
+        </tr>
+      </thead>
 
-        <td>
-          {{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "" }}
-        </td>
+      <tbody>
+        {% for delivery in deliveries %}
+        {% set delivery_status = delivery.status or "Scheduled" %}
+        {% set fee_status = delivery.fee_status or "Unpaid" %}
+        {% set zone = delivery.area_zone or "dynamic" %}
 
-        <td class="text-nowrap">
-          {% if delivery.scheduled_time_from and delivery.scheduled_time_to %}
-          {{ delivery.scheduled_time_from }} - {{ delivery.scheduled_time_to }}
-          {% else %}
-          {{ delivery.scheduled_time or "" }}
-          {% endif %}
-        </td>
+        <tr>
 
-        <td>{{ delivery.location or "" }}</td>
-        <td>{{ delivery.person_receiving or "" }}</td>
-
-        <td>
-          {{ delivery.fee_currency or "JMD" }}
-          {{ "%.2f"|format(delivery.delivery_fee or 0) }}
-        </td>
-
-        <td>
-          {% set fs = delivery.fee_status or "Unpaid" %}
-          {% if fs|lower == "paid" %}
-          <span class="badge bg-success">Paid</span>
-          {% elif fs|lower == "waived" %}
-          <span class="badge bg-secondary">Waived</span>
-          {% elif fs|lower == "refunded" %}
-          <span class="badge bg-info text-dark">Refunded</span>
-          {% else %}
-          <span class="badge bg-warning text-dark">Unpaid</span>
-          {% endif %}
-        </td>
-
-        <td>
-          <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-sm btn-outline-primary"
-              href="{{ url_for('customer.delivery_invoice_view', delivery_id=delivery.id) }}">
-              View Invoice
+          <td class="fw-semibold">
+            <a href="{{ url_for('customer.schedule_delivery_detail', delivery_id=delivery.id) }}"
+              class="text-decoration-none fw-bold">
+              {{ delivery.invoice_number or "Delivery #" ~ delivery.id }}
             </a>
+          </td>
 
-            {% if (delivery.status or "Scheduled") in ["Scheduled", "Out for Delivery"] %}
-            <button class="btn btn-sm btn-danger" onclick="cancelDelivery({{ delivery.id }})">
-              Cancel
-            </button>
+          <td class="text-nowrap">
+            {{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "—" }}
+          </td>
+
+          <td>
+            {% if delivery_status == "Delivered" %}
+            <span class="badge bg-success">
+              Delivered
+            </span>
+
+            {% elif delivery_status == "Out for Delivery" %}
+            <span class="badge bg-primary">
+              Out for Delivery
+            </span>
+
+            {% elif delivery_status == "Delivery Attempted" %}
+            <span class="badge bg-warning text-dark">
+              Delivery Attempted
+            </span>
+
+            {% elif delivery_status in ["Cancelled", "Canceled"] %}
+            <span class="badge bg-danger">
+              Cancelled
+            </span>
+
+            {% elif delivery_status == "Scheduled" %}
+            <span class="badge bg-secondary">
+              Scheduled
+            </span>
+
             {% else %}
-            <span class="text-muted">—</span>
+            <span class="badge bg-secondary">
+              {{ delivery_status }}
+            </span>
             {% endif %}
-          </div>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
 
-<script>
-  document.addEventListener("DOMContentLoaded", () => {
-    const SCHEDULING_ENABLED = false;
+            {% if delivery_status not in ["Delivered", "Cancelled", "Canceled"] %}
+            <div class="small text-muted mt-2">
+              <i class="bi bi-calendar-check me-1"></i>
 
-    const btnShow = document.getElementById("scheduleDeliveryBtn");
-    const formWrap = document.getElementById("scheduleDeliveryForm");
-    const btnSave = document.getElementById("saveScheduleDelivery");
-    const btnCancel = document.getElementById("cancelScheduleDelivery");
-    const msgEl = document.getElementById("scheduleDeliveryMsg");
+              {{ delivery.scheduled_date.strftime("%b %d, %Y") }}
 
-    const dateEl = document.getElementById("deliveryDate");
-    const parishEl = document.getElementById("deliveryParish");
-    const zoneEl = document.getElementById("deliveryZone");
-    const addrEl = document.getElementById("deliveryLocation");
-    const addressWarning = document.getElementById("addressWarning");
-    const estimateBox = document.getElementById("deliveryEstimateBox");
-    const estimateText = document.getElementById("deliveryEstimateText");
-    const coverageText = document.getElementById("deliveryCoverageText");
+              <br>
 
-    function showMsg(text) {
-      if (!msgEl) return;
-      msgEl.textContent = text || "";
-      msgEl.style.display = text ? "block" : "none";
-    }
+              <i class="bi bi-clock me-1"></i>
 
-    function formatMoney(n) {
-      return Number(n || 0).toFixed(2);
-    }
+              9:00 AM – 5:00 PM
+            </div>
 
-    function setFeeBanner(amount) {
-      const feeText = document.querySelector(".alert.alert-warning .fw-bold");
-      const feeBadge = document.querySelector(".alert.alert-warning .badge");
+            {% elif delivery.delivered_at %}
 
-      if (!feeText) return;
+            <div class="small text-muted mt-2">
+              <i class="bi bi-check-circle me-1"></i>
 
-      const currency = "{{ fee_currency }}";
-      feeText.textContent = `Delivery Fee: ${currency} ${formatMoney(amount)}`;
+              Completed
 
-      if (feeBadge) {
-        feeBadge.textContent = Number(amount) <= 0 ? "Free delivery day" : "Payable on request";
-        feeBadge.className = Number(amount) <= 0 ? "badge bg-success" : "badge bg-dark";
+              <br>
+
+              {{ to_jamaica(delivery.delivered_at).strftime("%b %d, %Y %I:%M %p") }}
+            </div>
+
+            {% endif %}
+          </td>
+
+          <td>
+            <div class="fw-semibold">
+              {{ delivery.location or "—" }}
+            </div>
+
+            <div class="small text-muted mt-1">
+              <i class="bi bi-person me-1"></i>
+              {{ delivery.person_receiving or "Receiver not provided" }}
+            </div>
+
+            {% if delivery.mobile_number %}
+            <div class="small text-muted">
+              <i class="bi bi-telephone me-1"></i>
+              {{ delivery.mobile_number }}
+            </div>
+            {% endif %}
+
+            {% if delivery.direction %}
+            <div class="small text-muted">
+              <i class="bi bi-signpost me-1"></i>
+              {{ delivery.direction }}
+            </div>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if zone == "kgn_core" %}
+            <span class="badge bg-dark">
+              Kingston Core
+            </span>
+
+            {% elif zone == "kgn_outside" %}
+            <span class="badge bg-secondary">
+              Kingston Outside
+            </span>
+
+            {% elif zone == "pm_core" %}
+            <span class="badge bg-primary">
+              Portmore Core
+            </span>
+
+            {% elif zone == "pm_outside" %}
+            <span class="badge bg-info text-dark">
+              Portmore Outside
+            </span>
+
+            {% elif delivery.is_free_delivery %}
+            <span class="badge bg-success">
+              Core Delivery Zone
+            </span>
+
+            {% elif delivery.delivery_type == "admin_review" %}
+            <span class="badge bg-danger">
+              Manual Review
+            </span>
+
+            {% else %}
+            <span class="badge bg-light text-dark border">
+              Extended Delivery Zone
+            </span>
+            {% endif %}
+
+            {% if delivery.distance_km %}
+            <div class="small text-muted mt-1">
+              {{ "%.2f"|format(delivery.distance_km) }} KM
+            </div>
+            {% endif %}
+          </td>
+
+          <td class="text-nowrap">
+
+            <div class="fw-bold">
+              {{ delivery.fee_currency or "JMD" }}
+              {{ "%.2f"|format(delivery.delivery_fee or 0) }}
+            </div>
+
+            {% if delivery_status in ["Cancelled", "Canceled"] %}
+
+            <div class="small text-muted">
+              Cancelled — not payable
+            </div>
+
+            {% elif fee_status|lower == "paid" %}
+
+            <div class="small text-success">
+              Paid
+            </div>
+
+            {% elif fee_status|lower == "waived" %}
+
+            <div class="small text-success">
+              Free Delivery
+            </div>
+
+            {% elif fee_status|lower == "refunded" %}
+
+            <div class="small text-info">
+              Refunded
+            </div>
+
+            {% else %}
+
+            <div class="small text-danger">
+              Pay on Delivery
+            </div>
+
+            {% endif %}
+
+          </td>
+
+          <td class="delivery-actions">
+            <div class="d-flex flex-wrap gap-2">
+
+              <a class="btn btn-sm btn-outline-primary"
+                href="{{ url_for('customer.delivery_invoice_view', delivery_id=delivery.id) }}">
+                <i class="bi bi-receipt me-1"></i>
+                Delivery Invoice
+              </a>
+
+              <a class="btn btn-sm btn-outline-secondary"
+                href="{{ url_for('customer.schedule_delivery_detail', delivery_id=delivery.id) }}">
+                <i class="bi bi-truck me-1"></i>
+                Track Delivery
+              </a>
+
+              {% if delivery_status == "Scheduled" %}
+              <button type="button" class="btn btn-sm btn-outline-danger" onclick="cancelDelivery({{ delivery.id }})">
+                <i class="bi bi-x-circle me-1"></i>
+                Cancel
+              </button>
+              {% endif %}
+
+            </div>
+          </td>
+
+        </tr>
+
+        {% else %}
+        <tr>
+          <td colspan="7" class="text-center text-muted py-4">
+            No scheduled deliveries found.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+
+    </table>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const SCHEDULING_ENABLED = true;
+
+      const btnShow = document.getElementById("scheduleDeliveryBtn");
+      const formWrap = document.getElementById("scheduleDeliveryForm");
+      const btnSave = document.getElementById("saveScheduleDelivery");
+      const btnCancel = document.getElementById("cancelScheduleDelivery");
+      const msgEl = document.getElementById("scheduleDeliveryMsg");
+
+      const dateEl = document.getElementById("deliveryDate");
+      const parishEl = document.getElementById("deliveryParish");
+      const zoneEl = document.getElementById("deliveryZone");
+      const addrEl = document.getElementById("deliveryLocation");
+      const addressWarning = document.getElementById("addressWarning");
+      const estimateBox = document.getElementById("deliveryEstimateBox");
+      const estimateText = document.getElementById("deliveryEstimateText");
+      const coverageText = document.getElementById("deliveryCoverageText");
+
+      function showMsg(text) {
+        if (!msgEl) return;
+        msgEl.textContent = text || "";
+        msgEl.style.display = text ? "block" : "none";
       }
-    }
 
-    function getCoverageLabel(data) {
-      if (data.is_free_delivery) return "Core Delivery Zone";
-      if (data.delivery_type === "admin_review") return "Manual Review Area";
-      return "Extended Delivery Zone";
-    }
-
-    function isAddressDetailedEnough(address) {
-      const a = (address || "").trim().toLowerCase();
-
-      if (a.length < 12) return false;
-
-      const hasNumber = /\d/.test(a);
-
-      const roadWords = [
-        "road", "rd", "street", "st", "avenue", "ave", "drive", "dr",
-        "lane", "ln", "close", "circle", "terrace", "way", "boulevard",
-        "blvd", "heights", "scheme", "estate", "village", "lot", "apt",
-        "apartment", "unit", "district", "main road"
-      ];
-
-      const hasRoadWord = roadWords.some(word => a.includes(word));
-
-      return hasNumber || hasRoadWord;
-    }
-
-    function validateAddressSoft() {
-      const location = (addrEl?.value || "").trim();
-
-      if (!location) {
-        if (addressWarning) addressWarning.style.display = "none";
-        return false;
+      function formatMoney(n) {
+        return Number(n || 0).toFixed(2);
       }
 
-      const ok = isAddressDetailedEnough(location);
+      function setFeeBanner(amount, deliveryType = "") {
+        const feeText = document.querySelector(
+          ".alert.alert-warning .fw-bold"
+        );
 
-      if (addressWarning) {
-        addressWarning.style.display = ok ? "none" : "block";
+        const feeBadge = document.querySelector(
+          ".alert.alert-warning .badge"
+        );
+
+        if (!feeText) return;
+
+        const currency = "{{ fee_currency }}";
+        const amountNumber = Number(amount || 0);
+
+        feeText.textContent =
+          `Delivery Fee: ${currency} ${formatMoney(amountNumber)}`;
+
+        if (!feeBadge) return;
+
+        if (deliveryType === "admin_review") {
+          feeBadge.textContent = "Manual Review";
+          feeBadge.className = "badge bg-danger";
+        } else if (amountNumber <= 0) {
+          feeBadge.textContent = "Free Delivery";
+          feeBadge.className = "badge bg-success";
+        } else {
+          feeBadge.textContent = "Pay on Delivery";
+          feeBadge.className = "badge bg-dark";
+        }
       }
 
-      return ok;
-    }
+      function getCoverageLabel(data) {
+        const zone = String(data.area_zone || "").toLowerCase();
 
-    async function calculateDeliveryEstimate() {
-      const schedule_date = (dateEl?.value || "").trim();
-      const location = (addrEl?.value || "").trim();
-      const delivery_parish = (parishEl?.value || "").trim();
-
-      const csrfToken = (document.getElementById("csrf_token")?.value || "").trim();
-
-      validateAddressSoft();
-
-      if (!schedule_date || !location || !delivery_parish) {
-        if (estimateBox) estimateBox.style.display = "none";
-
-        if (coverageText) {
-          coverageText.textContent = "Enter address to calculate coverage.";
-          coverageText.className = "badge bg-secondary";
+        if (zone === "kgn_core") {
+          return "Kingston Core";
         }
 
-        return;
+        if (zone === "kgn_outside") {
+          return "Kingston Outside";
+        }
+
+        if (zone === "pm_core") {
+          return "Portmore Core";
+        }
+
+        if (zone === "pm_outside") {
+          return "Portmore Outside";
+        }
+
+        if (data.delivery_type === "admin_review") {
+          return "Manual Review Area";
+        }
+
+        const distanceKm = Number(data.distance_km || 0);
+
+        if (distanceKm <= 5) {
+          return deliveryParishIsKingston()
+            ? "Kingston Core"
+            : "Portmore Core";
+        }
+
+        return deliveryParishIsKingston()
+          ? "Kingston Outside"
+          : "Portmore Outside";
       }
 
-      if (estimateBox) estimateBox.style.display = "block";
-      if (estimateText) estimateText.textContent = "Calculating delivery estimate...";
+      function deliveryParishIsKingston() {
+        const parish = (
+          document.getElementById("deliveryParish")?.value || ""
+        ).trim().toLowerCase();
 
-      try {
-        const res = await fetch("{{ url_for('customer.schedule_delivery_estimate') }}", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": csrfToken
-          },
-          body: JSON.stringify({
-            schedule_date,
-            location,
-            delivery_parish
-          })
-        });
+        return parish === "kingston";
+      }
 
-        const data = await res.json().catch(() => ({}));
+      function isAddressDetailedEnough(address) {
+        const a = (address || "").trim().toLowerCase();
 
-        if (!res.ok || !data.success) {
+        if (a.length < 12) return false;
+
+        const hasNumber = /\d/.test(a);
+
+        const roadWords = [
+          "road", "rd", "street", "st", "avenue", "ave", "drive", "dr",
+          "lane", "ln", "close", "circle", "terrace", "way", "boulevard",
+          "blvd", "heights", "scheme", "estate", "village", "lot", "apt",
+          "apartment", "unit", "district", "main road"
+        ];
+
+        const hasRoadWord = roadWords.some(word => a.includes(word));
+
+        return hasNumber || hasRoadWord;
+      }
+
+      function validateAddressSoft() {
+        const location = (addrEl?.value || "").trim();
+
+        if (!location) {
+          if (addressWarning) addressWarning.style.display = "none";
+          return false;
+        }
+
+        const ok = isAddressDetailedEnough(location);
+
+        if (addressWarning) {
+          addressWarning.style.display = ok ? "none" : "block";
+        }
+
+        return ok;
+      }
+
+      async function calculateDeliveryEstimate() {
+        const schedule_date = (dateEl?.value || "").trim();
+        const location = (addrEl?.value || "").trim();
+        const delivery_parish = (parishEl?.value || "").trim();
+
+        const csrfToken = (document.getElementById("csrf_token")?.value || "").trim();
+
+        validateAddressSoft();
+
+        if (!schedule_date || !location || !delivery_parish) {
+          if (estimateBox) estimateBox.style.display = "none";
+
+          if (coverageText) {
+            coverageText.textContent = "Enter address to calculate coverage.";
+            coverageText.className = "badge bg-secondary";
+          }
+
+          return;
+        }
+
+        if (estimateBox) estimateBox.style.display = "block";
+        if (estimateText) estimateText.textContent = "Calculating delivery estimate...";
+
+        try {
+          const res = await fetch("{{ url_for('customer.schedule_delivery_estimate') }}", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken
+            },
+            body: JSON.stringify({
+              schedule_date,
+              location,
+              delivery_parish
+            })
+          });
+
+          const data = await res.json().catch(() => ({}));
+
+          if (!res.ok || !data.success) {
+            if (estimateText) {
+              estimateText.textContent = data.message || "Could not calculate delivery estimate.";
+            }
+
+            if (coverageText) {
+              coverageText.textContent = "Could not calculate coverage.";
+              coverageText.className = "badge bg-danger";
+            }
+
+            return;
+          }
+
+          setFeeBanner(
+            data.delivery_fee,
+            data.delivery_type
+          );
+
+          const coverageLabel = getCoverageLabel(data);
+
+          if (zoneEl) {
+            const returnedZone = String(data.area_zone || "").trim();
+            const distanceKm = Number(data.distance_km || 0);
+            const isKingston = deliveryParishIsKingston();
+
+            if (returnedZone) {
+              zoneEl.value = returnedZone;
+            } else if (distanceKm <= 5) {
+              zoneEl.value = isKingston
+                ? "kgn_core"
+                : "pm_core";
+            } else {
+              zoneEl.value = isKingston
+                ? "kgn_outside"
+                : "pm_outside";
+            }
+          }
+
+          if (coverageText) {
+            coverageText.textContent = coverageLabel;
+
+            const calculatedZone = String(
+              zoneEl?.value || data.area_zone || ""
+            ).toLowerCase();
+
+            if (data.delivery_type === "admin_review") {
+              coverageText.className = "badge bg-danger";
+            } else if (calculatedZone === "kgn_core") {
+              coverageText.className = "badge bg-dark";
+            } else if (calculatedZone === "kgn_outside") {
+              coverageText.className = "badge bg-secondary";
+            } else if (calculatedZone === "pm_core") {
+              coverageText.className = "badge bg-primary";
+            } else if (calculatedZone === "pm_outside") {
+              coverageText.className = "badge bg-info text-dark";
+            } else if (data.is_free_delivery) {
+              coverageText.className = "badge bg-success";
+            } else {
+              coverageText.className = "badge bg-secondary";
+            }
+          }
+
           if (estimateText) {
-            estimateText.textContent = data.message || "Could not calculate delivery estimate.";
+            estimateText.innerHTML = `
+    <div class="d-grid gap-2">
+
+      <div class="d-flex justify-content-between gap-3">
+        <span>📍 Distance</span>
+        <strong>${data.distance_km || "—"} KM</strong>
+      </div>
+
+      <div class="d-flex justify-content-between gap-3">
+        <span>🚗 Estimated Drive Time</span>
+        <strong>${data.duration_text || "—"}</strong>
+      </div>
+
+      <div class="d-flex justify-content-between gap-3">
+        <span>🏢 Dispatch Branch</span>
+        <strong>${data.delivery_branch || "—"}</strong>
+      </div>
+
+      <div class="d-flex justify-content-between gap-3">
+        <span>📦 Coverage</span>
+        <strong>${coverageLabel}</strong>
+      </div>
+
+      <div class="d-flex justify-content-between gap-3">
+        <span>🚚 Delivery Type</span>
+        <strong>
+          ${data.delivery_type === "admin_review"
+                ? "Manual Review"
+                : data.is_free_delivery
+                  ? "Free Delivery"
+                  : "Pay on Delivery"
+              }
+        </strong>
+      </div>
+
+      ${data.delivery_type === "admin_review"
+                ? `
+            <div class="alert alert-warning mt-2 mb-0 py-2">
+              This address requires manual review. A representative will
+              contact you with the final delivery price.
+            </div>
+          `
+                : `
+            <div class="d-flex justify-content-between gap-3 border-top pt-2 mt-1">
+              <span class="fw-bold">💲 Estimated Fee</span>
+              <strong class="${Number(data.delivery_fee || 0) <= 0 ? "text-success" : "text-dark"}">
+                JMD ${Number(data.delivery_fee || 0).toFixed(2)}
+              </strong>
+            </div>
+          `
+              }
+
+    </div>
+  `;
+          }
+        } catch (err) {
+          console.error("Estimate error:", err);
+
+          if (estimateText) {
+            estimateText.textContent = "Network error while calculating estimate.";
           }
 
           if (coverageText) {
             coverageText.textContent = "Could not calculate coverage.";
             coverageText.className = "badge bg-danger";
           }
+        }
+      }
 
+      btnShow?.addEventListener("click", () => {
+        if (!SCHEDULING_ENABLED) {
+          showMsg("Delivery scheduling is temporarily disabled. Please contact support.");
           return;
         }
 
-        setFeeBanner(data.delivery_fee);
+        showMsg("");
+        formWrap.style.display = "block";
+        btnShow.style.display = "none";
+        calculateDeliveryEstimate();
+      });
 
-        const coverageLabel = getCoverageLabel(data);
+      btnCancel?.addEventListener("click", () => {
+        showMsg("");
+        formWrap.style.display = "none";
+        btnShow.style.display = "inline-block";
+      });
 
-        if (coverageText) {
-          coverageText.textContent = coverageLabel;
+      dateEl?.addEventListener("change", calculateDeliveryEstimate);
+      parishEl?.addEventListener("change", calculateDeliveryEstimate);
+      addrEl?.addEventListener("blur", calculateDeliveryEstimate);
+      addrEl?.addEventListener("input", validateAddressSoft);
 
-          if (data.delivery_type === "admin_review") {
-            coverageText.className = "badge bg-danger";
-          } else if (data.is_free_delivery) {
-            coverageText.className = "badge bg-success";
-          } else {
-            coverageText.className = "badge bg-primary";
+      btnSave?.addEventListener("click", async (e) => {
+        if (!SCHEDULING_ENABLED) {
+          e.preventDefault();
+          showMsg("Delivery scheduling is temporarily disabled. Please contact support.");
+          return;
+        }
+
+        const schedule_date = (document.getElementById("deliveryDate").value || "").trim();
+        const location = (document.getElementById("deliveryLocation").value || "").trim();
+        const delivery_parish = (document.getElementById("deliveryParish")?.value || "").trim();
+        const area_zone = (document.getElementById("deliveryZone")?.value || "dynamic").trim();
+        const direction = (document.getElementById("deliveryDirections").value || "").trim();
+        const mobile_number = (document.getElementById("deliveryMobile").value || "").trim();
+        const person_receiving = (document.getElementById("deliveryPerson").value || "").trim();
+
+        const csrfToken = (document.getElementById("csrf_token")?.value || "").trim();
+
+        showMsg("");
+
+        if (!schedule_date) {
+          showMsg("Please select a delivery date.");
+          return;
+        }
+
+        if (!location) {
+          showMsg("Please enter the delivery address.");
+          return;
+        }
+
+        if (!isAddressDetailedEnough(location)) {
+          showMsg("Please enter a more accurate address, including street/road name and house or lot number if available.");
+          return;
+        }
+
+        if (!delivery_parish) {
+          showMsg("Please select a delivery parish.");
+          return;
+        }
+
+        if (!mobile_number) {
+          showMsg("Please enter the receiver's mobile number.");
+          return;
+        }
+
+        if (!person_receiving) {
+          showMsg("Please enter the name of the person receiving the package.");
+          return;
+        }
+
+        btnSave.disabled = true;
+        btnSave.textContent = "Saving...";
+
+        try {
+          const res = await fetch("{{ url_for('customer.schedule_delivery_add') }}", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken
+            },
+            body: JSON.stringify({
+              schedule_date,
+              location,
+              delivery_parish,
+              area_zone,
+              direction,
+              mobile_number,
+              person_receiving
+            })
+          });
+
+          const data = await res.json().catch(() => ({}));
+
+          if (!res.ok || !data.success) {
+            showMsg(data.message || `Failed (${res.status})`);
+            console.log("Schedule delivery error payload:", data);
+            return;
           }
+
+          window.location.reload();
+
+        } catch (err) {
+          console.error("Schedule Delivery Save error:", err);
+          showMsg("Network error. Please try again.");
+        } finally {
+          btnSave.disabled = false;
+          btnSave.textContent = "Save";
         }
-
-        if (estimateText) {
-          estimateText.innerHTML = `
-            Distance:
-            <strong>${data.distance_km} KM</strong><br>
-
-            Estimated drive time:
-            <strong>${data.duration_text || "—"}</strong><br>
-
-            Delivery branch:
-            <strong>${data.delivery_branch || "—"}</strong><br>
-
-            Delivery type:
-            <strong>${data.is_free_delivery ? "Free delivery" : "Paid delivery"}</strong><br>
-
-            Coverage zone:
-            <strong>${coverageLabel}</strong><br>
-
-            ${data.delivery_type === "admin_review"
-              ? `
-                  <div class="mt-2 text-danger fw-semibold">
-                    Delivery requires manual review.
-                    A representative will contact you with final pricing.
-                  </div>
-                `
-              : `
-                  Delivery fee:
-                  <strong>
-                    JMD ${Number(data.delivery_fee || 0).toFixed(2)}
-                  </strong>
-                `
-            }
-          `;
-        }
-      } catch (err) {
-        console.error("Estimate error:", err);
-
-        if (estimateText) {
-          estimateText.textContent = "Network error while calculating estimate.";
-        }
-
-        if (coverageText) {
-          coverageText.textContent = "Could not calculate coverage.";
-          coverageText.className = "badge bg-danger";
-        }
-      }
-    }
-
-    btnShow?.addEventListener("click", () => {
-      if (!SCHEDULING_ENABLED) {
-        showMsg("Delivery scheduling is temporarily disabled. Please contact support.");
-        return;
-      }
-
-      showMsg("");
-      formWrap.style.display = "block";
-      btnShow.style.display = "none";
-      calculateDeliveryEstimate();
+      });
     });
 
-    btnCancel?.addEventListener("click", () => {
-      showMsg("");
-      formWrap.style.display = "none";
-      btnShow.style.display = "inline-block";
-    });
-
-    dateEl?.addEventListener("change", calculateDeliveryEstimate);
-    parishEl?.addEventListener("change", calculateDeliveryEstimate);
-    addrEl?.addEventListener("blur", calculateDeliveryEstimate);
-    addrEl?.addEventListener("input", validateAddressSoft);
-
-    btnSave?.addEventListener("click", async (e) => {
-      if (!SCHEDULING_ENABLED) {
-        e.preventDefault();
-        showMsg("Delivery scheduling is temporarily disabled. Please contact support.");
-        return;
-      }
-
-      const schedule_date = (document.getElementById("deliveryDate").value || "").trim();
-      const location = (document.getElementById("deliveryLocation").value || "").trim();
-      const delivery_parish = (document.getElementById("deliveryParish")?.value || "").trim();
-      const area_zone = (document.getElementById("deliveryZone")?.value || "dynamic").trim();
-      const direction = (document.getElementById("deliveryDirections").value || "").trim();
-      const mobile_number = (document.getElementById("deliveryMobile").value || "").trim();
-      const person_receiving = (document.getElementById("deliveryPerson").value || "").trim();
+    async function cancelDelivery(deliveryId) {
+      if (!confirm("Cancel this scheduled delivery?")) return;
 
       const csrfToken = (document.getElementById("csrf_token")?.value || "").trim();
 
-      showMsg("");
-
-      if (!schedule_date) {
-        showMsg("Please select a delivery date.");
-        return;
-      }
-
-      if (!location) {
-        showMsg("Please enter the delivery address.");
-        return;
-      }
-
-      if (!isAddressDetailedEnough(location)) {
-        showMsg("Please enter a more accurate address, including street/road name and house or lot number if available.");
-        return;
-      }
-
-      if (!delivery_parish) {
-        showMsg("Please select a delivery parish.");
-        return;
-      }
-
-      if (!mobile_number) {
-        showMsg("Please enter the receiver's mobile number.");
-        return;
-      }
-
-      if (!person_receiving) {
-        showMsg("Please enter the name of the person receiving the package.");
-        return;
-      }
-
-      btnSave.disabled = true;
-      btnSave.textContent = "Saving...";
-
       try {
-        const res = await fetch("{{ url_for('customer.schedule_delivery_add') }}", {
+        const res = await fetch(`/customer/schedule-delivery/${deliveryId}/cancel`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-CSRFToken": csrfToken
-          },
-          body: JSON.stringify({
-            schedule_date,
-            location,
-            delivery_parish,
-            area_zone,
-            direction,
-            mobile_number,
-            person_receiving
-          })
+          }
         });
 
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok || !data.success) {
-          showMsg(data.message || `Failed (${res.status})`);
-          console.log("Schedule delivery error payload:", data);
+          alert(data.message || "Failed to cancel.");
           return;
         }
 
         window.location.reload();
-
-      } catch (err) {
-        console.error("Schedule Delivery Save error:", err);
-        showMsg("Network error. Please try again.");
-      } finally {
-        btnSave.disabled = false;
-        btnSave.textContent = "Save";
+      } catch (e) {
+        alert("Network error.");
       }
-    });
-  });
-
-  async function cancelDelivery(deliveryId) {
-    if (!confirm("Cancel this scheduled delivery?")) return;
-
-    const csrfToken = (document.getElementById("csrf_token")?.value || "").trim();
-
-    try {
-      const res = await fetch(`/customer/schedule-delivery/${deliveryId}/cancel`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRFToken": csrfToken
-        }
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok || !data.success) {
-        alert(data.message || "Failed to cancel.");
-        return;
-      }
-
-      window.location.reload();
-    } catch (e) {
-      alert("Network error.");
     }
-  }
-</script>
-{% endblock %}
+  </script>
+  {% endblock %}

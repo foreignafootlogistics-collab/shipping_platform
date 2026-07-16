@@ -21,6 +21,14 @@ def normalize_day_list(value):
 
 
 def is_free_delivery_day(parish, date_obj, settings):
+    """
+    Free home delivery is available only for Kingston
+    on configured Kingston free-delivery days.
+
+    St. Catherine, Portmore and Spanish Town never qualify
+    for free home delivery because customer pickup is available
+    from the Gregory Park location.
+    """
 
     parish_norm = (
         (parish or "")
@@ -35,31 +43,11 @@ def is_free_delivery_day(parish, date_obj, settings):
     )
 
     kingston_days = normalize_day_list(
-        settings.kingston_free_delivery_days
+        getattr(settings, "kingston_free_delivery_days", "")
     )
-
-    stc_days = normalize_day_list(
-        settings.stc_free_delivery_days
-    )
-
-    print("FREE DELIVERY DEBUG:", {
-        "parish": parish,
-        "parish_norm": parish_norm,
-        "weekday": weekday,
-        "kingston_days": kingston_days,
-        "stc_days": stc_days,
-    })
 
     if parish_norm == "kingston":
         return weekday in kingston_days
-
-    if parish_norm in [
-        "st. catherine",
-        "st catherine",
-        "portmore",
-        "spanish town"
-    ]:
-        return weekday in stc_days
 
     return False
 
@@ -69,7 +57,7 @@ def is_free_delivery_day(parish, date_obj, settings):
 
 def determine_delivery_branch(parish, settings):
 
-    if parish.lower() == "kingston":
+    if (parish or "").strip().lower() == "kingston":
         return (
             settings.kingston_delivery_branch_name
             or "Kingston Dispatch"
@@ -119,7 +107,17 @@ def calculate_delivery_fee(
     # DISTANCE BAND PRICING
     # --------------------------------------------
 
+    parish_norm = (parish or "").strip().lower()
+
     if distance_km <= 5:
+        if parish_norm in (
+            "st. catherine",
+            "st catherine",
+            "portmore",
+            "spanish town",
+        ):
+            return 800, False, "express"
+
         return 1000, False, "express"
 
     if distance_km <= 10:

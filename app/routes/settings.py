@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask_login import current_user
 from werkzeug.utils import secure_filename
 import os
 

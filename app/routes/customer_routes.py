@@ -1297,8 +1297,34 @@ def transactions_all():
 
         elif tx_type == "delivery_payment":
 
+            delivery = None
+
             if getattr(p, "scheduled_delivery_id", None):
-                reference_sub = f"{transaction_label(tx_type)} • Delivery #{p.scheduled_delivery_id}"
+                delivery = ScheduledDelivery.query.filter_by(
+                    id=p.scheduled_delivery_id,
+                    user_id=current_user.id
+                ).first()
+
+            if delivery:
+                reference_sub = (
+                    f"{transaction_label(tx_type)} • "
+                    f"{delivery.invoice_number or ('Delivery #' + str(delivery.id))}"
+                )
+
+                view_url = url_for(
+                    "customer.delivery_invoice_view",
+                    delivery_id=delivery.id
+                )
+
+                pdf_url = url_for(
+                    "customer.delivery_invoice_pdf",
+                    delivery_id=delivery.id
+                )
+
+                full_url = url_for(
+                    "customer.schedule_delivery_detail",
+                    delivery_id=delivery.id
+                )
 
         elif tx_type == "package_refund":
 
@@ -4834,7 +4860,10 @@ def api_customer_transactions():
 
         amount = _num(getattr(p, "amount_jmd", 0))
         created = _dt(getattr(p, "created_at", None))
-        method_label = normalize_method(getattr(p, "method", "")) or "—"
+        method_label = normalize_method(getattr(p, "method", "")) or "Pay on Delivery"
+
+        if tx_type == "delivery_payment":
+            method_label = normalize_method(getattr(p, "method", "")) or "Cash"
 
         reference_main = f"TX-{p.id}"
         reference_sub = transaction_label(tx_type)

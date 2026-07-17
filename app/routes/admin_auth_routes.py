@@ -138,7 +138,12 @@ def _verify_password(stored_pw, provided_plain: str) -> bool:
     return False
 
 @admin_auth_bp.route('/login', methods=['GET', 'POST'])
-@limiter.limit("5 per 15 minutes")
+@limiter.limit(
+    "10 per 15 minutes",
+    methods=["POST"],
+    key_func=_client_ip,
+    deduct_when=lambda response: response.status_code == 200,
+)
 def admin_login():
     # Already logged in as an admin-type user?
     if current_user.is_authenticated and getattr(current_user, 'is_admin', False):

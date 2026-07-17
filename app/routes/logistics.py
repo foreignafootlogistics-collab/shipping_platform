@@ -6494,41 +6494,143 @@ def scheduled_pickup_set_status(pickup_id, status):
 # Scheduled Deliveries (Admin / Operations)
 # ---------------------------------------------------------------
 
-@logistics_bp.route('/scheduled_deliveries', methods=['GET'])
+@logistics_bp.route("/scheduled_deliveries", methods=["GET"])
 @admin_required()
 def view_scheduled_deliveries():
-    start_date = request.args.get('start_date')
-    end_date   = request.args.get('end_date')
-    status     = request.args.get('status')      # optional filter
-    area_zone  = request.args.get('area_zone')   # ✅ NEW
+    start_date = (request.args.get("start_date") or "").strip()
+    end_date = (request.args.get("end_date") or "").strip()
+    status = (request.args.get("status") or "").strip()
+    area_zone = (request.args.get("area_zone") or "").strip()
 
+    # -------------------------------------------------
+    # Jamaica business date
+    # -------------------------------------------------
+    jamaica_now = to_jamaica(datetime.now(timezone.utc))
+    today = jamaica_now.date()
+    tomorrow = today + timedelta(days=1)
+
+    # -------------------------------------------------
+    # Main filtered table query
+    # -------------------------------------------------
     q = ScheduledDelivery.query
 
     if start_date:
-        q = q.filter(ScheduledDelivery.scheduled_date >= datetime.strptime(start_date, '%Y-%m-%d').date())
+        try:
+            parsed_start_date = datetime.strptime(
+                start_date,
+                "%Y-%m-%d"
+            ).date()
+
+            q = q.filter(
+                ScheduledDelivery.scheduled_date >= parsed_start_date
+            )
+        except ValueError:
+            flash("Invalid start date.", "warning")
+            start_date = ""
+
     if end_date:
-        q = q.filter(ScheduledDelivery.scheduled_date <= datetime.strptime(end_date, '%Y-%m-%d').date())
+        try:
+            parsed_end_date = datetime.strptime(
+                end_date,
+                "%Y-%m-%d"
+            ).date()
+
+            q = q.filter(
+                ScheduledDelivery.scheduled_date <= parsed_end_date
+            )
+        except ValueError:
+            flash("Invalid end date.", "warning")
+            end_date = ""
+
     if status:
-        q = q.filter(ScheduledDelivery.status == status)
+        q = q.filter(
+            ScheduledDelivery.status == status
+        )
 
-    # ✅ NEW: zone filter
     if area_zone:
-        q = q.filter(ScheduledDelivery.area_zone == area_zone)
+        q = q.filter(
+            ScheduledDelivery.area_zone == area_zone
+        )
 
-    deliveries = q.order_by(ScheduledDelivery.scheduled_date.desc(), ScheduledDelivery.id.desc()).all()
+    deliveries = (
+        q
+        .order_by(
+            ScheduledDelivery.scheduled_date.desc(),
+            ScheduledDelivery.id.desc()
+        )
+        .all()
+    )
 
-    today = date.today()
-    tomorrow = today + timedelta(days=1)
+    # -------------------------------------------------
+    # Dashboard summary counts
+    # These use all deliveries, not the current filters.
+    # -------------------------------------------------
+    inactive_statuses = [
+        "Cancelled",
+        "Canceled",
+    ]
+
+    completed_statuses = [
+        "Delivered",
+        "Cancelled",
+        "Canceled",
+    ]
+
+    sd_today_count = (
+        ScheduledDelivery.query
+        .filter(
+            ScheduledDelivery.scheduled_date == today,
+            ~ScheduledDelivery.status.in_(inactive_statuses),
+        )
+        .count()
+    )
+
+    sd_tomorrow_count = (
+        ScheduledDelivery.query
+        .filter(
+            ScheduledDelivery.scheduled_date == tomorrow,
+            ~ScheduledDelivery.status.in_(inactive_statuses),
+        )
+        .count()
+    )
+
+    sd_pending_total = (
+        ScheduledDelivery.query
+        .filter(
+            ~ScheduledDelivery.status.in_(completed_statuses)
+        )
+        .count()
+    )
+
+    sd_overdue_count = (
+        ScheduledDelivery.query
+        .filter(
+            ScheduledDelivery.scheduled_date < today,
+            ~ScheduledDelivery.status.in_(completed_statuses),
+        )
+        .count()
+    )
 
     return render_template(
-        'admin/logistics/scheduled_deliveries.html',
+        "admin/logistics/scheduled_deliveries.html",
         deliveries=deliveries,
+
+        # Filters
         start_date=start_date,
         end_date=end_date,
         status=status,
-        area_zone=area_zone,   # ✅ NEW (template uses this to keep selected option)
+        area_zone=area_zone,
+
+        # Jamaica dates used by row highlighting
         today=today,
-        tomorrow=tomorrow
+        tomorrow=tomorrow,
+        jamaica_now=jamaica_now,
+
+        # Summary cards
+        sd_today_count=sd_today_count,
+        sd_tomorrow_count=sd_tomorrow_count,
+        sd_pending_total=sd_pending_total,
+        sd_overdue_count=sd_overdue_count,
     )
 
 @logistics_bp.route("/api/scheduled_delivery_alerts", methods=["GET"])
@@ -7092,7 +7194,7 @@ def add_scheduled_delivery():
             mobile_number=mobile_number.strip(),
             person_receiving=person_receiving.strip(),
 
-            area_zone="dynamic",
+            area_zone=delivery_details["area_zone"],
             delivery_parish=delivery_parish,
             delivery_branch=delivery_details["delivery_branch"],
             distance_km=distance_km,

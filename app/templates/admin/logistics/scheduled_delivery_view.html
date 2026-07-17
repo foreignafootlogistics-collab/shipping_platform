@@ -236,7 +236,7 @@ total_weight=0
 ) %}
 
 {% for pkg in assigned_packages %}
-{% set package_due = pkg.amount_due or 0 %}
+{% set package_due = (pkg.amount_due or 0)|float %}
 {% set billable_weight = ((pkg.weight or 0)|round(0, 'ceil'))|int %}
 
 {% set totals.package_balance = totals.package_balance + package_due %}
@@ -246,10 +246,12 @@ total_weight=0
 {% if is_cancelled or fs in ["paid", "waived", "refunded"] %}
 {% set delivery_fee_due = 0 %}
 {% else %}
-{% set delivery_fee_due = delivery.delivery_fee or 0 %}
+{% set delivery_fee_due = (delivery.delivery_fee or 0)|float %}
 {% endif %}
 
-{% set expected_collection = totals.package_balance + delivery_fee_due %}
+{% set expected_collection =
+(totals.package_balance|float) + (delivery_fee_due|float)
+%}
 
 <div class="container-fluid delivery-page py-3">
 

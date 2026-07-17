@@ -164,11 +164,30 @@ def build_delivery_details(
 
     allowed = distance_km <= max_distance
 
+    # ------------------------------------------------
+    # COVERAGE ZONE
+    # Core/outside is based on parish and distance.
+    # It is separate from whether delivery is free.
+    # ------------------------------------------------
+    parish_norm = (parish or "").strip().lower()
+
+    if parish_norm == "kingston":
+        if distance_km <= 5:
+            area_zone = "kgn_core"
+        else:
+            area_zone = "kgn_outside"
+    else:
+        if distance_km <= 5:
+            area_zone = "pm_core"
+        else:
+            area_zone = "pm_outside"
+
     return {
         "delivery_fee": fee,
         "is_free_delivery": is_free,
         "delivery_type": delivery_type,
         "delivery_branch": branch,
+        "area_zone": area_zone,
         "allowed": allowed,
         "max_distance": max_distance
     }

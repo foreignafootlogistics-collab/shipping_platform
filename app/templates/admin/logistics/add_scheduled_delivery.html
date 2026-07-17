@@ -133,26 +133,11 @@
         <input type="text" id="deliveryFeePreview" class="form-control fw-bold"
           value="{{ fee_currency }} {{ '%.2f'|format(delivery_fee|float) }}" readonly>
 
-        <small class="text-muted">
+        <div class="form-text">
           Final fee is calculated on save using Google Maps distance.
-        </small>
-      </div>
-
-      <div class="col-md-8">
-        <label class="form-label">Delivery Estimate</label>
-
-        <div id="deliveryEstimateBox" class="alert alert-info mb-0" style="display:none; border-radius:14px;">
-
-          <div class="fw-bold mb-1">
-            Delivery Estimate
-          </div>
-
-          <div id="deliveryEstimateText">
-            Calculating...
-          </div>
-
         </div>
       </div>
+
     </div>
 
     <div id="scheduleDeliveryMsg" class="alert alert-danger mt-3" style="display:none;"></div>

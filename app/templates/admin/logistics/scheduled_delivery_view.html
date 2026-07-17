@@ -3,6 +3,11 @@
 
 {% block content %}
 <style>
+  .delivery-page {
+    max-width: 1500px;
+    margin: 0 auto;
+  }
+
   .btn-purple {
     background: #4a148c;
     border-color: #4a148c;
@@ -14,23 +19,45 @@
     color: #fff;
   }
 
+  .soft-card {
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 10px 24px rgba(17, 24, 39, .08);
+    overflow: hidden;
+  }
+
+  .info-label {
+    margin-bottom: 3px;
+    color: #6b7280;
+    font-size: .76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+
+  .info-value {
+    color: #111827;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
   .pill {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     padding: 6px 10px;
-    border-radius: 999px;
-    font-weight: 700;
-    font-size: .82rem;
     border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: .82rem;
+    font-weight: 700;
     white-space: nowrap;
   }
 
   .dot {
     width: 8px;
     height: 8px;
-    border-radius: 999px;
     display: inline-block;
+    border-radius: 999px;
   }
 
   .pill-paid {
@@ -53,404 +80,967 @@
     background: #f59e0b;
   }
 
-  .soft-card {
-    border: 0;
-    border-radius: 16px;
-    box-shadow: 0 10px 24px rgba(17, 24, 39, .08);
+  .pill-cancelled {
+    background: #f3f4f6;
+    color: #4b5563;
+    border-color: #d1d5db;
   }
 
-  .info-label {
-    font-size: .78rem;
-    color: #6b7280;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .02em;
+  .pill-cancelled .dot {
+    background: #6b7280;
   }
 
-  .info-value {
-    font-weight: 700;
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .summary-box {
+    padding: 14px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+  }
+
+  .summary-box .value {
     color: #111827;
+    font-size: 1.1rem;
+    font-weight: 800;
+  }
+
+  .money-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 9px 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .money-row:last-child {
+    border-bottom: 0;
+  }
+
+  .money-row.total {
+    margin-top: 5px;
+    padding-top: 14px;
+    border-top: 2px solid #d1d5db;
+    border-bottom: 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+  }
+
+  .status-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .status-actions form,
+  .status-actions button {
+    width: 100%;
+  }
+
+  .package-table {
+    min-width: 880px;
+  }
+
+  .tracking-text {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+
+  .address-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  @media (max-width: 991.98px) {
+    .summary-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 767.98px) {
+    .delivery-page {
+      padding-left: 3px;
+      padding-right: 3px;
+    }
+
+    .delivery-heading {
+      font-size: 1.45rem;
+    }
+
+    .header-actions {
+      width: 100%;
+      display: grid !important;
+      grid-template-columns: 1fr;
+    }
+
+    .header-actions>*,
+    .header-actions form,
+    .header-actions button {
+      width: 100%;
+    }
+
+    .soft-card {
+      border-radius: 14px;
+    }
+
+    .card-body {
+      padding: 16px;
+    }
+
+    .status-actions {
+      grid-template-columns: 1fr;
+    }
+
+    .reschedule-actions {
+      display: grid !important;
+      grid-template-columns: 1fr;
+    }
+
+    .reschedule-actions form,
+    .reschedule-actions button {
+      width: 100%;
+    }
+
+    .address-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+
+    .address-actions .btn {
+      width: 100%;
+    }
+
+    .package-table {
+      min-width: 820px;
+    }
   }
 </style>
 
-<div class="container-fluid">
+{% set current_status = delivery.status or "Scheduled" %}
+{% set fs = (delivery.fee_status or "Unpaid")|lower %}
+{% set zone = delivery.area_zone or "dynamic" %}
+{% set is_cancelled = current_status in ["Cancelled", "Canceled"] %}
 
-  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+{# ------------------------------------------------
+Assigned-package totals
+------------------------------------------------ #}
+{% set totals = namespace(
+package_balance=0.0,
+total_weight=0
+) %}
+
+{% for pkg in assigned_packages %}
+{% set package_due = pkg.amount_due or 0 %}
+{% set billable_weight = ((pkg.weight or 0)|round(0, 'ceil'))|int %}
+
+{% set totals.package_balance = totals.package_balance + package_due %}
+{% set totals.total_weight = totals.total_weight + billable_weight %}
+{% endfor %}
+
+{% if is_cancelled or fs in ["paid", "waived", "refunded"] %}
+{% set delivery_fee_due = 0 %}
+{% else %}
+{% set delivery_fee_due = delivery.delivery_fee or 0 %}
+{% endif %}
+
+{% set expected_collection = totals.package_balance + delivery_fee_due %}
+
+<div class="container-fluid delivery-page py-3">
+
+  <!-- Page heading -->
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+
     <div>
-      <h3 class="mb-1">
+      <h3 class="delivery-heading mb-1">
         <i class="fas fa-truck me-2 text-primary"></i>
         Scheduled Delivery
       </h3>
 
       <div class="text-muted">
-        Delivery ID: <strong>#{{ delivery.id }}</strong>
+        Delivery ID:
+        <strong>#{{ delivery.id }}</strong>
 
         {% if delivery.invoice_number %}
-        <span class="ms-2">| Invoice: <strong>{{ delivery.invoice_number }}</strong></span>
+        <span class="ms-md-2">
+          <span class="d-none d-md-inline">|</span>
+          Invoice:
+          <strong>{{ delivery.invoice_number }}</strong>
+        </span>
         {% endif %}
+      </div>
 
-        {% set current_status = delivery.status or "Scheduled" %}
-
+      <div class="mt-2">
         {% if current_status == "Delivered" %}
-        <span class="badge bg-success ms-2">Delivered</span>
+        <span class="badge bg-success">Delivered</span>
+
         {% elif current_status == "Out for Delivery" %}
-        <span class="badge bg-warning text-dark ms-2">Out for Delivery</span>
+        <span class="badge bg-warning text-dark">
+          Out for Delivery
+        </span>
+
         {% elif current_status == "Delivery Attempted" %}
-        <span class="badge bg-warning text-dark ms-2">Delivery Attempted</span>
-        {% elif current_status in ["Cancelled", "Canceled"] %}
-        <span class="badge bg-danger ms-2">Cancelled</span>
+        <span class="badge bg-warning text-dark">
+          Delivery Attempted
+        </span>
+
+        {% elif is_cancelled %}
+        <span class="badge bg-danger">Cancelled</span>
+
         {% else %}
-        <span class="badge bg-secondary ms-2">{{ current_status }}</span>
+        <span class="badge bg-secondary">
+          {{ current_status }}
+        </span>
         {% endif %}
 
         {% if delivery.reschedule_status == "pending" %}
-        <span class="badge bg-warning text-dark ms-2">Reschedule Pending</span>
+        <span class="badge bg-warning text-dark ms-1">
+          Reschedule Pending
+        </span>
         {% endif %}
       </div>
     </div>
 
-    <div class="d-flex gap-2 mt-2 mt-md-0">
+    <div class="d-flex flex-wrap gap-2 header-actions">
+
       <a href="{{ url_for('logistics.view_scheduled_deliveries') }}" class="btn btn-outline-secondary btn-sm">
-        <i class="fas fa-arrow-left me-1"></i> Back
+        <i class="fas fa-arrow-left me-1"></i>
+        Back
       </a>
 
-      {% set fs = (delivery.fee_status or "Unpaid")|lower %}
+      {% if not is_cancelled %}
 
-      {% if fs != "paid" and fs != "waived" %}
-      <form method="post" action="{{ url_for('logistics.scheduled_delivery_mark_paid', delivery_id=delivery.id) }}"
-        class="m-0" onsubmit="return confirm('Mark delivery fee as PAID?');">
+      {% if fs not in ["paid", "waived"] %}
+      <form method="post" action="{{ url_for(
+                  'logistics.scheduled_delivery_mark_paid',
+                  delivery_id=delivery.id
+                ) }}" class="m-0" onsubmit="return confirm('Mark the delivery fee as paid?');">
+
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="btn btn-sm btn-success">
-          <i class="fas fa-check me-1"></i> Mark Fee Paid
+
+        <button type="submit" class="btn btn-sm btn-success">
+          <i class="fas fa-check me-1"></i>
+          Mark Fee Paid
         </button>
       </form>
+
       {% elif fs == "paid" %}
-      <form method="post" action="{{ url_for('logistics.scheduled_delivery_mark_unpaid', delivery_id=delivery.id) }}"
-        class="m-0" onsubmit="return confirm('Mark delivery fee as UNPAID?');">
+      <form method="post" action="{{ url_for(
+                  'logistics.scheduled_delivery_mark_unpaid',
+                  delivery_id=delivery.id
+                ) }}" class="m-0" onsubmit="return confirm('Reverse this delivery-fee payment and mark it unpaid?');">
+
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="btn btn-sm btn-outline-secondary">
-          <i class="fas fa-undo me-1"></i> Mark Fee Unpaid
+
+        <button type="submit" class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-undo me-1"></i>
+          Mark Fee Unpaid
         </button>
       </form>
       {% endif %}
+
+      {% endif %}
+
     </div>
   </div>
 
+  <!-- Reschedule warning -->
   {% if delivery.reschedule_status == "pending" %}
   <div class="alert alert-warning soft-card">
-    <strong>Customer requested a reschedule.</strong><br>
-    Requested Date:
-    <strong>
-      {{ delivery.requested_new_date.strftime("%Y-%m-%d") if delivery.requested_new_date else "—" }}
-    </strong>
-    <br>
-    Reason: {{ delivery.reschedule_reason or "—" }}
+    <strong>Customer requested a reschedule.</strong>
+
+    <div class="mt-1">
+      Requested date:
+      <strong>
+        {{ delivery.requested_new_date.strftime("%B %d, %Y")
+        if delivery.requested_new_date else "—" }}
+      </strong>
+    </div>
+
+    <div>
+      Reason:
+      {{ delivery.reschedule_reason or "—" }}
+    </div>
   </div>
   {% endif %}
 
-  <div class="row g-3">
+  <!-- Delivery-attempted warning -->
+  {% if current_status == "Delivery Attempted" %}
+  <div class="alert alert-warning soft-card">
+    <strong>Delivery Attempted</strong>
 
-    <div class="col-lg-5">
+    <div class="mt-1">
+      The driver was unable to complete this delivery. Confirm what happened
+      before arranging another delivery. A redelivery fee may apply.
+    </div>
+  </div>
+  {% endif %}
 
-      <div class="card soft-card mb-3">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-          <h6 class="mb-0">
-            <i class="fas fa-receipt me-2 text-muted"></i>Delivery Invoice
-          </h6>
+  <div class="row g-4">
 
-          {% if fs == "paid" %}
-          <span class="pill pill-paid"><span class="dot"></span>Paid</span>
-          {% elif fs == "waived" %}
-          <span class="pill pill-paid"><span class="dot"></span>Waived</span>
-          {% else %}
-          <span class="pill pill-unpaid"><span class="dot"></span>Unpaid</span>
-          {% endif %}
-        </div>
+    <!-- Main column -->
+    <div class="col-xl-8">
 
-        <div class="card-body">
-          <div class="row g-3">
-            <div class="col-6">
-              <div class="info-label">Invoice #</div>
-              <div class="info-value">{{ delivery.invoice_number or "—" }}</div>
-            </div>
+      <!-- Delivery details -->
+      <div class="card soft-card mb-4">
 
-            <div class="col-6 text-end">
-              <div class="info-label">Amount</div>
-              <div class="fw-bold">
-                {{ delivery.fee_currency or "JMD" }}
-                {{ "%.2f"|format(delivery.delivery_fee or 0) }}
-              </div>
-            </div>
-
-            <div class="col-12">
-              <div class="info-label">Paid At</div>
-              <div class="info-value">
-                {{ delivery.paid_at.strftime("%Y-%m-%d %H:%M") if delivery.paid_at else "—" }}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card soft-card">
         <div class="card-header bg-white">
           <h6 class="mb-0">
-            <i class="fas fa-info-circle me-2 text-muted"></i>Delivery Details
+            <i class="fas fa-info-circle me-2 text-muted"></i>
+            Delivery Details
           </h6>
         </div>
 
         <div class="card-body">
           <div class="row g-3">
 
-            <div class="col-6">
-              <div class="info-label">Date</div>
+            <div class="col-md-4">
+              <div class="info-label">Scheduled Date</div>
+
               <div class="info-value">
-                {{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "—" }}
+                {{ delivery.scheduled_date.strftime("%B %d, %Y")
+                if delivery.scheduled_date else "—" }}
               </div>
             </div>
 
-            <div class="col-6">
-              <div class="info-label">Time</div>
+            <div class="col-md-4">
+              <div class="info-label">Delivery Hours</div>
+
               <div class="info-value">
-                {% if delivery.scheduled_time_from and delivery.scheduled_time_to %}
-                {{ delivery.scheduled_time_from }} - {{ delivery.scheduled_time_to }}
-                {% else %}
-                {{ delivery.scheduled_time or "—" }}
-                {% endif %}
+                9:00 AM – 5:00 PM
               </div>
             </div>
 
-            <div class="col-12">
+            <div class="col-md-4">
+              <div class="info-label">Current Status</div>
+
+              <div class="info-value">
+                {{ current_status }}
+              </div>
+            </div>
+
+            <div class="col-md-6">
               <div class="info-label">Customer</div>
+
               <div class="info-value">
                 {{ delivery.user.full_name if delivery.user else "N/A" }}
               </div>
-              <div class="text-muted small">
-                {{ delivery.user.email if delivery.user and delivery.user.email else "" }}
+
+              {% if delivery.user %}
+              {% if delivery.user.registration_number %}
+              <div class="small text-muted">
+                {{ delivery.user.registration_number }}
               </div>
+              {% endif %}
+
+              {% if delivery.user.email %}
+              <div class="small text-muted">
+                {{ delivery.user.email }}
+              </div>
+              {% endif %}
+
+              {% set customer_phone =
+              delivery.user.mobile
+              or delivery.user.phone
+              or delivery.user.mobile_number
+              or ""
+              %}
+
+              {% if customer_phone %}
+              <div class="small text-muted">
+                <i class="fas fa-phone me-1"></i>
+                {{ customer_phone }}
+              </div>
+              {% endif %}
+              {% endif %}
             </div>
 
-            <div class="col-12">
-              <div class="info-label">Location</div>
-              <div class="info-value">{{ delivery.location or "—" }}</div>
+            <div class="col-md-6">
+              <div class="info-label">Receiver</div>
 
-              {% if delivery.direction %}
-              <div class="text-muted small mt-1">
-                <i class="fas fa-location-arrow me-1"></i>{{ delivery.direction }}
+              <div class="info-value">
+                {{ delivery.person_receiving or "—" }}
+              </div>
+
+              {% if delivery.mobile_number %}
+              <div class="small text-muted">
+                <i class="fas fa-phone me-1"></i>
+                {{ delivery.mobile_number }}
               </div>
               {% endif %}
             </div>
 
-            <div class="col-6">
-              <div class="info-label">Person Receiving</div>
-              <div class="info-value">{{ delivery.person_receiving or "—" }}</div>
+            <div class="col-12">
+              <div class="info-label">Delivery Address</div>
+
+              <div class="info-value" id="deliveryAddressText">
+                {{ delivery.location or "—" }}
+              </div>
+
+              {% if delivery.direction %}
+              <div class="small text-muted mt-1">
+                <i class="fas fa-location-arrow me-1"></i>
+                {{ delivery.direction }}
+              </div>
+              {% endif %}
+
+              {% if delivery.location %}
+              <div class="address-actions mt-3">
+
+                <a href="https://www.google.com/maps/search/?api=1&query={{ delivery.location|urlencode }}"
+                  target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">
+                  <i class="fas fa-map-marker-alt me-1"></i>
+                  Open in Google Maps
+                </a>
+
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyDeliveryAddress()">
+                  <i class="fas fa-copy me-1"></i>
+                  Copy Address
+                </button>
+
+              </div>
+              {% endif %}
             </div>
 
-            <div class="col-6">
-              <div class="info-label">Mobile</div>
-              <div class="info-value">{{ delivery.mobile_number or "—" }}</div>
-            </div>
-
-            <div class="col-6">
+            <div class="col-md-4">
               <div class="info-label">Delivery Parish</div>
-              <div class="info-value">{{ delivery.delivery_parish or "—" }}</div>
-            </div>
 
-            <div class="col-6">
-              <div class="info-label">Dispatch Branch</div>
-              <div class="info-value">{{ delivery.delivery_branch or "—" }}</div>
-            </div>
-
-            <div class="col-6">
-              <div class="info-label">Distance</div>
               <div class="info-value">
-                {% if delivery.distance_km %}
-                {{ "%.2f"|format(delivery.distance_km) }} KM
+                {{ delivery.delivery_parish or "—" }}
+              </div>
+            </div>
+
+            <div class="col-md-4">
+              <div class="info-label">Dispatch Branch</div>
+
+              <div class="info-value">
+                {{ delivery.delivery_branch or "—" }}
+              </div>
+            </div>
+
+            <div class="col-md-4">
+              <div class="info-label">Distance</div>
+
+              <div class="info-value">
+                {% if delivery.distance_km is not none %}
+                {{ "%.1f"|format(delivery.distance_km) }} KM
                 {% else %}
                 —
                 {% endif %}
               </div>
             </div>
 
-            <div class="col-6">
+            <div class="col-md-4">
+              <div class="info-label">Coverage</div>
+
+              {% if delivery.delivery_type == "admin_review" %}
+              <span class="badge bg-danger">
+                Manual Review Area
+              </span>
+
+              {% elif zone == "kgn_core" %}
+              <span class="badge bg-dark">
+                Kingston Core
+              </span>
+
+              {% elif zone == "kgn_outside" %}
+              <span class="badge bg-secondary">
+                Kingston Outside
+              </span>
+
+              {% elif zone == "pm_core" %}
+              <span class="badge bg-primary">
+                Portmore Core
+              </span>
+
+              {% elif zone == "pm_outside" %}
+              <span class="badge bg-info text-dark">
+                Portmore Outside
+              </span>
+
+              {% elif delivery.delivery_parish == "Kingston"
+              and (delivery.distance_km or 0) <= 5 %} <span class="badge bg-dark">
+                Kingston Core
+                </span>
+
+                {% elif delivery.delivery_parish == "St. Catherine"
+                and (delivery.distance_km or 0) <= 5 %} <span class="badge bg-primary">
+                  Portmore Core
+                  </span>
+
+                  {% elif delivery.delivery_parish == "Kingston" %}
+                  <span class="badge bg-secondary">
+                    Kingston Outside
+                  </span>
+
+                  {% else %}
+                  <span class="badge bg-info text-dark">
+                    Portmore Outside
+                  </span>
+                  {% endif %}
+            </div>
+
+            <div class="col-md-4">
               <div class="info-label">Delivery Type</div>
 
               {% if delivery.delivery_type == "free_route" %}
-              <span class="badge bg-success">Free Route</span>
+              <span class="badge bg-success">
+                Free Delivery
+              </span>
+
               {% elif delivery.delivery_type == "admin_review" %}
-              <span class="badge bg-danger">Manual Review</span>
+              <span class="badge bg-danger">
+                Manual Review
+              </span>
+
               {% elif delivery.delivery_type == "extended" %}
-              <span class="badge bg-primary">Extended Zone</span>
+              <span class="badge bg-primary">
+                Extended
+              </span>
+
               {% elif delivery.delivery_type == "express" %}
-              <span class="badge bg-info text-dark">Express</span>
+              <span class="badge bg-info text-dark">
+                Express
+              </span>
+
               {% else %}
-              <span class="badge bg-secondary">{{ delivery.delivery_type or "—" }}</span>
+              <span class="badge bg-secondary">
+                {{ delivery.delivery_type or "—" }}
+              </span>
               {% endif %}
             </div>
 
-            <div class="col-6">
-              <div class="info-label">Coverage</div>
-
-              {% if delivery.is_free_delivery %}
-              <span class="badge bg-success">Core Delivery Zone</span>
-              {% else %}
-              <span class="badge bg-primary">Extended Delivery Zone</span>
-              {% endif %}
-            </div>
-
-            <div class="col-6">
+            <div class="col-md-4">
               <div class="info-label">Risk Status</div>
 
               {% if delivery.delivery_risk_status == "unsafe" %}
-              <span class="badge bg-danger">Unsafe Area</span>
+              <span class="badge bg-danger">
+                Unsafe Area
+              </span>
+
               {% elif delivery.delivery_risk_status == "review" %}
-              <span class="badge bg-warning text-dark">Needs Review</span>
+              <span class="badge bg-warning text-dark">
+                Needs Review
+              </span>
+
               {% else %}
-              <span class="badge bg-success">Safe Area</span>
+              <span class="badge bg-success">
+                Safe Area
+              </span>
               {% endif %}
             </div>
 
             {% if delivery.delivered_at %}
-            <div class="col-12">
+            <div class="col-md-6">
               <div class="info-label">Delivered At</div>
+
               <div class="info-value">
-                {{ delivery.delivered_at.strftime("%Y-%m-%d %I:%M %p UTC") }}
+                {{ to_jamaica(delivery.delivered_at).strftime(
+                "%B %d, %Y at %I:%M %p"
+                ) }}
               </div>
             </div>
             {% endif %}
 
-            {% if delivery.reschedule_status and delivery.reschedule_status != "none" %}
+            <div class="col-md-6">
+              <div class="info-label">Created At</div>
+
+              <div class="info-value">
+                {% if delivery.created_at %}
+                {{ to_jamaica(delivery.created_at).strftime(
+                "%B %d, %Y at %I:%M %p"
+                ) }}
+                {% else %}
+                —
+                {% endif %}
+              </div>
+            </div>
+
+            {% if delivery.reschedule_status
+            and delivery.reschedule_status != "none" %}
             <div class="col-12">
               <div class="info-label">Reschedule Status</div>
 
               {% if delivery.reschedule_status == "pending" %}
-              <span class="badge bg-warning text-dark">Pending</span>
+              <span class="badge bg-warning text-dark">
+                Pending
+              </span>
+
               {% elif delivery.reschedule_status == "approved" %}
-              <span class="badge bg-success">Approved</span>
+              <span class="badge bg-success">
+                Approved
+              </span>
+
               {% elif delivery.reschedule_status == "denied" %}
-              <span class="badge bg-danger">Denied</span>
+              <span class="badge bg-danger">
+                Denied
+              </span>
+
               {% else %}
-              <span class="badge bg-secondary">{{ delivery.reschedule_status }}</span>
+              <span class="badge bg-secondary">
+                {{ delivery.reschedule_status }}
+              </span>
               {% endif %}
 
               {% if delivery.requested_new_date %}
               <div class="small text-muted mt-1">
-                Requested Date:
-                {{ delivery.requested_new_date.strftime("%Y-%m-%d") }}
+                Requested date:
+                {{ delivery.requested_new_date.strftime("%B %d, %Y") }}
               </div>
               {% endif %}
             </div>
             {% endif %}
 
           </div>
+        </div>
+      </div>
 
-          <hr class="my-3">
+      <!-- Package summary -->
+      <div class="card soft-card mb-4">
 
-          <div class="d-flex justify-content-between align-items-center">
-            <div class="text-muted small">Created</div>
-            <div class="small">
-              {{ delivery.created_at.strftime("%Y-%m-%d %H:%M") if delivery.created_at else "—" }}
+        <div class="card-header bg-white">
+          <h6 class="mb-0">
+            <i class="fas fa-boxes me-2 text-muted"></i>
+            Package Summary
+          </h6>
+        </div>
+
+        <div class="card-body">
+          <div class="summary-grid">
+
+            <div class="summary-box">
+              <div class="info-label">Assigned Packages</div>
+
+              <div class="value">
+                {{ assigned_packages|length }}
+              </div>
             </div>
+
+            <div class="summary-box">
+              <div class="info-label">Total Billable Weight</div>
+
+              <div class="value">
+                {{ totals.total_weight }} lb
+              </div>
+            </div>
+
+            <div class="summary-box">
+              <div class="info-label">Package Balance</div>
+
+              <div class="value">
+                JMD {{ "{:,.2f}".format(totals.package_balance) }}
+              </div>
+            </div>
+
           </div>
         </div>
       </div>
 
-      <div class="card soft-card mt-4">
-        <div class="card-header bg-white">
+      <!-- Linked packages -->
+      <div class="card soft-card mb-4">
+
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 bg-white">
           <h6 class="mb-0">
             <i class="fas fa-truck-loading me-2 text-muted"></i>
+            Linked Packages
+          </h6>
+
+          <span class="badge bg-dark">
+            {{ assigned_packages|length }} assigned
+          </span>
+        </div>
+
+        <div class="card-body">
+
+          {% if not is_cancelled and current_status != "Delivered" %}
+          <form method="post" action="{{ url_for(
+                    'logistics.scheduled_delivery_assign_packages',
+                    delivery_id=delivery.id
+                  ) }}">
+
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="row g-3 align-items-end">
+
+              <div class="col-12 col-lg-9">
+                <label class="form-label fw-semibold">
+                  Assign packages to this delivery
+                </label>
+
+                <select class="form-select" name="package_ids" multiple size="7">
+
+                  {% for p in eligible_packages %}
+                  <option value="{{ p.id }}">
+                    {{ p.tracking_number or p.house_awb or "No Tracking" }}
+                    |
+                    {{ p.description or "No Description" }}
+                    |
+                    {{ ((p.weight or 0)|round(0, 'ceil'))|int }} lb
+                    |
+                    JMD {{ "{:,.2f}".format(p.amount_due or 0) }}
+                    |
+                    {{ p.status or "No Status" }}
+                  </option>
+                  {% endfor %}
+
+                </select>
+
+                <div class="small text-muted mt-1">
+                  Hold Ctrl on Windows or Cmd on Mac to select multiple packages.
+                </div>
+
+                {% if not eligible_packages %}
+                <div class="small text-warning mt-2">
+                  No eligible packages are currently available for assignment.
+                </div>
+                {% endif %}
+              </div>
+
+              <div class="col-12 col-lg-3">
+                <button type="submit" class="btn btn-purple w-100" {% if not eligible_packages %}disabled{% endif %}>
+                  <i class="fas fa-link me-1"></i>
+                  Assign Selected
+                </button>
+              </div>
+
+            </div>
+          </form>
+
+          <hr class="my-4">
+          {% endif %}
+
+          <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle package-table">
+
+              <thead class="table-dark">
+                <tr>
+                  <th>Tracking #</th>
+                  <th>Description</th>
+                  <th>Billable Weight</th>
+                  <th>Amount Due</th>
+                  <th>Status</th>
+                  <th style="width:140px;">Action</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {% for p in assigned_packages %}
+                <tr>
+                  <td>
+                    <span class="tracking-text">
+                      {{ p.tracking_number or p.house_awb or "No Tracking" }}
+                    </span>
+                  </td>
+
+                  <td>
+                    {{ p.description or "—" }}
+                  </td>
+
+                  <td class="text-nowrap">
+                    {{ ((p.weight or 0)|round(0, 'ceil'))|int }} lb
+                  </td>
+
+                  <td class="text-nowrap fw-semibold">
+                    JMD {{ "{:,.2f}".format(p.amount_due or 0) }}
+                  </td>
+
+                  <td>
+                    {{ p.status or "—" }}
+                  </td>
+
+                  <td>
+                    {% if not is_cancelled
+                    and current_status != "Delivered" %}
+                    <form method="post" action="{{ url_for(
+                                'logistics.scheduled_delivery_unassign_package',
+                                delivery_id=delivery.id,
+                                package_id=p.id
+                              ) }}" onsubmit="return confirm(
+                                'Unassign this package from the delivery?'
+                              );">
+
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                      <button type="submit" class="btn btn-outline-danger btn-sm w-100">
+                        Unassign
+                      </button>
+                    </form>
+
+                    {% else %}
+                    <span class="text-muted small">
+                      Locked
+                    </span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+
+                {% if assigned_packages|length == 0 %}
+                <tr>
+                  <td colspan="6" class="text-center text-muted py-4">
+                    No packages have been linked to this delivery.
+                  </td>
+                </tr>
+                {% endif %}
+              </tbody>
+
+            </table>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Operations -->
+      <div class="card soft-card">
+
+        <div class="card-header bg-white">
+          <h6 class="mb-0">
+            <i class="fas fa-tasks me-2 text-muted"></i>
             Delivery Operations
           </h6>
         </div>
 
         <div class="card-body">
 
-          <div class="mb-4">
-            <div class="small text-muted mb-2">
-              Update Delivery Status
-            </div>
+          <div class="small text-muted mb-2">
+            Update Delivery Status
+          </div>
 
-            <div class="d-flex flex-wrap gap-2">
+          <div class="status-actions">
 
-              <form method="post"
-                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Scheduled') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-outline-secondary btn-sm">
-                  Scheduled
-                </button>
-              </form>
+            <form method="post" action="{{ url_for(
+                    'logistics.scheduled_delivery_set_status',
+                    delivery_id=delivery.id,
+                    status='Scheduled'
+                  ) }}">
 
-              <form method="post"
-                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Out for Delivery') }}">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-warning btn-sm">
-                  Out for Delivery
-                </button>
-              </form>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-              <form method="post"
-                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Delivery Attempted') }}"
-                onsubmit="return confirm('Mark this delivery as attempted?');">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-outline-warning btn-sm">
-                  Delivery Attempted
-                </button>
-              </form>
+              <button type="submit" class="btn btn-outline-secondary">
+                <i class="fas fa-calendar-check me-1"></i>
+                Scheduled
+              </button>
+            </form>
 
-              <form method="post"
-                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Delivered') }}"
-                onsubmit="return confirm('Mark delivery as completed?');">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-success btn-sm">
-                  Delivered
-                </button>
-              </form>
+            <form method="post" action="{{ url_for(
+                    'logistics.scheduled_delivery_set_status',
+                    delivery_id=delivery.id,
+                    status='Out for Delivery'
+                  ) }}" onsubmit="return confirm(
+                    'Mark this delivery as out for delivery?'
+                  );">
 
-              <form method="post"
-                action="{{ url_for('logistics.scheduled_delivery_set_status', delivery_id=delivery.id, status='Cancelled') }}"
-                onsubmit="return confirm('Cancel this delivery?');">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-danger btn-sm">
-                  Cancelled
-                </button>
-              </form>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-            </div>
+              <button type="submit" class="btn btn-warning">
+                <i class="fas fa-truck me-1"></i>
+                Out for Delivery
+              </button>
+            </form>
+
+            <form method="post" action="{{ url_for(
+                    'logistics.scheduled_delivery_set_status',
+                    delivery_id=delivery.id,
+                    status='Delivery Attempted'
+                  ) }}" onsubmit="return confirm(
+                    'Mark this delivery as attempted?'
+                  );">
+
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+              <button type="submit" class="btn btn-outline-warning">
+                <i class="fas fa-exclamation-triangle me-1"></i>
+                Delivery Attempted
+              </button>
+            </form>
+
+            <form method="post" action="{{ url_for(
+                    'logistics.scheduled_delivery_set_status',
+                    delivery_id=delivery.id,
+                    status='Delivered'
+                  ) }}" onsubmit="return confirm(
+                    'Mark this delivery and its assigned packages as delivered?'
+                  );">
+
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+              <button type="submit" class="btn btn-success">
+                <i class="fas fa-check-circle me-1"></i>
+                Delivered
+              </button>
+            </form>
+
+            <form method="post" action="{{ url_for(
+                    'logistics.scheduled_delivery_set_status',
+                    delivery_id=delivery.id,
+                    status='Cancelled'
+                  ) }}" onsubmit="return confirm(
+                    'Cancel this scheduled delivery?'
+                  );">
+
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+              <button type="submit" class="btn btn-danger">
+                <i class="fas fa-times-circle me-1"></i>
+                Cancel Delivery
+              </button>
+            </form>
+
           </div>
 
           {% if delivery.reschedule_status == "pending" %}
-          <hr>
+          <hr class="my-4">
 
-          <div class="alert alert-warning mb-3">
-            <strong>Reschedule Request Pending</strong><br>
+          <div class="alert alert-warning">
+            <strong>Reschedule Request Pending</strong>
 
-            Requested New Date:
-            <strong>
-              {{ delivery.requested_new_date.strftime("%Y-%m-%d") if delivery.requested_new_date else "—" }}
-            </strong>
+            <div class="mt-1">
+              Requested date:
+              <strong>
+                {{ delivery.requested_new_date.strftime("%B %d, %Y")
+                if delivery.requested_new_date else "—" }}
+              </strong>
+            </div>
 
-            <br>
-
-            Reason:
-            {{ delivery.reschedule_reason or "—" }}
+            <div>
+              Reason:
+              {{ delivery.reschedule_reason or "—" }}
+            </div>
           </div>
 
-          <div class="d-flex gap-2">
+          <div class="d-flex flex-wrap gap-2 reschedule-actions">
 
-            <form method="post" action="{{ url_for('logistics.approve_delivery_reschedule', delivery_id=delivery.id) }}"
-              onsubmit="return confirm('Approve reschedule request?');">
+            <form method="post" action="{{ url_for(
+                      'logistics.approve_delivery_reschedule',
+                      delivery_id=delivery.id
+                    ) }}" onsubmit="return confirm(
+                      'Approve this reschedule request?'
+                    );">
+
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-              <button class="btn btn-success btn-sm">
+              <button type="submit" class="btn btn-success">
+                <i class="fas fa-check me-1"></i>
                 Approve Reschedule
               </button>
             </form>
 
-            <form method="post" action="{{ url_for('logistics.deny_delivery_reschedule', delivery_id=delivery.id) }}"
-              onsubmit="return confirm('Deny reschedule request?');">
+            <form method="post" action="{{ url_for(
+                      'logistics.deny_delivery_reschedule',
+                      delivery_id=delivery.id
+                    ) }}" onsubmit="return confirm(
+                      'Deny this reschedule request?'
+                    );">
+
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-              <button class="btn btn-outline-danger btn-sm">
+              <button type="submit" class="btn btn-outline-danger">
+                <i class="fas fa-times me-1"></i>
                 Deny Request
               </button>
             </form>
@@ -461,99 +1051,218 @@
         </div>
       </div>
 
-      <div class="card soft-card mt-4">
-        <div class="card-header d-flex justify-content-between align-items-center bg-white">
-          <h5 class="mb-0">Linked Packages</h5>
-          <span class="text-muted small">
-            {{ delivery.user.full_name if delivery.user else "" }}
+    </div>
+
+    <!-- Sidebar -->
+    <div class="col-xl-4">
+
+      <!-- Financial summary -->
+      <div class="card soft-card mb-4">
+
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+          <h6 class="mb-0">
+            <i class="fas fa-money-bill-wave me-2 text-muted"></i>
+            Financial Summary
+          </h6>
+
+          {% if is_cancelled %}
+          <span class="pill pill-cancelled">
+            <span class="dot"></span>
+            Cancelled
           </span>
+
+          {% elif fs == "paid" %}
+          <span class="pill pill-paid">
+            <span class="dot"></span>
+            Paid
+          </span>
+
+          {% elif fs == "waived" %}
+          <span class="pill pill-paid">
+            <span class="dot"></span>
+            Waived
+          </span>
+
+          {% else %}
+          <span class="pill pill-unpaid">
+            <span class="dot"></span>
+            Unpaid
+          </span>
+          {% endif %}
         </div>
 
         <div class="card-body">
 
-          <form method="post"
-            action="{{ url_for('logistics.scheduled_delivery_assign_packages', delivery_id=delivery.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="money-row">
+            <span>Package Balance</span>
 
-            <div class="row g-2 align-items-end">
-              <div class="col-12 col-lg-9">
-                <label class="form-label small text-muted">Assign packages to this delivery</label>
+            <strong>
+              JMD {{ "{:,.2f}".format(totals.package_balance) }}
+            </strong>
+          </div>
 
-                <select class="form-select" name="package_ids" multiple size="8">
-                  {% for p in eligible_packages %}
-                  <option value="{{ p.id }}">
-                    {{ p.tracking_number or 'No Tracking' }} |
-                    {{ p.description or '' }} |
-                    {{ p.weight or 0 }} lb |
-                    Status: {{ p.status or '' }}
-                  </option>
-                  {% endfor %}
-                </select>
+          <div class="money-row">
+            <span>Delivery Fee</span>
 
-                <small class="text-muted d-block mt-1">
-                  Tip: hold Ctrl (Windows) / Cmd (Mac) to select multiple.
-                </small>
-              </div>
+            <div class="text-end">
+              <strong>
+                {{ delivery.fee_currency or "JMD" }}
+                {{ "{:,.2f}".format(delivery.delivery_fee or 0) }}
+              </strong>
 
-              <div class="col-12 col-lg-3">
-                <button class="btn btn-purple w-100">
-                  Assign Selected
-                </button>
+              <div class="small mt-1">
+                {% if is_cancelled %}
+                <span class="text-muted">
+                  Cancelled — not payable
+                </span>
+
+                {% elif fs == "paid" %}
+                <span class="text-success">Paid</span>
+
+                {% elif fs == "waived" %}
+                <span class="text-success">
+                  Free Delivery
+                </span>
+
+                {% elif fs == "refunded" %}
+                <span class="text-info">Refunded</span>
+
+                {% else %}
+                <span class="text-danger">
+                  Pay on Delivery
+                </span>
+                {% endif %}
               </div>
             </div>
-          </form>
+          </div>
 
-          <hr class="my-4">
+          <div class="money-row total">
+            <span>Expected Collection</span>
 
-          <div class="table-responsive">
-            <table class="table table-bordered table-striped align-middle">
-              <thead class="table-dark">
-                <tr>
-                  <th>Tracking #</th>
-                  <th>Description</th>
-                  <th>Billable Weight</th>
-                  <th>Status</th>
-                  <th style="width: 140px;">Action</th>
-                </tr>
-              </thead>
+            <span>
+              JMD {{ "{:,.2f}".format(expected_collection) }}
+            </span>
+          </div>
 
-              <tbody>
-                {% for p in assigned_packages %}
-                <tr>
-                  <td>{{ p.tracking_number or '' }}</td>
-                  <td>{{ p.description or '' }}</td>
-                  <td>{{ ((p.weight or 0)|round(0, 'ceil'))|int }} lb</td>
-                  <td>{{ p.status or '' }}</td>
-                  <td>
-                    <form method="post"
-                      action="{{ url_for('logistics.scheduled_delivery_unassign_package', delivery_id=delivery.id, package_id=p.id) }}"
-                      onsubmit="return confirm('Unassign this package from delivery?');">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button class="btn btn-outline-danger btn-sm w-100">
-                        Unassign
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-                {% endfor %}
+          {% if delivery.paid_at %}
+          <div class="small text-muted mt-3">
+            Delivery-fee payment recorded:
 
-                {% if assigned_packages|length == 0 %}
-                <tr>
-                  <td colspan="5" class="text-center text-muted py-4">
-                    No packages linked yet.
-                  </td>
-                </tr>
-                {% endif %}
-              </tbody>
-            </table>
+            <strong>
+              {{ to_jamaica(delivery.paid_at).strftime(
+              "%B %d, %Y at %I:%M %p"
+              ) }}
+            </strong>
+          </div>
+          {% endif %}
+
+          <div class="small text-muted mt-3">
+            Expected collection includes assigned-package balances plus any
+            unpaid delivery fee.
           </div>
 
         </div>
       </div>
 
+      <!-- Delivery invoice -->
+      <div class="card soft-card mb-4">
+
+        <div class="card-header bg-white">
+          <h6 class="mb-0">
+            <i class="fas fa-receipt me-2 text-muted"></i>
+            Delivery Invoice
+          </h6>
+        </div>
+
+        <div class="card-body">
+          <div class="row g-3">
+
+            <div class="col-12">
+              <div class="info-label">Invoice Number</div>
+
+              <div class="info-value">
+                {{ delivery.invoice_number or "—" }}
+              </div>
+            </div>
+
+            <div class="col-6">
+              <div class="info-label">Fee Amount</div>
+
+              <div class="info-value">
+                {{ delivery.fee_currency or "JMD" }}
+                {{ "{:,.2f}".format(delivery.delivery_fee or 0) }}
+              </div>
+            </div>
+
+            <div class="col-6">
+              <div class="info-label">Fee Status</div>
+
+              <div class="info-value">
+                {{ delivery.fee_status or "Unpaid" }}
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div class="info-label">Paid At</div>
+
+              <div class="info-value">
+                {% if delivery.paid_at %}
+                {{ to_jamaica(delivery.paid_at).strftime(
+                "%B %d, %Y at %I:%M %p"
+                ) }}
+                {% else %}
+                —
+                {% endif %}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Missed-delivery policy -->
+      <div class="card soft-card">
+
+        <div class="card-header bg-white">
+          <h6 class="mb-0">
+            <i class="fas fa-exclamation-circle me-2 text-muted"></i>
+            Missed Delivery Policy
+          </h6>
+        </div>
+
+        <div class="card-body">
+          <div class="small text-muted">
+            If the driver arrives and no one is available to receive the
+            packages, mark the request as <strong>Delivery Attempted</strong>.
+            The packages may be returned to the dispatch branch, and another
+            delivery request and redelivery fee may be required.
+          </div>
+        </div>
+
+      </div>
+
     </div>
 
   </div>
-
 </div>
+
+<script>
+  function copyDeliveryAddress() {
+    const address =
+      document.getElementById("deliveryAddressText")?.textContent?.trim() || "";
+
+    if (!address || address === "—") {
+      alert("No delivery address is available.");
+      return;
+    }
+
+    navigator.clipboard.writeText(address)
+      .then(() => {
+        alert("Delivery address copied.");
+      })
+      .catch(() => {
+        alert("Unable to copy the address. Please copy it manually.");
+      });
+  }
+</script>
 {% endblock %}

@@ -1317,7 +1317,7 @@ def transactions_all():
                 )
 
                 pdf_url = url_for(
-                    "customer.delivery_invoice_pdf",
+                    "customer.delivery_invoice_view",
                     delivery_id=delivery.id
                 )
 

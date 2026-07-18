@@ -1,0 +1,539 @@
+{% extends "layout_admin.html" %}
+{% block title %}Pending POS Payments{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-start
+           flex-wrap gap-3 mb-4">
+
+        <div>
+            <h2 class="mb-1">Pending POS Payments</h2>
+
+            <p class="text-muted mb-0">
+                Collect balances for packages released with
+                Transfer Pending / Pay Later.
+            </p>
+        </div>
+
+        <div class="text-end">
+            <div class="small text-muted">
+                Total Outstanding
+            </div>
+
+            <div class="fs-4 fw-bold text-danger">
+                JMD {{ "{:,.2f}".format(total_pending or 0) }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }}
+                 alert-dismissible fade show" role="alert">
+
+        {{ message }}
+
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close">
+        </button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- Search -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+
+            <form method="GET" action="{{ url_for('admin_pos.pending_payments') }}">
+
+                <div class="row g-3 align-items-end">
+
+                    <div class="col-lg-8 col-md-7">
+                        <label class="form-label">
+                            Search Pending Payments
+                        </label>
+
+                        <input type="text" name="q" value="{{ search or '' }}" class="form-control"
+                            placeholder="Customer, registration number, invoice, tracking number or House AWB">
+                    </div>
+
+                    <div class="col-lg-4 col-md-5">
+                        <div class="d-flex gap-2">
+
+                            <button type="submit" class="btn btn-primary flex-grow-1">
+
+                                <i class="bi bi-search me-1"></i>
+                                Search
+                            </button>
+
+                            <a href="{{ url_for('admin_pos.pending_payments') }}" class="btn btn-outline-secondary">
+
+                                Reset
+                            </a>
+                        </div>
+                    </div>
+
+                </div>
+            </form>
+
+        </div>
+    </div>
+
+    <!-- Pending Payments Table -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white py-3">
+
+            <div class="d-flex justify-content-between
+               align-items-center flex-wrap gap-2">
+
+                <h5 class="mb-0">
+                    <i class="bi bi-hourglass-split me-1"></i>
+                    Outstanding POS Balances
+                </h5>
+
+                <span class="badge bg-warning text-dark">
+                    {{ rows|length }}
+                    pending
+                </span>
+            </div>
+
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive">
+
+                <table class="table table-hover align-middle mb-0">
+
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Released</th>
+                            <th>Customer</th>
+                            <th>Invoice</th>
+                            <th>Packages</th>
+                            <th class="text-end">Invoice Total</th>
+                            <th class="text-end">Paid</th>
+                            <th class="text-end">Balance</th>
+                            <th class="text-center">Action</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+
+                            <!-- Released Date and Time -->
+                            <td class="text-nowrap">
+                                {% if row.released_at %}
+                                <div class="fw-semibold">
+                                    {{ row.released_at.strftime("%Y-%m-%d") }}
+                                </div>
+
+                                <div class="small text-muted">
+                                    {{ row.released_at.strftime("%I:%M %p") }}
+                                </div>
+
+                                <div class="small text-muted">
+                                    Jamaica time
+                                </div>
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+
+                            <!-- Customer -->
+                            <td>
+                                <div class="fw-semibold">
+                                    {{ row.customer_name }}
+                                </div>
+
+                                {% if row.registration_number %}
+                                <div class="small text-muted">
+                                    {{ row.registration_number }}
+                                </div>
+                                {% endif %}
+
+                                {% if row.mobile %}
+                                <div class="small text-muted">
+                                    {{ row.mobile }}
+                                </div>
+                                {% endif %}
+
+                                {% if row.email %}
+                                <div class="small text-muted">
+                                    {{ row.email }}
+                                </div>
+                                {% endif %}
+                            </td>
+
+                            <!-- Invoice -->
+                            <td>
+                                <div class="fw-semibold text-primary">
+                                    {{ row.invoice_number }}
+                                </div>
+
+                                <div class="small text-muted">
+                                    Pending Payment #{{ row.pending_payment_id }}
+                                </div>
+                            </td>
+
+                            <!-- Tracking / House AWB -->
+                            <td>
+                                {% if row.tracking %}
+                                {% for tracking in row.tracking %}
+                                <div class="small">
+                                    <i class="bi bi-box-seam me-1"></i>
+                                    {{ tracking }}
+                                </div>
+                                {% endfor %}
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+
+                            <!-- Invoice Total -->
+                            <td class="text-end text-nowrap">
+                                JMD {{ "{:,.2f}".format(row.subtotal or 0) }}
+                            </td>
+
+                            <!-- Completed Payments -->
+                            <td class="text-end text-nowrap text-success">
+                                JMD {{ "{:,.2f}".format(row.payments_total or 0) }}
+                            </td>
+
+                            <!-- Outstanding Balance -->
+                            <td class="text-end text-nowrap">
+                                <span class="fw-bold text-danger">
+                                    JMD {{ "{:,.2f}".format(row.amount_due or 0) }}
+                                </span>
+                            </td>
+
+                            <!-- Collect Payment -->
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-success
+                           js-collect-pending-payment" data-bs-toggle="modal"
+                                    data-bs-target="#collectPendingPaymentModal"
+                                    data-payment-id="{{ row.pending_payment_id }}"
+                                    data-invoice-number="{{ row.invoice_number|e }}"
+                                    data-customer-name="{{ row.customer_name|e }}"
+                                    data-balance="{{ '%.2f'|format(row.amount_due or 0) }}" data-action="{{ url_for(
+                      'admin_pos.collect_pending_payment',
+                      payment_id=row.pending_payment_id
+                    ) }}">
+
+                                    <i class="bi bi-cash-coin me-1"></i>
+                                    Collect
+                                </button>
+                            </td>
+
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5">
+
+                                <i class="bi bi-check-circle
+                           text-success fs-1">
+                                </i>
+
+                                <h5 class="mt-3 mb-1">
+                                    No pending POS payments
+                                </h5>
+
+                                <p class="text-muted mb-0">
+                                    There are no outstanding packages released
+                                    with Transfer Pending / Pay Later.
+                                </p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+
+                </table>
+
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Collect Pending Payment Modal -->
+<div class="modal fade" id="collectPendingPaymentModal" tabindex="-1" aria-labelledby="collectPendingPaymentModalLabel"
+    aria-hidden="true">
+
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title" id="collectPendingPaymentModalLabel">
+
+                    <i class="bi bi-cash-coin me-1"></i>
+                    Collect Pending Payment
+                </h5>
+
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                </button>
+            </div>
+
+            <form id="collectPendingPaymentForm" method="POST" action="">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="modal-body">
+
+                    <!-- Customer and Invoice Summary -->
+                    <div class="border rounded p-3 bg-light mb-3">
+
+                        <div class="small text-muted">
+                            Customer
+                        </div>
+
+                        <div class="fw-semibold" id="pendingCustomerName">
+                            —
+                        </div>
+
+                        <div class="small text-muted mt-2">
+                            Invoice
+                        </div>
+
+                        <div class="fw-semibold" id="pendingInvoiceNumber">
+                            —
+                        </div>
+
+                        <hr>
+
+                        <div class="d-flex justify-content-between
+                     align-items-center">
+
+                            <span class="fw-semibold">
+                                Outstanding Balance
+                            </span>
+
+                            <span class="fw-bold text-danger fs-5" id="pendingOutstandingBalance">
+
+                                JMD 0.00
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Amount -->
+                    <div class="mb-3">
+                        <label for="pendingPaymentAmount" class="form-label">
+
+                            Amount Received
+                        </label>
+
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                JMD
+                            </span>
+
+                            <input type="number" id="pendingPaymentAmount" name="amount" class="form-control" min="0.01"
+                                step="0.01" required>
+                        </div>
+
+                        <div class="form-text">
+                            You may collect the full balance or enter a
+                            smaller amount for a partial payment.
+                        </div>
+                    </div>
+
+                    <!-- Payment Method -->
+                    <div class="mb-3">
+                        <label for="pendingPaymentMethod" class="form-label">
+
+                            Payment Method
+                        </label>
+
+                        <select id="pendingPaymentMethod" name="method" class="form-select" required>
+
+                            <option value="cash">Cash</option>
+                            <option value="card">Card</option>
+                            <option value="transfer">Transfer</option>
+                        </select>
+                    </div>
+
+                    <!-- Reference -->
+                    <div class="mb-3">
+                        <label for="pendingPaymentReference" class="form-label">
+
+                            Reference
+                        </label>
+
+                        <input type="text" id="pendingPaymentReference" name="reference" class="form-control"
+                            placeholder="Optional transfer/card reference">
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-0">
+                        <label for="pendingPaymentNotes" class="form-label">
+
+                            Notes
+                        </label>
+
+                        <textarea id="pendingPaymentNotes" name="notes" class="form-control" rows="3"
+                            placeholder="Optional payment note"></textarea>
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+
+                        Cancel
+                    </button>
+
+                    <button type="submit" class="btn btn-success" id="collectPendingPaymentSubmit">
+
+                        <i class="bi bi-check2-circle me-1"></i>
+                        Record Payment
+                    </button>
+                </div>
+
+            </form>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const modalElement = document.getElementById(
+            "collectPendingPaymentModal"
+        );
+
+        const form = document.getElementById(
+            "collectPendingPaymentForm"
+        );
+
+        const customerNameElement = document.getElementById(
+            "pendingCustomerName"
+        );
+
+        const invoiceNumberElement = document.getElementById(
+            "pendingInvoiceNumber"
+        );
+
+        const balanceElement = document.getElementById(
+            "pendingOutstandingBalance"
+        );
+
+        const amountInput = document.getElementById(
+            "pendingPaymentAmount"
+        );
+
+        const methodInput = document.getElementById(
+            "pendingPaymentMethod"
+        );
+
+        const referenceInput = document.getElementById(
+            "pendingPaymentReference"
+        );
+
+        const notesInput = document.getElementById(
+            "pendingPaymentNotes"
+        );
+
+        const submitButton = document.getElementById(
+            "collectPendingPaymentSubmit"
+        );
+
+        if (!modalElement || !form) {
+            return;
+        }
+
+        modalElement.addEventListener(
+            "show.bs.modal",
+            function (event) {
+                const button = event.relatedTarget;
+
+                if (!button) {
+                    return;
+                }
+
+                const customerName = (
+                    button.getAttribute("data-customer-name")
+                    || "Customer"
+                );
+
+                const invoiceNumber = (
+                    button.getAttribute("data-invoice-number")
+                    || "Invoice"
+                );
+
+                const balance = Number(
+                    button.getAttribute("data-balance")
+                    || 0
+                );
+
+                const action = (
+                    button.getAttribute("data-action")
+                    || ""
+                );
+
+                form.action = action;
+
+                customerNameElement.textContent = customerName;
+                invoiceNumberElement.textContent = invoiceNumber;
+
+                balanceElement.textContent = (
+                    "JMD "
+                    + balance.toLocaleString(
+                        "en-JM",
+                        {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                        }
+                    )
+                );
+
+                amountInput.value = balance.toFixed(2);
+                amountInput.max = balance.toFixed(2);
+
+                methodInput.value = "cash";
+                referenceInput.value = "";
+                notesInput.value = "";
+
+                submitButton.disabled = false;
+                submitButton.innerHTML = `
+          <i class="bi bi-check2-circle me-1"></i>
+          Record Payment
+        `;
+            }
+        );
+
+        form.addEventListener("submit", function () {
+            submitButton.disabled = true;
+
+            submitButton.innerHTML = `
+        <span
+          class="spinner-border spinner-border-sm me-1"
+          role="status"
+          aria-hidden="true">
+        </span>
+        Recording…
+      `;
+        });
+
+        modalElement.addEventListener(
+            "hidden.bs.modal",
+            function () {
+                form.action = "";
+                form.reset();
+
+                customerNameElement.textContent = "—";
+                invoiceNumberElement.textContent = "—";
+                balanceElement.textContent = "JMD 0.00";
+
+                submitButton.disabled = false;
+                submitButton.innerHTML = `
+          <i class="bi bi-check2-circle me-1"></i>
+          Record Payment
+        `;
+            }
+        );
+    });
+</script>
+{% endblock %}

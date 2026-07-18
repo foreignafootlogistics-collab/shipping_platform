@@ -268,6 +268,17 @@
                   </li>
 
                   <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint in [
+      'admin_pos.pending_payments',
+      'admin_pos.collect_pending_payment'
+    ] else '' }}" href="{{ url_for('admin_pos.pending_payments') }}">
+
+                      <i class="bi bi-hourglass-split me-2"></i>
+                      Pending Payments
+                    </a>
+                  </li>
+
+                  <li class="nav-item">
                     <a class="nav-link {{ 'active' if request.endpoint == 'admin_pos.daily_sales' else '' }}"
                       href="{{ url_for('admin_pos.daily_sales') }}">
                       <i class="bi bi-cash-stack me-2"></i> Daily Sales

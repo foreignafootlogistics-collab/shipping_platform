@@ -800,10 +800,21 @@
                 <td>
                   <div class="d-flex flex-column gap-1">
                     <!-- Status badge -->
-                    <span
-                      class="badge {% if inv_status == 'paid' or owed == 0 %}bg-success{% else %}bg-danger{% endif %}">
-                      {{ 'Paid' if (inv_status == 'paid' or owed == 0) else 'Unpaid' }}
+                    {% if inv_status == 'paid' or owed == 0 %}
+                    <span class="badge bg-success">
+                      Paid
                     </span>
+
+                    {% elif inv_status == 'partial' or paid > 0 %}
+                    <span class="badge bg-primary">
+                      Partial Payment
+                    </span>
+
+                    {% else %}
+                    <span class="badge bg-danger">
+                      Unpaid
+                    </span>
+                    {% endif %}
 
                     <!-- Date line -->
                     {% if inv_status == 'paid' or owed == 0 %}

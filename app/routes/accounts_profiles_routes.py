@@ -1141,11 +1141,32 @@ def view_user(id):
         if pay_amount_col is None:
             raise RuntimeError("Payment model has no amount_jmd/amount column")
 
-        paid_sum_col = func.coalesce(func.sum(pay_amount_col), 0.0).label("paid_sum")
+        paid_sum_col = func.coalesce(
+            func.sum(pay_amount_col),
+            0.0
+        ).label("paid_sum")
+
+        completed_payment_join = (
+            (Payment.invoice_id == Invoice.id)
+            & (
+                func.lower(Payment.status)
+                == "completed"
+            )
+            & (
+                Payment.transaction_type
+                == "invoice_payment"
+            )
+        )
 
         q = (
-            db.session.query(Invoice, paid_sum_col)
-            .outerjoin(Payment, Payment.invoice_id == Invoice.id)
+            db.session.query(
+                Invoice,
+                paid_sum_col,
+            )
+            .outerjoin(
+                Payment,
+                completed_payment_join,
+            )
             .filter(*inv_query._where_criteria)
             .group_by(Invoice.id)
         )
@@ -1198,8 +1219,14 @@ def view_user(id):
             return 0.0
 
         all_rows = (
-            db.session.query(Invoice, paid_sum_col)
-            .outerjoin(Payment, Payment.invoice_id == Invoice.id)
+            db.session.query(
+                Invoice,
+                paid_sum_col,
+            )
+            .outerjoin(
+                Payment,
+                completed_payment_join,
+            )
             .filter(*inv_query._where_criteria)
             .group_by(Invoice.id)
             .all()

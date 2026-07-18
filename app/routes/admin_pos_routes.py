@@ -27,6 +27,80 @@ def _to_decimal(value, default="0.00"):
     except Exception:
         return Decimal(default)
 
+def _create_or_update_pending_pos_payment(
+    *,
+    invoice,
+    user_id,
+    amount_due,
+    notes="",
+    created_at=None,
+):
+    """
+    Create or update the pending POS payment placeholder for an invoice.
+
+    Pending records are not included in invoice payment totals because
+    fetch_invoice_totals_pg() counts completed payments only.
+    """
+
+    amount_due = Decimal(str(amount_due or 0)).quantize(
+        Decimal("0.01")
+    )
+
+    if amount_due <= Decimal("0.00"):
+        return None
+
+    now_utc = created_at or datetime.now(timezone.utc)
+    now_jamaica = to_jamaica(now_utc)
+
+    pending_payment = (
+        Payment.query
+        .filter(
+            Payment.invoice_id == invoice.id,
+            Payment.source == "pos",
+            Payment.transaction_type == "invoice_payment",
+            func.lower(Payment.status) == "pending",
+        )
+        .order_by(Payment.created_at.desc())
+        .first()
+    )
+
+    pending_note = (
+        f"POS transfer pending. "
+        f"Package released on "
+        f"{now_jamaica.strftime('%Y-%m-%d %I:%M %p')} "
+        f"Jamaica time."
+    )
+
+    if notes:
+        pending_note = f"{pending_note}\n{notes.strip()}"
+
+    if pending_payment:
+        pending_payment.amount_jmd = float(amount_due)
+        pending_payment.method = "Transfer Pending"
+        pending_payment.status = "pending"
+        pending_payment.notes = pending_note
+        pending_payment.authorized_by_admin_id = current_user.id
+
+        return pending_payment
+
+    pending_payment = Payment(
+        user_id=user_id,
+        invoice_id=invoice.id,
+        method="Transfer Pending",
+        amount_jmd=float(amount_due),
+        transaction_type="invoice_payment",
+        status="pending",
+        notes=pending_note,
+        source="pos",
+        authorized_by_admin_id=current_user.id,
+        created_at=now_utc,
+    )
+
+    db.session.add(pending_payment)
+    db.session.flush()
+
+    return pending_payment
+
 
 def _package_charge_amount(pkg):
     total = getattr(pkg, "grand_total", None)
@@ -496,7 +570,10 @@ def checkout():
 
         checkout_invoice_ids = []
         created_payment_ids = []
+        pending_payment_ids = []
+
         collected_total = Decimal("0.00")
+        pending_total = Decimal("0.00")
 
         total_before_discount = subtotal if subtotal > 0 else Decimal("1.00")
 
@@ -604,18 +681,46 @@ def checkout():
 
             # Transfer has not yet been confirmed.
             else:
-                invoice.status = "unpaid"
+                invoice.status = (
+                    "partial"
+                    if existing_paid > Decimal("0.00")
+                    else "unpaid"
+                )
+                invoice.date_paid = None
+                invoice.amount_due = float(remaining_due)
 
                 pending_note = notes or ""
 
                 if discount_note:
-                    pending_note = f"{pending_note}\n{discount_note}".strip()
-
-                if pending_note:
-                    invoice.description = (
-                        (invoice.description or "") +
-                        f"\nPOS release pending transfer: {pending_note}"
+                    pending_note = (
+                        f"{pending_note}\n{discount_note}"
                     ).strip()
+
+                pending_payment = (
+                    _create_or_update_pending_pos_payment(
+                        invoice=invoice,
+                        user_id=user.id,
+                        amount_due=remaining_due,
+                        notes=pending_note,
+                        created_at=now_utc,
+                    )
+                )
+
+                if pending_payment:
+                    pending_payment_ids.append(
+                        pending_payment.id
+                    )
+
+                pending_total += remaining_due
+
+                invoice.description = (
+                    (invoice.description or "")
+                    + (
+                        "\nPOS release pending transfer. "
+                        f"Outstanding balance: "
+                        f"JMD {remaining_due:,.2f}."
+                    )
+                ).strip()
 
             checkout_invoice_ids.append(invoice.id)
 
@@ -681,8 +786,11 @@ def checkout():
 
             if not is_pending_transfer:
                 payment_notes = notes or "POS payment"
+
                 if discount_note:
-                    payment_notes = f"{payment_notes}\n{discount_note}"
+                    payment_notes = (
+                        f"{payment_notes}\n{discount_note}"
+                    )
 
                 pos_payment = Payment(
                     user_id=user.id,
@@ -699,8 +807,27 @@ def checkout():
 
                 db.session.add(pos_payment)
                 db.session.flush()
+
                 created_payment_ids.append(pos_payment.id)
                 collected_total += new_final_total
+
+            else:
+                pending_payment = (
+                    _create_or_update_pending_pos_payment(
+                        invoice=pos_invoice,
+                        user_id=user.id,
+                        amount_due=new_final_total,
+                        notes=notes,
+                        created_at=now_utc,
+                    )
+                )
+
+                if pending_payment:
+                    pending_payment_ids.append(
+                        pending_payment.id
+                    )
+
+                pending_total += new_final_total
 
             for p in uninvoiced_packages:
                 p.invoice_id = pos_invoice.id
@@ -718,16 +845,32 @@ def checkout():
             else "Checkout completed successfully."
         )
 
+        display_total = (
+            pending_total
+            if is_pending_transfer
+            else collected_total
+        )
+
         return jsonify({
             "ok": True,
             "message": message,
             "invoice_ids": checkout_invoice_ids,
             "payment_ids": created_payment_ids,
-            "subtotal": str(subtotal.quantize(Decimal("0.01"))),
-            "discount": str(discount.quantize(Decimal("0.01"))),
-            "total": str(collected_total.quantize(Decimal("0.01"))),
+            "pending_payment_ids": pending_payment_ids,
+            "subtotal": str(
+                subtotal.quantize(Decimal("0.01"))
+            ),
+            "discount": str(
+                discount.quantize(Decimal("0.01"))
+            ),
+            "total": str(
+                collected_total.quantize(Decimal("0.01"))
+            ),
             "amount_collected": str(
                 collected_total.quantize(Decimal("0.01"))
+            ),
+            "amount_pending": str(
+                pending_total.quantize(Decimal("0.01"))
             ),
             "payment_pending": is_pending_transfer,
         })
@@ -738,6 +881,457 @@ def checkout():
             "ok": False,
             "error": f"Checkout failed: {str(e)}"
         }), 500
+
+@admin_pos_bp.route(
+    "/pending-payments",
+    methods=["GET"],
+)
+@admin_required
+def pending_payments():
+    search = (
+        request.args.get("q") or ""
+    ).strip().lower()
+
+    pending_records = (
+        Payment.query
+        .filter(
+            Payment.source == "pos",
+            Payment.transaction_type == "invoice_payment",
+            func.lower(Payment.status) == "pending",
+        )
+        .order_by(Payment.created_at.asc())
+        .limit(1000)
+        .all()
+    )
+
+    rows = []
+    stale_records_changed = False
+
+    for pending_payment in pending_records:
+        invoice = pending_payment.invoice
+
+        if not invoice:
+            pending_payment.status = "cancelled"
+            stale_records_changed = True
+            continue
+
+        (
+            subtotal,
+            discount_total,
+            payments_total,
+            total_due,
+        ) = fetch_invoice_totals_pg(invoice.id)
+
+        live_balance = Decimal(
+            str(max(float(total_due or 0), 0.0))
+        ).quantize(Decimal("0.01"))
+
+        # Automatically close stale pending placeholders.
+        if live_balance <= Decimal("0.00"):
+            pending_payment.amount_jmd = 0.00
+            pending_payment.status = "settled"
+            stale_records_changed = True
+            continue
+
+        # Keep the placeholder synchronized with the live balance.
+        if round(
+            float(pending_payment.amount_jmd or 0),
+            2,
+        ) != float(live_balance):
+            pending_payment.amount_jmd = float(
+                live_balance
+            )
+            stale_records_changed = True
+
+        user = invoice.user or pending_payment.user
+
+        packages = (
+            Package.query
+            .filter(Package.invoice_id == invoice.id)
+            .order_by(Package.created_at.asc())
+            .all()
+        )
+
+        tracking_values = []
+
+        for package in packages:
+            if package.tracking_number:
+                tracking_values.append(
+                    package.tracking_number
+                )
+
+            if package.house_awb:
+                tracking_values.append(
+                    package.house_awb
+                )
+
+        customer_name = (
+            (user.full_name or "").strip()
+            if user
+            else ""
+        ) or (
+            user.email
+            if user
+            else ""
+        ) or "Customer"
+
+        registration_number = (
+            user.registration_number
+            if user
+            else ""
+        ) or ""
+
+        email = (
+            user.email
+            if user
+            else ""
+        ) or ""
+
+        mobile = (
+            user.mobile
+            if user
+            else ""
+        ) or ""
+
+        invoice_number = (
+            invoice.invoice_number
+            or f"Invoice #{invoice.id}"
+        )
+
+        search_text = " ".join([
+            customer_name,
+            registration_number,
+            email,
+            mobile,
+            invoice_number,
+            *tracking_values,
+        ]).lower()
+
+        if search and search not in search_text:
+            continue
+
+        released_at = (
+            to_jamaica(pending_payment.created_at)
+            if pending_payment.created_at
+            else None
+        )
+
+        rows.append({
+            "pending_payment_id": pending_payment.id,
+            "invoice_id": invoice.id,
+            "invoice_number": invoice_number,
+            "customer_name": customer_name,
+            "registration_number": registration_number,
+            "email": email,
+            "mobile": mobile,
+            "tracking": tracking_values,
+            "subtotal": round(
+                float(subtotal or 0),
+                2,
+            ),
+            "discount_total": round(
+                float(discount_total or 0),
+                2,
+            ),
+            "payments_total": round(
+                float(payments_total or 0),
+                2,
+            ),
+            "amount_due": float(live_balance),
+            "released_at": released_at,
+            "notes": pending_payment.notes or "",
+        })
+
+    if stale_records_changed:
+        db.session.commit()
+
+    total_pending = round(
+        sum(
+            float(row["amount_due"] or 0)
+            for row in rows
+        ),
+        2,
+    )
+
+    return render_template(
+        "admin/pos/pending_payments.html",
+        rows=rows,
+        search=search,
+        total_pending=total_pending,
+    )
+
+
+@admin_pos_bp.route(
+    "/pending-payments/<int:payment_id>/collect",
+    methods=["POST"],
+)
+@admin_required
+def collect_pending_payment(payment_id):
+    pending_payment = (
+        Payment.query
+        .filter(
+            Payment.id == payment_id,
+            Payment.source == "pos",
+            Payment.transaction_type == "invoice_payment",
+            func.lower(Payment.status) == "pending",
+        )
+        .with_for_update(of=Payment)
+        .first_or_404()
+    )
+
+    invoice = (
+        Invoice.query
+        .filter(Invoice.id == pending_payment.invoice_id)
+        .with_for_update(of=Invoice)
+        .first_or_404()
+    )
+
+    try:
+        amount = Decimal(
+            str(request.form.get("amount") or 0)
+        ).quantize(Decimal("0.01"))
+    except Exception:
+        amount = Decimal("0.00")
+
+    method = (
+        request.form.get("method") or ""
+    ).strip().lower()
+
+    reference = (
+        request.form.get("reference") or ""
+    ).strip()
+
+    notes = (
+        request.form.get("notes") or ""
+    ).strip()
+
+    allowed_methods = {
+        "cash": "Cash",
+        "card": "Card",
+        "transfer": "Transfer",
+    }
+
+    if method not in allowed_methods:
+        flash(
+            "Select Cash, Card or Transfer.",
+            "danger",
+        )
+
+        return redirect(
+            url_for("admin_pos.pending_payments")
+        )
+
+    if amount <= Decimal("0.00"):
+        flash(
+            "Payment amount must be greater than zero.",
+            "danger",
+        )
+
+        return redirect(
+            url_for("admin_pos.pending_payments")
+        )
+
+    (
+        subtotal,
+        discount_total,
+        payments_total,
+        total_due,
+    ) = fetch_invoice_totals_pg(invoice.id)
+
+    live_balance = Decimal(
+        str(max(float(total_due or 0), 0.0))
+    ).quantize(Decimal("0.01"))
+
+    if live_balance <= Decimal("0.00"):
+        pending_payment.amount_jmd = 0.00
+        pending_payment.status = "settled"
+
+        invoice.amount_due = 0.00
+        invoice.status = "paid"
+
+        if not invoice.date_paid:
+            invoice.date_paid = datetime.now(
+                timezone.utc
+            )
+
+        db.session.commit()
+
+        flash(
+            "This invoice was already fully paid. "
+            "The pending record was closed.",
+            "info",
+        )
+
+        return redirect(
+            url_for("admin_pos.pending_payments")
+        )
+
+    if amount > live_balance:
+        flash(
+            (
+                f"Payment cannot exceed the balance of "
+                f"JMD {live_balance:,.2f}."
+            ),
+            "danger",
+        )
+
+        return redirect(
+            url_for("admin_pos.pending_payments")
+        )
+
+    now_utc = datetime.now(timezone.utc)
+    now_jamaica = to_jamaica(now_utc)
+
+    payment_notes = (
+        f"POS collection against pending payment "
+        f"#{pending_payment.id}. "
+        f"Collected on "
+        f"{now_jamaica.strftime('%Y-%m-%d %I:%M %p')} "
+        f"Jamaica time."
+    )
+
+    if notes:
+        payment_notes = (
+            f"{payment_notes}\n{notes}"
+        )
+
+    completed_payment = Payment(
+        user_id=invoice.user_id,
+        invoice_id=invoice.id,
+        method=allowed_methods[method],
+        amount_jmd=float(amount),
+        transaction_type="invoice_payment",
+        status="completed",
+        reference=reference or None,
+        notes=payment_notes,
+        source="pos",
+        authorized_by_admin_id=current_user.id,
+        created_at=now_utc,
+    )
+
+    db.session.add(completed_payment)
+    db.session.flush()
+
+    remaining_balance = (
+        live_balance - amount
+    ).quantize(Decimal("0.01"))
+
+    old_pending_amount = Decimal(
+        str(pending_payment.amount_jmd or 0)
+    ).quantize(Decimal("0.01"))
+
+    pending_payment.amount_jmd = float(
+        remaining_balance
+    )
+
+    settlement_note = (
+        f"JMD {amount:,.2f} collected by "
+        f"admin ID {current_user.id} on "
+        f"{now_jamaica.strftime('%Y-%m-%d %I:%M %p')} "
+        f"Jamaica time."
+    )
+
+    pending_payment.notes = (
+        f"{pending_payment.notes or ''}\n"
+        f"{settlement_note}"
+    ).strip()
+
+    clean_description = re.sub(
+        (
+            r"\s*POS release pending transfer\.\s*"
+            r"Outstanding balance:\s*"
+            r"JMD\s*[\d,]+(?:\.\d{1,2})?\."
+        ),
+        "",
+        invoice.description or "",
+        flags=re.IGNORECASE,
+    ).strip()
+
+    if remaining_balance <= Decimal("0.00"):
+        pending_payment.amount_jmd = 0.00
+        pending_payment.status = "settled"
+
+        invoice.amount_due = 0.00
+        invoice.status = "paid"
+        invoice.date_paid = now_utc
+
+        invoice.description = (
+            f"{clean_description}\n"
+            f"POS pending balance settled on "
+            f"{now_jamaica.strftime('%Y-%m-%d %I:%M %p')} "
+            f"Jamaica time."
+        ).strip()
+
+    else:
+        pending_payment.status = "pending"
+
+        invoice.amount_due = float(
+            remaining_balance
+        )
+        invoice.status = "partial"
+        invoice.date_paid = None
+
+        invoice.description = (
+            f"{clean_description}\n"
+            f"POS release pending transfer. "
+            f"Outstanding balance: "
+            f"JMD {remaining_balance:,.2f}."
+        ).strip()
+
+    db.session.add(AuditLog(
+        module="POS",
+        action="Pending POS Payment Collected",
+        admin_id=current_user.id,
+        user_id=invoice.user_id,
+        entity_type="Invoice",
+        entity_id=invoice.id,
+        reason="Pending POS balance collection",
+        description=(
+            f"Collected JMD {amount:,.2f} by "
+            f"{allowed_methods[method]} against "
+            f"{invoice.invoice_number or ('Invoice #' + str(invoice.id))}. "
+            f"Remaining balance: "
+            f"JMD {remaining_balance:,.2f}."
+        ),
+        old_value=(
+            f"Pending Payment ID: {pending_payment.id}; "
+            f"Pending Amount: "
+            f"JMD {old_pending_amount:,.2f}"
+        ),
+        new_value=(
+            f"Completed Payment ID: "
+            f"{completed_payment.id}; "
+            f"Invoice Status: {invoice.status}; "
+            f"Remaining Balance: "
+            f"JMD {remaining_balance:,.2f}"
+        ),
+    ))
+
+    db.session.commit()
+
+    if remaining_balance <= Decimal("0.00"):
+        flash(
+            (
+                f"Payment of JMD {amount:,.2f} recorded. "
+                f"Invoice "
+                f"{invoice.invoice_number} is now paid."
+            ),
+            "success",
+        )
+    else:
+        flash(
+            (
+                f"Partial payment of "
+                f"JMD {amount:,.2f} recorded. "
+                f"Balance remaining: "
+                f"JMD {remaining_balance:,.2f}."
+            ),
+            "success",
+        )
+
+    return redirect(
+        url_for("admin_pos.pending_payments")
+    )
 
 @admin_pos_bp.route("/invoice/<int:invoice_id>/receipt", methods=["GET"])
 @admin_required

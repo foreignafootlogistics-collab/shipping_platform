@@ -4,16 +4,27 @@
 <!-- ====================== -->
 <!-- Page Title & Summary   -->
 <!-- ====================== -->
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
-  <h2 class="mb-0">📦 View Packages</h2>
+<div class="d-flex flex-wrap justify-content-between
+         align-items-center mb-3 gap-3 p-3 rounded shadow-sm" style="background:#4a148c; color:#fff;">
+
+  <div>
+    <h2 class="mb-1 fw-semibold">
+      <i class="bi bi-box-seam-fill me-2"></i>
+      View Packages
+    </h2>
+
+    <p class="mb-0 text-white-50">
+      Manage customer packages, shipment assignments and package records.
+    </p>
+  </div>
 
   <div class="d-flex flex-wrap align-items-center gap-2">
 
     <!-- Create Package -->
-    <button type="button" class="btn btn-purple btn-sm d-inline-flex align-items-center gap-1" data-bs-toggle="modal"
+    <button type="button" class="btn btn-success d-inline-flex align-items-center gap-1" data-bs-toggle="modal"
       data-bs-target="#createSinglePackageModal" title="Create a single package">
       <i class="bi bi-plus-circle"></i>
-      <span class="d-none d-md-inline">Create Package</span>
+      <span>+ Create Package</span>
     </button>
 
     <!-- Top actions -->

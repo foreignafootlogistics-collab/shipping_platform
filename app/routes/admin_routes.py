@@ -43,7 +43,11 @@ from app.utils.message_notify import send_new_message_email
 from app.utils.email_utils import send_bulk_message_email
 from app.calculator import calculate_charges
 from app.calculator_data import CATEGORIES, USD_TO_JMD
-from app.utils.invoice_totals import fetch_invoice_totals_pg, mark_invoice_packages_delivered, lock_delivered_packages_for_invoice
+from app.utils.invoice_totals import (
+    fetch_invoice_totals_pg,
+    mark_invoice_packages_delivered,
+    lock_delivered_packages_for_invoice,
+)
 from app.utils.time import to_jamaica
 
 
@@ -2040,19 +2044,135 @@ def view_customer_invoice(user_id):
 def mark_invoice_paid():
     try:
         invoice_id = int(request.form.get('invoice_id') or 0)
-        amount = float(request.form.get('payment_amount') or 0)
-        method = (request.form.get('payment_type') or "Cash").strip()
-        authorized_by = (request.form.get('authorized_by') or "Admin").strip()
+        amount = round(
+            float(request.form.get('payment_amount') or 0),
+            2
+        )
+        method = (
+            request.form.get('payment_type') or "Cash"
+        ).strip()
+        authorized_by = (
+            request.form.get('authorized_by') or "Admin"
+        ).strip()
 
         inv = Invoice.query.get_or_404(invoice_id)
 
-        if amount <= 0:
-            return jsonify({"success": False, "error": "Payment amount must be greater than 0."}), 400
-
         old_status = inv.status or "unpaid"
-        old_amount_due = float(inv.amount_due or 0)
+        old_amount_due = round(
+            float(inv.amount_due or 0),
+            2
+        )
 
-        notes = f"Authorized by: {authorized_by}" if authorized_by else None
+        # Calculate the live balance using existing payments.
+        subtotal, discount_total, payments_total, total_due = (
+            fetch_invoice_totals_pg(inv.id)
+        )
+
+        total_due = round(
+            max(float(total_due or 0), 0.0),
+            2
+        )
+        payments_total = round(
+            float(payments_total or 0),
+            2
+        )
+
+        # ---------------------------------------------------------
+        # The invoice is already fully paid.
+        # Close/synchronize it without creating another payment.
+        # ---------------------------------------------------------
+        if total_due == 0:
+            now_utc = datetime.now(timezone.utc)
+
+            inv.amount_due = 0.00
+            inv.status = "paid"
+
+            if not inv.date_paid:
+                inv.date_paid = now_utc
+
+            if old_status != "paid":
+                lock_delivered_packages_for_invoice(
+                    inv.id,
+                    reason="Invoice fully paid",
+                    actor_admin_id=current_user.id,
+                )
+
+            db.session.add(AuditLog(
+                module="Finance",
+                action="Invoice Status Synchronized",
+                admin_id=current_user.id,
+                user_id=inv.user_id,
+                entity_type="Invoice",
+                entity_id=inv.id,
+                reason="Existing payments cover invoice",
+                description=(
+                    f"Invoice "
+                    f"{inv.invoice_number or ('#' + str(inv.id))} "
+                    f"was closed without creating another payment because "
+                    f"existing completed payments already covered the balance. "
+                    f"Authorized by: {authorized_by}."
+                ),
+                old_value=(
+                    f"Status: {old_status}; "
+                    f"Amount Due: JMD {old_amount_due:,.2f}"
+                ),
+                new_value=(
+                    f"Status: paid; "
+                    f"Amount Due: JMD 0.00; "
+                    f"Total Paid: JMD {payments_total:,.2f}"
+                ),
+            ))
+
+            db.session.commit()
+
+            return jsonify({
+                "success": True,
+                "invoice_id": inv.id,
+                "status": inv.status,
+                "amount_due": 0.00,
+                "paid_sum": payments_total,
+                "payment_date": (
+                    inv.date_paid.strftime('%Y-%m-%d %H:%M:%S')
+                    if inv.date_paid
+                    else now_utc.strftime('%Y-%m-%d %H:%M:%S')
+                ),
+                "payment_type": "Existing payment",
+                "amount": 0.00,
+                "authorized_by": authorized_by,
+                "payment_created": False,
+                "message": (
+                    "Invoice closed successfully. "
+                    "No additional payment was created."
+                ),
+            })
+
+        # ---------------------------------------------------------
+        # A balance remains, so a real payment is required.
+        # ---------------------------------------------------------
+        if amount <= 0:
+            return jsonify({
+                "success": False,
+                "error": (
+                    f"Enter a payment amount greater than 0. "
+                    f"Balance due: ${total_due:,.2f}."
+                ),
+            }), 400
+
+        # Prevent accidental overpayment.
+        if amount > total_due:
+            return jsonify({
+                "success": False,
+                "error": (
+                    f"Payment cannot exceed the outstanding balance of "
+                    f"${total_due:,.2f}."
+                ),
+            }), 400
+
+        notes = (
+            f"Authorized by: {authorized_by}"
+            if authorized_by
+            else None
+        )
 
         payment = Payment(
             invoice_id=inv.id,
@@ -2066,23 +2186,38 @@ def mark_invoice_paid():
             authorized_by_admin_id=current_user.id,
             created_at=datetime.now(timezone.utc),
         )
+
         db.session.add(payment)
         db.session.flush()
 
-        subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
+        # Recalculate after saving the new payment.
+        subtotal, discount_total, payments_total, total_due = (
+            fetch_invoice_totals_pg(inv.id)
+        )
 
-        inv.amount_due = float(total_due)
+        payments_total = round(
+            float(payments_total or 0),
+            2
+        )
+        total_due = round(
+            max(float(total_due or 0), 0.0),
+            2
+        )
 
-        from app.utils.invoice_totals import lock_delivered_packages_for_invoice
+        inv.amount_due = total_due
 
-        if inv.amount_due <= 0:
+        if total_due == 0:
             inv.status = "paid"
             inv.date_paid = datetime.now(timezone.utc)
 
             if old_status != "paid":
-                lock_delivered_packages_for_invoice(inv.id, reason="Invoice fully paid")
+                lock_delivered_packages_for_invoice(
+                    inv.id,
+                    reason="Invoice fully paid",
+                    actor_admin_id=current_user.id,
+                )
 
-        elif float(payments_total) > 0:
+        elif payments_total > 0:
             inv.status = "partial"
             inv.date_paid = None
 
@@ -2101,8 +2236,10 @@ def mark_invoice_paid():
             description=(
                 f"Payment of JMD {amount:,.2f} recorded on invoice "
                 f"{inv.invoice_number or ('#' + str(inv.id))}. "
-                f"Method: {method}. Authorized by: {authorized_by}. "
-                f"Invoice status changed from {old_status} to {inv.status}."
+                f"Method: {method}. "
+                f"Authorized by: {authorized_by}. "
+                f"Invoice status changed from "
+                f"{old_status} to {inv.status}."
             ),
             old_value=(
                 f"Status: {old_status}; "
@@ -2110,8 +2247,9 @@ def mark_invoice_paid():
             ),
             new_value=(
                 f"Status: {inv.status}; "
-                f"Amount Due: JMD {float(inv.amount_due or 0):,.2f}; "
-                f"Total Paid: JMD {float(payments_total or 0):,.2f}"
+                f"Amount Due: JMD "
+                f"{float(inv.amount_due or 0):,.2f}; "
+                f"Total Paid: JMD {payments_total:,.2f}"
             ),
         ))
 
@@ -2121,17 +2259,28 @@ def mark_invoice_paid():
             "success": True,
             "invoice_id": inv.id,
             "status": inv.status,
-            "amount_due": float(inv.amount_due),
-            "paid_sum": float(payments_total),
-            "payment_date": payment.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            "amount_due": float(inv.amount_due or 0),
+            "paid_sum": payments_total,
+            "payment_date": payment.created_at.strftime(
+                '%Y-%m-%d %H:%M:%S'
+            ),
             "payment_type": method,
             "amount": amount,
             "authorized_by": authorized_by,
+            "payment_created": True,
+            "message": "Payment recorded successfully.",
         })
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)})
+        current_app.logger.exception(
+            "Failed to record invoice payment"
+        )
+
+        return jsonify({
+            "success": False,
+            "error": str(e),
+        }), 500
 
 @admin_bp.route("/invoice/cart_summary", methods=["POST"])
 @admin_required
@@ -2844,13 +2993,21 @@ def delete_invoice(invoice_id):
 @admin_bp.route("/invoice/add-payment/<int:invoice_id>", methods=["POST"])
 @admin_required
 def add_payment(invoice_id):
-    inv = Invoice.query.get_or_404(invoice_id)
+    inv = (
+        Invoice.query
+        .filter(Invoice.id == invoice_id)
+        .with_for_update()
+        .first_or_404()
+    )
 
     # Read form fields
     try:
-        amount = float(request.form.get("amount_jmd", 0) or 0)
-    except Exception:
-        amount = 0
+        amount = round(
+            float(request.form.get("amount_jmd", 0) or 0),
+            2
+        )
+    except (TypeError, ValueError):
+        amount = 0.00
 
     method        = (request.form.get("method") or "Cash").strip()
     authorized_by = (request.form.get("authorized_by") or "").strip()
@@ -2867,7 +3024,10 @@ def add_payment(invoice_id):
         return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
 
     subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
-    current_due = float(total_due or inv.amount_due or inv.grand_total or 0)
+    current_due = round(
+        max(float(total_due or 0), 0.0),
+        2
+    )
 
     if current_due <= 0:
         msg = "This invoice is already fully paid."
@@ -2920,10 +3080,13 @@ def add_payment(invoice_id):
         payment_kwargs["notes"] = notes
 
     if hasattr(Payment, "payment_date"):
-        payment_kwargs["payment_date"] = datetime.utcnow()
+        payment_kwargs["payment_date"] = datetime.now(timezone.utc)
 
     if hasattr(Payment, "bill_number"):
-        payment_kwargs["bill_number"] = f"BILL-{inv.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        payment_kwargs["bill_number"] = (
+            f"BILL-{inv.id}-"
+            f"{to_jamaica(datetime.now(timezone.utc)).strftime('%Y%m%d%H%M%S')}"
+        )
 
     # ---------------------------------
     # Prevent duplicate payment submit
@@ -2940,7 +3103,17 @@ def add_payment(invoice_id):
     )
 
     if recent_payment:
-        time_diff = (datetime.utcnow() - recent_payment.created_at).total_seconds()
+        recent_created_at = recent_payment.created_at
+
+        # Database timestamps may be returned without timezone information.
+        if recent_created_at.tzinfo is None:
+            recent_created_at = recent_created_at.replace(
+                tzinfo=timezone.utc
+            )
+
+        time_diff = (
+            datetime.now(timezone.utc) - recent_created_at
+        ).total_seconds()
 
         # If the same payment was added in the last 10 seconds, block it
         if time_diff < 10:
@@ -2957,16 +3130,22 @@ def add_payment(invoice_id):
     db.session.flush()
 
     subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
-    inv.amount_due = float(total_due)
+    new_due = round(
+        max(float(total_due or 0), 0.0),
+        2
+    )
+    base_total = round(
+        max(float(subtotal or 0) - float(discount_total or 0), 0.0),
+        2
+    )
+    paid_sum = round(
+        float(payments_total or 0),
+        2
+    )
 
-    new_due = float(total_due or 0)
-    base_total = float(subtotal or 0)
-    paid_sum = float(payments_total or 0)
+    inv.amount_due = new_due
 
     previous_status = inv.status
-
-    from app.utils.invoice_totals import lock_delivered_packages_for_invoice
-
     if new_due <= 0:
         inv.status = "paid"
         if hasattr(inv, "date_paid"):
@@ -2978,15 +3157,23 @@ def add_payment(invoice_id):
             shop_request.status = "paid"
 
         if previous_status != "paid":
-            lock_delivered_packages_for_invoice(inv.id, reason="Invoice fully paid")
+            lock_delivered_packages_for_invoice(
+                inv.id,
+                reason="Invoice fully paid",
+                actor_admin_id=current_user.id,
+            )
 
     elif 0 < new_due < base_total:
         inv.status = "partial"
+
+        if hasattr(inv, "date_paid"):
+            inv.date_paid = None
+
     else:
-        inv.status = "unpaid"    
-
+        inv.status = "unpaid"
+        if hasattr(inv, "date_paid"):
+            inv.date_paid = None
     db.session.commit()
-
     if is_ajax:
         return jsonify({
             "ok": True,

@@ -1,5 +1,7 @@
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+from app.utils.time import to_jamaica
 from decimal import Decimal
 
 from flask import Blueprint, render_template, request, jsonify, url_for, redirect, flash
@@ -9,10 +11,13 @@ from app.extensions import db
 from flask_login import current_user
 from app.models import User, Package, Invoice, Payment, POSCloseout, AuditLog
 from app.routes.admin_auth_routes import admin_required
+from app.utils.invoice_totals import fetch_invoice_totals_pg
 
 from app.utils.email_utils import send_email, EMAIL_FROM, EMAIL_ADDRESS
 
 admin_pos_bp = Blueprint("admin_pos", __name__, url_prefix="/admin/pos")
+
+JAMAICA_TZ = ZoneInfo("America/Jamaica")
 
 def _to_decimal(value, default="0.00"):
     try:
@@ -155,7 +160,7 @@ def customer_packages(user_id):
         .filter(
             Package.user_id == user.id,
             Package.status == "Ready for Pick Up",
-            Package.is_locked.is_(False)
+            Package.is_locked.is_(False),
         )
         .order_by(Package.created_at.asc())
         .all()
@@ -164,35 +169,128 @@ def customer_packages(user_id):
     rows = []
     total = Decimal("0.00")
 
-    for p in packages:
-        charge = _package_charge_amount(p)
-        total += charge
+    # Group visible packages by invoice.
+    invoice_groups = {}
+    uninvoiced_packages = []
+
+    for package in packages:
+        if package.invoice_id:
+            invoice_groups.setdefault(
+                package.invoice_id,
+                []
+            ).append(package)
+        else:
+            uninvoiced_packages.append(package)
+
+    package_balances = {}
+
+    # Calculate and allocate each invoice's live outstanding balance.
+    for invoice_id, invoice_packages in invoice_groups.items():
+        invoice = Invoice.query.get(invoice_id)
+
+        if not invoice:
+            for package in invoice_packages:
+                package_balances[package.id] = Decimal("0.00")
+            continue
+
+        subtotal, discount_total, payments_total, total_due = (
+            fetch_invoice_totals_pg(invoice.id)
+        )
+
+        invoice_balance = Decimal(
+            str(max(float(total_due or 0), 0.0))
+        ).quantize(Decimal("0.01"))
+
+        package_charges = {
+            package.id: _package_charge_amount(package).quantize(
+                Decimal("0.01")
+            )
+            for package in invoice_packages
+        }
+
+        group_charge_total = sum(
+            package_charges.values(),
+            Decimal("0.00"),
+        )
+
+        allocated = Decimal("0.00")
+
+        for index, package in enumerate(invoice_packages):
+            is_last = index == len(invoice_packages) - 1
+
+            if is_last:
+                package_balance = invoice_balance - allocated
+
+            elif group_charge_total > Decimal("0.00"):
+                package_balance = (
+                    invoice_balance
+                    * package_charges[package.id]
+                    / group_charge_total
+                ).quantize(Decimal("0.01"))
+
+            else:
+                package_balance = Decimal("0.00")
+
+            if package_balance < Decimal("0.00"):
+                package_balance = Decimal("0.00")
+
+            package_balances[package.id] = package_balance
+            allocated += package_balance
+
+    # Uninvoiced packages still use their original package charge.
+    for package in uninvoiced_packages:
+        package_balances[package.id] = (
+            _package_charge_amount(package)
+            .quantize(Decimal("0.01"))
+        )
+
+    # Build the response sent to the POS screen.
+    for package in packages:
+        amount_due = package_balances.get(
+            package.id,
+            Decimal("0.00"),
+        )
+
+        total += amount_due
 
         invoice_number = ""
-        if p.invoice_id and p.invoice:
-            invoice_number = p.invoice.invoice_number or ""
+
+        if package.invoice_id and package.invoice:
+            invoice_number = (
+                package.invoice.invoice_number or ""
+            )
 
         rows.append({
-            "id": p.id,
-            "tracking_number": p.tracking_number or "",
-            "house_awb": p.house_awb or "",
-            "description": p.description or p.category or "",
-            "weight": str(p.weight or ""),
-            "status": p.status or "",
-            "amount_due": str(charge),
-            "invoice_id": p.invoice_id,
+            "id": package.id,
+            "tracking_number": package.tracking_number or "",
+            "house_awb": package.house_awb or "",
+            "description": (
+                package.description
+                or package.category
+                or ""
+            ),
+            "weight": str(package.weight or ""),
+            "status": package.status or "",
+            "amount_due": str(amount_due),
+            "invoice_id": package.invoice_id,
             "invoice_number": invoice_number,
         })
 
     return jsonify({
         "customer": {
             "id": user.id,
-            "name": (user.full_name or "").strip() or user.email or "Customer",
+            "name": (
+                (user.full_name or "").strip()
+                or user.email
+                or "Customer"
+            ),
             "email": user.email or "",
-            "registration_number": user.registration_number or "",
+            "registration_number": (
+                user.registration_number or ""
+            ),
         },
         "packages": rows,
-        "total": str(total)
+        "total": str(total.quantize(Decimal("0.01"))),
     })
 
 
@@ -239,11 +337,29 @@ def scan_deliver():
     charge = _package_charge_amount(package)
 
     if invoice:
-        if float(invoice.amount_due or 0) > 0:
+        subtotal, discount_total, payments_total, total_due = (
+            fetch_invoice_totals_pg(invoice.id)
+        )
+
+        live_balance = round(
+            max(float(total_due or 0), 0.0),
+            2,
+        )
+
+        invoice.amount_due = live_balance
+
+        if live_balance > 0:
+            db.session.rollback()
+
             return jsonify({
                 "ok": False,
-                "error": f"Invoice {invoice.invoice_number} still has a balance. Take payment before delivery."
+                "error": (
+                    f"Invoice {invoice.invoice_number} still has a "
+                    f"balance of JMD {live_balance:,.2f}. "
+                    f"Take payment before delivery."
+                ),
             }), 400
+
     else:
         if float(charge) > 0:
             return jsonify({
@@ -251,8 +367,13 @@ def scan_deliver():
                 "error": "This package is not attached to a paid invoice yet."
             }), 400
 
+    now_utc = datetime.now(timezone.utc)
+
     package.status = "Delivered"
     package.is_locked = True
+    package.delivery_scan_status = "scanned"
+    package.delivery_scanned_at = now_utc
+    package.delivery_scanned_by_id = current_user.id
     db.session.commit()
 
     user = package.user
@@ -316,6 +437,7 @@ def checkout():
             Package.user_id == user.id,
             Package.id.in_(package_ids)
         )
+        .with_for_update()
         .order_by(Package.created_at.asc())
         .all()
     )
@@ -374,6 +496,7 @@ def checkout():
 
         checkout_invoice_ids = []
         created_payment_ids = []
+        collected_total = Decimal("0.00")
 
         total_before_discount = subtotal if subtotal > 0 else Decimal("1.00")
 
@@ -403,13 +526,51 @@ def checkout():
 
             invoice.subtotal_before_discount = group_total
             invoice.discount_type = discount_type if group_discount > 0 else "none"
-            invoice.discount_amount = discount_amount if group_discount > 0 else Decimal("0.00")
+            invoice.discount_amount = (
+                discount_amount if group_discount > 0 else Decimal("0.00")
+            )
             invoice.discount_total = group_discount
             invoice.grand_total = float(group_final_total)
             invoice.amount = float(group_final_total)
 
-            if not is_pending_transfer:
+            # Check payments already recorded against this invoice.
+            existing_paid_raw = (
+                db.session.query(
+                    func.coalesce(func.sum(Payment.amount_jmd), 0)
+                )
+                .filter(
+                    Payment.invoice_id == invoice.id,
+                    func.lower(Payment.status) == "completed",
+                )
+                .scalar()
+            )
+
+            existing_paid = Decimal(str(existing_paid_raw or 0)).quantize(
+                Decimal("0.01")
+            )
+
+            invoice_total = group_final_total.quantize(Decimal("0.01"))
+
+            remaining_due = (invoice_total - existing_paid).quantize(
+                Decimal("0.01")
+            )
+
+            if remaining_due < Decimal("0.00"):
+                remaining_due = Decimal("0.00")
+
+            invoice.amount_due = float(remaining_due)
+
+            # Invoice was already fully paid before entering POS.
+            if remaining_due == Decimal("0.00"):
+                invoice.status = "paid"
+
+                if not invoice.date_paid:
+                    invoice.date_paid = now_utc
+
+            # Collect only the actual outstanding balance.
+            elif not is_pending_transfer:
                 payment_notes = notes or "POS payment"
+
                 if discount_note:
                     payment_notes = f"{payment_notes}\n{discount_note}"
 
@@ -417,18 +578,19 @@ def checkout():
                     user_id=user.id,
                     invoice_id=invoice.id,
                     method=payment_method.title(),
-                    amount_jmd=float(group_final_total),
+                    amount_jmd=float(remaining_due),
                     transaction_type="invoice_payment",
                     status="completed",
                     notes=payment_notes,
-                    source="pos"
+                    source="pos",
+                    authorized_by_admin_id=current_user.id,
+                    created_at=now_utc,
                 )
 
                 db.session.add(payment)
                 db.session.flush()
                 created_payment_ids.append(payment.id)
-
-                current_due = Decimal(str(invoice.amount_due or 0))                
+                collected_total += remaining_due
 
                 if discount_note:
                     invoice.description = (
@@ -440,10 +602,12 @@ def checkout():
                 invoice.status = "paid"
                 invoice.date_paid = now_utc
 
+            # Transfer has not yet been confirmed.
             else:
                 invoice.status = "unpaid"
 
                 pending_note = notes or ""
+
                 if discount_note:
                     pending_note = f"{pending_note}\n{discount_note}".strip()
 
@@ -489,7 +653,10 @@ def checkout():
 
             pos_invoice = Invoice(
                 user_id=user.id,
-                invoice_number=f"POS-{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
+                invoice_number=(
+                    f"POS-"
+                    f"{datetime.now(JAMAICA_TZ).strftime('%Y%m%d%H%M%S%f')}"
+                ),
                 description=invoice_description,
                 total_weight=float(new_weight),
                 amount=float(new_final_total),
@@ -525,12 +692,15 @@ def checkout():
                     transaction_type="invoice_payment",
                     status="completed",
                     notes=payment_notes,
-                    source="pos"
+                    source="pos",
+                    authorized_by_admin_id=current_user.id,
+                    created_at=now_utc,
                 )
 
                 db.session.add(pos_payment)
                 db.session.flush()
                 created_payment_ids.append(pos_payment.id)
+                collected_total += new_final_total
 
             for p in uninvoiced_packages:
                 p.invoice_id = pos_invoice.id
@@ -553,9 +723,12 @@ def checkout():
             "message": message,
             "invoice_ids": checkout_invoice_ids,
             "payment_ids": created_payment_ids,
-            "subtotal": str(subtotal),
-            "discount": str(discount),
-            "total": str(final_total),
+            "subtotal": str(subtotal.quantize(Decimal("0.01"))),
+            "discount": str(discount.quantize(Decimal("0.01"))),
+            "total": str(collected_total.quantize(Decimal("0.01"))),
+            "amount_collected": str(
+                collected_total.quantize(Decimal("0.01"))
+            ),
             "payment_pending": is_pending_transfer,
         })
 
@@ -646,21 +819,16 @@ Thank you for shipping with Foreign A Foot Logistics Limited.
 @admin_pos_bp.route("/daily-sales", methods=["GET", "POST"])
 @admin_required
 def daily_sales():
-    from datetime import datetime, timedelta
-    from zoneinfo import ZoneInfo
-
-    jamaica_tz = ZoneInfo("America/Jamaica")
-
     selected_date_str = request.args.get("date")
     if selected_date_str:
         business_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
     else:
-        business_date = datetime.now(jamaica_tz).date()
+        business_date = datetime.now(JAMAICA_TZ).date()
 
     start_local = datetime.combine(
         business_date,
         datetime.min.time(),
-        tzinfo=jamaica_tz
+        tzinfo=JAMAICA_TZ
     )
     end_local = start_local + timedelta(days=1)
 
@@ -697,15 +865,16 @@ def daily_sales():
         method = (p.method or "").strip().lower()
 
         invoice_discount = Decimal("0.00")
-        invoice_gross = amount
 
         if p.invoice:
-            invoice_discount = Decimal(str(p.invoice.discount_total or 0))
-            invoice_gross = Decimal(str(p.invoice.subtotal_before_discount or 0))
+            invoice_discount = Decimal(
+                str(p.invoice.discount_total or 0)
+            ).quantize(Decimal("0.01"))
 
-            # Safety fallback for older invoices that may not have subtotal stored
-            if invoice_gross <= Decimal("0.00"):
-                invoice_gross = amount + invoice_discount
+        # Gross for this POS transaction—not the invoice's historical total.
+        invoice_gross = (
+            amount + invoice_discount
+        ).quantize(Decimal("0.01"))
 
         if method == "cash":
             summary["cash"] += amount
@@ -719,7 +888,7 @@ def daily_sales():
         summary["total"] += amount
 
         rows.append({
-            "time": p.created_at,
+            "time": to_jamaica(p.created_at),
             "customer": p.user.full_name if p.user else "",
             "invoice": p.invoice.invoice_number if p.invoice else "",
             "method": p.method,

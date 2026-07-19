@@ -3,7 +3,30 @@
 
 {% block content %}
 <div class="container-fluid">
-  <h2 class="mb-4">Welcome to the Admin Dashboard</h2>
+  <div class="d-flex flex-wrap justify-content-between align-items-center
+            gap-3 px-3 py-3 mb-4 rounded shadow-sm" style="background:#4a148c; color:#fff;">
+
+    <div>
+      <h2 class="mb-1 fw-semibold">
+        <i class="fas fa-chart-line me-2"></i>Admin Dashboard
+      </h2>
+
+      <p class="mb-0 text-white-50">
+        Operations overview for
+        {{ jamaica_now.strftime("%A, %B %d, %Y") }}
+      </p>
+    </div>
+
+    <div class="text-md-end">
+      <div class="fw-semibold">
+        {{ jamaica_now.strftime("%I:%M %p") }}
+      </div>
+
+      <small class="text-white-50">
+        Jamaica time
+      </small>
+    </div>
+  </div>
 
   <!-- Dashboard Summary -->
   <div class="row g-4 mb-4">
@@ -40,8 +63,8 @@
 
     <!-- Pending Invoices -->
     <div class="col-md-4">
-      <a href="{{ url_for('finance.unpaid_invoices', status='pending,unpaid,issued') }}"
-         class="text-decoration-none">
+      <a href="{{ url_for('finance.unpaid_invoices', status='pending,unpaid,issued,partial') }}"
+        class="text-decoration-none">
         <div class="card dashboard-card card-yellow h-100 shadow-sm">
           <div class="card-body">
             <h5 class="card-title">
@@ -132,49 +155,124 @@
     </div>
   </div>
 
-  <!-- Scheduled Deliveries Table -->
+  <!-- Scheduled Deliveries -->
   <div class="card shadow-sm mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <h5 class="mb-0">Scheduled Deliveries</h5>
-      <form class="d-flex" method="get" action="{{ url_for('logistics.view_scheduled_deliveries') }}">
-        <input type="date" name="start_date" value="{{ start_date }}" class="form-control form-control-sm me-2">
-        <input type="date" name="end_date" value="{{ end_date }}" class="form-control form-control-sm me-2">
-        <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-      </form>
+    <div class="card-header bg-white d-flex flex-wrap
+              justify-content-between align-items-center gap-2 py-3">
+
+      <div>
+        <h5 class="mb-1 fw-semibold text-dark">
+          <i class="fas fa-truck me-2 text-primary"></i>
+          Scheduled Deliveries
+        </h5>
+
+        <small class="text-muted">
+          Upcoming customer deliveries between 9:00 AM and 5:00 PM
+        </small>
+      </div>
+
+      <a href="{{ url_for('logistics.view_scheduled_deliveries') }}" class="btn btn-sm btn-outline-primary">
+        View All Deliveries
+        <i class="fas fa-arrow-right ms-1"></i>
+      </a>
     </div>
+
     <div class="card-body table-responsive">
-      <table class="table table-bordered table-striped" id="dashboardScheduledDeliveries">
+      <table class="table table-bordered table-striped align-middle mb-0" id="dashboardScheduledDeliveries">
+
         <thead class="table-dark">
           <tr>
             <th>Date</th>
-            <th>Time</th>
             <th>Customer</th>
             <th>Location</th>
             <th>Person Receiving</th>
             <th>Mobile</th>
             <th>Status</th>
-            <th>Action</th>
+            <th class="text-center">Action</th>
           </tr>
         </thead>
+
         <tbody>
           {% for delivery in deliveries %}
-            {% if (delivery.status or "Scheduled") not in ["Delivered", "Cancelled"] %}
-            <tr>
-              <td>{{ delivery.scheduled_date.strftime("%Y-%m-%d") if delivery.scheduled_date else "" }}</td>
-              <td>{{ delivery.scheduled_time or "" }}</td>
-              <td>{{ delivery.user.full_name if delivery.user else "N/A" }}</td>
-              <td>{{ delivery.location or "" }}</td>
-              <td>{{ delivery.person_receiving or "" }}</td>
-              <td>{{ delivery.mobile_number or "" }}</td>
-              <td>{{ delivery.status or "Scheduled" }}</td>
-              <td>
-                <a class="btn btn-sm btn-outline-primary"
-                   href="{{ url_for('logistics.scheduled_delivery_view', delivery_id=delivery.id) }}">
-                  View / Link Packages
-                </a>
-              </td>
-            </tr>
-            {% endif %}
+          {% set delivery_status = delivery.status or "Scheduled" %}
+
+          {% if delivery_status|lower not in ["delivered", "cancelled"] %}
+          <tr>
+            <td class="text-nowrap">
+              {% if delivery.scheduled_date %}
+              {{ delivery.scheduled_date.strftime("%a, %b %d, %Y") }}
+              {% else %}
+              —
+              {% endif %}
+            </td>
+
+            <td>
+              {% if delivery.user %}
+              <strong>{{ delivery.user.full_name or "Customer" }}</strong>
+
+              {% if delivery.user.registration_number %}
+              <small class="d-block text-muted">
+                {{ delivery.user.registration_number }}
+              </small>
+              {% endif %}
+              {% else %}
+              N/A
+              {% endif %}
+            </td>
+
+            <td>
+              {{ delivery.location or "Not provided" }}
+            </td>
+
+            <td>
+              {{ delivery.person_receiving or "Not provided" }}
+            </td>
+
+            <td class="text-nowrap">
+              {{ delivery.mobile_number or "Not provided" }}
+            </td>
+
+            <td>
+              {% if delivery_status|lower == "out for delivery" %}
+              <span class="badge bg-success">
+                Out for Delivery
+              </span>
+
+              {% elif delivery_status|lower == "scheduled" %}
+              <span class="badge bg-primary">
+                Scheduled
+              </span>
+
+              {% elif delivery_status|lower == "delivery attempted" %}
+              <span class="badge bg-warning text-dark">
+                Delivery Attempted
+              </span>
+
+              {% else %}
+              <span class="badge bg-secondary">
+                {{ delivery_status }}
+              </span>
+              {% endif %}
+            </td>
+
+            <td class="text-center text-nowrap">
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for(
+                     'logistics.scheduled_delivery_view',
+                     delivery_id=delivery.id
+                   ) }}">
+                View
+              </a>
+            </td>
+          </tr>
+          {% endif %}
+
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">
+              <i class="fas fa-calendar-check d-block fs-3 mb-2"></i>
+              No upcoming scheduled deliveries.
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
@@ -188,43 +286,43 @@
   const userChart = new Chart(document.getElementById('userChart'), {
     type: 'line',
     data: {
-      labels: {{ user_labels|tojson }},
-      datasets: [{
-        label: 'New Users',
-        data: {{ user_data|tojson }},
-        backgroundColor: 'rgba(92, 61, 145, 0.2)',
-        borderColor: 'rgba(92, 61, 145, 1)',
-        borderWidth: 2,
-        fill: true,
-        tension: 0.4
+      labels: {{ user_labels| tojson }},
+  datasets: [{
+    label: 'New Users',
+    data: {{ user_data| tojson }},
+    backgroundColor: 'rgba(92, 61, 145, 0.2)',
+    borderColor: 'rgba(92, 61, 145, 1)',
+    borderWidth: 2,
+    fill: true,
+    tension: 0.4
       }]
     },
-    options: {
-      responsive: true,
+  options: {
+    responsive: true,
       plugins: { legend: { display: false } }
-    }
+  }
   });
 
   const pkgChart = new Chart(document.getElementById('pkgChart'), {
     type: 'bar',
     data: {
-      labels: {{ pkg_labels|tojson }},
-      datasets: [{
-        label: 'Packages',
-        data: {{ pkg_data|tojson }},
-        backgroundColor: 'rgba(40, 167, 69, 0.7)',
-        borderColor: 'rgba(40, 167, 69, 1)',
-        borderWidth: 1
+      labels: {{ pkg_labels| tojson }},
+  datasets: [{
+    label: 'Packages',
+    data: {{ pkg_data| tojson }},
+    backgroundColor: 'rgba(40, 167, 69, 0.7)',
+    borderColor: 'rgba(40, 167, 69, 1)',
+    borderWidth: 1
       }]
     },
-    options: {
-      responsive: true,
+  options: {
+    responsive: true,
       plugins: { legend: { display: false } }
-    }
+  }
   });
 
   // Initialize DataTable for Scheduled Deliveries
-  $(document).ready(function() {
+  $(document).ready(function () {
     $('#dashboardScheduledDeliveries').DataTable({
       order: [[0, 'desc']],
       pageLength: 10

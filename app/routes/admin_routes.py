@@ -387,182 +387,348 @@ def update_admin_role(user_id):
 
 
 # ---------- Admin Dashboard ----------
-@admin_bp.route('/dashboard')
-@admin_required() 
+@admin_bp.route("/dashboard")
+@admin_required()
 def dashboard():
-    from app.forms import AdminCalculatorForm  # keep this import here
+    from app.forms import AdminCalculatorForm
 
     admin_calculator_form = AdminCalculatorForm()
 
-    # ---- Top summary cards ----
-    total_users = db.session.scalar(sa.select(func.count()).select_from(User)) or 0
-    total_packages = db.session.scalar(sa.select(func.count()).select_from(Package)) or 0
-    pending_invoices = db.session.scalar(
-        sa.select(func.count())
-        .select_from(Invoice)
-        .where(Invoice.status.in_(('pending', 'unpaid', 'issued')))
-    ) or 0
+    # Current Jamaica date and time.
+    jamaica_now = to_jamaica(datetime.now(timezone.utc))
+    today = jamaica_now.date()
+    current_year = today.year
+    current_month = today.month
+    window_start_90d = today - timedelta(days=90)
 
-    # ---- Scheduled Deliveries (with optional date filters) ----
-    start_date_str = request.args.get("start_date", "")
-    end_date_str   = request.args.get("end_date", "")
+    # ---------------------------------
+    # Top summary cards
+    # ---------------------------------
+    total_users = (
+        db.session.scalar(
+            sa.select(func.count()).select_from(User)
+        )
+        or 0
+    )
+
+    total_packages = (
+        db.session.scalar(
+            sa.select(func.count()).select_from(Package)
+        )
+        or 0
+    )
+
+    pending_invoices = (
+        db.session.scalar(
+            sa.select(func.count())
+            .select_from(Invoice)
+            .where(
+                func.lower(Invoice.status).in_(
+                    ("pending", "unpaid", "issued", "partial")
+                )
+            )
+        )
+        or 0
+    )
+
+    # ---------------------------------
+    # Scheduled deliveries
+    # ---------------------------------
+    start_date_str = (request.args.get("start_date") or "").strip()
+    end_date_str = (request.args.get("end_date") or "").strip()
 
     deliveries_q = (
         sa.select(ScheduledDelivery)
-        .where(~ScheduledDelivery.status.in_(["Delivered", "Cancelled"]))
+        .where(
+            ~func.lower(ScheduledDelivery.status).in_(
+                ("delivered", "cancelled")
+            )
+        )
         .order_by(
             ScheduledDelivery.scheduled_date.desc(),
-            ScheduledDelivery.id.desc()
+            ScheduledDelivery.id.desc(),
         )
     )
 
     try:
         if start_date_str:
-            sd = datetime.fromisoformat(start_date_str).date()
-            deliveries_q = deliveries_q.where(ScheduledDelivery.scheduled_date >= sd)
+            start_date_value = datetime.fromisoformat(
+                start_date_str
+            ).date()
+
+            deliveries_q = deliveries_q.where(
+                ScheduledDelivery.scheduled_date >= start_date_value
+            )
+
         if end_date_str:
-            ed = datetime.fromisoformat(end_date_str).date()
-            deliveries_q = deliveries_q.where(ScheduledDelivery.scheduled_date <= ed)
-    except Exception:
-        # ignore bad date filters
-        pass
+            end_date_value = datetime.fromisoformat(
+                end_date_str
+            ).date()
 
-    deliveries = db.session.execute(deliveries_q.limit(10)).scalars().all()
+            deliveries_q = deliveries_q.where(
+                ScheduledDelivery.scheduled_date <= end_date_value
+            )
 
-    # ==============================
-    #  Helper: parse dates in Python
-    # ==============================
-    def _parse_any_dt(value):
+    except (TypeError, ValueError):
+        flash(
+            "One of the delivery date filters was invalid and was ignored.",
+            "warning",
+        )
+
+    deliveries = (
+        db.session.execute(
+            deliveries_q.limit(10)
+        )
+        .scalars()
+        .all()
+    )
+
+    # ---------------------------------
+    # Jamaica date parsing helper
+    # ---------------------------------
+    def _parse_any_dt_jamaica(value):
         """
-        Try to parse value into a datetime.
-        Handles datetime, date, or string in a few common formats.
-        Returns datetime or None.
+        Convert database timestamps to Jamaica time.
+
+        Rules:
+        - timezone-aware datetime values are converted to Jamaica time;
+        - naive datetime values are treated as stored UTC and converted;
+        - date-only values remain Jamaica calendar dates;
+        - date-only strings are not shifted to the previous day.
         """
-        if not value:
+        if value is None or value == "":
             return None
 
         if isinstance(value, datetime):
-            return value
+            return to_jamaica(value)
 
         if isinstance(value, date):
-            return datetime(value.year, value.month, value.day)
+            return datetime(
+                value.year,
+                value.month,
+                value.day,
+            )
 
-        s = str(value).strip()
-        if not s:
+        text_value = str(value).strip()
+
+        if not text_value:
             return None
 
-        for fmt in (
-            "%Y-%m-%d %H:%M:%S",
+        # Date-only fields such as date_registered should retain
+        # their original calendar date.
+        for date_format in (
             "%Y-%m-%d",
             "%d/%m/%Y",
             "%d-%m-%Y",
             "%m/%d/%Y",
         ):
             try:
-                return datetime.strptime(s, fmt)
+                parsed_date = datetime.strptime(
+                    text_value,
+                    date_format,
+                )
+
+                return parsed_date
+
             except ValueError:
                 continue
 
+        # Timestamp strings are assumed to represent stored UTC.
         try:
-            return datetime.fromisoformat(s)
-        except Exception:
-            return None
+            parsed_datetime = datetime.fromisoformat(
+                text_value.replace("Z", "+00:00")
+            )
 
-    # ==============================
-    #  Build monthly stats in Python
-    # ==============================
-    today = date.today()
-    current_year = today.year
-    current_month = today.month
-    window_start_90d = today - timedelta(days=90)
+            return to_jamaica(parsed_datetime)
 
+        except (TypeError, ValueError):
+            pass
+
+        for datetime_format in (
+            "%Y-%m-%d %H:%M:%S.%f",
+            "%Y-%m-%d %H:%M:%S",
+        ):
+            try:
+                parsed_datetime = datetime.strptime(
+                    text_value,
+                    datetime_format,
+                )
+
+                return to_jamaica(parsed_datetime)
+
+            except ValueError:
+                continue
+
+        return None
+
+    # ---------------------------------
+    # Monthly chart containers
+    # ---------------------------------
     month_map = {
-        1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr',
-        5: 'May', 6: 'Jun', 7: 'Jul', 8: 'Aug',
-        9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dec'
+        1: "Jan",
+        2: "Feb",
+        3: "Mar",
+        4: "Apr",
+        5: "May",
+        6: "Jun",
+        7: "Jul",
+        8: "Aug",
+        9: "Sep",
+        10: "Oct",
+        11: "Nov",
+        12: "Dec",
     }
 
-    # Start with 0 for each month
-    user_data_dict = {m: 0 for m in month_map.keys()}
-    pkg_data_dict  = {m: 0 for m in month_map.keys()}
+    user_data_dict = {
+        month_number: 0
+        for month_number in month_map
+    }
 
-    # ---------- Users: use date_registered first, fallback created_at ----------
-    users = User.query.all()
+    package_data_dict = {
+        month_number: 0
+        for month_number in month_map
+    }
+
+    # ---------------------------------
+    # User statistics
+    # ---------------------------------
     today_new_users = 0
 
-    for u in users:
-        dt = _parse_any_dt(getattr(u, "date_registered", None)) \
-             or _parse_any_dt(getattr(u, "created_at", None))
-        if not dt:
+    users = User.query.with_entities(
+        User.id,
+        User.date_registered,
+        User.created_at,
+    ).all()
+
+    for user in users:
+        # date_registered is preferred because it represents the
+        # customer's intended registration calendar date.
+        registered_datetime = _parse_any_dt_jamaica(
+            getattr(user, "date_registered", None)
+        )
+
+        if registered_datetime is None:
+            registered_datetime = _parse_any_dt_jamaica(
+                getattr(user, "created_at", None)
+            )
+
+        if registered_datetime is None:
             continue
 
-        d = dt.date()
+        registered_date = registered_datetime.date()
 
-        if d == today:
+        if registered_date == today:
             today_new_users += 1
 
-        if dt.year == current_year and 1 <= dt.month <= 12:
-            user_data_dict[dt.month] += 1
+        if registered_datetime.year == current_year:
+            user_data_dict[registered_datetime.month] += 1
 
-    # ---------- Packages: use date_received first, fallback created_at ----------
-    packages = Package.query.all()
+    # ---------------------------------
+    # Package statistics
+    # ---------------------------------
     today_new_packages = 0
     active_customer_ids_90d = set()
 
-    for p in packages:
-        dt = _parse_any_dt(getattr(p, "date_received", None)) \
-             or _parse_any_dt(getattr(p, "created_at", None))
-        if not dt:
+    packages = Package.query.with_entities(
+        Package.id,
+        Package.user_id,
+        Package.date_received,
+        Package.created_at,
+    ).all()
+
+    for package in packages:
+        received_datetime = _parse_any_dt_jamaica(
+            getattr(package, "date_received", None)
+        )
+
+        if received_datetime is None:
+            received_datetime = _parse_any_dt_jamaica(
+                getattr(package, "created_at", None)
+            )
+
+        if received_datetime is None:
             continue
 
-        d = dt.date()
+        received_date = received_datetime.date()
 
-        if d == today:
+        if received_date == today:
             today_new_packages += 1
 
-        if dt.year == current_year and 1 <= dt.month <= 12:
-            pkg_data_dict[dt.month] += 1
+        if received_datetime.year == current_year:
+            package_data_dict[received_datetime.month] += 1
 
-        if d >= window_start_90d and p.user_id:
-            active_customer_ids_90d.add(p.user_id)
+        if (
+            received_date >= window_start_90d
+            and package.user_id
+        ):
+            active_customer_ids_90d.add(package.user_id)
 
-    # This month totals for the text beside charts
-    this_month_new_users = user_data_dict.get(current_month, 0)
-    this_month_new_packages = pkg_data_dict.get(current_month, 0)
+    # ---------------------------------
+    # Current-month and activity totals
+    # ---------------------------------
+    this_month_new_users = user_data_dict.get(
+        current_month,
+        0,
+    )
 
-    # Active customers in last 90 days
+    this_month_new_packages = package_data_dict.get(
+        current_month,
+        0,
+    )
+
     active_customers_90d = len(active_customer_ids_90d)
 
-    # ---- normalize counts so template always gets integers ----
-    today_new_users         = int(today_new_users or 0)
-    today_new_packages      = int(today_new_packages or 0)
-    this_month_new_users    = int(this_month_new_users or 0)
+    # Ensure the template always receives integers.
+    total_users = int(total_users or 0)
+    total_packages = int(total_packages or 0)
+    pending_invoices = int(pending_invoices or 0)
+    today_new_users = int(today_new_users or 0)
+    today_new_packages = int(today_new_packages or 0)
+    this_month_new_users = int(this_month_new_users or 0)
     this_month_new_packages = int(this_month_new_packages or 0)
-    active_customers_90d    = int(active_customers_90d or 0)
-    
+    active_customers_90d = int(active_customers_90d or 0)
+
     return render_template(
-        'admin/admin_dashboard.html',
+        "admin/admin_dashboard.html",
+
+        # Summary cards
         total_users=total_users,
         total_packages=total_packages,
         pending_invoices=pending_invoices,
+
+        # Scheduled deliveries
         deliveries=deliveries,
-
-        # chart data
-        user_labels=[month_map[m] for m in month_map],
-        user_data=[user_data_dict[m] for m in month_map],
-        pkg_labels=[month_map[m] for m in month_map],
-        pkg_data=[pkg_data_dict[m] for m in month_map],
-
-        # filters for scheduled deliveries
         start_date=start_date_str,
         end_date=end_date_str,
 
-        # live stats
+        # Chart information
+        user_labels=[
+            month_map[month_number]
+            for month_number in month_map
+        ],
+        user_data=[
+            user_data_dict[month_number]
+            for month_number in month_map
+        ],
+        pkg_labels=[
+            month_map[month_number]
+            for month_number in month_map
+        ],
+        pkg_data=[
+            package_data_dict[month_number]
+            for month_number in month_map
+        ],
+
+        # Live statistics
         today_new_users=today_new_users,
         today_new_packages=today_new_packages,
         this_month_new_users=this_month_new_users,
         this_month_new_packages=this_month_new_packages,
         active_customers_90d=active_customers_90d,
+
+        # Jamaica time supplied to the template
+        jamaica_now=jamaica_now,
+        jamaica_today=today,
 
         admin_calculator_form=admin_calculator_form,
     )

@@ -9,10 +9,11 @@
     <div>
       <h2 class="manage-title">
         <i class="fas fa-users me-2"></i>
-        Manage Users
+        Manage Customers
       </h2>
+
       <p class="manage-subtitle mb-0">
-        Manage all customer accounts, registrations, uploads, and unpaid invoice filters.
+        Search, register and manage customer accounts.
       </p>
     </div>
 
@@ -43,7 +44,7 @@
       <button class="btn modern-btn-primary" type="button" data-bs-toggle="collapse"
         data-bs-target="#addSingleUserSection" title="Add Single User">
         <i class="fas fa-user-plus me-2"></i>
-        Add User
+        Add Customer
       </button>
 
       <button class="btn modern-btn-outline" type="button" data-bs-toggle="collapse" data-bs-target="#bulkUploadSection"
@@ -56,21 +57,26 @@
 
     <div class="toolbar-right">
 
-      <a href="{{ url_for('accounts_profiles.export_users',
-                          format='excel',
-                          search=search,
-                          unpaid_only=('1' if unpaid_only else None),
-                          sort=sort_by) }}" class="btn modern-export-btn">
+      <a href="{{ url_for(
+             'accounts_profiles.export_users',
+             format='excel',
+             search=search,
+             unpaid_only=('1' if unpaid_only else None),
+             sort=sort_by
+           ) }}" class="btn modern-export-btn" title="Download the currently filtered customer list">
+
         <i class="fas fa-file-excel me-2"></i>
-        Excel
+        Export Current List
       </a>
 
-      <a href="{{ url_for('finance.unpaid_users_pdf',
-                          search=search,
-                          date_from=date_from,
-                          date_to=date_to) }}" target="_blank" rel="noopener" class="btn modern-export-btn">
+      <a href="{{ url_for(
+             'finance.unpaid_users_pdf',
+             search=search
+           ) }}" target="_blank" rel="noopener" class="btn modern-export-btn"
+        title="Download a PDF containing outstanding customer accounts">
+
         <i class="fas fa-file-pdf me-2"></i>
-        PDF
+        Unpaid Accounts Report
       </a>
 
     </div>
@@ -191,7 +197,12 @@
                     <td>{{ row['Email'] }}</td>
                     <td>{{ row['TRN'] }}</td>
                     <td>{{ row['Mobile'] }}</td>
-                    <td>{{ row['Password'] }}</td>
+                    <td>
+                      <span class="text-muted">
+                        <i class="fas fa-lock me-1"></i>
+                        Provided
+                      </span>
+                    </td>
                     <td>{{ row['Date Registered'] }}</td>
                     <td>{{ row['Assigned Reg #'] }}</td>
                   </tr>
@@ -210,40 +221,38 @@
   </div>
 
   <!-- Modern Search Toolbar -->
-  <form method="GET" class="modern-search-bar mb-4">
+  <form method="GET" action="{{ url_for('accounts_profiles.manage_users') }}" class="modern-search-bar mb-4">
 
     <div class="search-wrapper">
       <i class="fas fa-search"></i>
 
-      <input type="text" name="search" class="form-control modern-search-input" placeholder="Search name, email, reg #"
-        value="{{ search }}">
+      <input type="text" name="search" class="form-control modern-search-input"
+        placeholder="Search name, email or registration #" value="{{ search }}">
     </div>
 
-    <div class="modern-filters">
+    {% if sort_by %}
+    <input type="hidden" name="sort" value="{{ sort_by }}">
+    {% endif %}
 
-      <div class="form-check mb-0">
-        <input class="form-check-input" type="checkbox" name="unpaid_only" value="1" id="unpaidOnlyChk" {% if
-          unpaid_only %}checked{% endif %}>
+    <div class="customer-view-switch">
 
-        <label class="form-check-label" for="unpaidOnlyChk">
-          Unpaid invoices only
-        </label>
-      </div>
+      <button type="submit" name="unpaid_only" value="" class="customer-view-btn
+                   {% if not unpaid_only %}active{% endif %}">
 
-      {% if sort_by %}
-      <input type="hidden" name="sort" value="{{ sort_by }}">
-      {% endif %}
-
-      <button type="submit" class="btn modern-filter-btn">
-        <i class="fas fa-filter me-1"></i> Filter
+        All Customers
       </button>
 
-      <a class="btn modern-clear-btn" href="{{ url_for('accounts_profiles.manage_users') }}">
-        Clear
-      </a>
+      <button type="submit" name="unpaid_only" value="1" class="customer-view-btn
+                   {% if unpaid_only %}active{% endif %}">
+
+        Customers Owing
+      </button>
 
     </div>
 
+    <a class="btn modern-clear-btn" href="{{ url_for('accounts_profiles.manage_users') }}">
+      Clear
+    </a>
   </form>
 
   <!-- ===========================
@@ -511,21 +520,25 @@ Finance Collections Toolbar
     </div>
   </div>
 
-  <!-- Users Table -->
+  <!-- Customers Table -->
   <div class="modern-table-wrapper">
+
     <div class="table-responsive mobile-table-scroll">
       <table class="table table-hover align-middle mb-0 modern-users-table">
+
         <thead class="modern-table-head">
           <tr>
-            <th>Name</th>
+            <th>Customer</th>
+
             <th>
-              Reg #
+              Registration #
               <a href="#" id="regSortLink" class="reg-sort ms-1"></a>
             </th>
-            <th>Email</th>
-            <th>Mobile</th>
+
+            <th>Contact</th>
             <th>Date Registered</th>
             <th>Unpaid Invoices</th>
+            <th>Last Payment Reminder</th>
           </tr>
         </thead>
 
@@ -534,69 +547,124 @@ Finance Collections Toolbar
           {% for user in users %}
           <tr>
             <td>
-              <a href="{{ url_for('accounts_profiles.view_user',
-                                    id=user.id,
-                                    next=url_for('accounts_profiles.manage_users',
-                                                 page=page,
-                                                 search=search,
-                                                 sort=sort_by,
-                                                 unpaid_only=('1' if unpaid_only else None))) }}"
-                class="modern-user-link">
+              <a href="{{ url_for(
+                             'accounts_profiles.view_user',
+                             id=user.id,
+                             next=url_for(
+                               'accounts_profiles.manage_users',
+                               page=page,
+                               search=search,
+                               sort=sort_by,
+                               unpaid_only=(
+                                 '1' if unpaid_only else None
+                               )
+                             )
+                           ) }}" class="modern-user-link">
 
                 <div class="user-info-cell">
-
                   <div class="user-avatar">
-                    {{ user.full_name[:1] if user.full_name else 'U' }}
+                    {{ user.full_name[:1]
+                    if user.full_name else 'U' }}
                   </div>
 
                   <div>
                     <div class="user-name">
-                      {{ user.full_name }}
+                      {{ user.full_name or "Customer" }}
                     </div>
                   </div>
-
                 </div>
-
               </a>
             </td>
 
-            <td>{{ user.registration_number or 'None' }}</td>
-            <td>{{ user.email }}</td>
-            <td>{{ user.mobile or 'None' }}</td>
-            <td>{{ user.date_registered[:10] if user.date_registered else 'N/A' }}</td>
+            <td>
+              {{ user.registration_number or "Not assigned" }}
+            </td>
+
+            <td>
+              <div class="customer-contact-cell">
+                <a href="mailto:{{ user.email }}" class="customer-email-link">
+                  {{ user.email or "No email" }}
+                </a>
+
+                <small class="d-block text-muted mt-1">
+                  <i class="fas fa-phone-alt me-1"></i>
+                  {{ user.mobile or "No mobile number" }}
+                </small>
+              </div>
+            </td>
+
+            <td>
+              {{ user.date_registered[:10]
+              if user.date_registered else "N/A" }}
+            </td>
 
             <td>
               {% if user.unpaid_count > 0 %}
-              <span class="badge unpaid-badge-danger">{{ user.unpaid_count }}</span>
+              <span class="badge unpaid-badge-danger">
+                {{ user.unpaid_count }}
+              </span>
               {% else %}
-              <span class="badge unpaid-badge-success">0</span>
+              <span class="badge unpaid-badge-success">
+                0
+              </span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if user.last_reminder_display %}
+              <div class="last-reminder-cell" title="{{ user.last_reminder_title }}">
+
+                <i class="fas fa-envelope-circle-check
+                              text-success me-1"></i>
+
+                <span>
+                  {{ user.last_reminder_display }}
+                </span>
+
+                <small class="d-block text-muted mt-1">
+                  Reminder sent
+                </small>
+              </div>
+              {% else %}
+              <span class="text-muted">
+                <i class="far fa-envelope me-1"></i>
+                Never sent
+              </span>
               {% endif %}
             </td>
           </tr>
           {% endfor %}
+
           {% else %}
           <tr>
             <td colspan="6" class="text-center py-5 text-muted">
+
               <i class="fas fa-users fa-2x mb-2 d-block"></i>
-              No users found.
+
+              No customers found.
             </td>
           </tr>
           {% endif %}
         </tbody>
       </table>
     </div>
-    <!-- Table Footer / Pagination Area -->
+
+    <!-- Table Footer / Pagination -->
     <div class="modern-table-footer">
       <div class="text-muted small">
-        Showing users on page {{ page }}
+        Showing customers on page {{ page }}
       </div>
 
       {% if total_pages > 1 %}
-      <nav aria-label="Page navigation">
+      <nav aria-label="Customer page navigation">
         <ul class="pagination justify-content-end mb-0">
 
-          {% set start_page = (page - 1) if (page - 1) > 1 else 1 %}
-          {% set end_page = (page + 1) if (page + 1) < total_pages else total_pages %} {% if page> 1 %}
+          {% set start_page =
+          (page - 1) if (page - 1) > 1 else 1 %}
+
+          {% set end_page =
+          (page + 1)
+          if (page + 1) < total_pages else total_pages %} {% if page> 1 %}
             <li class="page-item">
               <a class="page-link text-purple"
                 href="?page=1&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
@@ -606,24 +674,36 @@ Finance Collections Toolbar
 
             <li class="page-item">
               <a class="page-link text-purple"
-                href="?page={{ page-1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
+                href="?page={{ page - 1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
                 &lt; Prev
               </a>
             </li>
             {% endif %}
 
-            {% for p in range(start_page, end_page+1) %}
-            <li class="page-item {% if p == page %}active{% endif %}">
-              <a class="page-link {% if p == page %}bg-purple text-white{% else %}text-purple{% endif %}"
-                href="?page={{ p }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
-                {{ p }}
+            {% for page_number in range(
+            start_page,
+            end_page + 1
+            ) %}
+
+            <li class="page-item
+                       {% if page_number == page %}active{% endif %}">
+
+              <a class="page-link
+                        {% if page_number == page %}
+                          bg-purple text-white
+                        {% else %}
+                          text-purple
+                        {% endif %}"
+                href="?page={{ page_number }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
+
+                {{ page_number }}
               </a>
             </li>
             {% endfor %}
 
             {% if page < total_pages %} <li class="page-item">
               <a class="page-link text-purple"
-                href="?page={{ page+1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
+                href="?page={{ page + 1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
                 Next &gt;
               </a>
               </li>
@@ -635,7 +715,6 @@ Finance Collections Toolbar
                 </a>
               </li>
               {% endif %}
-
         </ul>
       </nav>
       {% endif %}
@@ -657,33 +736,34 @@ Finance Collections Toolbar
 
   /* Header */
   .manage-header {
-    background: linear-gradient(135deg, #4a148c, #6a1b9a);
-    border-radius: 20px;
-    padding: 24px 28px;
+    background: #4a148c;
+    border-radius: 8px;
+    padding: 18px 20px;
     color: white;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 8px 30px rgba(74, 20, 140, 0.18);
+    gap: 16px;
+    box-shadow: 0 4px 14px rgba(74, 20, 140, 0.14);
   }
 
   .manage-title {
-    font-size: 2rem;
+    font-size: 1.75rem;
     font-weight: 700;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
   }
 
   .manage-subtitle {
-    opacity: 0.88;
+    color: rgba(255, 255, 255, 0.72);
     font-size: 0.95rem;
   }
 
   .header-user-count {
     text-align: center;
-    background: rgba(255, 255, 255, 0.15);
-    padding: 12px 22px;
-    border-radius: 16px;
-    min-width: 110px;
+    background: rgba(255, 255, 255, 0.14);
+    padding: 10px 18px;
+    border-radius: 10px;
+    min-width: 105px;
   }
 
   .header-user-count span {
@@ -895,6 +975,39 @@ Finance Collections Toolbar
     background: #f3f4f6;
   }
 
+  .customer-view-switch {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid #7e22ce;
+    border-radius: 12px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .customer-view-btn {
+    min-height: 46px;
+    padding: 10px 18px;
+    border: 0;
+    border-right: 1px solid #7e22ce;
+    background: #ffffff;
+    color: #4a148c;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .customer-view-btn:last-child {
+    border-right: 0;
+  }
+
+  .customer-view-btn:hover {
+    background: #f3e8ff;
+  }
+
+  .customer-view-btn.active {
+    background: #4a148c;
+    color: #ffffff;
+  }
+
   /* Table */
   .modern-table-wrapper {
     background: white;
@@ -1101,6 +1214,23 @@ Finance Collections Toolbar
       font-size: 1.6rem;
     }
 
+  }
+
+  @media (max-width: 767.98px) {
+    .customer-view-switch {
+      width: 100%;
+    }
+
+    .customer-view-btn {
+      flex: 1;
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+
+    .modern-clear-btn {
+      width: 100%;
+      text-align: center;
+    }
   }
 
   /* =========================================
@@ -1836,6 +1966,25 @@ MOBILE RESPONSIVE
   .exclude-customer-box .form-check-label {
     color: #9a3412;
     cursor: pointer;
+  }
+
+  .customer-email-link {
+    color: #1f2937;
+    text-decoration: none;
+  }
+
+  .customer-email-link:hover {
+    color: #4a148c;
+    text-decoration: underline;
+  }
+
+  .customer-contact-cell {
+    min-width: 220px;
+  }
+
+  .last-reminder-cell {
+    min-width: 150px;
+    color: #1f2937;
   }
 </style>
 

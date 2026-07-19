@@ -1775,6 +1775,31 @@ Bringing the World to You
 
                 if ok:
                     emails_sent += 1
+
+                    db.session.add(
+                        AuditLog(
+                            module="Finance",
+                            action="Payment Reminder Sent",
+                            admin_id=current_user.id,
+                            user_id=user_id,
+                            entity_type="User",
+                            entity_id=user_id,
+                            reason="Outstanding balance follow-up",
+                            description=(
+                                f"Outstanding payment reminder successfully sent "
+                                f"to {customer_name} at {email}. "
+                                f"Invoices included: {len(invoices)}. "
+                                f"Total outstanding represented: "
+                                f"JMD {customer_total:,.2f}."
+                            ),
+                            old_value=None,
+                            new_value=(
+                                f"Recipient: {email}; "
+                                f"Invoices: {len(invoices)}; "
+                                f"Outstanding: JMD {customer_total:,.2f}"
+                            ),
+                        )
+                    )
                 else:
                     emails_failed += 1
                     failed_recipients.append(email)

@@ -336,6 +336,11 @@ def manage_users():
     # ---------------------------------------------------------
     unpaid_map = {uid: 0 for uid in user_ids}
 
+    last_reminder_map = {
+        uid: None
+        for uid in user_ids
+    }
+
     if user_ids:
         try:
             sub = (
@@ -354,9 +359,73 @@ def manage_users():
         except Exception:
             db.session.rollback()
 
+    if user_ids:
+        try:
+            reminder_rows = (
+                db.session.query(
+                    AuditLog.user_id,
+                    func.max(AuditLog.created_at).label(
+                        "last_reminder_at"
+                    ),
+                )
+                .filter(
+                    AuditLog.user_id.in_(user_ids),
+                    AuditLog.module == "Finance",
+                    AuditLog.action == "Payment Reminder Sent",
+                )
+                .group_by(AuditLog.user_id)
+                .all()
+            )
+
+            for user_id, last_reminder_at in reminder_rows:
+                last_reminder_map[int(user_id)] = (
+                    last_reminder_at
+            )
+
+        except Exception as error:
+            db.session.rollback()
+
+            current_app.logger.exception(
+                "Unable to load last payment reminder dates: %s",
+                error,
+            )
+
     users = []
 
     for u in pagination.items:
+        last_reminder_at = last_reminder_map.get(u.id)
+
+        last_reminder_display = None
+        last_reminder_title = None
+
+        if last_reminder_at:
+            try:
+                reminder_jamaica = to_jamaica(
+                    last_reminder_at
+                )
+
+                last_reminder_display = (
+                    reminder_jamaica.strftime(
+                        "%b %d, %Y"
+                    )
+                )
+
+                last_reminder_title = (
+                    reminder_jamaica.strftime(
+                        "%A, %B %d, %Y at %I:%M %p "
+                        "Jamaica time"
+                    )
+                )
+
+            except Exception:
+                last_reminder_display = str(
+                    last_reminder_at
+                )
+
+                last_reminder_title = str(
+                    last_reminder_at
+                )
+
         users.append({
             "id": u.id,
             "full_name": u.full_name,
@@ -367,6 +436,8 @@ def manage_users():
             "mobile": u.mobile,
             "trn": u.trn,
             "unpaid_count": unpaid_map.get(u.id, 0),
+            "last_reminder_display": last_reminder_display,
+            "last_reminder_title": last_reminder_title,
         })
 
     total_pages = max(pagination.pages or 1, 1)

@@ -4,22 +4,30 @@
 {% block content %}
 <div class="container mt-4 manage-users-page">
 
-  <!-- Modern Header -->
-  <div class="manage-header mb-4">
-    <div>
-      <h2 class="manage-title">
+  <!-- Standard Admin Page Header -->
+  <div class="admin-page-header">
+
+    <div class="admin-page-header__content">
+      <h1 class="admin-page-header__title">
         <i class="fas fa-users me-2"></i>
         Manage Customers
-      </h2>
+      </h1>
 
-      <p class="manage-subtitle mb-0">
+      <p class="admin-page-header__subtitle">
         Search, register and manage customer accounts.
       </p>
     </div>
 
-    <div class="header-user-count">
-      <span>{{ users_with_unpaid_invoices }}</span>
-      <small>Users Owing</small>
+    <div class="admin-page-header__actions">
+      <div class="header-user-count">
+        <span>
+          {{ users_with_unpaid_invoices }}
+        </span>
+
+        <small>
+          Users Owing
+        </small>
+      </div>
     </div>
   </div>
 
@@ -735,28 +743,6 @@ Finance Collections Toolbar
   }
 
   /* Header */
-  .manage-header {
-    background: #4a148c;
-    border-radius: 8px;
-    padding: 18px 20px;
-    color: white;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 16px;
-    box-shadow: 0 4px 14px rgba(74, 20, 140, 0.14);
-  }
-
-  .manage-title {
-    font-size: 1.75rem;
-    font-weight: 700;
-    margin-bottom: 3px;
-  }
-
-  .manage-subtitle {
-    color: rgba(255, 255, 255, 0.72);
-    font-size: 0.95rem;
-  }
 
   .header-user-count {
     text-align: center;
@@ -1178,16 +1164,11 @@ Finance Collections Toolbar
       padding-right: 12px;
     }
 
-    .manage-header,
     .modern-toolbar,
     .modern-search-bar,
     .modern-table-footer {
       flex-direction: column;
       align-items: stretch;
-    }
-
-    .header-user-count {
-      margin-top: 16px;
     }
 
     .toolbar-left,
@@ -1209,11 +1190,6 @@ Finance Collections Toolbar
     .search-wrapper {
       width: 100%;
     }
-
-    .manage-title {
-      font-size: 1.6rem;
-    }
-
   }
 
   @media (max-width: 767.98px) {

@@ -463,3 +463,83 @@ footer {
 #chargesModalSL h6 {
   margin-bottom: 0.5rem;
 }
+
+/* =====================================
+   Standard Admin Page Header
+===================================== */
+.admin-page-header {
+  width: 100%;
+  min-height: 92px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  background: #4a148c;
+  color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(74, 20, 140, 0.14);
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-page-header__content {
+  min-width: 0;
+}
+
+.admin-page-header__title {
+  margin: 0 0 3px 0;
+  color: #ffffff;
+  font-size: 1.55rem;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.admin-page-header__subtitle {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.admin-page-header__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.admin-page-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+}
+
+@media (max-width: 767.98px) {
+  .admin-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 15px;
+  }
+
+  .admin-page-header__title {
+    font-size: 1.35rem;
+  }
+
+  .admin-page-header__actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .admin-page-header__actions>*,
+  .admin-page-header__actions form,
+  .admin-page-header__actions button,
+  .admin-page-header__actions a {
+    width: 100%;
+  }
+}

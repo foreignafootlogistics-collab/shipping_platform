@@ -1408,11 +1408,29 @@
       <div class="tab-pane fade {% if current_tab == 'schedule' %}show active{% endif %}" id="schedule-delivery"
         role="tabpanel" aria-labelledby="schedule-delivery-tab">
 
-        <div class="mb-3">
-          <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal"
-            data-bs-target="#adminDeliveryModal">
-            <i class="bi bi-truck me-1"></i> Add Delivery
+        <div class="d-flex justify-content-between align-items-center
+         flex-wrap gap-2 mb-3">
+
+          <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#adminDeliveryModal">
+
+            <i class="bi bi-truck me-1"></i>
+            Add Delivery
           </button>
+
+          <div class="d-flex align-items-center gap-2">
+            <label for="scheduledDeliveryPageLength" class="small text-muted fw-semibold mb-0">
+
+              Rows
+            </label>
+
+            <select id="scheduledDeliveryPageLength" class="form-select form-select-sm" style="width:auto;">
+
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
         </div>
 
         <div class="table-responsive">
@@ -1526,14 +1544,6 @@
                   <span class="badge bg-secondary">{{ st }}</span>
                   {% endif %}
                 </td>
-
-                </tr>
-
-                {% else %}
-                <tr>
-                  <td colspan="7" class="text-center text-muted py-4">
-                    No scheduled deliveries found.
-                  </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -3263,37 +3273,130 @@
       });
     })();
 
-    // ✅ Schedule Delivery: init DataTable ONLY when tab is shown
+    // Schedule Delivery: initialize only when its tab is visible
     (function initScheduleDeliveryDT() {
-      const tableSel = '#scheduledeliveryTable';
-      if (!$(tableSel).length) return;
+      const tableSel = "#scheduledeliveryTable";
 
-      function initDT() {
-        if (!$.fn.DataTable.isDataTable(tableSel)) {
-          $(tableSel).DataTable({
-            autoWidth: false,
-            language: {
-              emptyTable: "No scheduled deliveries for this user."
-            }
-          });
-        } else {
-          $(tableSel).DataTable().columns.adjust();
-        }
+      const pageLengthSelect = document.getElementById(
+        "scheduledDeliveryPageLength"
+      );
+
+      if (!$(tableSel).length) {
+        return;
       }
 
-      // If already active on load, init immediately
-      if ($('#schedule-delivery').hasClass('show') || $('#schedule-delivery').hasClass('active')) {
+      function connectPageLength(table) {
+        if (!pageLengthSelect) {
+          return;
+        }
+
+        pageLengthSelect.value = String(
+          table.page.len()
+        );
+
+        if (pageLengthSelect.dataset.connected === "true") {
+          return;
+        }
+
+        pageLengthSelect.dataset.connected = "true";
+
+        pageLengthSelect.addEventListener(
+          "change",
+          function () {
+            table
+              .page
+              .len(Number(this.value || 10))
+              .draw();
+          }
+        );
+      }
+
+      function initDT() {
+        let table;
+
+        if (!$.fn.DataTable.isDataTable(tableSel)) {
+          table = $(tableSel).DataTable({
+            autoWidth: false,
+            pageLength: 10,
+            lengthChange: false,
+            searching: false,
+            order: [[0, "desc"]],
+
+            /*
+             * Show only:
+             * t = table
+             * i = results information
+             * p = pagination
+             *
+             * The default Search and Show controls are removed.
+             */
+            dom:
+              "t" +
+              "<'d-flex justify-content-between " +
+              "align-items-center flex-wrap gap-2 mt-3'ip>",
+
+            language: {
+              emptyTable:
+                "No scheduled deliveries for this user.",
+
+              info:
+                "Showing _START_–_END_ of _TOTAL_ deliveries",
+
+              infoEmpty:
+                "Showing 0 deliveries",
+
+              paginate: {
+                previous: "Previous",
+                next: "Next"
+              }
+            },
+
+            columnDefs: [
+              {
+                targets: "_all",
+                defaultContent: "—"
+              }
+            ]
+          });
+
+        } else {
+          table = $(tableSel).DataTable();
+          table.columns.adjust();
+        }
+
+        connectPageLength(table);
+      }
+
+      /*
+       * Initialize immediately when the Delivery tab
+       * is already active after the page loads.
+       */
+      if (
+        $("#schedule-delivery").hasClass("show") ||
+        $("#schedule-delivery").hasClass("active")
+      ) {
         initDT();
         return;
       }
 
-      // Otherwise init the first time the tab is opened
-      const btn = document.getElementById('schedule-delivery-tab');
-      if (!btn) return;
+      /*
+       * Otherwise initialize when the administrator
+       * opens the Delivery tab.
+       */
+      const tabButton = document.getElementById(
+        "schedule-delivery-tab"
+      );
 
-      btn.addEventListener('shown.bs.tab', function () {
-        initDT();
-      });
+      if (!tabButton) {
+        return;
+      }
+
+      tabButton.addEventListener(
+        "shown.bs.tab",
+        function () {
+          initDT();
+        }
+      );
     })();
 
     // Mark as Paid Modal
@@ -3342,153 +3445,649 @@
     });
   });
 
-
   document.addEventListener("DOMContentLoaded", () => {
-    const form = document.getElementById("adminDeliveryForm");
+    const form = document.getElementById(
+      "adminDeliveryForm"
+    );
+
     if (!form) return;
 
-    const dateEl = document.getElementById("modalDeliveryDate");
-    const parishEl = document.getElementById("modalDeliveryParish");
-    const addrEl = document.getElementById("modalDeliveryLocation");
-    const estimateBox = document.getElementById("modalDeliveryEstimateBox");
-    const estimateText = document.getElementById("modalDeliveryEstimateText");
-    const coverageText = document.getElementById("modalDeliveryCoverageText");
-    const feePreview = document.getElementById("modalDeliveryFeePreview");
-    const warning = document.getElementById("modalAddressWarning");
-    const msgEl = document.getElementById("modalScheduleDeliveryMsg");
+    const userIdEl = document.getElementById(
+      "modalUserId"
+    );
 
-    function showMsg(text) {
-      if (!msgEl) return;
-      msgEl.textContent = text || "";
-      msgEl.style.display = text ? "block" : "none";
+    const dateEl = document.getElementById(
+      "modalDeliveryDate"
+    );
+
+    const parishEl = document.getElementById(
+      "modalDeliveryParish"
+    );
+
+    const addressEl = document.getElementById(
+      "modalDeliveryLocation"
+    );
+
+    const directionsEl = document.getElementById(
+      "modalDeliveryDirections"
+    );
+
+    const mobileEl = document.getElementById(
+      "modalDeliveryMobile"
+    );
+
+    const receivingEl = document.getElementById(
+      "modalPersonReceiving"
+    );
+
+    const estimateBox = document.getElementById(
+      "modalDeliveryEstimateBox"
+    );
+
+    const estimateText = document.getElementById(
+      "modalDeliveryEstimateText"
+    );
+
+    const coverageText = document.getElementById(
+      "modalDeliveryCoverageText"
+    );
+
+    const feePreview = document.getElementById(
+      "modalDeliveryFeePreview"
+    );
+
+    const addressWarning = document.getElementById(
+      "modalAddressWarning"
+    );
+
+    const messageElement = document.getElementById(
+      "modalScheduleDeliveryMsg"
+    );
+
+    const saveButton = document.getElementById(
+      "modalSaveScheduleDelivery"
+    );
+
+    let estimateInProgress = false;
+    let formSubmitting = false;
+
+    function showMessage(text, type = "danger") {
+      if (!messageElement) return;
+
+      messageElement.textContent = text || "";
+
+      messageElement.className =
+        `alert alert-${type} mt-3`;
+
+      messageElement.style.display =
+        text ? "block" : "none";
     }
 
-    function isAddressDetailedEnough(address) {
-      const a = (address || "").trim().toLowerCase();
-      if (a.length < 12) return false;
+    function setFeePreview(amount) {
+      if (!feePreview) return;
 
-      const hasNumber = /\d/.test(a);
-      const roadWords = [
-        "road", "rd", "street", "st", "avenue", "ave", "drive", "dr",
-        "lane", "ln", "close", "circle", "terrace", "way", "boulevard",
-        "blvd", "heights", "scheme", "estate", "village", "lot", "apt",
-        "apartment", "unit", "district", "main road"
-      ];
-
-      return hasNumber || roadWords.some(word => a.includes(word));
+      feePreview.value =
+        `JMD ${Number(amount || 0).toFixed(2)}`;
     }
 
-    function validateAddressSoft() {
-      const ok = isAddressDetailedEnough(addrEl?.value || "");
-      if (warning) warning.style.display = ok || !addrEl.value ? "none" : "block";
-      return ok;
-    }
+    function getCoverageLabel(data) {
+      const zone = String(
+        data.area_zone || ""
+      ).toLowerCase();
 
-    function coverageLabel(data) {
-      if (data.is_free_delivery) return "Core Delivery Zone";
-      if (data.delivery_type === "admin_review") return "Manual Review Area";
+      if (zone === "kgn_core") {
+        return "Kingston Core";
+      }
+
+      if (zone === "kgn_outside") {
+        return "Kingston Outside";
+      }
+
+      if (zone === "pm_core") {
+        return "Portmore Core";
+      }
+
+      if (zone === "pm_outside") {
+        return "Portmore Outside";
+      }
+
+      if (data.delivery_type === "admin_review") {
+        return "Manual Review Area";
+      }
+
+      if (data.is_free_delivery) {
+        return "Core Delivery Zone";
+      }
+
       return "Extended Delivery Zone";
     }
 
-    async function calculateModalEstimate() {
-      const schedule_date = (dateEl?.value || "").trim();
-      const location = (addrEl?.value || "").trim();
-      const delivery_parish = (parishEl?.value || "").trim();
-      const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
+    function setCoverageStyle(data) {
+      if (!coverageText) return;
 
-      validateAddressSoft();
+      const zone = String(
+        data.area_zone || ""
+      ).toLowerCase();
 
-      if (!schedule_date || !location || !delivery_parish) {
-        if (estimateBox) estimateBox.style.display = "none";
-        if (coverageText) {
-          coverageText.textContent = "Enter address to calculate.";
-          coverageText.className = "badge bg-secondary";
-        }
-        return;
-      }
-
-      if (estimateBox) estimateBox.style.display = "block";
-      if (estimateText) estimateText.textContent = "Calculating delivery estimate...";
-
-      try {
-        const res = await fetch("{{ url_for('customer.schedule_delivery_estimate') }}", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": csrf
-          },
-          body: JSON.stringify({
-            schedule_date,
-            location,
-            delivery_parish
-          })
-        });
-
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok || !data.success) {
-          estimateText.textContent = data.message || "Could not calculate delivery estimate.";
-          coverageText.textContent = "Could not calculate coverage.";
-          coverageText.className = "badge bg-danger";
-          return;
-        }
-
-        const label = coverageLabel(data);
-
-        if (feePreview) {
-          feePreview.value = `JMD ${Number(data.delivery_fee || 0).toFixed(2)}`;
-        }
-
-        coverageText.textContent = label;
+      if (data.delivery_type === "admin_review") {
         coverageText.className =
-          data.delivery_type === "admin_review"
-            ? "badge bg-danger"
-            : data.is_free_delivery
-              ? "badge bg-success"
-              : "badge bg-primary";
+          "badge bg-danger";
 
-        estimateText.innerHTML = `
-        Distance: <strong>${data.distance_km} KM</strong><br>
-        Estimated drive time: <strong>${data.duration_text || "—"}</strong><br>
-        Delivery branch: <strong>${data.delivery_branch || "—"}</strong><br>
-        Delivery type: <strong>${data.is_free_delivery ? "Free delivery" : "Paid delivery"}</strong><br>
-        Coverage zone: <strong>${label}</strong><br>
-        Delivery fee: <strong>JMD ${Number(data.delivery_fee || 0).toFixed(2)}</strong>
-      `;
-      } catch (err) {
-        estimateText.textContent = "Network error while calculating estimate.";
-        coverageText.textContent = "Could not calculate coverage.";
-        coverageText.className = "badge bg-danger";
+      } else if (zone === "kgn_core") {
+        coverageText.className =
+          "badge bg-dark";
+
+      } else if (zone === "kgn_outside") {
+        coverageText.className =
+          "badge bg-secondary";
+
+      } else if (zone === "pm_core") {
+        coverageText.className =
+          "badge bg-primary";
+
+      } else if (zone === "pm_outside") {
+        coverageText.className =
+          "badge bg-info text-dark";
+
+      } else if (data.is_free_delivery) {
+        coverageText.className =
+          "badge bg-success";
+
+      } else {
+        coverageText.className =
+          "badge bg-primary";
       }
     }
 
-    dateEl?.addEventListener("change", calculateModalEstimate);
-    parishEl?.addEventListener("change", calculateModalEstimate);
-    addrEl?.addEventListener("blur", calculateModalEstimate);
-    addrEl?.addEventListener("input", validateAddressSoft);
+    function isAddressDetailedEnough(address) {
+      const normalizedAddress = (
+        address || ""
+      ).trim().toLowerCase();
 
-    form.addEventListener("submit", function (e) {
-      showMsg("");
+      if (normalizedAddress.length < 12) {
+        return false;
+      }
 
-      if (!dateEl.value) {
-        e.preventDefault();
-        showMsg("Please select a delivery date.");
+      const hasNumber = /\d/.test(
+        normalizedAddress
+      );
+
+      const roadWords = [
+        "road",
+        "rd",
+        "street",
+        "st",
+        "avenue",
+        "ave",
+        "drive",
+        "dr",
+        "lane",
+        "ln",
+        "close",
+        "circle",
+        "terrace",
+        "way",
+        "boulevard",
+        "blvd",
+        "heights",
+        "scheme",
+        "estate",
+        "village",
+        "lot",
+        "apt",
+        "apartment",
+        "unit",
+        "district",
+        "main road"
+      ];
+
+      const hasRoadWord = roadWords.some(
+        word => normalizedAddress.includes(word)
+      );
+
+      return hasNumber || hasRoadWord;
+    }
+
+    function validateAddressSoft() {
+      const address = (
+        addressEl?.value || ""
+      ).trim();
+
+      if (!address) {
+        if (addressWarning) {
+          addressWarning.style.display = "none";
+        }
+
+        return false;
+      }
+
+      const valid = isAddressDetailedEnough(
+        address
+      );
+
+      if (addressWarning) {
+        addressWarning.style.display =
+          valid ? "none" : "block";
+      }
+
+      return valid;
+    }
+
+    function resetEstimate() {
+      setFeePreview(0);
+
+      if (estimateBox) {
+        estimateBox.style.display = "none";
+      }
+
+      if (coverageText) {
+        coverageText.textContent =
+          "Enter address to calculate.";
+
+        coverageText.className =
+          "badge bg-secondary";
+      }
+    }
+
+    async function calculateModalEstimate() {
+      const scheduleDate = (
+        dateEl?.value || ""
+      ).trim();
+
+      const address = (
+        addressEl?.value || ""
+      ).trim();
+
+      const parish = (
+        parishEl?.value || ""
+      ).trim();
+
+      validateAddressSoft();
+
+      if (!scheduleDate || !address || !parish) {
+        resetEstimate();
         return;
       }
 
-      if (!isAddressDetailedEnough(addrEl.value)) {
-        e.preventDefault();
-        showMsg("Please enter a more accurate address.");
-        return;
+      const csrfToken = (
+        form.querySelector(
+          'input[name="csrf_token"]'
+        )?.value || ""
+      ).trim();
+
+      estimateInProgress = true;
+
+      if (saveButton) {
+        saveButton.disabled = true;
+
+        saveButton.innerHTML =
+          '<span class="spinner-border ' +
+          'spinner-border-sm me-2"></span>' +
+          'Calculating...';
       }
 
-      if (!parishEl.value) {
-        e.preventDefault();
-        showMsg("Please select a delivery parish.");
-        return;
+      if (estimateBox) {
+        estimateBox.style.display = "block";
       }
-    });
+
+      if (estimateText) {
+        estimateText.textContent =
+          "Calculating delivery estimate...";
+      }
+
+      try {
+        const response = await fetch(
+          "{{ url_for('customer.schedule_delivery_estimate') }}",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken
+            },
+
+            body: JSON.stringify({
+              schedule_date: scheduleDate,
+              location: address,
+              delivery_parish: parish
+            })
+          }
+        );
+
+        const data = await response
+          .json()
+          .catch(() => ({}));
+
+        if (!response.ok || !data.success) {
+          setFeePreview(0);
+
+          if (estimateText) {
+            estimateText.textContent =
+              data.message ||
+              "Could not calculate delivery estimate.";
+          }
+
+          if (coverageText) {
+            coverageText.textContent =
+              "Could not calculate coverage.";
+
+            coverageText.className =
+              "badge bg-danger";
+          }
+
+          return;
+        }
+
+        const coverageLabel =
+          getCoverageLabel(data);
+
+        setFeePreview(data.delivery_fee);
+
+        if (coverageText) {
+          coverageText.textContent =
+            coverageLabel;
+
+          setCoverageStyle(data);
+        }
+
+        if (estimateText) {
+          estimateText.innerHTML = `
+          Distance:
+          <strong>
+            ${data.distance_km || "—"} KM
+          </strong><br>
+
+          Estimated drive time:
+          <strong>
+            ${data.duration_text || "—"}
+          </strong><br>
+
+          Delivery branch:
+          <strong>
+            ${data.delivery_branch || "—"}
+          </strong><br>
+
+          Delivery type:
+          <strong>
+            ${data.delivery_type === "admin_review"
+              ? "Manual review"
+              : data.is_free_delivery
+                ? "Free delivery"
+                : "Paid delivery"
+            }
+          </strong><br>
+
+          Coverage zone:
+          <strong>
+            ${coverageLabel}
+          </strong><br>
+
+          ${data.delivery_type === "admin_review"
+              ? `
+                <div class="mt-2 text-danger fw-semibold">
+                  Delivery requires manual review.
+                  Final pricing requires admin confirmation.
+                </div>
+              `
+              : `
+                Delivery fee:
+                <strong>
+                  JMD ${Number(
+                data.delivery_fee || 0
+              ).toFixed(2)
+              }
+                </strong>
+              `
+            }
+        `;
+        }
+
+      } catch (error) {
+        console.error(
+          "Delivery estimate error:",
+          error
+        );
+
+        setFeePreview(0);
+
+        if (estimateText) {
+          estimateText.textContent =
+            "Network error while calculating estimate.";
+        }
+
+        if (coverageText) {
+          coverageText.textContent =
+            "Could not calculate coverage.";
+
+          coverageText.className =
+            "badge bg-danger";
+        }
+
+      } finally {
+        estimateInProgress = false;
+
+        if (saveButton && !formSubmitting) {
+          saveButton.disabled = false;
+
+          saveButton.innerHTML =
+            '<i class="bi bi-truck me-1"></i>' +
+            'Schedule Delivery';
+        }
+      }
+    }
+
+    dateEl?.addEventListener(
+      "change",
+      calculateModalEstimate
+    );
+
+    parishEl?.addEventListener(
+      "change",
+      calculateModalEstimate
+    );
+
+    addressEl?.addEventListener(
+      "blur",
+      calculateModalEstimate
+    );
+
+    addressEl?.addEventListener(
+      "input",
+      validateAddressSoft
+    );
+
+    form.addEventListener(
+      "submit",
+      async event => {
+        event.preventDefault();
+        showMessage("");
+
+        if (estimateInProgress) {
+          showMessage(
+            "Please wait for the delivery estimate " +
+            "to finish."
+          );
+
+          return;
+        }
+
+        const userId = (
+          userIdEl?.value || ""
+        ).trim();
+
+        const scheduleDate = (
+          dateEl?.value || ""
+        ).trim();
+
+        const address = (
+          addressEl?.value || ""
+        ).trim();
+
+        const parish = (
+          parishEl?.value || ""
+        ).trim();
+
+        const directions = (
+          directionsEl?.value || ""
+        ).trim();
+
+        const mobile = (
+          mobileEl?.value || ""
+        ).trim();
+
+        const personReceiving = (
+          receivingEl?.value || ""
+        ).trim();
+
+        if (!userId) {
+          showMessage(
+            "The selected customer could not be identified."
+          );
+
+          return;
+        }
+
+        if (!scheduleDate) {
+          showMessage(
+            "Please select a delivery date."
+          );
+
+          return;
+        }
+
+        if (!address) {
+          showMessage(
+            "Please enter the delivery address."
+          );
+
+          return;
+        }
+
+        if (!isAddressDetailedEnough(address)) {
+          showMessage(
+            "Please enter a more accurate address, " +
+            "including the street or road name and " +
+            "house or lot number if available."
+          );
+
+          return;
+        }
+
+        if (!parish) {
+          showMessage(
+            "Please select a delivery parish."
+          );
+
+          return;
+        }
+
+        if (!mobile) {
+          showMessage(
+            "Please enter the receiver's mobile number."
+          );
+
+          return;
+        }
+
+        if (!personReceiving) {
+          showMessage(
+            "Please enter the person receiving the delivery."
+          );
+
+          return;
+        }
+
+        const csrfToken = (
+          form.querySelector(
+            'input[name="csrf_token"]'
+          )?.value || ""
+        ).trim();
+
+        formSubmitting = true;
+
+        if (saveButton) {
+          saveButton.disabled = true;
+
+          saveButton.innerHTML =
+            '<span class="spinner-border ' +
+            'spinner-border-sm me-2"></span>' +
+            'Scheduling...';
+        }
+
+        try {
+          const response = await fetch(
+            form.action,
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                "X-CSRFToken": csrfToken
+              },
+
+              body: JSON.stringify({
+                user_id: userId,
+                date: scheduleDate,
+                location: address,
+                delivery_parish: parish,
+                direction: directions,
+                mobile_number: mobile,
+                person_receiving: personReceiving
+              })
+            }
+          );
+
+          const data = await response
+            .json()
+            .catch(() => ({}));
+
+          if (!response.ok || !data.success) {
+            throw new Error(
+              data.message ||
+              "The delivery could not be scheduled."
+            );
+          }
+
+          showMessage(
+            "Delivery scheduled successfully.",
+            "success"
+          );
+
+          window.setTimeout(() => {
+            const currentUrl = new URL(
+              window.location.href
+            );
+
+            currentUrl.searchParams.set(
+              "tab",
+              "schedule"
+            );
+
+            window.location.href =
+              currentUrl.toString();
+          }, 500);
+
+        } catch (error) {
+          formSubmitting = false;
+
+          showMessage(
+            error.message ||
+            "The delivery could not be scheduled."
+          );
+
+          if (saveButton) {
+            saveButton.disabled = false;
+
+            saveButton.innerHTML =
+              '<i class="bi bi-truck me-1"></i>' +
+              'Schedule Delivery';
+          }
+        }
+      }
+    );
   });
+
 
 
   /* ================================

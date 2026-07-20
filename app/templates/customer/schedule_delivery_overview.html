@@ -573,6 +573,8 @@
       const estimateBox = document.getElementById("deliveryEstimateBox");
       const estimateText = document.getElementById("deliveryEstimateText");
       const coverageText = document.getElementById("deliveryCoverageText");
+      let estimateInProgress = false;
+      let formSubmitting = false;
 
       function showMsg(text) {
         if (!msgEl) return;
@@ -584,34 +586,54 @@
         return Number(n || 0).toFixed(2);
       }
 
-      function setFeeBanner(amount, deliveryType = "") {
+      function resetFeeBanner() {
         const feeText = document.querySelector(
-          ".alert.alert-warning .fw-bold"
+          ".delivery-fee-banner .fw-bold"
         );
 
         const feeBadge = document.querySelector(
-          ".alert.alert-warning .badge"
+          ".delivery-fee-banner .badge"
         );
 
-        if (!feeText) return;
+        if (feeText) {
+          feeText.textContent = "Delivery Fee:";
+        }
 
-        const currency = "{{ fee_currency }}";
-        const amountNumber = Number(amount || 0);
-
-        feeText.textContent =
-          `Delivery Fee: ${currency} ${formatMoney(amountNumber)}`;
-
-        if (!feeBadge) return;
-
-        if (deliveryType === "admin_review") {
-          feeBadge.textContent = "Manual Review";
-          feeBadge.className = "badge bg-danger";
-        } else if (amountNumber <= 0) {
-          feeBadge.textContent = "Free Delivery";
-          feeBadge.className = "badge bg-success";
-        } else {
-          feeBadge.textContent = "Pay on Delivery";
+        if (feeBadge) {
+          feeBadge.textContent = "Enter address for estimate";
           feeBadge.className = "badge bg-dark";
+        }
+
+        if (zoneEl) {
+          zoneEl.value = "dynamic";
+        }
+      }
+
+      function setFeeBanner(amount, deliveryType) {
+        const feeText = document.querySelector(
+          ".delivery-fee-banner .fw-bold"
+        );
+
+        const feeBadge = document.querySelector(
+          ".delivery-fee-banner .badge"
+        );
+
+        const fee = Number(amount || 0);
+
+        if (feeText) {
+          feeText.textContent = `Delivery Fee: JMD ${fee.toFixed(2)}`;
+        }
+
+        if (feeBadge) {
+          if (fee <= 0) {
+            feeBadge.textContent = "Free Delivery";
+            feeBadge.className = "badge bg-success";
+          } else {
+            feeBadge.textContent =
+              deliveryType || "Standard Delivery";
+
+            feeBadge.className = "badge bg-warning text-dark";
+          }
         }
       }
 
@@ -700,51 +722,129 @@
         const location = (addrEl?.value || "").trim();
         const delivery_parish = (parishEl?.value || "").trim();
 
-        const csrfToken = (document.getElementById("csrf_token")?.value || "").trim();
+        const csrfToken = (
+          document.getElementById("csrf_token")?.value || ""
+        ).trim();
 
         validateAddressSoft();
 
         if (!schedule_date || !location || !delivery_parish) {
-          if (estimateBox) estimateBox.style.display = "none";
+          resetFeeBanner();
+
+          if (estimateBox) {
+            estimateBox.style.display = "none";
+          }
 
           if (coverageText) {
-            coverageText.textContent = "Enter address to calculate coverage.";
+            coverageText.textContent =
+              "Enter address to calculate coverage.";
             coverageText.className = "badge bg-secondary";
           }
 
-          return;
+          return false;
         }
 
-        if (estimateBox) estimateBox.style.display = "block";
-        if (estimateText) estimateText.textContent = "Calculating delivery estimate...";
+        if (!isAddressDetailedEnough(location)) {
+          resetFeeBanner();
+
+          if (estimateBox) {
+            estimateBox.style.display = "none";
+          }
+
+          if (coverageText) {
+            coverageText.textContent =
+              "Please enter a more complete delivery address.";
+            coverageText.className = "badge bg-warning text-dark";
+          }
+
+          return false;
+        }
+
+        if (estimateInProgress || formSubmitting) {
+          return false;
+        }
+
+        estimateInProgress = true;
+
+        if (btnSave) {
+          btnSave.disabled = true;
+          btnSave.innerHTML = `
+      <span
+        class="spinner-border spinner-border-sm me-2"
+        role="status"
+        aria-hidden="true">
+      </span>
+      Calculating...
+    `;
+        }
+
+        if (estimateBox) {
+          estimateBox.style.display = "block";
+        }
+
+        if (estimateText) {
+          estimateText.textContent =
+            "Calculating delivery estimate...";
+        }
+
+        if (coverageText) {
+          coverageText.textContent = "Calculating...";
+          coverageText.className = "badge bg-info text-dark";
+        }
 
         try {
-          const res = await fetch("{{ url_for('customer.schedule_delivery_estimate') }}", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-CSRFToken": csrfToken
-            },
-            body: JSON.stringify({
-              schedule_date,
-              location,
-              delivery_parish
-            })
-          });
+          const res = await fetch(
+            "{{ url_for('customer.schedule_delivery_estimate') }}",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+              },
+              body: JSON.stringify({
+                schedule_date,
+                location,
+                delivery_parish
+              })
+            }
+          );
 
           const data = await res.json().catch(() => ({}));
 
           if (!res.ok || !data.success) {
+            resetFeeBanner();
+
             if (estimateText) {
-              estimateText.textContent = data.message || "Could not calculate delivery estimate.";
+              estimateText.textContent =
+                data.message ||
+                "Could not calculate delivery estimate.";
             }
 
             if (coverageText) {
-              coverageText.textContent = "Could not calculate coverage.";
+              coverageText.textContent =
+                "Could not calculate coverage.";
               coverageText.className = "badge bg-danger";
             }
 
-            return;
+            return false;
+          }
+
+          if (data.allowed === false) {
+            resetFeeBanner();
+
+            if (estimateText) {
+              estimateText.textContent =
+                `This address exceeds the maximum delivery distance of ` +
+                `${Number(data.max_distance || 0).toFixed(1)} KM.`;
+            }
+
+            if (coverageText) {
+              coverageText.textContent =
+                "Outside Delivery Area";
+              coverageText.className = "badge bg-danger";
+            }
+
+            return false;
           }
 
           setFeeBanner(
@@ -755,28 +855,16 @@
           const coverageLabel = getCoverageLabel(data);
 
           if (zoneEl) {
-            const returnedZone = String(data.area_zone || "").trim();
-            const distanceKm = Number(data.distance_km || 0);
-            const isKingston = deliveryParishIsKingston();
-
-            if (returnedZone) {
-              zoneEl.value = returnedZone;
-            } else if (distanceKm <= 5) {
-              zoneEl.value = isKingston
-                ? "kgn_core"
-                : "pm_core";
-            } else {
-              zoneEl.value = isKingston
-                ? "kgn_outside"
-                : "pm_outside";
-            }
+            zoneEl.value =
+              String(data.area_zone || "").trim() ||
+              "dynamic";
           }
 
           if (coverageText) {
             coverageText.textContent = coverageLabel;
 
             const calculatedZone = String(
-              zoneEl?.value || data.area_zone || ""
+              data.area_zone || zoneEl?.value || ""
             ).toLowerCase();
 
             if (data.delivery_type === "admin_review") {
@@ -796,72 +884,111 @@
             }
           }
 
+          const zoneHint = document.getElementById("zoneHint");
+
+          if (zoneHint) {
+            zoneHint.textContent = data.delivery_branch
+              ? `Dispatch branch: ${data.delivery_branch}`
+              : "Calculated automatically from the delivery address.";
+          }
+
           if (estimateText) {
             estimateText.innerHTML = `
-    <div class="d-grid gap-2">
+        <div class="d-grid gap-2">
 
-      <div class="d-flex justify-content-between gap-3">
-        <span>📍 Distance</span>
-        <strong>${data.distance_km || "—"} KM</strong>
-      </div>
+          <div class="d-flex justify-content-between gap-3">
+            <span>📍 Distance</span>
+            <strong>
+              ${Number(data.distance_km || 0).toFixed(1)} KM
+            </strong>
+          </div>
 
-      <div class="d-flex justify-content-between gap-3">
-        <span>🚗 Estimated Drive Time</span>
-        <strong>${data.duration_text || "—"}</strong>
-      </div>
+          <div class="d-flex justify-content-between gap-3">
+            <span>🚗 Estimated Drive Time</span>
+            <strong>${data.duration_text || "—"}</strong>
+          </div>
 
-      <div class="d-flex justify-content-between gap-3">
-        <span>🏢 Dispatch Branch</span>
-        <strong>${data.delivery_branch || "—"}</strong>
-      </div>
+          <div class="d-flex justify-content-between gap-3">
+            <span>🏢 Dispatch Branch</span>
+            <strong>${data.delivery_branch || "—"}</strong>
+          </div>
 
-      <div class="d-flex justify-content-between gap-3">
-        <span>📦 Coverage</span>
-        <strong>${coverageLabel}</strong>
-      </div>
+          <div class="d-flex justify-content-between gap-3">
+            <span>📦 Coverage</span>
+            <strong>${coverageLabel}</strong>
+          </div>
 
-      <div class="d-flex justify-content-between gap-3">
-        <span>🚚 Delivery Type</span>
-        <strong>
-          ${data.delivery_type === "admin_review"
+          <div class="d-flex justify-content-between gap-3">
+            <span>🚚 Delivery Type</span>
+            <strong>
+              ${data.delivery_type === "admin_review"
                 ? "Manual Review"
                 : data.is_free_delivery
                   ? "Free Delivery"
                   : "Pay on Delivery"
               }
-        </strong>
-      </div>
+            </strong>
+          </div>
 
-      ${data.delivery_type === "admin_review"
+          ${data.delivery_type === "admin_review"
                 ? `
-            <div class="alert alert-warning mt-2 mb-0 py-2">
-              This address requires manual review. A representative will
-              contact you with the final delivery price.
-            </div>
-          `
+                <div class="alert alert-warning mt-2 mb-0 py-2">
+                  This address requires manual review. A
+                  representative will contact you with the final
+                  delivery price.
+                </div>
+              `
                 : `
-            <div class="d-flex justify-content-between gap-3 border-top pt-2 mt-1">
-              <span class="fw-bold">💲 Estimated Fee</span>
-              <strong class="${Number(data.delivery_fee || 0) <= 0 ? "text-success" : "text-dark"}">
-                JMD ${Number(data.delivery_fee || 0).toFixed(2)}
-              </strong>
-            </div>
-          `
+                <div
+                  class="d-flex justify-content-between gap-3
+                         border-top pt-2 mt-1">
+
+                  <span class="fw-bold">
+                    💲 Estimated Fee
+                  </span>
+
+                  <strong class="${Number(data.delivery_fee || 0) <= 0
+                  ? "text-success"
+                  : "text-dark"
+                }">
+                    JMD ${Number(
+                  data.delivery_fee || 0
+                ).toFixed(2)}
+                  </strong>
+                </div>
+              `
               }
 
-    </div>
-  `;
+        </div>
+      `;
           }
+
+          return true;
+
         } catch (err) {
           console.error("Estimate error:", err);
 
+          resetFeeBanner();
+
           if (estimateText) {
-            estimateText.textContent = "Network error while calculating estimate.";
+            estimateText.textContent =
+              "Network error while calculating estimate.";
           }
 
           if (coverageText) {
-            coverageText.textContent = "Could not calculate coverage.";
+            coverageText.textContent =
+              "Could not calculate coverage.";
             coverageText.className = "badge bg-danger";
+          }
+
+          return false;
+
+        } finally {
+          estimateInProgress = false;
+
+          if (btnSave && !formSubmitting) {
+            btnSave.disabled = false;
+            btnSave.textContent = "Save";
           }
         }
       }
@@ -890,91 +1017,168 @@
       addrEl?.addEventListener("input", validateAddressSoft);
 
       btnSave?.addEventListener("click", async (e) => {
+        e.preventDefault();
+
         if (!SCHEDULING_ENABLED) {
-          e.preventDefault();
-          showMsg("Delivery scheduling is temporarily disabled. Please contact support.");
+          showMsg(
+            "Delivery scheduling is temporarily disabled. " +
+            "Please contact support."
+          );
+
           return;
         }
 
-        const schedule_date = (document.getElementById("deliveryDate").value || "").trim();
-        const location = (document.getElementById("deliveryLocation").value || "").trim();
-        const delivery_parish = (document.getElementById("deliveryParish")?.value || "").trim();
-        const area_zone = (document.getElementById("deliveryZone")?.value || "dynamic").trim();
-        const direction = (document.getElementById("deliveryDirections").value || "").trim();
-        const mobile_number = (document.getElementById("deliveryMobile").value || "").trim();
-        const person_receiving = (document.getElementById("deliveryPerson").value || "").trim();
+        if (estimateInProgress) {
+          showMsg(
+            "Please wait for the delivery estimate to finish."
+          );
 
-        const csrfToken = (document.getElementById("csrf_token")?.value || "").trim();
+          return;
+        }
+
+        if (formSubmitting) {
+          return;
+        }
+
+        const schedule_date = (
+          document.getElementById("deliveryDate")?.value || ""
+        ).trim();
+
+        const location = (
+          document.getElementById("deliveryLocation")?.value || ""
+        ).trim();
+
+        const delivery_parish = (
+          document.getElementById("deliveryParish")?.value || ""
+        ).trim();
+
+        const direction = (
+          document.getElementById("deliveryDirections")?.value || ""
+        ).trim();
+
+        const mobile_number = (
+          document.getElementById("deliveryMobile")?.value || ""
+        ).trim();
+
+        const person_receiving = (
+          document.getElementById("deliveryPerson")?.value || ""
+        ).trim();
+
+        const csrfToken = (
+          document.getElementById("csrf_token")?.value || ""
+        ).trim();
 
         showMsg("");
 
         if (!schedule_date) {
           showMsg("Please select a delivery date.");
-          return;
-        }
-
-        if (!location) {
-          showMsg("Please enter the delivery address.");
-          return;
-        }
-
-        if (!isAddressDetailedEnough(location)) {
-          showMsg("Please enter a more accurate address, including street/road name and house or lot number if available.");
+          dateEl?.focus();
           return;
         }
 
         if (!delivery_parish) {
           showMsg("Please select a delivery parish.");
+          parishEl?.focus();
+          return;
+        }
+
+        if (!location) {
+          showMsg("Please enter the delivery address.");
+          addrEl?.focus();
+          return;
+        }
+
+        if (!isAddressDetailedEnough(location)) {
+          validateAddressSoft();
+
+          showMsg(
+            "Please enter a more accurate address, including " +
+            "the street or road name and house or lot number " +
+            "if available."
+          );
+
+          addrEl?.focus();
           return;
         }
 
         if (!mobile_number) {
-          showMsg("Please enter the receiver's mobile number.");
+          showMsg(
+            "Please enter the receiver's mobile number."
+          );
+
+          document.getElementById("deliveryMobile")?.focus();
           return;
         }
 
         if (!person_receiving) {
-          showMsg("Please enter the name of the person receiving the package.");
+          showMsg(
+            "Please enter the name of the person receiving " +
+            "the package."
+          );
+
+          document.getElementById("deliveryPerson")?.focus();
           return;
         }
 
+        formSubmitting = true;
         btnSave.disabled = true;
-        btnSave.textContent = "Saving...";
+
+        btnSave.innerHTML = `
+    <span
+      class="spinner-border spinner-border-sm me-2"
+      role="status"
+      aria-hidden="true">
+    </span>
+    Scheduling...
+  `;
 
         try {
-          const res = await fetch("{{ url_for('customer.schedule_delivery_add') }}", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-CSRFToken": csrfToken
-            },
-            body: JSON.stringify({
-              schedule_date,
-              location,
-              delivery_parish,
-              area_zone,
-              direction,
-              mobile_number,
-              person_receiving
-            })
-          });
+          const res = await fetch(
+            "{{ url_for('customer.schedule_delivery_add') }}",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+              },
+              body: JSON.stringify({
+                schedule_date,
+                location,
+                delivery_parish,
+                direction,
+                mobile_number,
+                person_receiving
+              })
+            }
+          );
 
           const data = await res.json().catch(() => ({}));
 
           if (!res.ok || !data.success) {
-            showMsg(data.message || `Failed (${res.status})`);
-            console.log("Schedule delivery error payload:", data);
-            return;
+            throw new Error(
+              data.message ||
+              `Unable to schedule delivery (${res.status}).`
+            );
           }
+
+          showMsg("");
 
           window.location.reload();
 
         } catch (err) {
-          console.error("Schedule Delivery Save error:", err);
-          showMsg("Network error. Please try again.");
-        } finally {
+          console.error(
+            "Schedule Delivery Save error:",
+            err
+          );
+
+          formSubmitting = false;
           btnSave.disabled = false;
           btnSave.textContent = "Save";
+
+          showMsg(
+            err.message ||
+            "Network error. Please try again."
+          );
         }
       });
     });

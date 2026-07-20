@@ -255,62 +255,77 @@ total_weight=0
 
 <div class="container-fluid delivery-page py-3">
 
-  <!-- Page heading -->
-  <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+  <!-- Standard Admin Page Header -->
+  <div class="admin-page-header">
 
-    <div>
-      <h3 class="delivery-heading mb-1">
-        <i class="fas fa-truck me-2 text-primary"></i>
+    <div class="admin-page-header__content">
+      <h1 class="admin-page-header__title">
+        <i class="fas fa-truck me-2"></i>
         Scheduled Delivery
-      </h3>
+      </h1>
 
-      <div class="text-muted">
+      <p class="admin-page-header__subtitle">
         Delivery ID:
-        <strong>#{{ delivery.id }}</strong>
+        <strong class="text-white">
+          #{{ delivery.id }}
+        </strong>
 
         {% if delivery.invoice_number %}
-        <span class="ms-md-2">
-          <span class="d-none d-md-inline">|</span>
-          Invoice:
-          <strong>{{ delivery.invoice_number }}</strong>
+        <span class="ms-2">
+          |
+          Delivery Reference:
+          <strong class="text-white">
+            {{ delivery.invoice_number }}
+          </strong>
         </span>
         {% endif %}
-      </div>
+      </p>
 
-      <div class="mt-2">
+      <div class="admin-page-header__meta">
         {% if current_status == "Delivered" %}
-        <span class="badge bg-success">Delivered</span>
+        <span class="badge bg-success">
+          <i class="fas fa-check-circle me-1"></i>
+          Delivered
+        </span>
 
         {% elif current_status == "Out for Delivery" %}
         <span class="badge bg-warning text-dark">
+          <i class="fas fa-truck me-1"></i>
           Out for Delivery
         </span>
 
         {% elif current_status == "Delivery Attempted" %}
         <span class="badge bg-warning text-dark">
+          <i class="fas fa-exclamation-triangle me-1"></i>
           Delivery Attempted
         </span>
 
         {% elif is_cancelled %}
-        <span class="badge bg-danger">Cancelled</span>
+        <span class="badge bg-danger">
+          <i class="fas fa-ban me-1"></i>
+          Cancelled
+        </span>
 
         {% else %}
-        <span class="badge bg-secondary">
+        <span class="badge bg-light text-dark">
           {{ current_status }}
         </span>
         {% endif %}
 
         {% if delivery.reschedule_status == "pending" %}
-        <span class="badge bg-warning text-dark ms-1">
+        <span class="badge bg-warning text-dark">
           Reschedule Pending
         </span>
         {% endif %}
       </div>
     </div>
 
-    <div class="d-flex flex-wrap gap-2 header-actions">
+    <div class="admin-page-header__actions">
 
-      <a href="{{ url_for('logistics.view_scheduled_deliveries') }}" class="btn btn-outline-secondary btn-sm">
+      <a href="{{ url_for(
+                 'logistics.view_scheduled_deliveries'
+               ) }}" class="btn btn-light btn-sm">
+
         <i class="fas fa-arrow-left me-1"></i>
         Back
       </a>
@@ -319,13 +334,16 @@ total_weight=0
 
       {% if fs not in ["paid", "waived"] %}
       <form method="post" action="{{ url_for(
-                  'logistics.scheduled_delivery_mark_paid',
-                  delivery_id=delivery.id
-                ) }}" class="m-0" onsubmit="return confirm('Mark the delivery fee as paid?');">
+                'logistics.scheduled_delivery_mark_paid',
+                delivery_id=delivery.id
+              ) }}" class="m-0" onsubmit="return confirm(
+                'Mark the delivery fee as paid?'
+              );">
 
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <button type="submit" class="btn btn-sm btn-success">
+        <button type="submit" class="btn btn-success btn-sm">
+
           <i class="fas fa-check me-1"></i>
           Mark Fee Paid
         </button>
@@ -333,13 +351,16 @@ total_weight=0
 
       {% elif fs == "paid" %}
       <form method="post" action="{{ url_for(
-                  'logistics.scheduled_delivery_mark_unpaid',
-                  delivery_id=delivery.id
-                ) }}" class="m-0" onsubmit="return confirm('Reverse this delivery-fee payment and mark it unpaid?');">
+                'logistics.scheduled_delivery_mark_unpaid',
+                delivery_id=delivery.id
+              ) }}" class="m-0" onsubmit="return confirm(
+                'Reverse this delivery-fee payment?'
+              );">
 
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-        <button type="submit" class="btn btn-sm btn-outline-secondary">
+        <button type="submit" class="btn btn-outline-light btn-sm">
+
           <i class="fas fa-undo me-1"></i>
           Mark Fee Unpaid
         </button>
@@ -347,7 +368,6 @@ total_weight=0
       {% endif %}
 
       {% endif %}
-
     </div>
   </div>
 

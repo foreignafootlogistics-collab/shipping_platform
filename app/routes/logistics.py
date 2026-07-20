@@ -60,7 +60,11 @@ from app.utils.invoice_totals import fetch_invoice_totals_pg
 
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
-from app.utils.cloudinary_storage import serve_prealert_invoice_file
+from app.utils.cloudinary_storage import (
+    serve_prealert_invoice_file,
+    upload_prealert_invoice,
+)
+from app.utils.files import allowed_file
 from app.utils.prealert_sync import sync_package_and_prealert
 from app.utils.time import to_jamaica
 
@@ -1039,6 +1043,441 @@ def _get_shipment_export_rows(shipment_id: int):
 # --------------------------------------------------------------------------------------
 # Prealerts
 # --------------------------------------------------------------------------------------
+def _redirect_after_admin_prealert(
+    source: str,
+    customer_id: int,
+):
+    if source == "view_user":
+        return redirect(
+            url_for(
+                "accounts_profiles.view_user",
+                id=customer_id,
+                tab="prealerts",
+            )
+        )
+
+    return redirect(
+        url_for(
+            "logistics.logistics_dashboard",
+            tab="prealert",
+        )
+    )
+
+@logistics_bp.route(
+    "/prealerts/create",
+    methods=["POST"],
+)
+@admin_required(roles=["operations"])
+def admin_create_prealert():
+    try:
+        customer_id = request.form.get(
+            "customer_id",
+            type=int,
+        )
+
+        vendor_name = (
+            request.form.get("vendor_name") or ""
+        ).strip()
+
+        courier_name = (
+            request.form.get("courier_name") or ""
+        ).strip()
+
+        tracking_number = normalize_tracking(
+            (
+                request.form.get("tracking_number")
+                or ""
+            ).strip()
+        )
+
+        purchase_date_raw = (
+            request.form.get("purchase_date") or ""
+        ).strip()
+
+        package_contents = (
+            request.form.get("package_contents")
+            or ""
+        ).strip()
+
+        item_value_raw = (
+            request.form.get("item_value_usd")
+            or ""
+        ).strip()
+
+        source = (
+            request.form.get("source") or "logistics"
+        ).strip()
+
+        # -----------------------------------------
+        # Required-field validation
+        # -----------------------------------------
+        if not customer_id:
+            flash(
+                "Please select a customer.",
+                "warning",
+            )
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    tab="prealert",
+                )
+            )
+
+        customer = db.session.get(User, customer_id)
+
+        if not customer:
+            flash(
+                "The selected customer was not found.",
+                "danger",
+            )
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    tab="prealert",
+                )
+            )
+
+        if not vendor_name:
+            flash(
+                "Vendor name is required.",
+                "warning",
+            )
+            return _redirect_after_admin_prealert(
+                source,
+                customer_id,
+            )
+
+        if not courier_name:
+            flash(
+                "Courier name is required.",
+                "warning",
+            )
+            return _redirect_after_admin_prealert(
+                source,
+                customer_id,
+            )
+
+        if not tracking_number:
+            flash(
+                "Tracking number is required.",
+                "warning",
+            )
+            return _redirect_after_admin_prealert(
+                source,
+                customer_id,
+            )
+
+        if not purchase_date_raw:
+            flash(
+                "Purchase date is required.",
+                "warning",
+            )
+            return _redirect_after_admin_prealert(
+                source,
+                customer_id,
+            )
+
+        if not package_contents:
+            flash(
+                "Package contents are required.",
+                "warning",
+            )
+            return _redirect_after_admin_prealert(
+                source,
+                customer_id,
+            )
+
+        try:
+            purchase_date = datetime.strptime(
+                purchase_date_raw,
+                "%Y-%m-%d",
+            ).date()
+        except (TypeError, ValueError):
+            flash(
+                "Please enter a valid purchase date.",
+                "warning",
+            )
+            return _redirect_after_admin_prealert(
+                source,
+                customer_id,
+            )
+
+        try:
+            item_value_usd = float(
+                item_value_raw or 0
+            )
+        except (TypeError, ValueError):
+            flash(
+                "Item value must be a valid number.",
+                "warning",
+            )
+            return _redirect_after_admin_prealert(
+                source,
+                customer_id,
+            )
+
+        if item_value_usd < 0:
+            flash(
+                "Item value cannot be negative.",
+                "warning",
+            )
+            return _redirect_after_admin_prealert(
+                source,
+                customer_id,
+            )
+
+        # -----------------------------------------
+        # Prevent duplicate active pre-alert
+        # -----------------------------------------
+        existing_prealert = (
+            Prealert.query
+            .filter(
+                Prealert.customer_id == customer_id,
+                Prealert.tracking_number
+                == tracking_number,
+                Prealert.linked_package_id.is_(None),
+            )
+            .order_by(Prealert.id.desc())
+            .first()
+        )
+
+        if existing_prealert:
+            existing_number = (
+                existing_prealert.prealert_number
+                or existing_prealert.id
+            )
+
+            flash(
+                (
+                    "A pre-alert already exists for "
+                    f"tracking number {tracking_number}. "
+                    f"Please use PA-{existing_number:05d}."
+                ),
+                "warning",
+            )
+
+            return _redirect_after_admin_prealert(
+                source,
+                customer_id,
+            )
+
+        # -----------------------------------------
+        # Validate files before uploading
+        # -----------------------------------------
+        files = [
+            file
+            for file in request.files.getlist(
+                "invoices"
+            )
+            if file
+            and getattr(file, "filename", "")
+        ]
+
+        for file in files:
+            original_name = (
+                file.filename or ""
+            ).strip()
+
+            if not allowed_file(original_name):
+                flash(
+                    (
+                        f"{original_name} is not an "
+                        "accepted invoice file. "
+                        "Allowed types: PDF, JPG, "
+                        "JPEG and PNG."
+                    ),
+                    "warning",
+                )
+
+                return _redirect_after_admin_prealert(
+                    source,
+                    customer_id,
+                )
+
+        # -----------------------------------------
+        # Upload invoice attachments
+        # -----------------------------------------
+        uploaded_invoices = []
+
+        for file in files:
+            original_name = (
+                file.filename or ""
+            ).strip()
+
+            (
+                invoice_url,
+                invoice_public_id,
+                invoice_resource_type,
+            ) = upload_prealert_invoice(file)
+
+            uploaded_invoices.append({
+                "url": invoice_url,
+                "original_name": original_name,
+                "public_id": invoice_public_id,
+                "resource_type":
+                    invoice_resource_type,
+            })
+
+        first_invoice = (
+            uploaded_invoices[0]
+            if uploaded_invoices
+            else None
+        )
+
+        # -----------------------------------------
+        # Generate next pre-alert number
+        # -----------------------------------------
+        current_max = (
+            db.session.query(
+                func.max(
+                    Prealert.prealert_number
+                )
+            )
+            .scalar()
+            or 100000
+        )
+
+        prealert_number = int(current_max) + 1
+
+        # -----------------------------------------
+        # Create pre-alert
+        # -----------------------------------------
+        prealert = Prealert(
+            prealert_number=prealert_number,
+            customer_id=customer_id,
+            vendor_name=vendor_name,
+            courier_name=courier_name,
+            tracking_number=tracking_number,
+            purchase_date=purchase_date,
+            package_contents=package_contents,
+            item_value_usd=item_value_usd,
+
+            invoice_filename=(
+                first_invoice["url"]
+                if first_invoice
+                else None
+            ),
+
+            invoice_original_name=(
+                first_invoice["original_name"]
+                if first_invoice
+                else None
+            ),
+
+            invoice_public_id=(
+                first_invoice["public_id"]
+                if first_invoice
+                else None
+            ),
+
+            invoice_resource_type=(
+                first_invoice["resource_type"]
+                if first_invoice
+                else None
+            ),
+
+            created_at=datetime.now(
+                timezone.utc
+            ),
+        )
+
+        db.session.add(prealert)
+        db.session.flush()
+
+        # -----------------------------------------
+        # Save every attachment record
+        # -----------------------------------------
+        for uploaded in uploaded_invoices:
+            db.session.add(
+                PrealertAttachment(
+                    prealert_id=prealert.id,
+                    file_url=uploaded["url"],
+                    original_name=(
+                        uploaded["original_name"]
+                    ),
+                    cloud_public_id=(
+                        uploaded["public_id"]
+                    ),
+                    cloud_resource_type=(
+                        uploaded["resource_type"]
+                    ),
+                )
+            )
+
+        db.session.commit()
+
+        # -----------------------------------------
+        # Synchronize with an existing package
+        # -----------------------------------------
+        try:
+            matching_package = (
+                Package.query
+                .filter(
+                    Package.user_id
+                    == customer_id,
+
+                    Package.tracking_number
+                    == tracking_number,
+                )
+                .order_by(Package.id.desc())
+                .first()
+            )
+
+            if matching_package:
+                from app.utils.prealert_sync import (
+                    sync_prealert_invoice_to_package,
+                )
+
+                if (
+                    sync_prealert_invoice_to_package(
+                        matching_package
+                    )
+                ):
+                    db.session.commit()
+
+        except Exception:
+            db.session.rollback()
+
+            current_app.logger.exception(
+                "Unable to synchronize admin "
+                "pre-alert %s with a package.",
+                prealert.id,
+            )
+
+        flash(
+            (
+                f"Pre-alert PA-{prealert_number:05d} "
+                f"created for "
+                f"{customer.full_name or customer.email}."
+            ),
+            "success",
+        )
+
+        return _redirect_after_admin_prealert(
+            source,
+            customer_id,
+        )
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Admin pre-alert creation failed: %s",
+            error,
+        )
+
+        flash(
+            "The pre-alert could not be created.",
+            "danger",
+        )
+
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="prealert",
+            )
+        )
+
 @logistics_bp.route("/prealerts")
 @logistics_bp.route("/prealerts/<int:user_id>")
 @admin_required
@@ -1429,7 +1868,18 @@ def logistics_dashboard():
     # Pre-Alerts tab data for Logistics Dashboard
     # --------------------------------------------
     prealerts_data = []
+    prealert_customers = []
+
     if tab == "prealert":
+        prealert_customers = (
+            User.query
+            .filter(User.is_admin.is_(False))
+            .order_by(
+                User.full_name.asc(),
+                User.registration_number.asc(),
+            )
+            .all()
+        )
         rows = (
             db.session.query(
                 Prealert,
@@ -1442,7 +1892,25 @@ def logistics_dashboard():
         )
 
         for prealert, full_name, reg_no in rows:
-            code_number = prealert.prealert_number or prealert.id  # fallback
+            code_number = (
+               prealert.prealert_number
+                or prealert.id
+            )
+
+            attachments = [
+                {
+                    "id": attachment.id,
+                    "file_url": attachment.file_url,
+                    "original_name":
+                        attachment.original_name,
+                }
+                for attachment in getattr(
+                    prealert,
+                    "attachments",
+                    [],
+                )
+            ]
+
             prealerts_data.append({
                 "id": prealert.id,
                 "code": f"PA-{code_number:05d}",
@@ -1457,8 +1925,14 @@ def logistics_dashboard():
                 "invoice_filename": prealert.invoice_filename,
                 "invoice_original_name": prealert.invoice_original_name,
                 "invoice_public_id": prealert.invoice_public_id,
-                "invoice_resource_type": prealert.invoice_resource_type,
-                "linked_package_id": prealert.linked_package_id,
+                "invoice_resource_type":
+                    prealert.invoice_resource_type,
+
+                "attachments": attachments,
+                "attachment_count": len(attachments),
+
+                "linked_package_id":
+                    prealert.linked_package_id,
                 "linked_at": prealert.linked_at,
 
                 "is_locked": prealert.is_locked,
@@ -2144,6 +2618,7 @@ def logistics_dashboard():
         CATEGORIES=CATEGORIES,
         USD_TO_JMD=USD_TO_JMD,
         prealerts=prealerts_data,
+        prealert_customers=prealert_customers,
     )
 
 @logistics_bp.get("/api/user-lookup")

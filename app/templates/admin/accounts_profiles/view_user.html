@@ -623,6 +623,33 @@
       <!-- Prealerts Tab -->
       <div class="tab-pane fade {% if current_tab == 'prealerts' %}show active{% endif %}" id="prealerts"
         role="tabpanel" aria-labelledby="prealerts-tab">
+
+        <div class="d-flex justify-content-between align-items-center
+         flex-wrap gap-2 mb-3">
+
+          <button type="button" class="btn btn-success" data-bs-toggle="modal"
+            data-bs-target="#viewUserAddPrealertModal">
+
+            <i class="bi bi-plus-circle me-1"></i>
+            Add Pre-Alert
+          </button>
+
+          <div class="d-flex align-items-center gap-2">
+            <label for="prealertsPageLength" class="small text-muted fw-semibold mb-0">
+
+              Rows
+            </label>
+
+            <select id="prealertsPageLength" class="form-select form-select-sm" style="width:auto;">
+
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+        </div>
+
         <div class="table-responsive">
           <table id="prealertsTable" class="table table-striped table-bordered">
             <thead class="table-dark">
@@ -679,6 +706,176 @@
             </tbody>
           </table>
         </div>
+
+        <!-- Add Pre-Alert Modal -->
+        <div class="modal fade" id="viewUserAddPrealertModal" tabindex="-1"
+          aria-labelledby="viewUserAddPrealertModalLabel" aria-hidden="true">
+
+          <div class="modal-dialog modal-lg
+                   modal-dialog-scrollable">
+
+            <div class="modal-content">
+
+              <form method="POST" action="{{ url_for(
+                  'logistics.admin_create_prealert'
+                ) }}" enctype="multipart/form-data" id="viewUserAddPrealertForm">
+
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <input type="hidden" name="source" value="view_user">
+
+                <input type="hidden" name="customer_id" value="{{ user.id }}">
+
+                <div class="modal-header">
+                  <div>
+                    <h5 class="modal-title" id="viewUserAddPrealertModalLabel">
+
+                      <i class="bi bi-bell-fill me-1" style="color:#4a148c;">
+                      </i>
+
+                      Add Customer Pre-Alert
+                    </h5>
+
+                    <div class="small text-muted mt-1">
+                      Submit a pre-alert for this customer.
+                    </div>
+                  </div>
+
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close">
+                  </button>
+                </div>
+
+                <div class="modal-body">
+
+                  <!-- Fixed Customer -->
+                  <div class="border rounded p-3 mb-3" style="background:#f8f5ff;">
+
+                    <div class="small text-muted">
+                      Customer
+                    </div>
+
+                    <div class="fw-bold">
+                      {{ user.full_name or user.email }}
+                    </div>
+
+                    <div class="small text-muted">
+                      {{ user.registration_number or "No registration number" }}
+                      {% if user.email %}
+                      • {{ user.email }}
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  <div class="alert alert-info small">
+                    Enter the tracking information exactly as
+                    provided by the merchant or courier. Duplicate
+                    active tracking numbers for this customer are
+                    blocked.
+                  </div>
+
+                  <div class="row g-3">
+
+                    <div class="col-md-6">
+                      <label for="viewUserPrealertVendor" class="form-label fw-semibold">
+
+                        Vendor
+                      </label>
+
+                      <input type="text" id="viewUserPrealertVendor" name="vendor_name" class="form-control"
+                        placeholder="Amazon, SHEIN, Walmart, etc." required>
+                    </div>
+
+                    <div class="col-md-6">
+                      <label for="viewUserPrealertCourier" class="form-label fw-semibold">
+
+                        Courier
+                      </label>
+
+                      <input type="text" id="viewUserPrealertCourier" name="courier_name" class="form-control"
+                        placeholder="USPS, UPS, FedEx, DHL, etc." required>
+                    </div>
+
+                    <div class="col-md-7">
+                      <label for="viewUserPrealertTracking" class="form-label fw-semibold">
+
+                        Tracking Number
+                      </label>
+
+                      <input type="text" id="viewUserPrealertTracking" name="tracking_number"
+                        class="form-control text-uppercase" placeholder="Enter tracking number" autocomplete="off"
+                        required>
+                    </div>
+
+                    <div class="col-md-5">
+                      <label for="viewUserPrealertPurchaseDate" class="form-label fw-semibold">
+
+                        Purchase Date
+                      </label>
+
+                      <input type="date" id="viewUserPrealertPurchaseDate" name="purchase_date" class="form-control"
+                        required>
+                    </div>
+
+                    <div class="col-md-8">
+                      <label for="viewUserPrealertContents" class="form-label fw-semibold">
+
+                        Package Contents
+                      </label>
+
+                      <input type="text" id="viewUserPrealertContents" name="package_contents" class="form-control"
+                        placeholder="Clothing, shoes, electronics, etc." required>
+                    </div>
+
+                    <div class="col-md-4">
+                      <label for="viewUserPrealertValue" class="form-label fw-semibold">
+
+                        Value (USD)
+                      </label>
+
+                      <div class="input-group">
+                        <span class="input-group-text">$</span>
+
+                        <input type="number" id="viewUserPrealertValue" name="item_value_usd" class="form-control"
+                          min="0" step="0.01" placeholder="0.00" required>
+                      </div>
+                    </div>
+
+                    <div class="col-12">
+                      <label for="viewUserPrealertInvoices" class="form-label fw-semibold">
+
+                        Invoice Attachments
+                      </label>
+
+                      <input type="file" id="viewUserPrealertInvoices" name="invoices" class="form-control"
+                        accept=".pdf,.jpg,.jpeg,.png" multiple>
+
+                      <div class="form-text">
+                        Optional. PDF, JPG, JPEG and PNG files are
+                        accepted. Multiple files may be selected.
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+
+                    Cancel
+                  </button>
+
+                  <button type="submit" class="btn btn-success" id="viewUserSavePrealertButton">
+
+                    <i class="bi bi-check-circle me-1"></i>
+                    Save Pre-Alert
+                  </button>
+                </div>
+
+              </form>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <!-- Invoices Tab -->
@@ -2883,6 +3080,55 @@
       });
     }
 
+    /*
+     /*
+     * Move the Pre-Alert modal outside the tab container.
+     * Bootstrap modals work best as direct children of body.
+     */
+    const viewUserPrealertModal = document.getElementById(
+      "viewUserAddPrealertModal"
+    );
+
+    if (
+      viewUserPrealertModal &&
+      viewUserPrealertModal.parentElement !== document.body
+    ) {
+      document.body.appendChild(
+        viewUserPrealertModal
+      );
+    }
+
+    /*
+     * Prevent duplicate Add Pre-Alert submissions.
+     */
+    const viewUserPrealertForm = document.getElementById(
+      "viewUserAddPrealertForm"
+    );
+
+    viewUserPrealertForm?.addEventListener(
+      "submit",
+      function () {
+        const saveButton = document.getElementById(
+          "viewUserSavePrealertButton"
+        );
+
+        if (!saveButton) {
+          return;
+        }
+
+        saveButton.disabled = true;
+
+        saveButton.innerHTML = `
+          <span
+            class="spinner-border spinner-border-sm me-2"
+            role="status"
+            aria-hidden="true">
+          </span>
+          Saving...
+        `;
+      }
+    );
+
     updateState();
   });
 </script>
@@ -3215,12 +3461,82 @@
     /* IMPORTANT: Do NOT initialize DataTables for #packagesTable */
     // $('#packagesTable').DataTable();  // intentionally removed
 
-    // Prealerts
-    if ($('#prealertsTable').length) {
-      $('#prealertsTable').DataTable({
-        order: [[0, 'desc']],
-        pageLength: 10
+    // Pre-Alerts table
+    if ($("#prealertsTable").length) {
+      const prealertsTable = $("#prealertsTable").DataTable({
+        order: [[0, "desc"]],
+        pageLength: 10,
+        autoWidth: false,
+
+        /*
+         * The custom Rows selector replaces DataTables'
+         * default Show control. Searching is unnecessary
+         * because this tab belongs to one customer.
+         */
+        lengthChange: false,
+        searching: false,
+
+        dom:
+          "t" +
+          "<'d-flex justify-content-between " +
+          "align-items-center flex-wrap gap-2 mt-3'ip>",
+
+        language: {
+          emptyTable:
+            "No pre-alerts found for this customer.",
+
+          info:
+            "Showing _START_–_END_ of _TOTAL_ pre-alerts",
+
+          infoEmpty:
+            "Showing 0 pre-alerts",
+
+          paginate: {
+            previous: "Previous",
+            next: "Next"
+          }
+        },
+
+        columnDefs: [
+          {
+            targets: "_all",
+            defaultContent: "—"
+          }
+        ]
       });
+
+      const prealertsPageLength =
+        document.getElementById("prealertsPageLength");
+
+      if (prealertsPageLength) {
+        prealertsPageLength.value = String(
+          prealertsTable.page.len()
+        );
+
+        prealertsPageLength.addEventListener(
+          "change",
+          function () {
+            prealertsTable
+              .page
+              .len(Number(this.value || 10))
+              .draw();
+          }
+        );
+      }
+
+      /*
+       * Recalculate column widths when the hidden
+       * Pre-Alerts tab becomes visible.
+       */
+      const prealertsTab =
+        document.getElementById("prealerts-tab");
+
+      prealertsTab?.addEventListener(
+        "shown.bs.tab",
+        function () {
+          prealertsTable.columns.adjust();
+        }
+      );
     }
 
     // Claims

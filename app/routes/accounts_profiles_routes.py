@@ -35,6 +35,16 @@ from app.utils.time import to_jamaica
 from app.utils.messages import make_thread_key
 from app.utils.subscription_utils import get_subscription_summary
 from app.utils import next_registration_number
+from app.utils.claims import (
+    get_eligible_claim_package,
+    get_eligible_claim_packages,
+)
+from app.utils.claims_uploads import (
+    upload_claim_file_to_cloudinary,
+)
+from app.utils.email_utils import (
+    send_claim_submitted_email,
+)
 
 # Models (these exist in your file)
 from app.models import (
@@ -1479,6 +1489,10 @@ def view_user(id):
         .first()
     )
 
+    claim_eligible_packages = (
+        get_eligible_claim_packages(user.id)
+    )
+
     return render_template(
         'admin/accounts_profiles/view_user.html',
         user={
@@ -1562,7 +1576,7 @@ def view_user(id):
         subscription_summary=subscription_summary,
         subscription_plans=subscription_plans,
         pending_subscription=pending_subscription,
-
+        claim_eligible_packages=claim_eligible_packages,
     )
 
 
@@ -1869,100 +1883,280 @@ def delete_account(id: int):
         next=next_url
     )
 
-@accounts_bp.route("/users/<int:id>/claims/create", methods=["POST"])
+@accounts_bp.route(
+    "/users/<int:id>/claims/create",
+    methods=["POST"],
+)
 @admin_required
 def create_claim_for_user(id):
     user = db.session.get(User, id)
-    if not user:
-        return jsonify({"success": False, "error": "User not found"}), 404
 
-    house_awb = (request.form.get("house_awb") or "").strip()
-    tracking_number = (request.form.get("tracking_number") or "").strip()
-    description = (request.form.get("description") or "").strip()
-    refund_method = (request.form.get("refund_method") or "cash").strip().lower()
+    if not user:
+        return jsonify({
+            "success": False,
+            "error": "Customer not found.",
+        }), 404
+
+    # ---------------------------------
+    # Read and validate package ID
+    # ---------------------------------
     try:
-        package_id = int(request.form.get("package_id") or 0)
-    except Exception:
+        package_id = int(
+            request.form.get("package_id") or 0
+        )
+    except (TypeError, ValueError):
         package_id = 0
 
-    bank_account_name = (request.form.get("bank_account_name") or "").strip()
-    bank_branch = (request.form.get("bank_branch") or "").strip()
-    bank_account_number = (request.form.get("bank_account_number") or "").strip()
-    bank_account_type = (request.form.get("bank_account_type") or "").strip()
+    selected_package = get_eligible_claim_package(
+        user_id=user.id,
+        package_id=package_id,
+    )
 
-    try:
-        item_value_jmd = float(request.form.get("item_value_jmd") or 0)
-    except Exception:
-        item_value_jmd = 0.0
+    if not selected_package:
+        return jsonify({
+            "success": False,
+            "error": (
+                "Select an eligible package belonging "
+                "to this customer."
+            ),
+        }), 400
+
+    # Always use identifiers stored in the database.
+    house_awb = (
+        selected_package.house_awb or ""
+    ).strip()
+
+    tracking_number = (
+        selected_package.tracking_number or ""
+    ).strip()
 
     if not house_awb:
-        return jsonify({"success": False, "error": "House AWB is required."}), 400
+        return jsonify({
+            "success": False,
+            "error": (
+                "The selected package does not have "
+                "a House AWB."
+            ),
+        }), 400
 
-    if item_value_jmd <= 0:
-        return jsonify({"success": False, "error": "Item value must be greater than 0."}), 400
+    if not tracking_number:
+        return jsonify({
+            "success": False,
+            "error": (
+                "The selected package does not have "
+                "a tracking number."
+            ),
+        }), 400
 
-    if refund_method not in ("cash", "bank_transfer", "wallet_credit"):
-        refund_method = "cash"
+    # ---------------------------------
+    # Read claim information
+    # ---------------------------------
+    description = (
+        request.form.get("description") or ""
+    ).strip()
 
-    if refund_method == "bank_transfer":
-        if not bank_account_name or not bank_branch or not bank_account_number or not bank_account_type:
-            return jsonify({
-                "success": False,
-                "error": "All bank details are required for bank transfer refunds."
-            }), 400
-
-    selected_package = None
-    if package_id:
-        selected_package = (
-            Package.query
-            .filter(
-                Package.id == package_id,
-                Package.user_id == user.id
-            )
-            .first()
-        )
-
-        if not selected_package:
-            return jsonify({
-                "success": False,
-                "error": "Selected package was not found for this customer."
-            }), 400
-
-    invoice_url = (request.form.get("invoice_url") or "").strip()
-
-    bank_statement_url = (request.form.get("bank_statement_url") or "").strip()
-
-    # placeholders allowed for admin-created claims
-    if not invoice_url:
-        invoice_url = "#"
-
-    if not bank_statement_url:
-        bank_statement_url = "#"
+    refund_method = (
+        request.form.get("refund_method")
+        or "cash"
+    ).strip().lower()
 
     try:
+        item_value_jmd = round(
+            float(
+                request.form.get(
+                    "item_value_jmd"
+                )
+                or 0
+            ),
+            2,
+        )
+    except (TypeError, ValueError):
+        item_value_jmd = 0.00
+
+    if item_value_jmd <= 0:
+        return jsonify({
+            "success": False,
+            "error": (
+                "Item value must be greater than "
+                "JMD 0.00."
+            ),
+        }), 400
+
+    if not description:
+        return jsonify({
+            "success": False,
+            "error": "Claim description is required.",
+        }), 400
+
+    if len(description) > 2000:
+        return jsonify({
+            "success": False,
+            "error": (
+                "Claim description cannot exceed "
+                "2,000 characters."
+            ),
+        }), 400
+
+    allowed_refund_methods = {
+        "cash",
+        "bank_transfer",
+        "wallet_credit",
+    }
+
+    if refund_method not in allowed_refund_methods:
+        return jsonify({
+            "success": False,
+            "error": "Select a valid refund method.",
+        }), 400
+
+    # ---------------------------------
+    # Bank-transfer details
+    # ---------------------------------
+    bank_account_name = (
+        request.form.get("bank_account_name")
+        or ""
+    ).strip()
+
+    bank_branch = (
+        request.form.get("bank_branch")
+        or ""
+    ).strip()
+
+    bank_account_number = (
+        request.form.get("bank_account_number")
+        or ""
+    ).strip()
+
+    bank_account_type = (
+        request.form.get("bank_account_type")
+        or ""
+    ).strip().lower()
+
+    if refund_method == "bank_transfer":
+        if (
+            not bank_account_name
+            or not bank_branch
+            or not bank_account_number
+            or bank_account_type
+            not in {"savings", "chequing"}
+        ):
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Name on account, branch, account "
+                    "number, and account type are required "
+                    "for bank-transfer refunds."
+                ),
+            }), 400
+
+    else:
+        # Do not retain irrelevant bank information.
+        bank_account_name = ""
+        bank_branch = ""
+        bank_account_number = ""
+        bank_account_type = ""
+
+    # ---------------------------------
+    # Required evidence files
+    # ---------------------------------
+    invoice_file = request.files.get(
+        "invoice_file"
+    )
+
+    bank_statement_file = request.files.get(
+        "bank_statement_file"
+    )
+
+    if (
+        not invoice_file
+        or not invoice_file.filename
+    ):
+        return jsonify({
+            "success": False,
+            "error": (
+                "Invoice evidence is required."
+            ),
+        }), 400
+
+    if (
+        not bank_statement_file
+        or not bank_statement_file.filename
+    ):
+        return jsonify({
+            "success": False,
+            "error": (
+                "Bank-statement evidence is required."
+            ),
+        }), 400
+
+    try:
+        # ---------------------------------
+        # Upload evidence
+        # ---------------------------------
+        (
+            invoice_url,
+            invoice_public_id,
+        ) = upload_claim_file_to_cloudinary(
+            invoice_file,
+            folder="fafl/claims/invoices",
+        )
+
+        (
+            bank_statement_url,
+            bank_statement_public_id,
+        ) = upload_claim_file_to_cloudinary(
+            bank_statement_file,
+            folder="fafl/claims/bank_statements",
+        )
+
+        # ---------------------------------
+        # Create claim
+        # ---------------------------------
         claim = Claim(
             case_id=generate_claim_case_id(),
             user_id=user.id,
-            package_id=selected_package.id if selected_package else None,
+            package_id=selected_package.id,
+
             house_awb=house_awb,
-            tracking_number=tracking_number or None,
+            tracking_number=tracking_number,
+
             item_value_jmd=item_value_jmd,
-            description=description or None,
+            description=description,
 
             invoice_url=invoice_url,
-            invoice_public_id=None,
-            bank_statement_url=bank_statement_url,
-            bank_statement_public_id=None,
+            invoice_public_id=(
+                invoice_public_id
+            ),
+
+            bank_statement_url=(
+                bank_statement_url
+            ),
+            bank_statement_public_id=(
+                bank_statement_public_id
+            ),
 
             refund_method=refund_method,
-            bank_account_name=bank_account_name or None,
-            bank_branch=bank_branch or None,
-            bank_account_number=bank_account_number or None,
-            bank_account_type=bank_account_type or None,
+
+            bank_account_name=(
+                bank_account_name or None
+            ),
+            bank_branch=(
+                bank_branch or None
+            ),
+            bank_account_number=(
+                bank_account_number or None
+            ),
+            bank_account_type=(
+                bank_account_type or None
+            ),
 
             status="submitted",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(
+                timezone.utc
+            ),
+            updated_at=datetime.now(
+                timezone.utc
+            ),
         )
 
         db.session.add(claim)
@@ -1975,23 +2169,63 @@ def create_claim_for_user(id):
                 from_status=None,
                 to_status="submitted",
                 actor_admin_id=current_user.id,
-                message=f"Admin created claim {claim.case_id} on behalf of customer {user.full_name}"
+                message=(
+                    f"Admin {current_user.id} created "
+                    f"claim {claim.case_id} on behalf "
+                    f"of {user.full_name or user.email} "
+                    f"for package #{selected_package.id}."
+                ),
             )
         )
 
         db.session.commit()
+
+        # Email failure must not reverse the claim.
+        try:
+            send_claim_submitted_email(
+                user_email=user.email,
+                full_name=(
+                    user.full_name or "Customer"
+                ),
+                claim=claim,
+                recipient_user_id=user.id,
+            )
+
+        except Exception as email_error:
+            current_app.logger.exception(
+                "Claim %s was created for user %s, "
+                "but its confirmation email failed: %s",
+                claim.case_id,
+                user.id,
+                email_error,
+            )
 
         return jsonify({
             "success": True,
             "claim_id": claim.id,
             "case_id": claim.case_id,
             "status": claim.status,
+            "message": (
+                f"Claim {claim.case_id} was created "
+                "successfully."
+            ),
         })
 
-    except Exception as e:
+    except Exception as error:
         db.session.rollback()
-        current_app.logger.exception("Failed to create admin claim for user %s", id)
-        return jsonify({"success": False, "error": f"Could not create claim: {e}"}), 500
+
+        current_app.logger.exception(
+            "Failed to create an admin claim "
+            "for user %s",
+            user.id,
+        )
+
+        return jsonify({
+            "success": False,
+            "error": (
+                f"Could not create claim: {error}"
+            ),
+        }), 500
 
 # -------------------------
 # Manage Account (simple editor)

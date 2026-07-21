@@ -1,30 +1,81 @@
-# app/utils/claims_uploads.py
 import uuid
+
 from werkzeug.utils import secure_filename
 
-ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png"}
+
+ALLOWED_EXTENSIONS = {
+    "pdf",
+    "jpg",
+    "jpeg",
+    "png",
+    "webp",
+}
+
 
 def allowed_file(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
-def upload_claim_file_to_cloudinary(file_storage, folder: str):
     """
-    Returns: (url, public_id)
+    Return True when the filename has an allowed extension.
     """
-    import cloudinary.uploader
+    if not filename or "." not in filename:
+        return False
 
-    filename = secure_filename(file_storage.filename or "")
+    extension = filename.rsplit(".", 1)[1].lower()
+
+    return extension in ALLOWED_EXTENSIONS
+
+
+def upload_claim_file_to_cloudinary(
+    file_storage,
+    folder: str,
+):
+    """
+    Upload claim evidence to Cloudinary.
+
+    Returns:
+        tuple[str, str]: secure URL and Cloudinary public ID
+    """
+    if not file_storage:
+        raise ValueError("Evidence file is required.")
+
+    filename = secure_filename(
+        file_storage.filename or ""
+    )
+
     if not filename:
-        raise ValueError("Missing filename")
+        raise ValueError(
+            "The selected evidence file has no filename."
+        )
 
     if not allowed_file(filename):
-        raise ValueError("Only PDF/JPG/PNG allowed")
+        raise ValueError(
+            "Only PDF, JPG, JPEG, PNG, and WEBP files are allowed."
+        )
 
-    public_id = f"{uuid.uuid4().hex}_{filename.rsplit('.', 1)[0]}"
-    res = cloudinary.uploader.upload(
+    name_without_extension = filename.rsplit(
+        ".",
+        1,
+    )[0]
+
+    public_id = (
+        f"{uuid.uuid4().hex}_"
+        f"{name_without_extension}"
+    )
+
+    import cloudinary.uploader
+
+    result = cloudinary.uploader.upload(
         file_storage,
         folder=folder,
         public_id=public_id,
         resource_type="auto",
     )
-    return (res.get("secure_url"), res.get("public_id"))
+
+    secure_url = result.get("secure_url")
+    uploaded_public_id = result.get("public_id")
+
+    if not secure_url or not uploaded_public_id:
+        raise ValueError(
+            "Cloudinary did not return the uploaded file details."
+        )
+
+    return secure_url, uploaded_public_id

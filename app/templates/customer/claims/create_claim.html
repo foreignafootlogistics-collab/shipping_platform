@@ -48,55 +48,124 @@
             </div>
 
             <div class="col-12">
-              <label class="form-label">Select Package</label>
-              <select id="claim_package_select" class="form-select">
-                <option value="">-- Select eligible package --</option>
+              <label for="claim_package_select" class="form-label">
+                Select Package
+                <span class="text-danger">*</span>
+              </label>
+
+              <select id="claim_package_select" name="package_id" class="form-select" required {% if not
+                eligible_packages %}disabled{% endif %}>
+                <option value="">
+                  -- Select eligible package --
+                </option>
+
                 {% for pkg in eligible_packages %}
                 <option value="{{ pkg.id }}" data-awb="{{ pkg.house_awb or '' }}"
                   data-tracking="{{ pkg.tracking_number or '' }}">
-                  {{ pkg.house_awb or 'No AWB' }}
-                  {% if pkg.tracking_number %} • {{ pkg.tracking_number }}{% endif %}
-                  {% if pkg.description %} • {{ pkg.description }}{% endif %}
+                  {{ pkg.house_awb or "No AWB" }}
+
+                  {% if pkg.tracking_number %}
+                  • {{ pkg.tracking_number }}
+                  {% endif %}
+
+                  {% if pkg.description %}
+                  • {{ pkg.description }}
+                  {% endif %}
                 </option>
                 {% endfor %}
               </select>
+
               <div class="form-text">
-                Choose one of your eligible packages to auto-fill House AWB and Tracking Number.
+                Choose one of your eligible packages. Its House AWB
+                and tracking number will be filled automatically.
               </div>
+
+              {% if not eligible_packages %}
+              <div class="alert alert-warning mt-3 mb-0">
+                You currently have no packages eligible for a missing
+                in-transit claim. Please contact FAFL if you believe a
+                package is missing.
+              </div>
+              {% endif %}
             </div>
 
             <div class="col-md-6">
               {{ form.house_awb.label(class="form-label") }}
               <span class="text-danger">*</span>
-              {{ form.house_awb(class="form-control", placeholder="e.g. FAFL12345", required=True, id="claim_house_awb")
-              }}
-              {% for e in form.house_awb.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+
+              {{ form.house_awb(
+              class="form-control",
+              placeholder="Select a package above",
+              required=True,
+              readonly=True,
+              id="claim_house_awb"
+              ) }}
+
+              {% for error in form.house_awb.errors %}
+              <div class="text-danger small">
+                {{ error }}
+              </div>
+              {% endfor %}
             </div>
 
             <div class="col-md-6">
               {{ form.tracking_number.label(class="form-label") }}
               <span class="text-danger">*</span>
-              {{ form.tracking_number(class="form-control", placeholder="e.g. 1Z..., AMZ..., SHEIN...", required=True,
-              id="claim_tracking_number") }}
-              {% for e in form.tracking_number.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+
+              {{ form.tracking_number(
+              class="form-control",
+              placeholder="Select a package above",
+              required=True,
+              readonly=True,
+              id="claim_tracking_number"
+              ) }}
+
+              {% for error in form.tracking_number.errors %}
+              <div class="text-danger small">
+                {{ error }}
+              </div>
+              {% endfor %}
             </div>
 
             <div class="col-md-6">
               {{ form.item_value_jmd.label(class="form-label") }}
               <span class="text-danger">*</span>
+
               <div class="input-group">
                 <span class="input-group-text">JMD</span>
-                {{ form.item_value_jmd(class="form-control", placeholder="0.00", required=True, step="0.01", min="0") }}
+
+                {{ form.item_value_jmd(
+                class="form-control",
+                placeholder="0.00",
+                required=True,
+                step="0.01",
+                min="0.01"
+                ) }}
               </div>
-              {% for e in form.item_value_jmd.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+
+              {% for error in form.item_value_jmd.errors %}
+              <div class="text-danger small">
+                {{ error }}
+              </div>
+              {% endfor %}
             </div>
 
             <div class="col-md-6">
               {{ form.refund_method.label(class="form-label") }}
               <span class="text-danger">*</span>
-              {# NOTE: Your WTForms SelectField must include wallet_credit option server-side #}
-              {{ form.refund_method(class="form-select", id="refund_method", required=True) }}
-              {% for e in form.refund_method.errors %}<div class="text-danger small">{{ e }}</div>{% endfor %}
+
+              {{ form.refund_method(
+              class="form-select",
+              id="refund_method",
+              required=True
+              ) }}
+
+              {% for error in form.refund_method.errors %}
+              <div class="text-danger small">
+                {{ error }}
+              </div>
+              {% endfor %}
+
               <div class="text-muted small mt-1">
                 Wallet credit can be used to pay for future packages.
               </div>
@@ -186,8 +255,9 @@
 
             <div class="col-12 d-flex justify-content-end gap-2 mt-2">
               <a class="btn btn-outline-dark" href="{{ url_for('customer_claims.list_claims') }}">Cancel</a>
-              <button class="btn btn-purple" type="submit">
-                ✅ Submit Claim
+              <button class="btn btn-purple" type="submit" {% if not eligible_packages %}disabled{% endif %}>
+                <i class="fas fa-check-circle me-1"></i>
+                Submit Claim
               </button>
             </div>
 

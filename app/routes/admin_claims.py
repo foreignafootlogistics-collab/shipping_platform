@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import current_user
 from sqlalchemy import or_
 
@@ -11,6 +11,12 @@ from app.forms import AdminClaimDecisionForm
 from app.routes.admin_auth_routes import admin_required
 from app.utils.email_utils import send_claim_status_update_email
 from app.utils.time import to_jamaica
+
+from zoneinfo import ZoneInfo
+
+from app.utils.claims import (
+    get_eligible_claim_packages,
+)
 
 # Optional in-app messaging
 try:
@@ -58,62 +64,236 @@ def _to_decimal(x, default="0"):
         return Decimal(default)
 
 
-@admin_claims_bp.route("/", methods=["GET"])
+@admin_claims_bp.route(
+    "/",
+    methods=["GET"],
+)
 @admin_required
 def queue():
-    status = request.args.get("status", "submitted")
-    search = (request.args.get("search") or "").strip()
-    date_filter = (request.args.get("date") or "").strip()
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
+    allowed_statuses = {
+        "all",
+        "submitted",
+        "under_review",
+        "need_more_info",
+        "approved",
+        "rejected",
+        "paid",
+    }
 
-    if per_page not in [10, 25, 50, 100]:
+    status = (
+        request.args.get(
+            "status",
+            "submitted",
+        )
+        or "submitted"
+    ).strip().lower()
+
+    if status not in allowed_statuses:
+        status = "submitted"
+
+    search = (
+        request.args.get("search") or ""
+    ).strip()
+
+    date_filter = (
+        request.args.get("date") or ""
+    ).strip()
+
+    page = request.args.get(
+        "page",
+        1,
+        type=int,
+    )
+
+    per_page = request.args.get(
+        "per_page",
+        10,
+        type=int,
+    )
+
+    if page < 1:
+        page = 1
+
+    if per_page not in {
+        10,
+        25,
+        50,
+        100,
+    }:
         per_page = 10
 
-    q = Claim.query.join(Claim.user)
+    query = Claim.query.join(
+        Claim.user
+    )
 
-    if status and status != "all":
-        q = q.filter(Claim.status == status)
+    if status != "all":
+        query = query.filter(
+            Claim.status == status
+        )
 
     if search:
         like = f"%{search}%"
-        q = q.filter(or_(
-            Claim.case_id.ilike(like),
-            Claim.house_awb.ilike(like),
-            Claim.tracking_number.ilike(like),
-            Claim.status.ilike(like),
-            Claim.user.has(User.full_name.ilike(like)),
-            Claim.user.has(User.email.ilike(like)),
-            Claim.user.has(User.registration_number.ilike(like)),
-        ))
 
-    today = datetime.now(timezone.utc).date()
+        query = query.filter(
+            or_(
+                Claim.case_id.ilike(like),
+                Claim.house_awb.ilike(like),
+                Claim.tracking_number.ilike(like),
+                Claim.status.ilike(like),
+
+                Claim.user.has(
+                    User.full_name.ilike(like)
+                ),
+
+                Claim.user.has(
+                    User.email.ilike(like)
+                ),
+
+                Claim.user.has(
+                    User.registration_number.ilike(
+                        like
+                    )
+                ),
+            )
+        )
+
+    # ---------------------------------
+    # Jamaica business-date filtering
+    # ---------------------------------
+    jamaica_timezone = ZoneInfo(
+        "America/Jamaica"
+    )
+
+    today_jamaica = datetime.now(
+        jamaica_timezone
+    ).date()
+
+    start_date = None
+    end_date = None
 
     if date_filter == "today":
-        q = q.filter(db.func.date(Claim.created_at) == today)
+        start_date = today_jamaica
+        end_date = (
+            today_jamaica
+            + timedelta(days=1)
+        )
+
     elif date_filter == "7_days":
-        start_date = today - timedelta(days=7)
-        q = q.filter(db.func.date(Claim.created_at) >= start_date)
+        start_date = (
+            today_jamaica
+            - timedelta(days=6)
+        )
+
+        end_date = (
+            today_jamaica
+            + timedelta(days=1)
+        )
+
     elif date_filter == "30_days":
-        start_date = today - timedelta(days=30)
-        q = q.filter(db.func.date(Claim.created_at) >= start_date)
+        start_date = (
+            today_jamaica
+            - timedelta(days=29)
+        )
+
+        end_date = (
+            today_jamaica
+            + timedelta(days=1)
+        )
+
+    if start_date and end_date:
+        start_jamaica = datetime.combine(
+            start_date,
+            datetime.min.time(),
+            tzinfo=jamaica_timezone,
+        )
+
+        end_jamaica = datetime.combine(
+            end_date,
+            datetime.min.time(),
+            tzinfo=jamaica_timezone,
+        )
+
+        start_utc = start_jamaica.astimezone(
+            timezone.utc
+        )
+
+        end_utc = end_jamaica.astimezone(
+            timezone.utc
+        )
+
+        query = query.filter(
+            Claim.created_at >= start_utc,
+            Claim.created_at < end_utc,
+        )
 
     pagination = (
-        q.order_by(Claim.created_at.desc())
-        .paginate(page=page, per_page=per_page, error_out=False)
+        query
+        .order_by(
+            Claim.created_at.desc()
+        )
+        .paginate(
+            page=page,
+            per_page=per_page,
+            error_out=False,
+        )
     )
 
     claims = pagination.items
 
     counts = {
         "all": Claim.query.count(),
-        "submitted": Claim.query.filter_by(status="submitted").count(),
-        "under_review": Claim.query.filter_by(status="under_review").count(),
-        "need_more_info": Claim.query.filter_by(status="need_more_info").count(),
-        "approved": Claim.query.filter_by(status="approved").count(),
-        "rejected": Claim.query.filter_by(status="rejected").count(),
-        "paid": Claim.query.filter_by(status="paid").count(),
+
+        "submitted": (
+            Claim.query
+            .filter_by(status="submitted")
+            .count()
+        ),
+
+        "under_review": (
+            Claim.query
+            .filter_by(status="under_review")
+            .count()
+        ),
+
+        "need_more_info": (
+            Claim.query
+            .filter_by(
+                status="need_more_info"
+            )
+            .count()
+        ),
+
+        "approved": (
+            Claim.query
+            .filter_by(status="approved")
+            .count()
+        ),
+
+        "rejected": (
+            Claim.query
+            .filter_by(status="rejected")
+            .count()
+        ),
+
+        "paid": (
+            Claim.query
+            .filter_by(status="paid")
+            .count()
+        ),
     }
+
+    claim_customers = (
+        User.query
+        .filter(
+            User.is_admin.isnot(True),
+            User.is_enabled.is_(True),
+        )
+        .order_by(
+            User.full_name.asc(),
+            User.email.asc(),
+        )
+        .all()
+    )
 
     return render_template(
         "admin/claims/queue.html",
@@ -124,12 +304,78 @@ def queue():
         date_filter=date_filter,
         page=page,
         per_page=per_page,
-        total_pages=max(pagination.pages or 1, 1),
+        total_pages=max(
+            pagination.pages or 1,
+            1,
+        ),
         total_results=pagination.total,
-        start_index=((page - 1) * per_page) + 1 if pagination.total else 0,
-        end_index=min(page * per_page, pagination.total),
+        start_index=(
+            ((page - 1) * per_page) + 1
+            if pagination.total
+            else 0
+        ),
+        end_index=min(
+            page * per_page,
+            pagination.total,
+        ),
+        claim_customers=claim_customers,
     )
 
+@admin_claims_bp.route(
+    "/customers/<int:user_id>/eligible-packages",
+    methods=["GET"],
+)
+@admin_required
+def eligible_packages(user_id):
+    user = db.session.get(
+        User,
+        user_id,
+    )
+
+    if not user:
+        return jsonify({
+            "success": False,
+            "error": "Customer not found.",
+        }), 404
+
+    packages = get_eligible_claim_packages(
+        user.id
+    )
+
+    return jsonify({
+        "success": True,
+        "customer": {
+            "id": user.id,
+            "name": (
+                user.full_name
+                or user.email
+                or f"Customer #{user.id}"
+            ),
+            "registration_number": (
+                user.registration_number
+                or ""
+            ),
+        },
+        "packages": [
+            {
+                "id": package.id,
+                "house_awb": (
+                    package.house_awb or ""
+                ),
+                "tracking_number": (
+                    package.tracking_number
+                    or ""
+                ),
+                "description": (
+                    package.description or ""
+                ),
+                "status": (
+                    package.status or ""
+                ),
+            }
+            for package in packages
+        ],
+    })
 
 @admin_claims_bp.route("/<int:claim_id>", methods=["GET", "POST"])
 @admin_required

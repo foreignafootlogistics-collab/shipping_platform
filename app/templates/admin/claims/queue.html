@@ -4,20 +4,30 @@
 {% block content %}
 <div class="container mt-4 claims-page">
 
-  <div class="claims-header mb-4">
-    <div>
-      <h2 class="claims-title">
+  <div class="claims-page-header mb-4">
+    <div class="claims-page-heading">
+      <h2 class="mb-0">
         <i class="fas fa-file-signature me-2"></i>
         Claims Queue
       </h2>
-      <p class="claims-subtitle mb-0">
-        Review missing in-transit claims, verify evidence, approve/reject, and mark refunds as paid.
+
+      <p class="mb-0 mt-1">
+        Review missing in-transit claims, verify evidence,
+        manage decisions, and record completed refunds.
       </p>
     </div>
 
-    <a href="#" class="btn export-btn">
-      <i class="fas fa-download me-2"></i> Export
-    </a>
+    <div class="claims-header-actions">
+      <button type="button" class="btn claims-add-btn" data-bs-toggle="modal" data-bs-target="#queueAddClaimModal">
+        <i class="fas fa-plus-circle me-1"></i>
+        Add Claim
+      </button>
+
+      <a href="#" class="btn claims-export-btn">
+        <i class="fas fa-download me-1"></i>
+        Export
+      </a>
+    </div>
   </div>
 
   {% set current = status or "submitted" %}
@@ -181,7 +191,396 @@
 
     {% endif %}
   </div>
+  <!-- Admin Claims Queue: Add Claim Modal -->
+  <div class="modal fade" id="queueAddClaimModal" tabindex="-1" aria-labelledby="queueAddClaimModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+
+        <div class="modal-header" style="background:#4a148c; color:#fff;">
+          <div>
+            <h5 class="modal-title" id="queueAddClaimModalLabel">
+              <i class="fas fa-file-circle-plus me-1"></i>
+              Add Customer Claim
+            </h5>
+
+            <div class="small mt-1" style="color:rgba(255,255,255,.76);">
+              Submit a missing in-transit claim on behalf
+              of a customer.
+            </div>
+          </div>
+
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <form id="queueAddClaimForm" method="POST" enctype="multipart/form-data" data-create-url-template="{{
+          url_for(
+            'accounts_profiles.create_claim_for_user',
+            id=0
+          )
+        }}" data-packages-url-template="{{
+          url_for(
+            'admin_claims.eligible_packages',
+            user_id=0
+          )
+        }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="modal-body">
+            <div id="queueClaimAlert" class="alert d-none" role="alert"></div>
+
+            <div class="alert alert-info">
+              Select the customer first. The package list
+              will then show only packages eligible for a
+              missing in-transit claim.
+            </div>
+
+            <div class="row g-3">
+
+              <!-- Customer -->
+              <div class="col-12">
+                <label for="queueClaimCustomer" class="form-label">
+                  Customer
+                  <span class="text-danger">*</span>
+                </label>
+
+                <select id="queueClaimCustomer" class="form-select" required>
+                  <option value="">
+                    -- Select customer --
+                  </option>
+
+                  {% for customer in claim_customers %}
+                  <option value="{{ customer.id }}">
+                    {{
+                    customer.full_name
+                    or customer.email
+                    or ("Customer #" ~ customer.id)
+                    }}
+
+                    {% if customer.registration_number %}
+                    ({{ customer.registration_number }})
+                    {% endif %}
+                  </option>
+                  {% endfor %}
+                </select>
+
+                <div class="form-text">
+                  Select the customer who owns the missing
+                  package.
+                </div>
+              </div>
+
+              <!-- Package -->
+              <div class="col-12">
+                <label for="queueClaimPackage" class="form-label">
+                  Select Package
+                  <span class="text-danger">*</span>
+                </label>
+
+                <select name="package_id" id="queueClaimPackage" class="form-select" required disabled>
+                  <option value="">
+                    -- Select a customer first --
+                  </option>
+                </select>
+
+                <div id="queueClaimPackageHelp" class="form-text">
+                  Eligible statuses: Overseas, Received at
+                  Local Port, and Ready for Pick Up.
+                </div>
+              </div>
+
+              <!-- Package identifiers -->
+              <div class="col-md-6">
+                <label for="queueClaimHouseAwb" class="form-label">
+                  House AWB
+                  <span class="text-danger">*</span>
+                </label>
+
+                <input type="text" name="house_awb" id="queueClaimHouseAwb" class="form-control"
+                  placeholder="Select a package above" readonly required>
+              </div>
+
+              <div class="col-md-6">
+                <label for="queueClaimTracking" class="form-label">
+                  Tracking Number
+                  <span class="text-danger">*</span>
+                </label>
+
+                <input type="text" name="tracking_number" id="queueClaimTracking" class="form-control"
+                  placeholder="Select a package above" readonly required>
+              </div>
+
+              <!-- Value -->
+              <div class="col-md-6">
+                <label for="queueClaimItemValue" class="form-label">
+                  Item Value (JMD)
+                  <span class="text-danger">*</span>
+                </label>
+
+                <div class="input-group">
+                  <span class="input-group-text">
+                    JMD
+                  </span>
+
+                  <input type="number" name="item_value_jmd" id="queueClaimItemValue" class="form-control" min="0.01"
+                    step="0.01" placeholder="0.00" required>
+                </div>
+              </div>
+
+              <!-- Refund preference -->
+              <div class="col-md-6">
+                <label for="queueClaimRefundMethod" class="form-label">
+                  Preferred Refund Method
+                  <span class="text-danger">*</span>
+                </label>
+
+                <select name="refund_method" id="queueClaimRefundMethod" class="form-select" required>
+                  <option value="cash">
+                    Cash
+                  </option>
+
+                  <option value="bank_transfer">
+                    Bank Transfer
+                  </option>
+
+                  <option value="wallet_credit">
+                    Wallet Credit
+                  </option>
+                </select>
+
+                <div class="form-text">
+                  Wallet credit can be used toward future
+                  package payments.
+                </div>
+              </div>
+
+              <!-- Description -->
+              <div class="col-12">
+                <label for="queueClaimDescription" class="form-label">
+                  Description
+                  <span class="text-danger">*</span>
+                </label>
+
+                <textarea name="description" id="queueClaimDescription" class="form-control" rows="4" maxlength="2000"
+                  placeholder="Explain what happened, where the package was last seen, and any relevant dates."
+                  required></textarea>
+              </div>
+
+              <!-- Evidence -->
+              <div class="col-12">
+                <hr class="my-1">
+
+                <div class="fw-semibold">
+                  Evidence Uploads
+                </div>
+
+                <div class="form-text">
+                  Accepted formats: PDF, JPG, JPEG, PNG,
+                  and WEBP.
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <label for="queueClaimInvoiceFile" class="form-label">
+                  Invoice Evidence
+                  <span class="text-danger">*</span>
+                </label>
+
+                <input type="file" name="invoice_file" id="queueClaimInvoiceFile" class="form-control"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp" required>
+
+                <div class="form-text">
+                  The invoice should show the item,
+                  tracking number and purchase amount.
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <label for="queueClaimBankStatementFile" class="form-label">
+                  Bank Statement Evidence
+                  <span class="text-danger">*</span>
+                </label>
+
+                <input type="file" name="bank_statement_file" id="queueClaimBankStatementFile" class="form-control"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp" required>
+
+                <div class="form-text">
+                  The statement should show the amount
+                  deducted from the customer’s account.
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Bank details -->
+            <div id="queueClaimBankFields" class="mt-3" style="display:none;">
+              <div class="card border-0" style="background:#f8f9fa;">
+                <div class="card-body">
+                  <div class="fw-semibold mb-3">
+                    Bank Transfer Details
+                  </div>
+
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label for="queueClaimBankAccountName" class="form-label">
+                        Name on Account
+                        <span class="text-danger">*</span>
+                      </label>
+
+                      <input type="text" name="bank_account_name" id="queueClaimBankAccountName" class="form-control"
+                        maxlength="120" placeholder="Account holder name">
+                    </div>
+
+                    <div class="col-md-6">
+                      <label for="queueClaimBankBranch" class="form-label">
+                        Branch
+                        <span class="text-danger">*</span>
+                      </label>
+
+                      <input type="text" name="bank_branch" id="queueClaimBankBranch" class="form-control"
+                        maxlength="120" placeholder="Bank branch">
+                    </div>
+
+                    <div class="col-md-6">
+                      <label for="queueClaimBankAccountNumber" class="form-label">
+                        Account Number
+                        <span class="text-danger">*</span>
+                      </label>
+
+                      <input type="text" name="bank_account_number" id="queueClaimBankAccountNumber"
+                        class="form-control" maxlength="60" placeholder="Account number">
+                    </div>
+
+                    <div class="col-md-6">
+                      <label for="queueClaimBankAccountType" class="form-label">
+                        Account Type
+                        <span class="text-danger">*</span>
+                      </label>
+
+                      <select name="bank_account_type" id="queueClaimBankAccountType" class="form-select">
+                        <option value="">
+                          -- Select account type --
+                        </option>
+                        <option value="savings">
+                          Savings
+                        </option>
+                        <option value="chequing">
+                          Chequing
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="alert alert-light border mt-3 mb-0">
+              <small class="text-muted">
+                The claim will enter the normal Claims
+                Queue as Submitted. A confirmation email
+                will also be sent to the customer.
+              </small>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+              Cancel
+            </button>
+
+            <button type="submit" id="queueClaimSubmit" class="btn btn-success" disabled>
+              <i class="fas fa-check-circle me-1"></i>
+              Save Claim
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
 </div>
+
+<style>
+  /* Claim modal must always fit inside the visible screen */
+  #queueAddClaimModal .modal-dialog,
+  #addClaimModal .modal-dialog {
+    display: flex !important;
+    align-items: stretch !important;
+    width: min(900px, calc(100vw - 20px)) !important;
+    height: calc(100vh - 20px) !important;
+    max-width: 900px !important;
+    max-height: calc(100vh - 20px) !important;
+    margin: 10px auto !important;
+  }
+
+  #queueAddClaimModal .modal-content,
+  #addClaimModal .modal-content {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  #queueAddClaimModal .modal-header,
+  #addClaimModal .modal-header {
+    flex: 0 0 auto !important;
+  }
+
+  #queueAddClaimModal form,
+  #addClaimModal form {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  #queueAddClaimModal .modal-body,
+  #addClaimModal .modal-body {
+    display: block !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-x: hidden !important;
+    overflow-y: scroll !important;
+    padding: 16px 18px 24px !important;
+    scrollbar-width: auto;
+  }
+
+  #queueAddClaimModal .modal-footer,
+  #addClaimModal .modal-footer {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 10px 16px !important;
+    background: #fff !important;
+    border-top: 1px solid #dee2e6 !important;
+  }
+
+  #queueAddClaimModal textarea,
+  #addClaimModal textarea {
+    min-height: 90px;
+  }
+
+  @media (max-width: 767.98px) {
+
+    #queueAddClaimModal .modal-dialog,
+    #addClaimModal .modal-dialog {
+      width: calc(100vw - 10px) !important;
+      height: calc(100vh - 10px) !important;
+      max-height: calc(100vh - 10px) !important;
+      margin: 5px auto !important;
+    }
+
+    #queueAddClaimModal .modal-body,
+    #addClaimModal .modal-body {
+      padding: 14px !important;
+    }
+  }
+</style>
 
 <style>
   body {
@@ -194,39 +593,81 @@
     padding-right: 24px;
   }
 
-  .claims-header {
+  .claims-page-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 16px;
-  }
-
-  .claims-title {
-    color: #111827;
-    font-weight: 800;
-    font-size: 2rem;
-  }
-
-  .claims-title i {
-    color: #4a148c;
-  }
-
-  .claims-subtitle {
-    color: #6b7280;
-    font-size: 0.95rem;
-  }
-
-  .export-btn {
+    justify-content: space-between;
+    gap: 18px;
+    padding: 16px 20px;
     background: #4a148c;
-    color: white;
-    border-radius: 12px;
-    padding: 10px 18px;
+    color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(74, 20, 140, 0.18);
+  }
+
+  .claims-page-heading h2 {
+    color: #fff;
+    font-size: 1.65rem;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+
+  .claims-page-heading p {
+    color: rgba(255, 255, 255, 0.76);
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+
+  .claims-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .claims-add-btn {
+    background: #20ad4b;
+    color: #fff;
+    border: 1px solid #20ad4b;
+    border-radius: 9px;
+    padding: 9px 15px;
     font-weight: 700;
   }
 
-  .export-btn:hover {
-    background: #6a1b9a;
-    color: white;
+  .claims-add-btn:hover,
+  .claims-add-btn:focus {
+    background: #198f3d;
+    border-color: #198f3d;
+    color: #fff;
+  }
+
+  .claims-export-btn {
+    background: #20252b;
+    color: #fff;
+    border: 1px solid #20252b;
+    border-radius: 9px;
+    padding: 9px 15px;
+    font-weight: 700;
+  }
+
+  .claims-export-btn:hover,
+  .claims-export-btn:focus {
+    background: #111418;
+    border-color: #111418;
+    color: #fff;
+  }
+
+  @media (max-width: 767.98px) {
+    .claims-page-header {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .claims-header-actions {
+      justify-content: flex-start;
+      width: 100%;
+    }
   }
 
   .claims-topbar,
@@ -550,4 +991,561 @@
     }
   });
 </script>
+<script>
+  (function () {
+    "use strict";
+
+    const form = document.getElementById(
+      "queueAddClaimForm"
+    );
+
+    if (
+      !form ||
+      form.dataset.initialized === "true"
+    ) {
+      return;
+    }
+
+    form.dataset.initialized = "true";
+
+    const modalElement = document.getElementById(
+      "queueAddClaimModal"
+    );
+
+    const customerSelect = document.getElementById(
+      "queueClaimCustomer"
+    );
+
+    const packageSelect = document.getElementById(
+      "queueClaimPackage"
+    );
+
+    const packageHelp = document.getElementById(
+      "queueClaimPackageHelp"
+    );
+
+    const houseAwbInput = document.getElementById(
+      "queueClaimHouseAwb"
+    );
+
+    const trackingInput = document.getElementById(
+      "queueClaimTracking"
+    );
+
+    const refundMethod = document.getElementById(
+      "queueClaimRefundMethod"
+    );
+
+    const bankFields = document.getElementById(
+      "queueClaimBankFields"
+    );
+
+    const alertBox = document.getElementById(
+      "queueClaimAlert"
+    );
+
+    const submitButton = document.getElementById(
+      "queueClaimSubmit"
+    );
+
+    const bankInputs = [
+      document.getElementById(
+        "queueClaimBankAccountName"
+      ),
+      document.getElementById(
+        "queueClaimBankBranch"
+      ),
+      document.getElementById(
+        "queueClaimBankAccountNumber"
+      ),
+      document.getElementById(
+        "queueClaimBankAccountType"
+      )
+    ].filter(Boolean);
+
+    function showAlert(message, type) {
+      if (!alertBox) {
+        window.alert(message);
+        return;
+      }
+
+      alertBox.className = (
+        "alert alert-" + (type || "danger")
+      );
+
+      alertBox.textContent = message;
+      alertBox.classList.remove("d-none");
+
+      alertBox.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest"
+      });
+    }
+
+    function hideAlert() {
+      if (!alertBox) {
+        return;
+      }
+
+      alertBox.textContent = "";
+      alertBox.className = "alert d-none";
+    }
+
+    function clearPackageFields() {
+      if (houseAwbInput) {
+        houseAwbInput.value = "";
+      }
+
+      if (trackingInput) {
+        trackingInput.value = "";
+      }
+    }
+
+    function resetPackageSelect(message) {
+      if (!packageSelect) {
+        return;
+      }
+
+      packageSelect.innerHTML = "";
+
+      const option = document.createElement(
+        "option"
+      );
+
+      option.value = "";
+      option.textContent = message;
+
+      packageSelect.appendChild(option);
+      packageSelect.disabled = true;
+
+      clearPackageFields();
+
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+    }
+
+    function updatePackageFields() {
+      if (
+        !packageSelect ||
+        !houseAwbInput ||
+        !trackingInput
+      ) {
+        return;
+      }
+
+      const option = (
+        packageSelect.options[
+        packageSelect.selectedIndex
+        ]
+      );
+
+      if (!option || !option.value) {
+        clearPackageFields();
+
+        if (submitButton) {
+          submitButton.disabled = true;
+        }
+
+        return;
+      }
+
+      houseAwbInput.value = (
+        option.dataset.awb || ""
+      );
+
+      trackingInput.value = (
+        option.dataset.tracking || ""
+      );
+
+      if (submitButton) {
+        submitButton.disabled = false;
+      }
+    }
+
+    function updateBankFields() {
+      if (!refundMethod || !bankFields) {
+        return;
+      }
+
+      const isBankTransfer = (
+        refundMethod.value === "bank_transfer"
+      );
+
+      bankFields.style.display = (
+        isBankTransfer ? "" : "none"
+      );
+
+      bankInputs.forEach(function (input) {
+        input.required = isBankTransfer;
+
+        if (!isBankTransfer) {
+          input.value = "";
+        }
+      });
+    }
+
+    async function loadEligiblePackages() {
+      hideAlert();
+      clearPackageFields();
+
+      const customerId = (
+        customerSelect
+          ? customerSelect.value
+          : ""
+      );
+
+      if (!customerId) {
+        resetPackageSelect(
+          "-- Select a customer first --"
+        );
+
+        if (packageHelp) {
+          packageHelp.textContent = (
+            "Select a customer to load eligible packages."
+          );
+        }
+
+        return;
+      }
+
+      resetPackageSelect(
+        "Loading eligible packages..."
+      );
+
+      if (packageHelp) {
+        packageHelp.textContent = (
+          "Loading packages..."
+        );
+      }
+
+      const template = (
+        form.dataset.packagesUrlTemplate || ""
+      );
+
+      const packagesUrl = template.replace(
+        "/customers/0/",
+        "/customers/" + customerId + "/"
+      );
+
+      try {
+        const response = await fetch(
+          packagesUrl,
+          {
+            method: "GET",
+            credentials: "same-origin",
+            headers: {
+              "X-Requested-With":
+                "XMLHttpRequest",
+              "Accept": "application/json"
+            }
+          }
+        );
+
+        let result;
+
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          throw new Error(
+            "The server returned an invalid response."
+          );
+        }
+
+        if (
+          !response.ok ||
+          !result.success
+        ) {
+          throw new Error(
+            result.error ||
+            "Eligible packages could not be loaded."
+          );
+        }
+
+        const packages = result.packages || [];
+
+        packageSelect.innerHTML = "";
+
+        const firstOption = document.createElement(
+          "option"
+        );
+
+        firstOption.value = "";
+
+        firstOption.textContent = (
+          packages.length
+            ? "-- Select eligible package --"
+            : "-- No eligible packages found --"
+        );
+
+        packageSelect.appendChild(firstOption);
+
+        packages.forEach(function (pkg) {
+          const option = document.createElement(
+            "option"
+          );
+
+          option.value = String(pkg.id);
+          option.dataset.awb = (
+            pkg.house_awb || ""
+          );
+
+          option.dataset.tracking = (
+            pkg.tracking_number || ""
+          );
+
+          const labelParts = [
+            pkg.house_awb || "No AWB"
+          ];
+
+          if (pkg.tracking_number) {
+            labelParts.push(
+              pkg.tracking_number
+            );
+          }
+
+          if (pkg.description) {
+            labelParts.push(
+              pkg.description
+            );
+          }
+
+          option.textContent = labelParts.join(
+            " • "
+          );
+
+          packageSelect.appendChild(option);
+        });
+
+        packageSelect.disabled = (
+          packages.length === 0
+        );
+
+        if (packageHelp) {
+          packageHelp.textContent = (
+            packages.length
+              ? (
+                packages.length +
+                " eligible package(s) found."
+              )
+              : (
+                "This customer currently has no " +
+                "packages eligible for a claim."
+              )
+          );
+        }
+
+      } catch (error) {
+        resetPackageSelect(
+          "-- Unable to load packages --"
+        );
+
+        if (packageHelp) {
+          packageHelp.textContent = (
+            "Eligible packages could not be loaded."
+          );
+        }
+
+        showAlert(
+          error.message ||
+          "Eligible packages could not be loaded.",
+          "danger"
+        );
+      }
+    }
+
+    if (customerSelect) {
+      customerSelect.addEventListener(
+        "change",
+        loadEligiblePackages
+      );
+    }
+
+    if (packageSelect) {
+      packageSelect.addEventListener(
+        "change",
+        updatePackageFields
+      );
+    }
+
+    if (refundMethod) {
+      refundMethod.addEventListener(
+        "change",
+        updateBankFields
+      );
+    }
+
+    updateBankFields();
+
+    form.addEventListener(
+      "submit",
+      async function (event) {
+        event.preventDefault();
+        hideAlert();
+
+        updatePackageFields();
+        updateBankFields();
+
+        if (!form.checkValidity()) {
+          form.reportValidity();
+          return;
+        }
+
+        const customerId = (
+          customerSelect
+            ? customerSelect.value
+            : ""
+        );
+
+        if (!customerId) {
+          showAlert(
+            "Select a customer.",
+            "warning"
+          );
+          return;
+        }
+
+        if (
+          !packageSelect ||
+          !packageSelect.value
+        ) {
+          showAlert(
+            "Select an eligible package.",
+            "warning"
+          );
+          return;
+        }
+
+        const createTemplate = (
+          form.dataset.createUrlTemplate || ""
+        );
+
+        const createUrl = createTemplate.replace(
+          "/users/0/",
+          "/users/" + customerId + "/"
+        );
+
+        if (!createUrl) {
+          showAlert(
+            "The claim submission URL is missing.",
+            "danger"
+          );
+          return;
+        }
+
+        const originalButtonHtml = (
+          submitButton
+            ? submitButton.innerHTML
+            : ""
+        );
+
+        if (submitButton) {
+          submitButton.disabled = true;
+
+          submitButton.innerHTML = (
+            '<span class="spinner-border ' +
+            'spinner-border-sm me-2" ' +
+            'aria-hidden="true"></span>' +
+            "Saving Claim..."
+          );
+        }
+
+        try {
+          const response = await fetch(
+            createUrl,
+            {
+              method: "POST",
+              body: new FormData(form),
+              credentials: "same-origin",
+              headers: {
+                "X-Requested-With":
+                  "XMLHttpRequest",
+                "Accept": "application/json"
+              }
+            }
+          );
+
+          let result;
+
+          try {
+            result = await response.json();
+          } catch (parseError) {
+            throw new Error(
+              "The server returned an invalid response."
+            );
+          }
+
+          if (
+            !response.ok ||
+            !result.success
+          ) {
+            throw new Error(
+              result.error ||
+              "The claim could not be saved."
+            );
+          }
+
+          showAlert(
+            result.message ||
+            "Claim created successfully.",
+            "success"
+          );
+
+          window.setTimeout(function () {
+            window.location.href = (
+              window.location.pathname +
+              "?status=submitted"
+            );
+          }, 700);
+
+        } catch (error) {
+          showAlert(
+            error.message ||
+            "The claim could not be saved.",
+            "danger"
+          );
+
+          if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.innerHTML = (
+              originalButtonHtml
+            );
+          }
+        }
+      }
+    );
+
+    if (modalElement) {
+      modalElement.addEventListener(
+        "hidden.bs.modal",
+        function () {
+          form.reset();
+          hideAlert();
+          clearPackageFields();
+          resetPackageSelect(
+            "-- Select a customer first --"
+          );
+          updateBankFields();
+
+          if (packageHelp) {
+            packageHelp.textContent = (
+              "Select a customer to load eligible packages."
+            );
+          }
+
+          if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.innerHTML = (
+              '<i class="fas ' +
+              'fa-check-circle me-1"></i>' +
+              "Save Claim"
+            );
+          }
+        }
+      );
+    }
+  })();
+</script>
+
+</div>
 {% endblock %}

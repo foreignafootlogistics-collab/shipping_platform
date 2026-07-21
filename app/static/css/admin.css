@@ -543,3 +543,98 @@ footer {
     width: 100%;
   }
 }
+
+/* ==================================================
+   CLAIM MODALS — FIT INSIDE SCREEN WITH SCROLLING BODY
+   ================================================== */
+
+#queueAddClaimModal,
+#addClaimModal {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+#queueAddClaimModal .modal-dialog,
+#addClaimModal .modal-dialog {
+  width: min(900px, calc(100% - 24px)) !important;
+  height: calc(100dvh - 24px) !important;
+  max-width: 900px !important;
+  max-height: calc(100dvh - 24px) !important;
+  margin: 12px auto !important;
+  transform: none;
+}
+
+#queueAddClaimModal .modal-content,
+#addClaimModal .modal-content {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  border-radius: 12px;
+}
+
+#queueAddClaimModal .modal-header,
+#addClaimModal .modal-header {
+  flex: 0 0 auto !important;
+}
+
+#queueAddClaimModal .modal-body,
+#addClaimModal .modal-body {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding-bottom: 24px !important;
+  scrollbar-gutter: stable;
+}
+
+#queueAddClaimModal .modal-footer,
+#addClaimModal .modal-footer {
+  display: flex !important;
+  flex: 0 0 auto !important;
+  position: relative !important;
+  bottom: auto !important;
+  z-index: 10;
+  margin: 0 !important;
+  background: #ffffff;
+  border-top: 1px solid #dee2e6;
+  padding: 12px 16px !important;
+}
+
+#queueAddClaimModal input[type="file"],
+#addClaimModal input[type="file"] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Smaller screens */
+@media (max-width: 767.98px) {
+
+  #queueAddClaimModal .modal-dialog,
+  #addClaimModal .modal-dialog {
+    width: calc(100% - 12px) !important;
+    height: calc(100dvh - 12px) !important;
+    max-height: calc(100dvh - 12px) !important;
+    margin: 6px auto !important;
+  }
+
+  #queueAddClaimModal .modal-header,
+  #addClaimModal .modal-header {
+    padding: 14px !important;
+  }
+
+  #queueAddClaimModal .modal-body,
+  #addClaimModal .modal-body {
+    padding: 14px !important;
+  }
+
+  #queueAddClaimModal .modal-footer,
+  #addClaimModal .modal-footer {
+    padding: 10px 14px !important;
+  }
+}

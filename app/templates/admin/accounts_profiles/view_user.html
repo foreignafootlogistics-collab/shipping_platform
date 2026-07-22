@@ -163,37 +163,30 @@
 
             <h6 class="fw-bold mb-3">Account Status</h6>
 
-            <div class="mb-2">
-              <strong>
-                Authorized {{ 'Persons' if authorized_pickups|length != 1 else 'Person' }}:
-              </strong>
+            <div class="mb-3">
+              <div class="d-flex align-items-center justify-content-between">
+                <strong>Authorized Persons:</strong>
+
+                {% if authorized_pickups %}
+                <span class="badge bg-secondary">
+                  {{ authorized_pickups|length }}
+                </span>
+                {% endif %}
+              </div>
 
               {% if authorized_pickups %}
-              <div class="mt-2">
+              <div class="small text-muted mt-1 text-truncate">
                 {% for person in authorized_pickups %}
-                <div class="border rounded p-2 mb-2 bg-light">
-                  <div class="fw-semibold">
-                    {{ person.full_name }}
-                  </div>
-
-                  {% if person.phone_number %}
-                  <div class="small">
-                    <i class="fas fa-phone me-1"></i>
-                    {{ person.phone_number }}
-                  </div>
-                  {% endif %}
-
-                  {% if person.email %}
-                  <div class="small text-muted">
-                    <i class="fas fa-envelope me-1"></i>
-                    {{ person.email }}
-                  </div>
-                  {% endif %}
-                </div>
+                {{ person.full_name }}{% if not loop.last %}, {% endif %}
                 {% endfor %}
               </div>
+
+              <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-bs-toggle="modal"
+                data-bs-target="#authorizedPersonsModal">
+                View Details
+              </button>
               {% else %}
-              <span class="text-muted">None</span>
+              <div class="text-muted mt-1">None</div>
               {% endif %}
             </div>
 
@@ -3531,6 +3524,57 @@
     </div>
   </div>
 
+</div>
+
+<div class="modal fade" id="authorizedPersonsModal" tabindex="-1" aria-labelledby="authorizedPersonsModalLabel"
+  aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="authorizedPersonsModalLabel">
+          Authorized Pickup Persons
+        </h5>
+
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        {% if authorized_pickups %}
+        <div class="list-group">
+          {% for person in authorized_pickups %}
+          <div class="list-group-item">
+            <div class="fw-semibold">
+              {{ person.full_name }}
+            </div>
+
+            <div class="small mt-1">
+              <i class="fas fa-phone me-2"></i>
+              {{ person.phone_number or 'No phone number' }}
+            </div>
+
+            <div class="small text-muted mt-1">
+              <i class="fas fa-envelope me-2"></i>
+              {{ person.email or 'No email address' }}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-4">
+          No authorized pickup persons have been added.
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
 </div>
 
 <style>

@@ -4,60 +4,123 @@
 {% block content %}
 <div class="container mt-4 subscriptions-page">
 
-  <div class="subscriptions-header mb-3">
-    <div>
-      <h3 class="mb-1">All Subscriptions</h3>
-      <small>View, filter, upgrade, and activate customer subscription payments.</small>
+  <div class="subscriptions-header mb-4">
+    <div class="subscriptions-header-heading">
+      <div class="subscriptions-header-icon">
+        <i class="bi bi-credit-card-2-front"></i>
+      </div>
+
+      <div>
+        <h2 class="mb-0">Subscriptions</h2>
+
+        <p class="mb-0 mt-1">
+          View, filter, upgrade, and activate customer subscriptions.
+        </p>
+      </div>
     </div>
 
-    <a href="{{ url_for('accounts_profiles.admin_subscriptions',
-                        status=status_filter,
-                        search=search,
-                        created=created_filter,
-                        per_page=per_page) }}" class="btn export-btn">
-      <i class="bi bi-download me-1"></i> Export
-    </a>
+    <div class="subscriptions-header-actions">
+      <a href="{{ url_for(
+        'accounts_profiles.admin_subscriptions',
+        status=status_filter,
+        search=search,
+        created=created_filter,
+        sort=sort_by,
+        per_page=per_page,
+        export='csv'
+      ) }}" class="btn subscriptions-export-btn">
+        <i class="bi bi-download me-1"></i>
+        Export
+      </a>
+    </div>
   </div>
 
-  <form id="bulkSubForm" method="POST" action="{{ url_for('accounts_profiles.bulk_activate_subscriptions') }}"
-    onsubmit="return confirm('Apply this bulk action to selected subscriptions?');">
+  <form id="bulkSubForm" method="POST" action="{{ url_for('accounts_profiles.bulk_activate_subscriptions') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   </form>
 
   <div class="subscription-topbar mb-4">
     <div class="subscription-tabs">
-      <a class="subscription-tab {% if not status_filter %}active-all{% endif %}"
-        href="{{ url_for('accounts_profiles.admin_subscriptions', search=search, created=created_filter, per_page=per_page) }}">
+      <a class="subscription-tab {% if not status_filter %}active-all{% endif %}" href="{{ url_for(
+      'accounts_profiles.admin_subscriptions',
+      search=search,
+      created=created_filter,
+      sort=sort_by,
+      per_page=per_page
+    ) }}">
         All <span>{{ counts.all }}</span>
       </a>
 
-      <a class="subscription-tab {% if status_filter == 'pending_payment' %}active-pending{% endif %}"
-        href="{{ url_for('accounts_profiles.admin_subscriptions', status='pending_payment', search=search, created=created_filter, per_page=per_page) }}">
+      <a class="subscription-tab {% if status_filter == 'pending_payment' %}active-pending{% endif %}" href="{{ url_for(
+      'accounts_profiles.admin_subscriptions',
+      status='pending_payment',
+      search=search,
+      created=created_filter,
+      sort=sort_by,
+      per_page=per_page
+    ) }}">
         Pending <span>{{ counts.pending_payment }}</span>
       </a>
 
-      <a class="subscription-tab {% if status_filter == 'active' %}active-active{% endif %}"
-        href="{{ url_for('accounts_profiles.admin_subscriptions', status='active', search=search, created=created_filter, per_page=per_page) }}">
+      <a class="subscription-tab {% if status_filter == 'active' %}active-active{% endif %}" href="{{ url_for(
+      'accounts_profiles.admin_subscriptions',
+      status='active',
+      search=search,
+      created=created_filter,
+      sort=sort_by,
+      per_page=per_page
+    ) }}">
         Active <span>{{ counts.active }}</span>
       </a>
 
-      <a class="subscription-tab {% if status_filter == 'expired' %}active-expired{% endif %}"
-        href="{{ url_for('accounts_profiles.admin_subscriptions', status='expired', search=search, created=created_filter, per_page=per_page) }}">
+      <a class="subscription-tab {% if status_filter == 'exhausted' %}active-exhausted{% endif %}" href="{{ url_for(
+      'accounts_profiles.admin_subscriptions',
+      status='exhausted',
+      search=search,
+      created=created_filter,
+      sort=sort_by,
+      per_page=per_page
+    ) }}">
+        Exhausted <span>{{ counts.exhausted }}</span>
+      </a>
+
+      <a class="subscription-tab {% if status_filter == 'expired' %}active-expired{% endif %}" href="{{ url_for(
+      'accounts_profiles.admin_subscriptions',
+      status='expired',
+      search=search,
+      created=created_filter,
+      sort=sort_by,
+      per_page=per_page
+    ) }}">
         Expired <span>{{ counts.expired }}</span>
+      </a>
+
+      <a class="subscription-tab {% if status_filter == 'cancelled' %}active-cancelled{% endif %}" href="{{ url_for(
+      'accounts_profiles.admin_subscriptions',
+      status='cancelled',
+      search=search,
+      created=created_filter,
+      sort=sort_by,
+      per_page=per_page
+    ) }}">
+        Cancelled <span>{{ counts.cancelled }}</span>
       </a>
     </div>
 
     <div class="subscription-actions">
       <button type="submit" form="bulkSubForm"
         formaction="{{ url_for('accounts_profiles.bulk_activate_subscriptions') }}"
-        class="btn btn-success btn-sm action-btn" title="Activate Selected">
+        class="btn btn-success btn-sm action-btn" title="Activate Selected"
+        onclick="return confirm('Activate the selected pending subscription(s) and record payment?');">
         <i class="bi bi-check-circle"></i>
       </button>
 
-      <button type="submit" form="bulkSubForm"
-        formaction="{{ url_for('accounts_profiles.bulk_cancel_pending_subscriptions') }}"
-        class="btn btn-outline-danger btn-sm action-btn" title="Cancel Pending"
-        onclick="return confirm('Cancel selected pending subscriptions?');">
+      <button type="button" class="btn btn-outline-danger btn-sm action-btn" title="Cancel Pending" data-action="{{ url_for(
+    'accounts_profiles.bulk_cancel_pending_subscriptions'
+  ) }}" onclick="submitSubscriptionBulkAction(
+    this.dataset.action,
+    'Cancel the selected pending subscription(s)?'
+  )">
         <i class="bi bi-x-circle"></i>
       </button>
 
@@ -213,6 +276,14 @@
               {% else %}
               <small class="text-muted">{{ used_packages }} packages used</small>
               {% endif %}
+
+              {% if s.plan.is_family_plan %}
+              <div class="status-note">
+                Family capacity:
+                {{ s.family_members|selectattr("status", "equalto", "active")|list|length }}
+                / {{ s.plan.max_users or 4 }} person(s)
+              </div>
+              {% endif %}
             </td>
 
             <td>
@@ -220,8 +291,7 @@
               <span class="status-badge status-active">Active</span>
               {% if s.end_date %}
               <div class="status-note">
-                Renews {{ to_jamaica(s.end_date).strftime("%Y-%m-%d") if to_jamaica is defined else
-                s.end_date.strftime("%Y-%m-%d") }}
+                Ends {{ to_jamaica(s.end_date).strftime("%b %d, %Y") }}
               </div>
               {% endif %}
               {% elif s.status == "pending_payment" %}
@@ -238,10 +308,36 @@
               {% endif %}
 
               {% elif s.status == "exhausted" %}
-              <span class="status-badge status-exhausted">Exhausted</span>
+              <span class="status-badge status-exhausted">
+                Exhausted
+              </span>
+
+              {% if s.end_date %}
+              <div class="status-note">
+                Benefits end {{ to_jamaica(s.end_date).strftime("%b %d, %Y") }}
+              </div>
+              {% endif %}
+
+              {% if s.plan.overage_discount_percent %}
+              <div class="status-note">
+                {{ "%.0f"|format(s.plan.overage_discount_percent or 0) }}% off freight and handling for eligible
+                packages
+              </div>
+              {% endif %}
+
+              {% elif s.status == "cancelled" %}
+              <span class="status-badge status-cancelled">
+                Cancelled
+              </span>
+
+              <div class="status-note">
+                Subscription cancelled
+              </div>
 
               {% else %}
-              <span class="status-badge status-expired">{{ s.status }}</span>
+              <span class="status-badge status-expired">
+                {{ s.status }}
+              </span>
 
               {% endif %}
 
@@ -273,12 +369,19 @@
             </td>
 
             <td>
+              {% if s.is_admin_waived %}
+              <div class="amount-main">JMD $0.00</div>
+              <small class="text-muted">
+                Complimentary — regular price US${{ "%.2f"|format(s.plan.price_usd or 0) }}
+              </small>
+              {% else %}
               <div class="amount-main">
                 US${{ "%.2f"|format(s.plan.price_usd or 0) }}
               </div>
               <small class="text-muted">
-                JMD ${{ "%.2f"|format((s.plan.price_usd or 0) * 162) }}
+                JMD ${{ "{:,.2f}".format((s.plan.price_usd or 0) * (subscription_exchange_rate or 162)) }}
               </small>
+              {% endif %}
             </td>
 
             <td>
@@ -368,8 +471,8 @@
           Enter the reason for waiving the subscription charge.
         </p>
 
-        <textarea name="waiver_reason" form="bulkSubForm" class="form-control" rows="4"
-          placeholder="Example: VIP promo, staff courtesy, customer service gesture..." required></textarea>
+        <textarea id="waiverReason" name="waiver_reason" form="bulkSubForm" class="form-control" rows="4"
+          placeholder="Example: VIP promo, staff courtesy, customer service gesture..."></textarea>
       </div>
 
       <div class="modal-footer">
@@ -377,9 +480,9 @@
           Cancel
         </button>
 
-        <button type="submit" form="bulkSubForm"
-          formaction="{{ url_for('accounts_profiles.bulk_waive_subscriptions') }}" class="btn btn-waive"
-          onclick="return confirm('Activate selected pending subscription(s) as complimentary/free?');">
+        <button type="button" class="btn btn-waive"
+          data-action="{{ url_for('accounts_profiles.bulk_waive_subscriptions') }}"
+          onclick="submitSubscriptionWaiver(this.dataset.action)">
           Activate Complimentary
         </button>
       </div>
@@ -397,35 +500,78 @@
     padding-right: 24px;
   }
 
+  /* =========================================
+   SUBSCRIPTIONS PAGE HEADER
+   ========================================= */
+
   .subscriptions-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 16px;
-  }
-
-  .subscriptions-header h3 {
-    color: #4a148c;
-    font-weight: 800;
-    font-size: 2rem;
-  }
-
-  .subscriptions-header small {
-    color: #6b7280;
-    font-size: 0.95rem;
-  }
-
-  .export-btn {
+    justify-content: space-between;
+    gap: 20px;
+    width: 100%;
+    padding: 18px 20px;
+    color: #ffffff;
     background: #4a148c;
-    color: white;
     border-radius: 10px;
-    padding: 9px 16px;
-    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(74, 20, 140, 0.14);
   }
 
-  .export-btn:hover {
-    background: #6a1b9a;
-    color: white;
+  .subscriptions-header-heading {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .subscriptions-header-icon {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    font-size: 1.5rem;
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+  }
+
+  .subscriptions-header h2 {
+    color: #ffffff;
+    font-size: 1.75rem;
+    font-weight: 800;
+    line-height: 1.15;
+  }
+
+  .subscriptions-header p {
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 0.92rem;
+    line-height: 1.4;
+  }
+
+  .subscriptions-header-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .subscriptions-export-btn {
+    padding: 9px 16px;
+    color: #ffffff;
+    background: #212529;
+    border: 1px solid #212529;
+    border-radius: 9px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .subscriptions-export-btn:hover,
+  .subscriptions-export-btn:focus {
+    color: #ffffff;
+    background: #111418;
+    border-color: #111418;
   }
 
   .subscription-topbar {
@@ -486,6 +632,18 @@
     border-color: #16a34a;
     color: #15803d;
     background: #f0fdf4;
+  }
+
+  .subscription-tab.active-exhausted {
+    border-color: #8b5cf6;
+    color: #5b21b6;
+    background: #ede9fe;
+  }
+
+  .subscription-tab.active-cancelled {
+    border-color: #ef4444;
+    color: #b91c1c;
+    background: #fef2f2;
   }
 
   .subscription-tab.active-expired {
@@ -690,6 +848,12 @@
     border: 1px solid #8b5cf6;
   }
 
+  .status-cancelled {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fca5a5;
+  }
+
   .status-waived {
     background: #f3e8ff;
     color: #7e22ce;
@@ -770,13 +934,30 @@
     .subscription-tabs,
     .subscription-actions,
     .upgrade-select,
-    .export-btn,
+    .subscriptions-header-actions,
+    .subscriptions-export-btn,
     .footer-per-page-select {
       width: 100%;
     }
 
-    .subscriptions-header h3 {
-      font-size: 1.6rem;
+    .subscriptions-header {
+      padding: 16px;
+    }
+
+    .subscriptions-header-heading {
+      align-items: flex-start;
+    }
+
+    .subscriptions-header h2 {
+      font-size: 1.45rem;
+    }
+
+    .subscriptions-header-actions {
+      display: flex;
+    }
+
+    .subscriptions-export-btn {
+      text-align: center;
     }
 
     .btn-waive {
@@ -814,5 +995,60 @@
       });
     }
   });
+  function submitSubscriptionBulkAction(actionUrl, message) {
+    const form = document.getElementById("bulkSubForm");
+
+    const selected = document.querySelectorAll(
+      ".sub-check:checked"
+    );
+
+    if (!form) {
+      alert("The subscription action form could not be found.");
+      return;
+    }
+
+    if (selected.length === 0) {
+      alert("Please select at least one subscription.");
+      return;
+    }
+
+    if (!window.confirm(message)) {
+      return;
+    }
+
+    form.action = actionUrl;
+    form.submit();
+  }
+
+  function submitSubscriptionWaiver(actionUrl) {
+    const form = document.getElementById("bulkSubForm");
+    const reason = document.getElementById("waiverReason");
+    const selected = document.querySelectorAll(".sub-check:checked");
+
+    if (!form) {
+      alert("The subscription action form could not be found.");
+      return;
+    }
+
+    if (selected.length === 0) {
+      alert("Please select at least one pending subscription.");
+      return;
+    }
+
+    if (!reason || !reason.value.trim()) {
+      alert("Please enter the reason for the complimentary subscription.");
+      if (reason) {
+        reason.focus();
+      }
+      return;
+    }
+
+    if (!window.confirm("Activate the selected pending subscription(s) as complimentary?")) {
+      return;
+    }
+
+    form.action = actionUrl;
+    form.submit();
+  }
 </script>
 {% endblock %}

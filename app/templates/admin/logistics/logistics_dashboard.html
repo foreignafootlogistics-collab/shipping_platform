@@ -1357,7 +1357,7 @@
                     <th>Date Received</th>
                     <th>Weight (lbs)</th>
                     <th>Item Value ($)</th>
-                    <th>Outstanding ($)</th>
+                    <th>Outstanding (JMD)</th>
                   </tr>
                 </thead>
 
@@ -1420,9 +1420,38 @@
                       <div class="d-inline-flex align-items-center gap-1">
                         <span>{{ pkg.house_awb or '-' }}</span>
 
-                        {% if pkg.subscription_applied %}
+                        {% set subscription_result = (
+                        pkg.subscription_result or ""
+                        )|lower %}
+
+                        {% set subscriber_discount = (
+                        pkg.discount_due or 0
+                        )|float %}
+
+                        {% if (
+                        pkg.subscription_applied
+                        and subscription_result == "subscription_applied"
+                        ) %}
                         <i class="bi bi-patch-check-fill text-success ms-1 shipment-subscription-icon"
                           style="font-size:0.9rem;" title="Covered by subscription"></i>
+
+                        {% elif subscriber_discount > 0 %}
+                        <span class="badge bg-info text-dark ms-1 shipment-subscription-icon"
+                          title="Subscriber discount applies only to freight and handling">
+                          Subscriber Discount
+                        </span>
+
+                        {% elif subscription_result == "subscription_exhausted" %}
+                        <span class="badge bg-secondary ms-1 shipment-subscription-icon"
+                          title="Subscription allowance exhausted">
+                          Allowance Exhausted
+                        </span>
+
+                        {% elif subscription_result == "package_over_plan_limit" %}
+                        <span class="badge bg-warning text-dark ms-1"
+                          title="Package exceeds the subscription plan weight limit">
+                          Over Plan Limit
+                        </span>
                         {% endif %}
 
                         {% if pkg.invoice_id %}
@@ -2537,7 +2566,20 @@ Not emailed yet"></i>
       const pkgText = parseCellText(rowNode.querySelector('td:nth-child(4)'));
       const houseText = parseCellText(rowNode.querySelector('td:nth-child(5)'));
       const w = parseWeightFromRow(rowNode);
-      const isSubPackage = rowNode.querySelector('.shipment-subscription-icon') !== null;
+      const subscriptionApplied =
+        String(
+          rowNode.dataset.subscriptionApplied || ""
+        ).toLowerCase() === "true";
+
+      const subscriptionResult =
+        String(
+          rowNode.dataset.subscriptionResult || ""
+        ).toLowerCase();
+
+      const isSubPackage =
+        subscriptionApplied
+        || subscriptionResult === "subscription_applied"
+        || subscriptionResult === "subscription_exhausted";
       const scanStatus =
         rowNode.dataset.scanStatus || 'not_scanned';
 
@@ -3399,9 +3441,10 @@ Not emailed yet"></i>
         if (resOther) resOther.value = fmt(otherVal);
         if (resBadAddress) resBadAddress.value = fmt(badAddressVal);
 
-        // ✅ Subscription-covered packages:
-        // value <= 100 = all charges zero
-        // value > 100 = customs only, no freight/handling
+        // Subscription-covered packages:
+        // Value <= US$100: customs, freight and handling are zero.
+        // Value > US$100: full customs applies; freight and handling are zero.
+        // EPC/bad-address fees and other charges always remain payable.
         const row = document
           .querySelector(`input.package-checkbox[value="${pkgId}"]`)
           ?.closest('tr');
@@ -3418,25 +3461,31 @@ Not emailed yet"></i>
             if (resEnvl) resEnvl.value = "0.00";
             if (resCaf) resCaf.value = "0.00";
             if (resStamp) resStamp.value = "0.00";
-            if (resCustomsTotal) resCustomsTotal.value = "0.00";
+            if (resCustomsTotal) {
+              resCustomsTotal.value = "0.00";
+            }
           }
 
+          // Subscription covers freight and handling.
           if (resFreight) resFreight.value = "0.00";
           if (resHandling) resHandling.value = "0.00";
-          if (resOther) resOther.value = "0.00";
 
-          // EPC / bad address fee should STILL apply for subscription packages
-          const epcOn =
-            !!badAddressToggle?.checked;
+          // EPC / bad-address fees still apply.
+          const epcOn = !!badAddressToggle?.checked;
 
-          const epcFee =
-            epcOn
-              ? Number(badAddressFeeInput?.value || window.BAD_ADDRESS_FEE_DEFAULT || 500)
-              : 0;
+          const epcFee = epcOn
+            ? Number(
+              badAddressFeeInput?.value
+              || window.BAD_ADDRESS_FEE_DEFAULT
+              || 500
+            )
+            : 0;
 
           if (resBadAddress) {
             resBadAddress.value = epcFee.toFixed(2);
           }
+
+          // Do not zero resOther. Other charges still apply.
         }
 
         recalcTotalsFromManual();
@@ -3541,21 +3590,39 @@ Not emailed yet"></i>
         const out = await res.json().catch(() => ({}));
         if (!res.ok || out.ok === false) throw new Error(out.error || `HTTP ${res.status}`);
 
-        // ✅ subscription packages should remain zero
-        const serverAmount =
-          Number(out.amount_due ?? out.grand_total ?? 0);
+        // Use the backend's protected subscription total whenever supplied.
+        const hasServerAmount =
+          out.amount_due !== undefined
+          || out.grand_total !== undefined;
+
+        const serverAmount = hasServerAmount
+          ? Number(out.amount_due ?? out.grand_total ?? 0)
+          : Number(payload.amount_due || 0);
+
+        if (hasServerAmount) {
+          const rowAmount = document.getElementById(
+            `amount_due_${pkgId}`
+          );
+
+          if (rowAmount) {
+            rowAmount.value = serverAmount.toFixed(2);
+          }
+
+          if (resTotal) {
+            resTotal.value = serverAmount.toFixed(2);
+          }
+        }
 
         const isSubscriptionZero =
-          serverAmount === 0 &&
-          out.updated &&
-          out.updated.includes("subscription_zeroed");
+          serverAmount === 0
+          && Array.isArray(out.updated)
+          && out.updated.includes("subscription_zeroed");
 
         if (isSubscriptionZero) {
 
           // modal values
           if (resFreight) resFreight.value = "0.00";
           if (resHandling) resHandling.value = "0.00";
-          if (resOther) resOther.value = "0.00";
           if (resCustomsTotal) resCustomsTotal.value = "0.00";
           if (resFreightTotal) resFreightTotal.value = "0.00";
           if (resTotal) resTotal.value = "0.00";
@@ -3569,7 +3636,6 @@ Not emailed yet"></i>
           // hidden inputs
           setHidden(`freight_${pkgId}`, 0);
           setHidden(`handling_${pkgId}`, 0);
-          setHidden(`other_${pkgId}`, 0);
         }
 
         // ✅ remember lock state in the row for next time modal opens

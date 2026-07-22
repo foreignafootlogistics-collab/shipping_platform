@@ -550,6 +550,10 @@ class Package(db.Model):
     subscription_applied_at = db.Column(db.DateTime, nullable=True)
     subscription_id = db.Column(db.Integer, db.ForeignKey("subscriptions.id"), nullable=True, index=True)
     subscription_result = db.Column(db.String(40), nullable=True)
+    subscription_billable_weight = db.Column(
+        db.Float,
+        nullable=True,
+    )
     
     # Invoice linkage
     invoice_id = db.Column(db.Integer, db.ForeignKey('invoices.id'), nullable=True, index=True)

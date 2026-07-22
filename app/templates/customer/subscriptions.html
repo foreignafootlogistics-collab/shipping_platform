@@ -1,149 +1,310 @@
 {% extends "layout_customer.html" %}
+
 {% block title %}Subscriptions{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container py-4">
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-      <h3 class="mb-0" style="color:#4a148c;">Subscription Plans</h3>
-      <small class="text-muted">Save on shipping and enjoy predictable monthly costs.</small>
+  <!-- Unified page header -->
+  <div class="rounded-3 shadow-sm p-4 mb-4 text-white" style="background:linear-gradient(135deg,#4a148c,#6a1bb1);">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+      <div class="d-flex align-items-center gap-3">
+        <div class="d-flex align-items-center justify-content-center rounded-3"
+          style="width:48px;height:48px;background:rgba(255,255,255,.14);">
+          <i class="bi bi-credit-card-2-front fs-4"></i>
+        </div>
+
+        <div>
+          <h2 class="mb-1 fw-bold">Subscriptions</h2>
+          <p class="mb-0 opacity-75">
+            View your plan, usage, benefits and available upgrades.
+          </p>
+        </div>
+      </div>
+
+      <a href="{{ url_for('customer.customer_dashboard') }}" class="btn btn-light">
+        <i class="bi bi-arrow-left me-1"></i>
+        Dashboard
+      </a>
     </div>
-
-    <a href="{{ url_for('customer.customer_dashboard') }}" class="btn btn-outline-purple btn-sm">
-      <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
-    </a>
   </div>
 
+  <!-- Current subscription -->
   {% if subscription_summary %}
-    <div class="alert alert-success shadow-sm">
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div>
-          <strong>Current Plan:</strong> {{ subscription_summary.plan_name }}
+  {% set subscription_status = subscription_summary.status|default('active')|lower %}
+
+  <div class="alert
+      {% if subscription_status == 'exhausted' %}
+        alert-warning
+      {% elif subscription_summary.expires_soon %}
+        alert-warning
+      {% else %}
+        alert-success
+      {% endif %}
+      shadow-sm border-0 mb-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+          <strong class="fs-5">
+            {{ subscription_summary.plan_name }}
+          </strong>
 
           {% if subscription_summary.is_family_plan %}
-            <span class="badge bg-primary ms-1">Family</span>
+          <span class="badge bg-primary">
+            <i class="bi bi-people-fill me-1"></i>
+            Family
+          </span>
           {% endif %}
 
-          <br>
-
-          <small>
-            {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} packages used •
-            {{ "%.1f"|format(subscription_summary.weight_used) }}/{{ "%.1f"|format(subscription_summary.weight_limit) }} lb used
-          </small>
-
-          {% if subscription_summary.days_remaining is not none %}
-            <br>
-            <small>Expires in {{ subscription_summary.days_remaining }} day(s)</small>
+          {% if subscription_summary.is_owner %}
+          <span class="badge bg-dark">Owner</span>
+          {% elif subscription_summary.is_family_plan %}
+          <span class="badge bg-secondary">
+            Family Member
+          </span>
           {% endif %}
         </div>
 
-        <span class="badge bg-success">
-          {{ subscription_summary.status|title }}
+        {% if
+        subscription_summary.is_family_plan
+        and not subscription_summary.is_owner
+        and subscription_summary.owner_name
+        %}
+        <div class="small mb-2">
+          Plan owner:
+          <strong>
+            {{ subscription_summary.owner_name }}
+          </strong>
+        </div>
+        {% endif %}
+
+        <div class="small">
+          <strong>
+            {{ subscription_summary.packages_used }}
+            of
+            {{ subscription_summary.package_limit }}
+          </strong>
+          packages used
+        </div>
+
+        <div class="progress mt-1 mb-2" style="height:8px;max-width:420px;">
+          <div class="progress-bar" role="progressbar"
+            style="width:{{ subscription_summary.package_percent }}%;background:#4a148c;"
+            aria-valuenow="{{ subscription_summary.package_percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+
+        <div class="small">
+          <strong>
+            {{ "%.1f"|format(subscription_summary.weight_used or 0) }}
+            of
+            {{ "%.1f"|format(subscription_summary.weight_limit or 0) }}
+            lb
+          </strong>
+          used
+        </div>
+
+        <div class="progress mt-1" style="height:8px;max-width:420px;">
+          <div class="progress-bar bg-info" role="progressbar" style="width:{{ subscription_summary.weight_percent }}%;"
+            aria-valuenow="{{ subscription_summary.weight_percent }}" aria-valuemin="0" aria-valuemax="100"></div>
+        </div>
+
+        <div class="small mt-3">
+          Remaining:
+          <strong>
+            {{ subscription_summary.packages_remaining }}
+            package(s)
+          </strong>
+          and
+          <strong>
+            {{ "%.1f"|format(subscription_summary.weight_remaining or 0) }}
+            lb
+          </strong>
+        </div>
+
+        {% if subscription_summary.end_date %}
+        <div class="small mt-1">
+          End date:
+          <strong>
+            {{ to_jamaica(subscription_summary.end_date).strftime("%b %d, %Y") }}
+          </strong>
+        </div>
+        {% endif %}
+
+        {% if subscription_summary.days_remaining is not none %}
+        <div class="small mt-1">
+          {% if subscription_summary.days_remaining == 0 %}
+          Expires today
+          {% else %}
+          {{ subscription_summary.days_remaining }}
+          day(s) remaining
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      <div>
+        {% if subscription_status == "exhausted" %}
+        <span class="badge bg-warning text-dark fs-6">
+          Exhausted
         </span>
+        {% else %}
+        <span class="badge bg-success fs-6">
+          {{ subscription_status|replace("_", " ")|title }}
+        </span>
+        {% endif %}
       </div>
     </div>
 
-    {% if not subscription_summary.is_family_plan %}
-      <div class="alert alert-info shadow-sm">
-        Upgrade to a <strong>Family Plan</strong> to invite up to 3 additional members.
-      </div>
+    {% if subscription_status == "exhausted" %}
+    <hr>
+
+    <p class="mb-0 small">
+      Your included allowance is exhausted, but your plan remains
+      valid until its end date. Eligible packages may receive the
+      plan’s overage discount on freight and handling only.
+    </p>
     {% endif %}
+  </div>
 
   {% elif pending_subscription %}
-    <div class="alert alert-warning shadow-sm">
-      <strong>Pending Payment:</strong>
-      {{ pending_subscription.plan.name }} selected.
-      <br>
-      <small>Please complete payment to activate.</small>
+  <div class="alert alert-warning shadow-sm border-0 mb-4">
+    <div class="d-flex align-items-start gap-2">
+      <i class="bi bi-hourglass-split fs-5"></i>
+
+      <div>
+        <strong>Pending Subscription Payment</strong>
+
+        <div class="mt-1">
+          {{ pending_subscription.plan.name }}
+          has been selected.
+        </div>
+
+        <small>
+          Complete payment using the instructions below.
+          Your subscription will start after payment is confirmed.
+        </small>
+      </div>
     </div>
+  </div>
+
   {% else %}
-    <div class="alert alert-secondary shadow-sm">
-      You do not currently have an active subscription.
-    </div>
+  <div class="alert alert-secondary shadow-sm border-0 mb-4">
+    <i class="bi bi-info-circle me-1"></i>
+    You do not currently have an active subscription.
+    Select a plan below to begin.
+  </div>
   {% endif %}
 
+  <!-- Family membership -->
   {% if subscription_summary and subscription_summary.is_family_plan %}
-  <div class="card mb-4 shadow-sm border-0">
-    <div class="card-header text-white" style="background:#4a148c;">
-      <div class="d-flex justify-content-between align-items-center">
+  {% set family_max_users = subscription_summary.max_users|default(4, true)|int %}
+  {% set active_member_count = subscription_summary.members|length %}
+  {% set pending_invite_count = pending_invites|length %}
+  {% set occupied_family_slots = active_member_count + pending_invite_count %}
+
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-header text-white py-3" style="background:#4a148c;">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <strong>
           <i class="bi bi-people-fill me-1"></i>
           Family Plan Members
         </strong>
 
         <span class="badge bg-light text-dark">
-          {{ subscription_summary.members|length }}/4 persons
+          {{ active_member_count }}
+          /
+          {{ family_max_users }}
+          active
         </span>
       </div>
     </div>
 
     <div class="card-body">
-
       {% if subscription_summary.members %}
-        <div class="table-responsive mb-3">
-          <table class="table table-sm align-middle">
-            <thead class="table-light">
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Role</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for m in subscription_summary.members %}
-              <tr>
-                <td>{{ m.user.full_name }}</td>
-                <td>{{ m.user.email }}</td>
-                <td>
-                  {% if m.role == "owner" %}
-                    <span class="badge bg-primary">Owner</span>
-                  {% else %}
-                    <span class="badge bg-success">Member</span>
-                  {% endif %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for member in subscription_summary.members %}
+            <tr>
+              <td>
+                {{ member.user.full_name or "Customer" }}
+              </td>
+
+              <td>
+                {{ member.user.email or "—" }}
+              </td>
+
+              <td>
+                {% if member.role == "owner" %}
+                <span class="badge bg-primary">
+                  Owner
+                </span>
+                {% else %}
+                <span class="badge bg-success">
+                  Member
+                </span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="alert alert-light border">
+        No active Family members were found.
+      </div>
       {% endif %}
 
-      {% if subscription_summary.members|length < 4 %}
-        <form method="POST"
-              action="{{ url_for('customer.invite_family_member') }}"
-              class="row g-2 align-items-end">
+      <!-- Only the owner can invite members -->
+      {% if subscription_summary.is_owner %}
+      {% if occupied_family_slots < family_max_users %} <hr>
 
+        <form method="POST" action="{{ url_for('customer.invite_family_member') }}" class="row g-2 align-items-end">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
           <div class="col-md-8">
-            <label class="form-label fw-semibold mb-1">Invite Family Member</label>
-            <input type="email"
-                   name="email"
-                   class="form-control"
-                   placeholder="Enter family member email"
-                   required>
+            <label class="form-label fw-semibold mb-1">
+              Invite Family Member
+            </label>
+
+            <input type="email" name="email" class="form-control" placeholder="Enter family member email" required>
+
             <small class="text-muted">
-              They will receive an invite to join your plan. New customers can register first, then accept.
+              The customer must have a FAFL account using
+              the invited email address.
             </small>
           </div>
 
           <div class="col-md-4">
-            <button class="btn btn-dashboard w-100">
+            <button type="submit" class="btn btn-dashboard w-100">
               <i class="bi bi-envelope-plus me-1"></i>
-              Invite
+              Send Invite
             </button>
           </div>
         </form>
-      {% else %}
+        {% else %}
         <div class="alert alert-light border mb-0">
-          Maximum 4 members reached.
+          This Family plan has reached its maximum of
+          {{ family_max_users }} person(s), including
+          active pending invitations.
         </div>
-      {% endif %}
+        {% endif %}
 
-      {% if pending_invites %}
+        {% if pending_invites %}
         <hr>
-        <h6 class="fw-bold mb-2">Pending Invites</h6>
+
+        <h6 class="fw-bold mb-2">
+          Pending Invitations
+        </h6>
 
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0">
@@ -151,163 +312,322 @@
               <tr>
                 <th>Email</th>
                 <th>Expires</th>
-                <th>Invite Link</th>
+                <th>Invite</th>
                 <th>Status</th>
               </tr>
             </thead>
+
             <tbody>
               {% for invite in pending_invites %}
               <tr>
                 <td>{{ invite.email }}</td>
+
                 <td>
                   {% if invite.expires_at %}
-                    {{ invite.expires_at.strftime("%Y-%m-%d") if invite.expires_at.strftime is defined else invite.expires_at }}
+                  {{ to_jamaica(invite.expires_at).strftime("%b %d, %Y %I:%M %p") }}
                   {% else %}
-                    —
+                  —
                   {% endif %}
                 </td>
+
                 <td>
-                  <a href="{{ url_for('customer.accept_subscription_invite', token=invite.token, _external=True) }}"
-                     class="btn btn-sm btn-outline-purple"
-                     target="_blank">
-                    Open / Copy
+                  <a href="{{ url_for(
+                            'customer.accept_subscription_invite',
+                            token=invite.token,
+                            _external=True
+                          ) }}" class="btn btn-sm btn-outline-purple" target="_blank" rel="noopener">
+                    Open Invite
                   </a>
                 </td>
+
                 <td>
-                  <span class="badge bg-warning text-dark">Pending</span>
+                  <span class="badge bg-warning text-dark">
+                    Pending
+                  </span>
                 </td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
-      {% endif %}
+        {% endif %}
 
+        {% else %}
+        <div class="alert alert-light border mb-0 mt-3">
+          Only the Family-plan owner can invite or manage members.
+        </div>
+        {% endif %}
     </div>
   </div>
   {% endif %}
 
-  <div class="alert alert-warning shadow-sm">
-    <strong>Important:</strong>
-    Subscriptions cover shipping/freight charges only.
-    Customs charges still apply for packages valued over <strong>USD $100</strong>.
-    Usage is based on rounded billable weight.
-  </div>
-
-  <div class="card mb-4 shadow-sm">
+  <!-- Business rules -->
+  <div class="card shadow-sm border-0 mb-4">
     <div class="card-body">
-      <h5 style="color:#4a148c;">Payment Instructions</h5>
-      <p class="mb-3">
-        Subscription payments can be made by bank transfer or deposit using the JMD accounts below.
-        Please use your registration number as the payment reference.
-      </p>
+      <h5 class="fw-bold mb-3" style="color:#4a148c;">
+        <i class="bi bi-shield-check me-1"></i>
+        How Subscription Coverage Works
+      </h5>
 
       <div class="row g-3">
         <div class="col-md-6">
-          <div class="border rounded p-3 h-100">
-            <strong>Bank of Nova Scotia</strong><br>
-            Account Name: Foreign A Foot Logistics Ltd<br>
-            Branch: Liguanea<br>
-            JMD Account: <strong>000851952</strong>
+          <div class="border rounded-3 p-3 h-100">
+            <strong class="text-success">
+              Packages valued at US$100 or less
+            </strong>
+
+            <ul class="small mb-0 mt-2">
+              <li>Freight is covered.</li>
+              <li>Handling is covered.</li>
+              <li>Customs charges are covered.</li>
+              <li>
+                EPC/bad-address and other additional charges
+                still apply.
+              </li>
+            </ul>
           </div>
         </div>
 
         <div class="col-md-6">
-          <div class="border rounded p-3 h-100">
+          <div class="border rounded-3 p-3 h-100">
+            <strong class="text-warning">
+              Packages valued over US$100
+            </strong>
+
+            <ul class="small mb-0 mt-2">
+              <li>Freight is covered.</li>
+              <li>Handling is covered.</li>
+              <li>Full customs charges apply.</li>
+              <li>
+                EPC/bad-address and other additional charges
+                still apply.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <p class="small text-muted mb-0 mt-3">
+        Subscription usage is based on rounded-up billable
+        weight. A package must remain within the plan’s
+        per-package and remaining total allowance.
+      </p>
+    </div>
+  </div>
+
+  <!-- Payment instructions -->
+  <div class="card shadow-sm border-0 mb-4">
+    <div class="card-body">
+      <h5 class="fw-bold mb-2" style="color:#4a148c;">
+        <i class="bi bi-bank me-1"></i>
+        Payment Instructions
+      </h5>
+
+      <p class="mb-3">
+        Subscription payments can be made by bank transfer
+        or deposit. Use your FAFL registration number as the
+        payment reference.
+      </p>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="border rounded-3 p-3 h-100">
+            <strong>Bank of Nova Scotia</strong><br>
+            Account Name: Foreign A Foot Logistics Ltd<br>
+            Branch: Liguanea<br>
+            JMD Account:
+            <strong>000851952</strong>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="border rounded-3 p-3 h-100">
             <strong>National Commercial Bank</strong><br>
             Account Name: Foreign A Foot Logistics Ltd<br>
             Branch: Duke Street<br>
-            JMD Account: <strong>065534177</strong>
+            JMD Account:
+            <strong>065534177</strong>
           </div>
         </div>
       </div>
 
       <p class="mt-3 mb-0">
-        Exchange rate for subscription payments:
-        <strong>US$1 = JMD $162</strong>.
+        Current subscription payment rate:
+        <strong>
+          US$1 = JMD
+          ${{ "%.2f"|format(subscription_exchange_rate or 162) }}
+        </strong>
       </p>
     </div>
   </div>
 
-  <div class="row">
-    {% for plan in plans %}
-    <div class="col-md-4 mb-3">
-      <div class="card h-100 shadow-sm {% if subscription_summary and subscription_summary.plan_name == plan.name %}border-success{% else %}border-0{% endif %}">
+  <!-- Plans -->
+  <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
+    <div>
+      <h4 class="mb-1 fw-bold" style="color:#4a148c;">
+        Available Plans
+      </h4>
 
+      <p class="text-muted mb-0">
+        Plans remain active for 30 days after payment confirmation.
+      </p>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    {% for plan in plans %}
+    {% set is_current_plan = (
+    subscription_summary
+    and subscription_summary.plan_id == plan.id
+    ) %}
+
+    <div class="col-lg-4 col-md-6">
+      <div class="card h-100 shadow-sm
+          {% if is_current_plan %}
+            border-success
+          {% else %}
+            border-0
+          {% endif %}">
         <div class="card-body d-flex flex-column">
-          <div class="d-flex justify-content-between align-items-start mb-2">
+          <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
             <div>
               {% if plan.name|lower == "standard" %}
-                <span class="badge bg-primary mb-2">Most Popular</span>
+              <span class="badge bg-primary mb-2">
+                Most Popular
+              </span>
               {% endif %}
 
-              <h5 class="mb-0" style="color:#4a148c;">{{ plan.name }}</h5>
+              <h5 class="mb-0 fw-bold" style="color:#4a148c;">
+                {{ plan.name }}
+              </h5>
             </div>
 
-            {% if subscription_summary and subscription_summary.plan_name == plan.name %}
-              <span class="badge bg-success">Current</span>
+            {% if is_current_plan %}
+            <span class="badge bg-success">
+              Current
+            </span>
             {% elif plan.is_family_plan %}
-              <span class="badge bg-primary">Family</span>
+            <span class="badge bg-primary">
+              Family
+            </span>
             {% endif %}
           </div>
 
-          <h4 class="mb-3">
+          <h4 class="mb-1">
             US${{ "%.2f"|format(plan.price_usd or 0) }}
-            <small class="text-muted fs-6">/ 30 days</small>
           </h4>
 
-          <ul class="small flex-grow-1">
-            <li>{{ plan.package_limit }} packages included</li>
-            <li>{{ "%.1f"|format(plan.weight_limit or 0) }} lb total weight</li>
-            <li>Max {{ "%.1f"|format(plan.max_weight_per_package or 0) }} lb per package</li>
-            <li>Shipping/freight covered</li>
-            <li>Customs still apply over USD $100</li>
+          <div class="small text-muted mb-3">
+            Approximately JMD
+            ${{ "{:,.2f}".format(
+            (plan.price_usd or 0)
+            * (subscription_exchange_rate or 162)
+            ) }}
+            for 30 days
+          </div>
+
+          <ul class="small flex-grow-1 ps-3">
+            <li>
+              {{ plan.package_limit }}
+              packages included
+            </li>
+
+            <li>
+              {{ "%.1f"|format(plan.weight_limit or 0) }}
+              lb total allowance
+            </li>
+
+            <li>
+              Maximum
+              {{ "%.1f"|format(plan.max_weight_per_package or 0) }}
+              lb per package
+            </li>
+
+            <li>Freight and handling covered</li>
+
+            <li>
+              Customs covered when value is US$100 or less
+            </li>
+
+            <li>
+              Full customs charges apply over US$100
+            </li>
 
             {% if plan.priority_processing %}
-              <li>⚡ Priority processing included</li>
+            <li>Priority processing included</li>
             {% endif %}
 
             {% if plan.is_family_plan %}
-              <li class="text-success fw-semibold">Includes up to 4 persons</li>
-              <li>Shared usage across members</li>
+            <li class="text-success fw-semibold">
+              Includes up to
+              {{ plan.max_users or 4 }}
+              person(s), including the owner
+            </li>
+
+            <li>Allowance is shared by all members</li>
             {% endif %}
 
             {% if plan.overage_discount_percent %}
-              <li>
-                {{ "%.0f"|format(plan.overage_discount_percent or 0) }}% discount after plan limit on eligible packages
-              </li>
+            <li>
+              {{ "%.0f"|format(
+              plan.overage_discount_percent or 0
+              ) }}%
+              discount on freight and handling after
+              the allowance is exhausted, for eligible
+              packages up to
+              {{ "%.1f"|format(
+              plan.overage_discount_max_weight or 0
+              ) }}
+              lb
+            </li>
             {% endif %}
           </ul>
 
-          {% if subscription_summary and subscription_summary.plan_name == plan.name %}
-            <button class="btn btn-success w-100" disabled>
-              Current Plan
-            </button>
+          {% if is_current_plan %}
+          <button type="button" class="btn btn-success w-100" disabled>
+            Current Plan
+          </button>
 
           {% elif pending_subscription %}
-            <button class="btn btn-secondary w-100" disabled>
-              Pending Payment
-            </button>
+          <button type="button" class="btn btn-secondary w-100" disabled>
+            Payment Pending
+          </button>
+
+          {% elif subscription_summary %}
+          <button type="button" class="btn btn-outline-secondary w-100" disabled>
+            Contact Us to Upgrade
+          </button>
+
+          <small class="text-muted text-center mt-2">
+            Existing plans must be upgraded by an administrator.
+          </small>
 
           {% else %}
-            <form method="POST"
-                  action="{{ url_for('customer.activate_subscription', plan_id=plan.id) }}">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-dashboard w-100">
-                Pay / Switch Plan
-              </button>
-            </form>
+          <form method="POST" action="{{ url_for(
+                  'customer.activate_subscription',
+                  plan_id=plan.id
+                ) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-            <small class="text-muted d-block text-center mt-2">
-              Your plan will activate after payment confirmation.
-            </small>
+            <button type="submit" class="btn btn-dashboard w-100">
+              Select {{ plan.name }}
+            </button>
+          </form>
+
+          <small class="text-muted text-center d-block mt-2">
+            Activation begins after payment confirmation.
+          </small>
           {% endif %}
-
         </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="col-12">
+      <div class="alert alert-secondary">
+        No subscription plans are currently available.
       </div>
     </div>
     {% endfor %}
   </div>
-
 </div>
 {% endblock %}

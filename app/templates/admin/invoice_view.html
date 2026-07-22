@@ -222,19 +222,31 @@
         <div class="text-muted">Invoice</div>
         {% set inv_dt = invoice.date_issued or invoice.created_at or invoice.date_submitted %}
         <small class="text-muted">
-          {{ inv_dt.strftime('%d.%m.%Y') if inv_dt else '—' }}
+          {{ inv_dt|datetimeformat("%d.%m.%Y, %I:%M %p") if inv_dt else "—" }}
         </small>
       </div>
       <div class="text-end">
         <div>Package Amt:
-          <span class="fw-semibold">JMD {{ "%.2f"|format(invoice.grand_total or 0) }}</span>
+          <span class="fw-semibold">JMD {{ "{:,.2f}".format(invoice.preview_subtotal or 0) }}</span>
         </div>
         <div>Sub-Total:
-          <span class="fw-semibold">JMD {{ "%.2f"|format(invoice.grand_total or 0) }}</span>
+          <span class="fw-semibold">JMD {{ "{:,.2f}".format(invoice.preview_subtotal or 0) }}</span>
         </div>
+        {% if (invoice.preview_discount_total or 0)|float > 0 %}
+        <div class="text-success">
+          Discount:
+          <span class="fw-semibold">- JMD {{ "{:,.2f}".format(invoice.preview_discount_total or 0) }}</span>
+        </div>
+        {% endif %}
+        {% if (invoice.preview_payments_total or 0)|float > 0 %}
+        <div>
+          Payments:
+          <span class="fw-semibold">- JMD {{ "{:,.2f}".format(invoice.preview_payments_total or 0) }}</span>
+        </div>
+        {% endif %}
         <div class="fs-5">
           Total Due:
-          <span class="fw-bold text-danger">JMD {{ "%.2f"|format(invoice.amount_due or 0) }}</span>
+          <span class="fw-bold text-danger">JMD {{ "{:,.2f}".format(invoice.preview_total_due or 0) }}</span>
         </div>
       </div>
     </div>
@@ -253,6 +265,7 @@
       </div>
       <div class="d-flex align-items-center gap-2">
 
+        {% if (invoice.preview_total_due or 0)|float > 0.01 %}
         <button class="btn btn-outline-purple" type="button" data-bs-toggle="modal" data-bs-target="#addPaymentModal"
           title="Add Payment">
           <i class="bi bi-cash-coin"></i>
@@ -262,6 +275,7 @@
           title="Add Discount">
           <i class="bi bi-percent"></i>
         </button>
+        {% endif %}
 
         <div class="toolbar d-inline-flex border rounded ms-2">
           <a class="btn btn-light" href="{{ url_for('admin.view_invoice', invoice_id=invoice.id) }}" title="Refresh">
@@ -280,6 +294,7 @@
       <div class="col-md-6">
         <label class="form-label small text-muted">Description/Notes</label>
         <form method="POST" action="{{ url_for('admin.save_invoice_notes', invoice_id=invoice.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <textarea name="notes" class="form-control" rows="3"
             placeholder="Notes...">{{ invoice.description or "" }}</textarea>
           <button type="submit" class="btn btn-sm btn-outline-purple mt-2">
@@ -291,7 +306,7 @@
         <div class="h5 text-danger mb-3">
           Balance&nbsp;&nbsp;
           <span class="fw-bold">
-            JMD {{ "%.2f"|format(invoice.amount_due or 0) }}
+            JMD {{ "{:,.2f}".format(invoice.preview_total_due or 0) }}
           </span>
         </div>
       </div>
@@ -308,8 +323,7 @@
             <th style="width:36px;"><input type="checkbox"></th>
             <th>House AWB#</th>
             <th>Description</th>
-            <th>Merchant</th>
-            <th>Date</th>
+            <th>Tracking #</th>
             <th class="text-end">LBS</th>
             <th class="text-end">Value (USD)</th>
             <th class="text-end">Bad Address Fee</th>
@@ -328,38 +342,43 @@
             <td><input type="checkbox"></td>
             <td>{{ p.house_awb or "—" }}</td>
             <td>{{ p.description or "—" }}
+              {% set package_discount = (p.discount_due or 0)|float %}
               {% if p.subscription_covered %}
               <div class="mt-1">
+                <span class="badge bg-success">
+                  Subscription Covered
+                </span>
+
                 {% if p.customs_only_due_to_subscription %}
                 <span class="badge bg-warning text-dark">
-                  Freight covered — customs charges apply
-                </span>
-                {% else %}
-                <span class="badge bg-success">
-                  Covered by subscription
+                  Full Customs Applied
                 </span>
                 {% endif %}
               </div>
+              {% elif package_discount > 0 %}
+              <div class="mt-1">
+                <span class="badge bg-info text-dark">
+                  Subscriber Freight/Handling Discount
+                </span>
+              </div>
+              {% elif p.subscription_result == "subscription_exhausted" %}
+              <div class="mt-1">
+                <span class="badge bg-secondary">
+                  Subscription Allowance Exhausted
+                </span>
+              </div>
               {% endif %}
             </td>
-            <td>{{ p.merchant or "—" }}</td>
-            {% set recv = p.received_date or p.date_received %}
-            <td>
-              {% if recv %}
-              {{ recv.strftime('%d.%m.%Y') }}
-              {% else %}
-              —
-              {% endif %}
-            </td>
+            <td>{{ p.tracking_number or "—" }}</td>
             <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
-            <td class="text-end">${{ "%.2f"|format(p.declared_value or p.value or 0) }}
+            <td class="text-end">US${{ "{:,.2f}".format(p.value_usd or 0) }}
             </td>
             <td class="text-end">JMD {{ "%.2f"|format(p.bad_address_fee or 0) }}</td>
             <td class="text-end">JMD {{ "%.2f"|format(p.amount_due or 0) }}</td>
           </tr>
           {% else %}
           <tr>
-            <td colspan="10" class="text-center text-muted py-4">No items.</td>
+            <td colspan="9" class="text-center text-muted py-4">No items.</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -430,11 +449,8 @@
                 <button type="button" class="payment-method-btn" data-method="Card">
                   <span><i class="bi bi-credit-card-2-front"></i> Card</span><i class="bi bi-check2"></i>
                 </button>
-                <button type="button" class="payment-method-btn" data-method="Bank">
+                <button type="button" class="payment-method-btn" data-method="Bank Transfer">
                   <span><i class="bi bi-bank"></i> Bank Transfer</span><i class="bi bi-check2"></i>
-                </button>
-                <button type="button" class="payment-method-btn" data-method="Wallet">
-                  <span><i class="bi bi-wallet2"></i> Wallet</span><i class="bi bi-check2"></i>
                 </button>
               </div>
 
@@ -451,7 +467,7 @@
                 <input name="authorized_by" class="form-control form-control-sm" placeholder="Admin name">
               </div>
               <small class="text-muted">
-                Current balance: JMD {{ "%.2f"|format(invoice.amount_due or 0) }}
+                Current balance: JMD {{ "{:,.2f}".format(invoice.preview_total_due or 0) }}
               </small>
             </div>
 
@@ -472,7 +488,7 @@
 <div class="modal fade" id="addDiscountModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-md modal-dialog-centered">
     <form class="modal-content" method="POST" action="{{ url_for('admin.add_discount', invoice_id=invoice.id) }}"
-      id="discountForm" data-balance="{{ invoice.amount_due or 0 }}">
+      id="discountForm" data-balance="{{ invoice.preview_total_due or 0 }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <div class="modal-header">
@@ -494,7 +510,7 @@
           <label class="form-label">Discount Percent</label>
           <input type="number" class="form-control" id="discountPercentInput" min="0" max="100" step="0.01" value="0">
           <div class="discount-help text-muted mt-1">
-            Applies to current balance (JMD {{ "%.2f"|format(invoice.amount_due or 0) }}).<br>
+            Applies to current balance (JMD {{ "{:,.2f}".format(invoice.preview_total_due or 0) }}).<br>
             Discount amount: <span class="fw-semibold" id="discountPercentAmount">JMD 0.00</span>
           </div>
         </div>
@@ -570,6 +586,10 @@
               <tr>
                 <th>Bad Address Fee</th>
                 <td class="text-end" id="bd-bad-address">—</td>
+              </tr>
+              <tr>
+                <th>Subscriber Discount</th>
+                <td class="text-end text-success" id="bd-discount">—</td>
               </tr>
               <tr class="table-light">
                 <th>Total</th>
@@ -756,7 +776,7 @@
       const pkgId = btn.getAttribute("data-pkg");
       if (!pkgId) return;
 
-      const ids = ["bd-duty", "bd-gct", "bd-freight", "bd-handling", "bd-scf", "bd-envl", "bd-caf", "bd-stamp", "bd-other", "bd-bad-address", "bd-total"];
+      const ids = ["bd-duty", "bd-gct", "bd-freight", "bd-handling", "bd-scf", "bd-envl", "bd-caf", "bd-stamp", "bd-other", "bd-bad-address", "bd-discount", "bd-total"];
       ids.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = "…"; });
 
       fetch("{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace("0", pkgId))
@@ -772,6 +792,11 @@
           document.getElementById("bd-caf").textContent = nf.format(d.caf || 0);
           document.getElementById("bd-stamp").textContent = nf.format(d.stamp || 0);
           document.getElementById("bd-other").textContent = nf.format(d.other_charges || 0);
+          const discountAmount = Number(d.discount_due || 0);
+          document.getElementById("bd-discount").textContent =
+            discountAmount > 0
+              ? "- " + nf.format(discountAmount)
+              : nf.format(0);
           const badAddressFee = Number(d.bad_address_fee || 0);
 
           document.getElementById("bd-bad-address").textContent =

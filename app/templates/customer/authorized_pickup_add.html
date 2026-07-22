@@ -4,77 +4,222 @@
 {% block content %}
 <div class="container mt-4">
     <h2>🪪 Authorized Pickup</h2>
-    <p class="text-muted">Only the people listed below can collect your packages. They must present a valid photo ID at pickup.</p>
 
-    <!-- Add Person Button -->
-    <button class="btn btn-primary mb-3" id="addPersonBtn">+ Add Authorized Person</button>
+    <p class="text-muted">
+        Only the people listed below can collect your packages.
+        They must present a valid photo ID at pickup.
+    </p>
 
-    <!-- Inline Add Form -->
+    <button type="button" class="btn btn-primary mb-3" id="addPersonBtn">
+        + Add Authorized Person
+    </button>
+
     <div id="addPersonForm" class="card p-3 mb-4" style="display:none;">
-        <div class="row g-2">
-            <div class="col-md-4"><input type="text" id="authFullName" placeholder="Full Name" class="form-control"></div>
-            <div class="col-md-4"><input type="email" id="authEmail" placeholder="Email" class="form-control"></div>
-            <div class="col-md-4"><input type="text" id="authPhone" placeholder="Phone #" class="form-control"></div>
+        <!-- CSRF token required for the AJAX POST -->
+        <input type="hidden" id="csrfToken" value="{{ csrf_token() }}">
+
+        <div id="authorizedPersonError" class="alert alert-danger" style="display:none;">
         </div>
+
+        <div class="row g-2">
+            <div class="col-md-4">
+                <input type="text" id="authFullName" placeholder="Full Name" class="form-control" autocomplete="name"
+                    required>
+            </div>
+
+            <div class="col-md-4">
+                <input type="email" id="authEmail" placeholder="Email" class="form-control" autocomplete="email">
+            </div>
+
+            <div class="col-md-4">
+                <input type="tel" id="authPhone" placeholder="Phone #" class="form-control" autocomplete="tel" required>
+            </div>
+        </div>
+
         <div class="mt-3">
-            <button class="btn btn-success" id="saveAuthorizedPerson">Save</button>
-            <button class="btn btn-secondary" id="cancelAuthorizedPerson">Cancel</button>
+            <button type="button" class="btn btn-success" id="saveAuthorizedPerson">
+                Save
+            </button>
+
+            <button type="button" class="btn btn-secondary" id="cancelAuthorizedPerson">
+                Cancel
+            </button>
         </div>
     </div>
 
-    <!-- Authorized Pickup List -->
-    <table class="table table-striped" id="authorizedPickupList">
-        <thead>
-            <tr>
-                <th>Full Name</th><th>Email</th><th>Phone</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for person in authorized_people %}
-            <tr>
-                <td>{{ person.full_name }}</td>
-                <td>{{ person.email }}</td>
-                <td>{{ person.phone }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="table-responsive">
+        <table class="table table-striped" id="authorizedPickupList">
+            <thead>
+                <tr>
+                    <th>Full Name</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for person in authorized_people %}
+                <tr>
+                    <td>{{ person.full_name }}</td>
+                    <td>{{ person.email or "—" }}</td>
+                    <td>{{ person.phone_number }}</td>
+                </tr>
+                {% else %}
+                <tr id="noAuthorizedPeopleRow">
+                    <td colspan="3" class="text-center text-muted">
+                        No authorized pickup persons have been added.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <script>
-document.getElementById("addPersonBtn").onclick = () => {
-    document.getElementById("addPersonForm").style.display = "block";
-    document.getElementById("addPersonBtn").style.display = "none";
-};
-document.getElementById("cancelAuthorizedPerson").onclick = () => {
-    document.getElementById("addPersonForm").style.display = "none";
-    document.getElementById("addPersonBtn").style.display = "inline-block";
-};
+    document.addEventListener("DOMContentLoaded", function () {
+        const addButton = document.getElementById("addPersonBtn");
+        const formBox = document.getElementById("addPersonForm");
+        const saveButton = document.getElementById("saveAuthorizedPerson");
+        const cancelButton = document.getElementById("cancelAuthorizedPerson");
+        const errorBox = document.getElementById("authorizedPersonError");
 
-document.getElementById("saveAuthorizedPerson").onclick = function() {
-    const fullName = document.getElementById("authFullName").value;
-    const email = document.getElementById("authEmail").value;
-    const phone = document.getElementById("authPhone").value;
+        const fullNameInput = document.getElementById("authFullName");
+        const emailInput = document.getElementById("authEmail");
+        const phoneInput = document.getElementById("authPhone");
+        const csrfToken = document.getElementById("csrfToken").value;
 
-    fetch("{{ url_for('customer.authorized_pickup_add') }}", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: fullName, email: email, phone: phone })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === "success") {
-            const table = document.querySelector("#authorizedPickupList tbody");
-            const row = `<tr>
-                <td>${data.person.full_name}</td>
-                <td>${data.person.email}</td>
-                <td>${data.person.phone}</td>
-            </tr>`;
-            table.insertAdjacentHTML("beforeend", row);
-            document.getElementById("addPersonForm").style.display = "none";
-            document.getElementById("addPersonBtn").style.display = "inline-block";
+        function showError(message) {
+            errorBox.textContent = message;
+            errorBox.style.display = "block";
         }
+
+        function clearError() {
+            errorBox.textContent = "";
+            errorBox.style.display = "none";
+        }
+
+        function resetForm() {
+            fullNameInput.value = "";
+            emailInput.value = "";
+            phoneInput.value = "";
+            clearError();
+        }
+
+        function addTableCell(row, value) {
+            const cell = document.createElement("td");
+            cell.textContent = value || "—";
+            row.appendChild(cell);
+        }
+
+        addButton.addEventListener("click", function () {
+            formBox.style.display = "block";
+            addButton.style.display = "none";
+            clearError();
+            fullNameInput.focus();
+        });
+
+        cancelButton.addEventListener("click", function () {
+            resetForm();
+            formBox.style.display = "none";
+            addButton.style.display = "inline-block";
+        });
+
+        saveButton.addEventListener("click", async function () {
+            clearError();
+
+            const fullName = fullNameInput.value.trim();
+            const email = emailInput.value.trim();
+            const phone = phoneInput.value.trim();
+
+            if (!fullName) {
+                showError("Please enter the authorized person's full name.");
+                fullNameInput.focus();
+                return;
+            }
+
+            if (!phone) {
+                showError("Please enter the authorized person's phone number.");
+                phoneInput.focus();
+                return;
+            }
+
+            saveButton.disabled = true;
+            saveButton.textContent = "Saving...";
+
+            try {
+                const response = await fetch(
+                    "{{ url_for('customer.authorized_pickup_add') }}",
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-CSRFToken": csrfToken
+                        },
+                        body: JSON.stringify({
+                            full_name: fullName,
+                            email: email,
+                            phone_number: phone
+                        })
+                    }
+                );
+
+                let data;
+
+                try {
+                    data = await response.json();
+                } catch (error) {
+                    data = {};
+                }
+
+                if (!response.ok) {
+                    console.error("Authorized pickup error:", data);
+
+                    throw new Error(
+                        data.error ||
+                        data.message ||
+                        `Request failed with status ${response.status}.`
+                    );
+                }
+
+                if (data.status !== "success" || !data.person) {
+                    throw new Error(
+                        data.message ||
+                        data.error ||
+                        "The authorized person could not be saved."
+                    );
+                }
+
+                const emptyRow = document.getElementById(
+                    "noAuthorizedPeopleRow"
+                );
+
+                if (emptyRow) {
+                    emptyRow.remove();
+                }
+
+                const tableBody = document.querySelector(
+                    "#authorizedPickupList tbody"
+                );
+
+                const row = document.createElement("tr");
+
+                addTableCell(row, data.person.full_name);
+                addTableCell(row, data.person.email);
+                addTableCell(row, data.person.phone);
+
+                tableBody.appendChild(row);
+
+                resetForm();
+                formBox.style.display = "none";
+                addButton.style.display = "inline-block";
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                saveButton.disabled = false;
+                saveButton.textContent = "Save";
+            }
+        });
     });
-};
 </script>
 {% endblock %}

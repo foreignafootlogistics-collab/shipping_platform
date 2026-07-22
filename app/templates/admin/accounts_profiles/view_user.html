@@ -164,8 +164,37 @@
             <h6 class="fw-bold mb-3">Account Status</h6>
 
             <div class="mb-2">
-              <strong>Authorized Person:</strong>
-              {{ user.authorized_person or 'None' }}
+              <strong>
+                Authorized {{ 'Persons' if authorized_pickups|length != 1 else 'Person' }}:
+              </strong>
+
+              {% if authorized_pickups %}
+              <div class="mt-2">
+                {% for person in authorized_pickups %}
+                <div class="border rounded p-2 mb-2 bg-light">
+                  <div class="fw-semibold">
+                    {{ person.full_name }}
+                  </div>
+
+                  {% if person.phone_number %}
+                  <div class="small">
+                    <i class="fas fa-phone me-1"></i>
+                    {{ person.phone_number }}
+                  </div>
+                  {% endif %}
+
+                  {% if person.email %}
+                  <div class="small text-muted">
+                    <i class="fas fa-envelope me-1"></i>
+                    {{ person.email }}
+                  </div>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              </div>
+              {% else %}
+              <span class="text-muted">None</span>
+              {% endif %}
             </div>
 
             <div class="mb-2">
@@ -202,15 +231,21 @@
             </div>
 
             {% if subscription_summary %}
+            {% set summary_status = subscription_summary.status|default("active")|lower %}
 
             <div class="mb-2">
-
+              {% if summary_status == "exhausted" %}
+              <span class="badge bg-warning text-dark">
+                {{ subscription_summary.plan_name }}
+                — Exhausted
+              </span>
+              {% else %}
               <span class="badge bg-success">
                 {{ subscription_summary.plan_name }}
               </span>
+              {% endif %}
 
               {% if subscription_summary.is_family_plan %}
-
               {% if subscription_summary.is_owner %}
               <span class="badge bg-primary ms-1">
                 Family Owner
@@ -220,37 +255,107 @@
                 Family Member
               </span>
 
-              {% if subscription_summary.owner_name %}
+              {% if subscription_summary.is_admin_waived %}
+              <span class="badge ms-1" style="background:#6f2dbd;color:#fff;">
+                Complimentary
+              </span>
+
+              {% if subscription_summary.waiver_reason %}
               <div class="small text-muted mt-1">
-                Owner: {{ subscription_summary.owner_name }}
+                Reason: {{ subscription_summary.waiver_reason }}
+              </div>
+              {% endif %}
+
+              {% if subscription_summary.waived_by_name %}
+              <div class="small text-muted">
+                Approved by {{ subscription_summary.waived_by_name }}
               </div>
               {% endif %}
               {% endif %}
 
+              {% if subscription_summary.owner_name %}
+              <div class="small text-muted mt-1">
+                Owner:
+                {{ subscription_summary.owner_name }}
+              </div>
               {% endif %}
-
+              {% endif %}
+              {% endif %}
             </div>
 
             <div class="small text-muted">
-              {{ subscription_summary.packages_used }}/{{ subscription_summary.package_limit }} packages used
+              <strong>
+                {{ subscription_summary.packages_used }}
+                /
+                {{ subscription_summary.package_limit }}
+              </strong>
+              packages used
             </div>
 
             <div class="small text-muted">
-              {{ subscription_summary.weight_used }}/{{ subscription_summary.weight_limit }} lbs used
+              <strong>
+                {{ "%.1f"|format(subscription_summary.weight_used or 0) }}
+                /
+                {{ "%.1f"|format(subscription_summary.weight_limit or 0) }}
+                lb
+              </strong>
+              used
             </div>
 
-            {% if subscription_summary.days_remaining is not none %}
             <div class="small text-muted">
-              Expires in {{ subscription_summary.days_remaining }} day(s)
+              Remaining:
+              <strong>
+                {{ subscription_summary.packages_remaining }}
+                package(s)
+              </strong>
+              and
+              <strong>
+                {{ "%.1f"|format(subscription_summary.weight_remaining or 0) }}
+                lb
+              </strong>
+            </div>
+
+            {% if subscription_summary.end_date %}
+            <div class="small text-muted mt-1">
+              Ends:
+              <strong>
+                {{ to_jamaica(subscription_summary.end_date).strftime("%b %d, %Y") }}
+              </strong>
             </div>
             {% endif %}
 
-            {% else %}
+            {% if subscription_summary.days_remaining is not none %}
+            <div class="small text-muted">
+              {% if subscription_summary.days_remaining == 0 %}
+              Expires today
+              {% else %}
+              {{ subscription_summary.days_remaining }}
+              day(s) remaining
+              {% endif %}
+            </div>
+            {% endif %}
 
+            {% if summary_status == "exhausted" %}
+            <div class="alert alert-warning small py-2 px-2 mt-2 mb-0">
+              Included allowance exhausted. Eligible packages may
+              receive the subscriber discount on freight and handling
+              until the plan ends.
+            </div>
+            {% endif %}
+
+            {% elif pending_subscription %}
+            <span class="badge bg-warning text-dark">
+              Pending Payment
+            </span>
+
+            <div class="small text-muted mt-1">
+              {{ pending_subscription.plan.name }}
+            </div>
+
+            {% else %}
             <span class="badge bg-secondary">
               No Active Subscription
             </span>
-
             {% endif %}
 
             <hr>
@@ -449,44 +554,59 @@
                     </span>
                   </div>
                   {% endif %}
-                  {% if pkg.subscription_applied %}
+                  {% set subscription_result = (
+                  pkg.subscription_result or ""
+                  )|lower %}
 
-                  {% if pkg.subscription_result == "subscription_applied" %}
+                  {% if
+                  pkg.subscription_applied
+                  and subscription_result == "subscription_applied"
+                  %}
                   {% if pkg.customs_total and pkg.customs_total > 0 %}
                   <div class="mt-1">
                     <span class="badge bg-warning text-dark">
-                      ⚡ Sub + Customs
+                      <i class="bi bi-lightning-fill me-1"></i>
+                      Subscription + Customs
                     </span>
                   </div>
                   {% else %}
                   <div class="mt-1">
                     <span class="badge bg-success">
-                      ✓ Subscription
+                      <i class="bi bi-check-circle me-1"></i>
+                      Subscription Covered
                     </span>
                   </div>
                   {% endif %}
 
-                  {% elif pkg.subscription_result == "package_over_plan_limit" %}
+                  {% elif subscription_result == "package_over_plan_limit" %}
                   <div class="mt-1">
                     <span class="badge bg-secondary">
-                      Over Limit
+                      Package Over Plan Weight
                     </span>
                   </div>
 
-                  {% elif pkg.subscription_result == "subscription_exhausted" %}
+                  {% elif subscription_result == "subscription_allowance_exceeded" %}
+                  <div class="mt-1">
+                    <span class="badge bg-warning text-dark">
+                      Remaining Allowance Exceeded
+                    </span>
+                  </div>
+
+                  {% elif subscription_result == "subscription_exhausted" %}
                   <div class="mt-1">
                     <span class="badge bg-info text-dark">
-                      Subscriber Rate{% if subscription_summary and subscription_summary.status == "exhausted" %} (5%
-                      Off){% endif %}
+                      Subscriber Discount Eligible
                     </span>
                   </div>
 
-                  {% endif %}
-
+                  {% elif subscription_result == "subscription_error" %}
+                  <div class="mt-1">
+                    <span class="badge bg-danger">
+                      Subscription Error
+                    </span>
+                  </div>
                   {% endif %}
                 </td>
-
-
 
                 <td>
                   <div>{{ pkg.description or '-' }}</div>
@@ -551,9 +671,25 @@
                   {% endif %}
                 </td>
                 <td>{{ pkg.weight }}</td>
-                <td>{{ pkg.date_received or 'N/A' }}</td>
-                <td class="text-end">${{ money(pkg.declared_value) }}</td>
-                <td class="text-end">${{ money(pkg.amount_due) }}</td>
+                <td>
+                  {% if pkg.date_received %}
+                  {% if pkg.date_received.strftime is defined %}
+                  {{ pkg.date_received.strftime("%Y-%m-%d") }}
+                  {% else %}
+                  {{ pkg.date_received }}
+                  {% endif %}
+                  {% else %}
+                  N/A
+                  {% endif %}
+                </td>
+
+                <td class="text-end">
+                  US${{ money(pkg.declared_value) }}
+                </td>
+
+                <td class="text-end">
+                  JMD ${{ money(pkg.amount_due) }}
+                </td>
               </tr>
               {% else %}
               <tr>
@@ -948,16 +1084,29 @@
               {% for inv, paid_sum in invoices_rows %}
               {% set inv_status = (inv.status or 'unpaid')|lower %}
 
-              {# Amount Due = invoice final total after discount #}
-              {% set due =
-              (inv.grand_total if inv.grand_total is defined and inv.grand_total is not none
-              else inv.subtotal if inv.subtotal is defined and inv.subtotal is not none
-              else 0)
-              %}
+              {% set gross_total = (
+              inv.grand_total
+              if inv.grand_total is defined
+              and inv.grand_total is not none
+              else inv.subtotal
+              if inv.subtotal is defined
+              and inv.subtotal is not none
+              else 0
+              )|float %}
 
-              {% set paid = paid_sum|float %}
-              {% set owed = (due|float - paid|float)|round(2) %}
-              {% if owed <= 0 %} {% set owed=0.00 %} {% endif %} <tr data-invoice-id="{{ inv.id }}"
+              {% set invoice_discount = (
+              inv.discount_total
+              if inv.discount_total is defined
+              and inv.discount_total is not none
+              else 0
+              )|float %}
+
+              {% set due = (
+              gross_total - invoice_discount
+              )|round(2) %}
+
+              {% if due < 0 %} {% set due=0.00 %} {% endif %} {% set paid=paid_sum|float %} {% set owed=( due - paid
+                )|round(2) %} {% if owed < 0 %} {% set owed=0.00 %} {% endif %} <tr data-invoice-id="{{ inv.id }}"
                 data-owed="{{ owed|float }}"
                 data-label="{{ (inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)))|e }}">
                 <td class="text-center align-middle">
@@ -997,56 +1146,62 @@
                 <td>
                   <div class="d-flex flex-column gap-1">
                     <!-- Status badge -->
-                    {% if inv_status == 'paid' or owed == 0 %}
+                    {% if inv_status == "paid" %}
                     <span class="badge bg-success">
                       Paid
                     </span>
 
-                    {% elif inv_status == 'partial' or paid > 0 %}
+                    {% elif paid > 0 %}
                     <span class="badge bg-primary">
                       Partial Payment
                     </span>
 
-                    {% else %}
-                    <span class="badge bg-danger">
-                      Unpaid
-                    </span>
-                    {% endif %}
+                    {% elif owed <= 0 %} <span class="badge bg-secondary">
+                      No Balance
+                      </span>
 
-                    <!-- Date line -->
-                    {% if inv_status == 'paid' or owed == 0 %}
-                    {% if inv.date_paid is defined and inv.date_paid %}
-                    <small class="text-muted">
-                      Paid on {{ to_jamaica(inv.date_paid).strftime('%Y-%m-%d') }}
-                    </small>
-                    {% elif inv.updated_at is defined and inv.updated_at %}
-                    <small class="text-muted">
-                      Paid on {{ to_jamaica(inv.updated_at).strftime('%Y-%m-%d') }}
-                    </small>
-                    {% endif %}
-                    {% else %}
-                    {% if inv.date_issued is defined and inv.date_issued %}
-                    <small class="text-muted">
-                      Received {{ to_jamaica(inv.date_issued).strftime('%Y-%m-%d') }}
-                    </small>
-                    {% elif inv.created_at is defined and inv.created_at %}
-                    <small class="text-muted">
-                      Received {{ to_jamaica(inv.created_at).strftime('%Y-%m-%d') }}
-                    </small>
-                    {% endif %}
-                    {% endif %}
+                      {% else %}
+                      <span class="badge bg-danger">
+                        Unpaid
+                      </span>
+                      {% endif %}
+
+                      <!-- Date line -->
+                      {% if inv_status == "paid" %}
+                      {% if inv.date_paid is defined and inv.date_paid %}
+                      <small class="text-muted">
+                        Paid on {{ to_jamaica(inv.date_paid).strftime('%Y-%m-%d') }}
+                      </small>
+                      {% elif inv.updated_at is defined and inv.updated_at %}
+                      <small class="text-muted">
+                        Paid on {{ to_jamaica(inv.updated_at).strftime('%Y-%m-%d') }}
+                      </small>
+                      {% endif %}
+                      {% else %}
+                      {% if inv.date_issued is defined and inv.date_issued %}
+                      <small class="text-muted">
+                        Received {{ to_jamaica(inv.date_issued).strftime('%Y-%m-%d') }}
+                      </small>
+                      {% elif inv.created_at is defined and inv.created_at %}
+                      <small class="text-muted">
+                        Received {{ to_jamaica(inv.created_at).strftime('%Y-%m-%d') }}
+                      </small>
+                      {% endif %}
+                      {% endif %}
                   </div>
                 </td>
                 <td class="text-center">
-                  {% if (inv_status != 'paid') and (owed|float > 0) and (paid|float <= 0) %} <button type="button"
-                    class="btn btn-sm btn-outline-danger" title="Delete invoice"
+                  {% if
+                  inv_status != "paid"
+                  and paid|float <= 0 %} <button type="button" class="btn btn-sm btn-outline-danger"
+                    title="Delete invoice"
                     onclick="openDeleteInvoiceModal({{ inv.id }}, '{{ (inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)))|e }}')">
                     <i class="bi bi-trash"></i>
                     </button>
 
                     {% else %}
 
-                    <i class="bi bi-lock text-muted" title="Cannot delete: invoice is paid or has no balance"
+                    <i class="bi bi-lock text-muted" title="Cannot delete: invoice is paid or has a completed payment"
                       style="font-size: 1.1rem;"></i>
 
                     {% endif %}
@@ -1192,10 +1347,43 @@
                   <span class="badge bg-info text-dark">Delivery Payment</span>
                   {% elif t == 'package_refund' %}
                   <span class="badge bg-success">Package Refund</span>
-                  {% elif t == 'delivery_refund' %}
-                  <span class="badge bg-warning text-dark">Delivery Refund</span>
+                  {% elif t == "delivery_refund" %}
+                  <span class="badge bg-warning text-dark">
+                    Delivery Refund
+                  </span>
+
+                  {% elif t == "subscription_payment" %}
+                  <span class="badge bg-primary">
+                    Subscription Payment
+                  </span>
+
+                  {% elif t == "subscription_upgrade_payment" %}
+                  <span class="badge bg-info text-dark">
+                    Subscription Upgrade
+                  </span>
+
+                  {% elif t == "subscription_waiver" %}
+                  <span class="badge text-white" style="background:#4a148c;">
+                    Complimentary Subscription
+                  </span>
+
+                  {% elif t == "subscription_refund" %}
+                  <span class="badge bg-success">
+                    Subscription Refund
+                  </span>
+
+                  {% elif t in [
+                  "subscription_cancel_override",
+                  "subscription_cancelled"
+                  ] %}
+                  <span class="badge bg-danger">
+                    Subscription Cancellation
+                  </span>
+
                   {% else %}
-                  <span class="badge bg-secondary">{{ t or 'Transaction' }}</span>
+                  <span class="badge bg-secondary">
+                    {{ t|replace("_", " ")|title if t else "Transaction" }}
+                  </span>
                   {% endif %}
                 </td>
 
@@ -1216,10 +1404,18 @@
 
                 <td class="text-end">
                   {% set t = payment.transaction_type or '' %}
-                  {% if t in ['package_refund', 'delivery_refund'] %}
-                  <span class="text-success fw-bold">+${{ money(payment.amount) }}</span>
+                  {% if t in [
+                  "package_refund",
+                  "delivery_refund",
+                  "subscription_refund"
+                  ] %}
+                  <span class="text-danger fw-bold">
+                    JMD ${{ money(payment.amount) }}
+                  </span>
                   {% else %}
-                  <span class="fw-bold">${{ money(payment.amount) }}</span>
+                  <span class="fw-bold">
+                    JMD ${{ money(payment.amount) }}
+                  </span>
                   {% endif %}
                 </td>
 
@@ -1851,116 +2047,257 @@
     </div>
   </div>
 
-  <div class="modal fade" id="manualSubscriptionModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+  <div class="modal fade" id="manualSubscriptionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
       <div class="modal-content">
 
-        <form method="POST" action="{{ url_for('accounts_profiles.manual_add_subscription', id=user.id) }}">
+        <div class="modal-header" style="background:#4a148c;color:white;">
+          <h5 class="modal-title">
+            Manage Subscription
+          </h5>
 
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <!-- Existing subscription -->
+        {% if subscription_summary %}
+        <div class="modal-body pb-0">
+          <div class="alert alert-light border">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+              <div>
+                <strong>
+                  {{ subscription_summary.plan_name }}
+                </strong>
+
+                <div class="small text-muted">
+                  Status:
+                  {{ subscription_summary.status|replace("_", " ")|title }}
+                </div>
+                {% if subscription_summary.is_admin_waived %}
+                <div class="mt-2">
+                  <span class="badge" style="background:#6f2dbd;color:#fff;">
+                    Complimentary
+                  </span>
+                </div>
+
+                {% if subscription_summary.waiver_reason %}
+                <div class="small text-muted mt-1">
+                  Reason:
+                  {{ subscription_summary.waiver_reason }}
+                </div>
+                {% endif %}
+
+                {% if subscription_summary.waived_by_name %}
+                <div class="small text-muted">
+                  Approved by:
+                  {{ subscription_summary.waived_by_name }}
+                </div>
+                {% endif %}
+                {% endif %}
+
+                <div class="small text-muted">
+                  Usage:
+                  {{ subscription_summary.packages_used }}
+                  /
+                  {{ subscription_summary.package_limit }}
+                  packages,
+                  {{ "%.1f"|format(subscription_summary.weight_used or 0) }}
+                  /
+                  {{ "%.1f"|format(subscription_summary.weight_limit or 0) }}
+                  lb
+                </div>
+
+                {% if subscription_summary.end_date %}
+                <div class="small text-muted">
+                  Ends:
+                  {{ to_jamaica(subscription_summary.end_date).strftime("%b %d, %Y %I:%M %p") }}
+                </div>
+                {% endif %}
+              </div>
+
+              {% if subscription_summary.status == "exhausted" %}
+              <span class="badge bg-warning text-dark">
+                Exhausted
+              </span>
+              {% else %}
+              <span class="badge bg-success">
+                {{ subscription_summary.status|title }}
+              </span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Family-plan management -->
+        {% if
+        subscription_summary
+        and subscription_summary.is_family_plan
+        and subscription_summary.is_owner
+        %}
+        {% set maximum_family_users = subscription_summary.max_users|default(4, true)|int %}
+        {% set active_family_users = subscription_summary.members|length %}
+
+        <div class="modal-body pt-2 pb-0">
+          <div class="border rounded p-3 bg-light">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold mb-0">
+                Family Members
+              </h6>
+
+              <span class="badge bg-primary">
+                {{ active_family_users }}
+                /
+                {{ maximum_family_users }}
+                person(s)
+              </span>
+            </div>
+
+            {% for member in subscription_summary.members %}
+            <div class="d-flex justify-content-between align-items-center gap-2 border rounded px-3 py-2 mb-2 bg-white">
+              <div>
+                <strong>
+                  {{ member.user.full_name or member.user.email }}
+                </strong>
+
+                <div class="small text-muted">
+                  {{ member.user.registration_number or "No FAFL #" }}
+                  •
+                  {{ member.user.email }}
+                </div>
+              </div>
+
+              <div class="d-flex align-items-center gap-2">
+                {% if member.role == "owner" %}
+                <span class="badge bg-primary">
+                  Owner
+                </span>
+                {% else %}
+                <span class="badge bg-success">
+                  Member
+                </span>
+
+                <form method="POST" action="{{ url_for(
+                        'accounts_profiles.remove_subscription_member',
+                        sub_id=subscription_summary.subscription_id,
+                        user_id=member.user.id
+                      ) }}" class="m-0" onsubmit="return confirm('Remove this member from the Family subscription?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                  <button type="submit" class="btn btn-sm btn-outline-danger">
+                    Remove
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+
+            {% if active_family_users < maximum_family_users %} <form method="POST" action="{{ url_for(
+                  'accounts_profiles.add_subscription_member',
+                  sub_id=subscription_summary.subscription_id
+                ) }}" class="mt-3">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+              <label class="form-label fw-semibold">
+                Add Family Member by FAFL Number or Email
+              </label>
+
+              <div class="d-flex gap-2">
+                <input type="text" name="member_lookup" class="form-control"
+                  placeholder="Enter FAFL registration number or email" autocomplete="off" required>
+
+                <button type="submit" class="btn btn-outline-purple">
+                  Add
+                </button>
+              </div>
+              </form>
+              {% else %}
+              <div class="alert alert-warning small mb-0 mt-3">
+                This Family plan has reached its maximum of
+                {{ maximum_family_users }} person(s).
+              </div>
+              {% endif %}
+          </div>
+        </div>
+
+        {% elif
+        subscription_summary
+        and subscription_summary.is_family_plan
+        and not subscription_summary.is_owner
+        %}
+        <div class="modal-body pt-2 pb-0">
+          <div class="alert alert-info">
+            This customer is a member of a Family subscription
+            owned by
+            <strong>
+              {{ subscription_summary.owner_name or "another customer" }}
+            </strong>.
+            Manage members from the owner’s account.
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Manual activation is a separate form -->
+        <form id="manualSubscriptionActivationForm" method="POST" action="{{ url_for(
+          'accounts_profiles.manual_add_subscription',
+          id=user.id
+        ) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-          <div class="modal-header" style="background:#4a148c;color:white;">
-            <h5 class="modal-title">Add / Change Subscription</h5>
-
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-          </div>
-
           <div class="modal-body">
+            <hr>
 
-            <!-- FAMILY MEMBERS -->
-            {% if subscription_summary and subscription_summary.is_family_plan %}
-            <div class="border rounded p-3 mb-4 bg-light">
+            <h6 class="fw-bold mb-3">
+              Activate a New Subscription
+            </h6>
 
-              <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="fw-bold mb-0">Family Members</h6>
-
-                <span class="badge bg-primary">
-                  {{ subscription_summary.members|length }} Member(s)
-                </span>
-              </div>
-
-              <div class="mb-3">
-
-                {% for m in subscription_summary.members %}
-                <div class="d-flex justify-content-between align-items-center border rounded px-3 py-2 mb-2 bg-white">
-
-                  <div>
-                    <strong>{{ m.user.full_name }}</strong>
-
-                    {% if m.role == "owner" %}
-                    <span class="badge bg-primary ms-2">Owner</span>
-                    {% endif %}
-                  </div>
-
-                  {% if m.role != "owner" %}
-                  <form method="POST" action="{{ url_for('accounts_profiles.remove_subscription_member',
-                                         sub_id=subscription_summary.subscription_id,
-                                         user_id=m.user.id) }}" class="m-0">
-
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                    <button class="btn btn-sm btn-outline-danger">
-                      Remove
-                    </button>
-                  </form>
-                  {% endif %}
-
-                </div>
-                {% endfor %}
-
-              </div>
-
-              <!-- ADD MEMBER -->
-              <form method="POST" action="{{ url_for('accounts_profiles.add_subscription_member',
-                                     sub_id=subscription_summary.subscription_id) }}">
-
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                <div class="d-flex gap-2">
-                  <input type="text" name="registration_number" class="form-control" placeholder="Enter Registration #"
-                    required>
-
-                  <button class="btn btn-outline-purple">
-                    Add
-                  </button>
-                </div>
-              </form>
-
-            </div>
-            {% endif %}
-
-            <!-- SUBSCRIPTION SETTINGS -->
-            <label class="form-label">Plan</label>
+            <label class="form-label">
+              Plan
+            </label>
 
             <select name="plan_id" class="form-select" required>
+              <option value="">
+                Select a plan
+              </option>
+
               {% for plan in subscription_plans %}
               <option value="{{ plan.id }}">
-                {{ plan.name }} - US${{ "%.2f"|format(plan.price_usd or 0) }}
+                {{ plan.name }}
+                — US${{ "%.2f"|format(plan.price_usd or 0) }}
+                — {{ plan.package_limit }} packages
+                / {{ "%.1f"|format(plan.weight_limit or 0) }} lb
               </option>
               {% endfor %}
             </select>
 
-            <label class="form-label mt-3">Duration</label>
+            <label class="form-label mt-3">
+              Duration
+            </label>
 
-            <select name="duration_days" class="form-select">
-              <option value="30">30 days</option>
-              <option value="60">60 days</option>
-              <option value="90">90 days</option>
+            <select name="duration_days" class="form-select" required>
+              <option value="30">
+                30 days
+              </option>
             </select>
 
             <div class="alert alert-warning small mt-3 mb-0">
-              This activates the subscription manually.
-              Use this when the customer pays in office/cash.
+              Activating a new plan will expire any subscription
+              currently owned by this customer and reset usage to zero.
+              Use the Upgrade action when usage must be carried forward.
             </div>
-
           </div>
 
           <div class="modal-footer">
-            <button type="submit" class="btn btn-primary">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+              Close
+            </button>
+
+            <button type="submit" class="btn btn-primary"
+              onclick="return confirm('Activate this subscription manually?');">
               Activate Subscription
             </button>
           </div>
-
         </form>
 
       </div>
@@ -2151,8 +2488,25 @@
                 <input type="text" name="referral_code" class="form-control" value="{{ user.referral_code }}">
               </div>
               <div class="col-md-6">
-                <label class="form-label">Authorized Person</label>
-                <input type="text" name="authorized_person" class="form-control" value="{{ user.authorized_person }}">
+                <label class="form-label">Authorized Pickup Persons</label>
+
+                {% if authorized_pickups %}
+                <div class="form-control bg-light" style="height:auto;">
+                  {% for person in authorized_pickups %}
+                  <div class="{% if not loop.last %}mb-2 pb-2 border-bottom{% endif %}">
+                    <strong>{{ person.full_name }}</strong><br>
+                    <small>
+                      {{ person.phone_number or 'No phone number' }}
+                      {% if person.email %}
+                      • {{ person.email }}
+                      {% endif %}
+                    </small>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% else %}
+                <input type="text" class="form-control" value="None" readonly>
+                {% endif %}
               </div>
             </div>
 
@@ -3159,8 +3513,9 @@
               You are about to delete: <strong id="delInvoiceLabel">—</strong>
             </p>
             <div class="alert alert-warning mb-0">
-              This will remove the invoice record. Any packages linked to it will be unassigned.
-              Payments linked to it will be handled by the server rule.
+              This will remove the unpaid invoice and detach its packages so a new
+              invoice can be generated. The packages will remain assigned to this
+              customer. Paid and partially paid invoices cannot be deleted.
             </div>
           </div>
 

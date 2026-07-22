@@ -49,6 +49,11 @@ from app.utils.invoice_totals import (
     lock_delivered_packages_for_invoice,
 )
 from app.utils.time import to_jamaica
+from app.utils.subscription_utils import (
+    clear_package_subscription,
+    get_subscription_discount_percent,
+    reconcile_subscription_usage,
+)
 
 
 import sqlalchemy as sa
@@ -141,7 +146,17 @@ def _build_invoice_view_dict(inv):
             _storage = 0
         else:
             _freight = _num(getattr(p, "freight_fee", getattr(p, "freight", 0)))
-            _storage = _num(getattr(p, "storage_fee", getattr(p, "handling", 0)))
+            _storage = _num(
+                getattr(
+                    p,
+                    "handling_fee",
+                    getattr(
+                        p,
+                        "storage_fee",
+                        getattr(p, "handling", 0),
+                    ),
+                )
+            )
 
         packages.append({
             "house_awb":     getattr(p, "house_awb", "") or "",
@@ -1745,12 +1760,38 @@ def generate_invoice_route(user_id):
     view_lines = []
 
     for p in packages:
-        desc = p.description or "Miscellaneous"
-        wt   = float(p.weight or 0)
-        val  = float(getattr(p, "value", 0) or 0)
+        desc = (
+            getattr(p, "category", None)
+            or p.description
+            or "Miscellaneous"
+        )
 
-        # ✅ NEW: if package already has saved/manual charges, DO NOT overwrite them
-        has_saved_charges = any([
+        wt = float(p.weight or 0)
+
+        val = float(
+            getattr(p, "declared_value", None)
+            or getattr(p, "value", 0)
+            or 0
+        )
+
+        is_subscription_covered = bool(
+            getattr(p, "subscription_applied", False)
+            and (
+                getattr(
+                    p,
+                    "subscription_result",
+                    "",
+                )
+                or ""
+            )
+            == "subscription_applied"
+        )
+
+        # A covered package can correctly have zero saved charges.
+        # It must never fall through to normal charge calculation.
+        has_saved_charges = (
+            is_subscription_covered
+            or any([
             float(getattr(p, "duty", 0) or 0) > 0,
             float(getattr(p, "scf", 0) or 0) > 0,
             float(getattr(p, "envl", 0) or 0) > 0,
@@ -1759,7 +1800,8 @@ def generate_invoice_route(user_id):
             float(getattr(p, "stamp", 0) or 0) > 0,
             float(getattr(p, "other_charges", 0) or 0) > 0,
             float(getattr(p, "amount_due", 0) or 0) > 0,
-        ])
+          ])
+        )
 
         if has_saved_charges:
             duty          = float(getattr(p, "duty", 0) or 0)
@@ -1769,19 +1811,106 @@ def generate_invoice_route(user_id):
             gct           = float(getattr(p, "gct", 0) or 0)
             stamp         = float(getattr(p, "stamp", 0) or 0)
 
-            freight       = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
-            handling      = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
+            freight = float(
+                getattr(
+                    p,
+                    "freight_fee",
+                    getattr(p, "freight", 0),
+                )
+                or 0
+            )
+
+            handling = float(
+                getattr(
+                    p,
+                    "handling_fee",
+                    getattr(
+                        p,
+                        "storage_fee",
+                        getattr(p, "handling", 0),
+                    ),
+                )
+                or 0
+            )
 
             other_charges = float(getattr(p, "other_charges", 0) or 0)
             bad_address_fee = float(getattr(p, "bad_address_fee", 0) or 0) 
 
-            grand_total   = float(
-                getattr(p, "amount_due", 0)
-                or getattr(p, "grand_total", 0)
-                or 0
-            )
+            if is_subscription_covered:
+                # Subscription always removes freight and handling.
+                freight = 0.0
+                handling = 0.0
+
+                # Customs are also removed when value is US$100 or less.
+                if val <= 100:
+                    duty = 0.0
+                    scf = 0.0
+                    envl = 0.0
+                    caf = 0.0
+                    gct = 0.0
+                    stamp = 0.0
+
+                if (
+                    bool(
+                        getattr(p, "epc", False)
+                        or getattr(
+                            p,
+                            "bad_address",
+                            False,
+                        )
+                    )
+                    and bad_address_fee <= 0
+                ):
+                    bad_address_fee = 500.0
+
+                grand_total = (
+                    duty
+                    + scf
+                    + envl
+                    + caf
+                    + gct
+                    + stamp
+                    + other_charges
+                    + bad_address_fee
+                )
+
+                # Remove any old discount from when the
+                # subscription was previously exhausted.
+                if hasattr(p, "discount_due"):
+                    p.discount_due = 0.0
+
+                if hasattr(p, "freight_fee"):
+                    p.freight_fee = 0.0
+
+                if hasattr(p, "freight"):
+                    p.freight = 0.0
+
+                if hasattr(p, "handling_fee"):
+                    p.handling_fee = 0.0
+
+                if hasattr(p, "storage_fee"):
+                    p.storage_fee = 0.0
+
+                if hasattr(p, "handling"):
+                    p.handling = 0.0
+
+                if hasattr(p, "freight_total"):
+                    p.freight_total = (
+                        other_charges
+                        + bad_address_fee
+                    )
+
+            else:
+                grand_total = float(
+                    getattr(p, "amount_due", 0)
+                    or getattr(p, "grand_total", 0)
+                    or 0
+                )
 
             p.amount_due = grand_total
+
+            if hasattr(p, "grand_total"):
+                p.grand_total = grand_total
 
             p.invoice_id = inv.id
 
@@ -1936,86 +2065,368 @@ def generate_invoice_route(user_id):
     return render_template("admin/invoice_view.html", invoice=invoice_dict)
 
 
-@admin_bp.route("/invoice/create/<int:package_id>", methods=["GET", "POST"])
+@admin_bp.route(
+    "/invoice/create/<int:package_id>",
+    methods=["GET", "POST"],
+)
 @admin_required
 def invoice_create(package_id):
-    pkg = Package.query.get_or_404(package_id)
-    calc = None
+    package = Package.query.get_or_404(package_id)
+    calculation = None
 
     from app.utils.unassigned import is_pkg_unassigned
 
-    if is_pkg_unassigned(pkg):
-        flash("Cannot create invoice: this package is UNASSIGNED. Assign it to a customer first.", "danger")
-        return redirect(request.referrer or url_for("admin.dashboard"))
+    if is_pkg_unassigned(package):
+        flash(
+            "Cannot create an invoice for an UNASSIGNED "
+            "package. Assign it to a customer first.",
+            "danger",
+        )
+        return redirect(
+            request.referrer
+            or url_for("admin.dashboard")
+        )
+
+    if getattr(package, "invoice_id", None):
+        flash(
+            "This package is already attached to an invoice.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=package.invoice_id,
+            )
+        )
 
     if request.method == "POST":
         try:
-            category      = request.form.get("category") or (pkg.description or "Miscellaneous")
-            invoice_usd   = float(request.form.get("invoice_usd", pkg.value or 0))
-            weight        = float(request.form.get("weight", pkg.weight or 0))
-            # ✅ NEW: capture other charges from the form
-            other_charges = float(request.form.get("other_charges", 0))
+            category = (
+                request.form.get("category")
+                or getattr(package, "category", None)
+                or package.description
+                or "Miscellaneous"
+            ).strip()
 
-            # Calculate charges
-            calc = calculate_charges(category, invoice_usd, weight)
-
-            # Create invoice (one invoice; link package to it)
-            inv = Invoice(
-                user_id=pkg.user_id,
-                invoice_number=f"INV-{pkg.user_id}-{int(datetime.utcnow().timestamp())}",
-                date_submitted=datetime.utcnow(),
-                status="pending",
-                subtotal=(calc.get("subtotal") or calc.get("grand_total") or 0),
-                # ✅ include other_charges in invoice grand total
-                grand_total=(calc.get("grand_total") or 0) + other_charges,
+            invoice_usd = float(
+                request.form.get(
+                    "invoice_usd",
+                    getattr(
+                        package,
+                        "declared_value",
+                        None,
+                    )
+                    or package.value
+                    or 0,
+                )
             )
-            db.session.add(inv)
-            db.session.flush()  # get inv.id
 
-            # Persist breakdown to the package and link it
-            pkg.category        = category
-            pkg.value           = invoice_usd
-            pkg.weight          = weight
-            pkg.duty            = calc.get("duty", 0)
-            pkg.scf             = calc.get("scf", 0)
-            pkg.envl            = calc.get("envl", 0)
-            pkg.caf             = calc.get("caf", 0)
-            pkg.gct             = calc.get("gct", 0)
-            pkg.stamp           = calc.get("stamp", 0)
-            pkg.customs_total   = calc.get("customs_total", 0)
+            new_weight = float(
+                request.form.get(
+                    "weight",
+                    package.weight or 0,
+                )
+            )
 
+            other_charges = float(
+                request.form.get(
+                    "other_charges",
+                    getattr(
+                        package,
+                        "other_charges",
+                        0,
+                    )
+                    or 0,
+                )
+            )
 
-            # handle freight/storage alternate column names
-            freight_val  = calc.get("freight", 0)
-            storage_val  = calc.get("handling", 0)
-            if hasattr(pkg, "freight_fee"):
-                pkg.freight_fee = freight_val
+            if invoice_usd < 0:
+                raise ValueError(
+                    "Declared value cannot be negative."
+                )
+
+            if new_weight < 0:
+                raise ValueError(
+                    "Weight cannot be negative."
+                )
+
+            if other_charges < 0:
+                raise ValueError(
+                    "Other charges cannot be negative."
+                )
+
+            old_weight = float(
+                package.weight or 0
+            )
+
+            package.category = category
+            package.value = invoice_usd
+            package.weight = new_weight
+            package.other_charges = other_charges
+
+            if hasattr(package, "declared_value"):
+                package.declared_value = invoice_usd
+
+            # A weight change may change eligibility or allowance.
+            if abs(new_weight - old_weight) > 0.0001:
+                subscription_result = (
+                    reconcile_subscription_usage(
+                        package
+                    )
+                )
+
+                if subscription_result not in (
+                    "subscription_applied",
+                    "already_applied",
+                ):
+                    clear_package_subscription(
+                        package,
+                        result=(
+                            subscription_result
+                            or "no_subscription"
+                        ),
+                    )
+
+            subscription_covered = bool(
+                getattr(
+                    package,
+                    "subscription_applied",
+                    False,
+                )
+                and (
+                    getattr(
+                        package,
+                        "subscription_result",
+                        "",
+                    )
+                    or ""
+                )
+                == "subscription_applied"
+            )
+
+            calculation = calculate_charges(
+                category,
+                invoice_usd,
+                new_weight,
+            ) or {}
+
+            def charge(*keys):
+                for key in keys:
+                    value = calculation.get(key)
+
+                    if value not in (None, ""):
+                        try:
+                            return float(value)
+                        except (TypeError, ValueError):
+                            continue
+
+                return 0.0
+
+            duty = charge("duty", "duty_amount")
+            scf = charge("scf", "scf_amount")
+            envl = charge("envl", "envl_amount")
+            caf = charge("caf", "caf_amount")
+            gct = charge("gct", "gct_amount")
+            stamp = charge("stamp", "stamp_amount")
+
+            customs_total = charge(
+                "customs_total",
+                "customs",
+                "customs_amount",
+                "customs_total_amount",
+            )
+
+            freight = charge(
+                "freight",
+                "freight_fee",
+                "freight_amount",
+            )
+
+            handling = charge(
+                "handling",
+                "handling_fee",
+                "storage_fee",
+                "handling_amount",
+            )
+
+            has_bad_address = bool(
+                getattr(package, "epc", False)
+                or getattr(
+                    package,
+                    "bad_address",
+                    False,
+                )
+            )
+
+            bad_address_fee = (
+                500.0 if has_bad_address else 0.0
+            )
+
+            subscription_discount = 0.0
+
+            if subscription_covered:
+                # Active allowance removes freight/handling.
+                freight = 0.0
+                handling = 0.0
+
+                # Value of US$100 or less also removes customs.
+                if invoice_usd <= 100:
+                    duty = 0.0
+                    scf = 0.0
+                    envl = 0.0
+                    caf = 0.0
+                    gct = 0.0
+                    stamp = 0.0
+                    customs_total = 0.0
+                else:
+                    # Ensure the total agrees with the saved
+                    # customs components.
+                    customs_total = (
+                        duty
+                        + scf
+                        + envl
+                        + caf
+                        + gct
+                        + stamp
+                    )
+
             else:
-                pkg.freight = freight_val
-            if hasattr(pkg, "storage_fee"):
-                pkg.storage_fee = storage_val
-            else:
-                pkg.handling = storage_val
+                # An exhausted subscription receives 5% off
+                # freight and handling only, when eligible.
+                discount_percent = float(
+                    get_subscription_discount_percent(
+                        package
+                    )
+                    or 0
+                )
 
-            pkg.freight_total = calc.get("freight_total", 0)
-            pkg.other_charges = calc.get("other_charges", 0)
-            pkg.amount_due    = calc.get("grand_total", 0)
-            pkg.invoice_id    = inv.id
+                if discount_percent > 0:
+                    subscription_discount = round(
+                        (
+                            freight
+                            + handling
+                        )
+                        * (
+                            discount_percent
+                            / 100
+                        ),
+                        2,
+                    )
+
+            grand_total = max(
+                customs_total
+                + freight
+                + handling
+                + other_charges
+                + bad_address_fee
+                - subscription_discount,
+                0.0,
+            )
+
+            package.duty = duty
+            package.scf = scf
+            package.envl = envl
+            package.caf = caf
+            package.gct = gct
+            package.stamp = stamp
+            package.customs_total = customs_total
+
+            if hasattr(package, "freight_fee"):
+                package.freight_fee = freight
+
+            if hasattr(package, "freight"):
+                package.freight = freight
+
+            if hasattr(package, "handling_fee"):
+                package.handling_fee = handling
+
+            if hasattr(package, "storage_fee"):
+                package.storage_fee = handling
+
+            if hasattr(package, "handling"):
+                package.handling = handling
+
+            if hasattr(package, "freight_total"):
+                package.freight_total = (
+                    freight
+                    + handling
+                    + other_charges
+                    + bad_address_fee
+                )
+
+            if hasattr(package, "bad_address_fee"):
+                package.bad_address_fee = (
+                    bad_address_fee
+                )
+
+            if hasattr(package, "discount_due"):
+                package.discount_due = (
+                    subscription_discount
+                )
+
+            if hasattr(package, "grand_total"):
+                package.grand_total = grand_total
+
+            package.amount_due = grand_total
+
+            now = datetime.utcnow()
+
+            invoice = Invoice(
+                user_id=package.user_id,
+                invoice_number=(
+                    f"INV-{package.user_id}-"
+                    f"{now.strftime('%Y%m%d%H%M%S')}"
+                ),
+                date_submitted=now,
+                date_issued=now,
+                created_at=now,
+                status="unpaid",
+                subtotal=grand_total,
+                grand_total=grand_total,
+                amount_due=grand_total,
+            )
+
+            db.session.add(invoice)
+            db.session.flush()
+
+            package.invoice_id = invoice.id
 
             db.session.commit()
-            flash("Invoice created successfully!", "success")
-            return redirect(url_for("admin.invoice_view", invoice_id=inv.id))
 
-        except Exception as e:
+            flash(
+                "Invoice created successfully.",
+                "success",
+            )
+
+            return redirect(
+                url_for(
+                    "admin.view_invoice",
+                    invoice_id=invoice.id,
+                )
+            )
+
+        except (TypeError, ValueError) as error:
             db.session.rollback()
-            flash(f"Error: {str(e)}", "danger")
+            flash(str(error), "danger")
 
-    # GET or error state
+        except Exception as error:
+            db.session.rollback()
+
+            current_app.logger.exception(
+                "Creating an invoice for package %s failed",
+                package_id,
+            )
+
+            flash(
+                f"Invoice could not be created: {error}",
+                "danger",
+            )
+
     return render_template(
         "admin/create_invoice.html",
-        package=pkg,
+        package=package,
         categories=CATEGORIES.keys(),
-        result=calc
+        result=calculation,
     )
 
 @admin_bp.route('/invoices/user/<int:user_id>', methods=['GET'], endpoint='view_customer_invoice')
@@ -2791,216 +3202,642 @@ def generate_bulk_invoice():
 
 
 
-@admin_bp.route('/invoices/<int:invoice_id>/pdf')
+@admin_bp.route(
+    "/invoices/<int:invoice_id>/pdf",
+    methods=["GET"],
+)
 @admin_required
 def invoice_pdf(invoice_id):
-    # Build a dict compatible with _invoice_core.html
-    # TODO: Replace with real fetch from your DB
-    inv = Invoice.query.get_or_404(invoice_id)
+    invoice = Invoice.query.get_or_404(
+        invoice_id
+    )
 
-    # Build packages list—make sure keys match the template
-    packages = []
-    for p in Package.query.filter_by(invoice_id=invoice_id).all():
-        packages.append({
-            "house_awb": p.house_awb,
-            "description": p.description,
-            "weight": p.weight or 0,
-            "value": p.value or 0,
-            "freight": p.freight_fee or 0,
-            "storage": p.storage_fee or 0,
-            "duty": p.duty or 0,
-            "scf": p.scf or 0,
-            "envl": p.envl or 0,
-            "caf": p.caf or 0,
-            "gct": p.gct or 0,
-            "other_charges": p.other_charges or 0,
-            "discount_due": getattr(p, 'discount_due', 0) or 0,
-        })
+    # This shared builder uses saved subscription-protected
+    # package charges.
+    invoice_dict = _build_invoice_view_dict(
+        invoice
+    )
 
-    invoice_dict = {
-        "id": inv.id,
-        "number": inv.invoice_number,
-        "date": inv.date_submitted or datetime.utcnow(),
-        "customer_code": inv.user.registration_number if getattr(inv, 'user', None) else '',
-        "customer_name": inv.user.full_name if getattr(inv, 'user', None) else '',
-        "subtotal": inv.subtotal or inv.grand_total or 0,
-        "discount_total": getattr(inv, 'discount_total', 0) or 0,
-        "total_due": inv.grand_total or 0,
-        "packages": packages,
-    }
+    (
+        subtotal,
+        discount_total,
+        payments_total,
+        total_due,
+    ) = fetch_invoice_totals_pg(invoice_id)
 
-    rel = generate_invoice_pdf(invoice_dict)
-    return redirect(url_for('static', filename=rel))
+    invoice_status = (
+        invoice.status or ""
+    ).strip().lower()
+
+    if invoice_status == "paid":
+        total_due = 0.0
+
+    invoice_dict.update(
+        {
+            "id": invoice.id,
+            "number": (
+                invoice.invoice_number
+                or f"INV{invoice.id:05d}"
+            ),
+            "invoice_number": (
+                invoice.invoice_number
+                or f"INV{invoice.id:05d}"
+            ),
+            "date": (
+                invoice.date_issued
+                or invoice.date_submitted
+                or invoice.created_at
+                or datetime.utcnow()
+            ),
+            "date_issued": (
+                invoice.date_issued
+                or invoice.date_submitted
+                or invoice.created_at
+                or datetime.utcnow()
+            ),
+            "subtotal": float(
+                subtotal or 0
+            ),
+            "grand_total": float(
+                subtotal or 0
+            ),
+            "discount_total": float(
+                discount_total or 0
+            ),
+            "payments_total": float(
+                payments_total or 0
+            ),
+            "total_due": float(
+                total_due or 0
+            ),
+            "amount_due": float(
+                total_due or 0
+            ),
+        }
+    )
+
+    try:
+        relative_path = generate_invoice_pdf(
+            invoice_dict
+        )
+
+    except Exception as error:
+        current_app.logger.exception(
+            "Generating PDF for invoice %s failed",
+            invoice_id,
+        )
+
+        flash(
+            f"Invoice PDF could not be generated: {error}",
+            "danger",
+        )
+
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=invoice.id,
+            )
+        )
+
+    return redirect(
+        url_for(
+            "static",
+            filename=relative_path,
+        )
+    )
 
 
 # ---------- VIEW (Image 1 style) ----------
-@admin_bp.route('/invoices/<int:invoice_id>', methods=['GET'], endpoint='view_invoice')
+@admin_bp.route(
+    "/invoices/<int:invoice_id>",
+    methods=["GET"],
+    endpoint="view_invoice",
+)
 @admin_required
 def view_invoice(invoice_id):
-    inv = Invoice.query.get_or_404(invoice_id)
-    user = inv.user if hasattr(inv, "user") else None
+    invoice = Invoice.query.get_or_404(
+        invoice_id
+    )
+
+    user = getattr(invoice, "user", None)
 
     packages = []
-    rows = (
+
+    package_rows = (
         Package.query
         .filter_by(invoice_id=invoice_id)
         .order_by(Package.created_at.asc())
         .all()
     )
 
-    for p in rows:
-        desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
+    for package in package_rows:
+        description = (
+            getattr(package, "category", None)
+            or package.description
+            or "Miscellaneous"
+        )
 
-        wt = float(getattr(p, "weight", 0) or 0)
-
-        val = float(
-            getattr(p, "value", None)
-            or getattr(p, "value_usd", None)
-            or getattr(p, "invoice_value", None)
+        weight = float(
+            getattr(package, "weight", 0)
             or 0
         )
 
-        # ✅ USE SAVED DB VALUES (manual overrides will show)
-        freight = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
-        storage = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
-
-        due = float(getattr(p, "amount_due", None) or getattr(p, "grand_total", 0) or 0)
-
-        packages.append({
-            "id": p.id,
-            "house_awb": p.house_awb,
-            "description": desc,
-            "tracking_number": getattr(p, "tracking_number", "") or "",
-            "weight": wt,
-            "value_usd": val,
-
-            # optional: include breakdown fields if your modal needs them later
-            "freight_fee": freight,
-            "storage_fee": storage,
-            "duty": float(getattr(p, "duty", 0) or 0),
-            "scf": float(getattr(p, "scf", 0) or 0),
-            "envl": float(getattr(p, "envl", 0) or 0),
-            "caf": float(getattr(p, "caf", 0) or 0),
-            "gct": float(getattr(p, "gct", 0) or 0),
-            "stamp": float(getattr(p, "stamp", 0) or 0),
-            "other_charges": float(getattr(p, "other_charges", 0) or 0),
-
-            "amount_due": due,
-        })
-
-    if not packages and (inv.invoice_number or "").startswith("SHOP-"):
-        shop_total = float(inv.grand_total or inv.amount_due or 0)
-
-        packages.append({
-            "id": None,
-            "house_awb": inv.invoice_number,
-            "description": inv.description or "Shop For Me Quote",
-            "tracking_number": "",
-            "weight": 0,
-            "value_usd": 0,
-            "freight_fee": 0,
-            "storage_fee": 0,
-            "duty": 0,
-            "scf": 0,
-            "envl": 0,
-            "caf": 0,
-            "gct": 0,
-            "stamp": 0,
-            "other_charges": 0,
-            "amount_due": shop_total,
-        })
-
-    preview_subtotal = sum(float(x.get("amount_due", 0) or 0) for x in packages)
-
-    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(invoice_id)
-
-    preview_payments_total = float(payments_total or 0.0)
-    preview_discount_total = float(
-        getattr(inv, "discount_total", None)
-        if getattr(inv, "discount_total", None) not in (None, "")
-        else (discount_total or 0.0)
-    )
-
-    saved_due = float(getattr(inv, "amount_due", 0) or 0)
-
-    if (inv.status or "").lower() == "paid" or saved_due <= 0.01:
-        preview_balance_due = 0.0
-        total_due = 0.0
-    else:
-        preview_balance_due = max(
-            float(preview_subtotal or 0)
-            - float(discount_total or 0)
-            - float(payments_total or 0),
-            0.0
+        declared_value = float(
+            getattr(
+                package,
+                "declared_value",
+                None,
+            )
+            or getattr(package, "value", None)
+            or getattr(package, "value_usd", None)
+            or getattr(
+                package,
+                "invoice_value",
+                None,
+            )
+            or 0
         )
 
+        freight = float(
+            getattr(
+                package,
+                "freight_fee",
+                getattr(package, "freight", 0),
+            )
+            or 0
+        )
+
+        handling = float(
+            getattr(
+                package,
+                "handling_fee",
+                getattr(
+                    package,
+                    "storage_fee",
+                    getattr(package, "handling", 0),
+                ),
+            )
+            or 0
+        )
+
+        saved_amount_due = getattr(
+            package,
+            "amount_due",
+            None,
+        )
+
+        if saved_amount_due is not None:
+            package_due = float(
+                saved_amount_due or 0
+            )
+        else:
+            package_due = float(
+                getattr(
+                    package,
+                    "grand_total",
+                    0,
+                )
+                or 0
+            )
+
+        subscription_result = (
+            getattr(
+                package,
+                "subscription_result",
+                None,
+            )
+        )
+
+        subscription_covered = bool(
+            getattr(
+                package,
+                "subscription_applied",
+                False,
+            )
+            and (
+                subscription_result or ""
+            )
+            == "subscription_applied"
+        )
+
+        customs_total = float(
+            getattr(
+                package,
+                "customs_total",
+                0,
+            )
+            or 0
+        )
+
+        packages.append(
+            {
+                "id": package.id,
+                "house_awb": (
+                    package.house_awb or ""
+                ),
+                "description": description,
+                "tracking_number": (
+                    getattr(
+                        package,
+                        "tracking_number",
+                        "",
+                    )
+                    or ""
+                ),
+                "weight": weight,
+                "value": declared_value,
+                "value_usd": declared_value,
+
+                "freight": freight,
+                "freight_fee": freight,
+
+                "handling": handling,
+                "handling_fee": handling,
+                "storage": handling,
+                "storage_fee": handling,
+
+                "duty": float(
+                    getattr(package, "duty", 0)
+                    or 0
+                ),
+                "scf": float(
+                    getattr(package, "scf", 0)
+                    or 0
+                ),
+                "envl": float(
+                    getattr(package, "envl", 0)
+                    or 0
+                ),
+                "caf": float(
+                    getattr(package, "caf", 0)
+                    or 0
+                ),
+                "gct": float(
+                    getattr(package, "gct", 0)
+                    or 0
+                ),
+                "stamp": float(
+                    getattr(package, "stamp", 0)
+                    or 0
+                ),
+
+                "customs_total": customs_total,
+
+                "other_charges": float(
+                    getattr(
+                        package,
+                        "other_charges",
+                        0,
+                    )
+                    or 0
+                ),
+
+                "bad_address_fee": float(
+                    getattr(
+                        package,
+                        "bad_address_fee",
+                        0,
+                    )
+                    or 0
+                ),
+
+                "discount_due": float(
+                    getattr(
+                        package,
+                        "discount_due",
+                        0,
+                    )
+                    or 0
+                ),
+
+                "amount_due": package_due,
+
+                "grand_total": float(
+                    getattr(
+                        package,
+                        "grand_total",
+                        package_due,
+                    )
+                    or 0
+                ),
+
+                "subscription_applied": bool(
+                    getattr(
+                        package,
+                        "subscription_applied",
+                        False,
+                    )
+                ),
+
+                "subscription_result": (
+                    subscription_result
+                ),
+
+                "subscription_covered": (
+                    subscription_covered
+                ),
+
+                "customs_only_due_to_subscription": bool(
+                    subscription_covered
+                    and customs_total > 0
+                ),
+            }
+        )
+
+    # -------------------------------------------------
+    # Shop For Me invoices may have no Package records.
+    # Keep shop_total here.
+    # -------------------------------------------------
+    if (
+        not packages
+        and (
+            invoice.invoice_number or ""
+        ).startswith("SHOP-")
+    ):
+        shop_total = float(
+            invoice.grand_total
+            or invoice.amount_due
+            or 0
+        )
+
+        packages.append(
+            {
+                "id": None,
+                "house_awb": (
+                    invoice.invoice_number
+                ),
+                "description": (
+                    invoice.description
+                    or "Shop For Me Quote"
+                ),
+                "tracking_number": "",
+                "weight": 0,
+                "value": 0,
+                "value_usd": 0,
+
+                "freight": 0,
+                "freight_fee": 0,
+                "handling": 0,
+                "handling_fee": 0,
+                "storage": 0,
+                "storage_fee": 0,
+
+                "duty": 0,
+                "scf": 0,
+                "envl": 0,
+                "caf": 0,
+                "gct": 0,
+                "stamp": 0,
+                "customs_total": 0,
+
+                "other_charges": 0,
+                "bad_address_fee": 0,
+                "discount_due": 0,
+
+                "amount_due": shop_total,
+                "grand_total": shop_total,
+
+                "subscription_applied": False,
+                "subscription_result": None,
+                "subscription_covered": False,
+                "customs_only_due_to_subscription": False,
+            }
+        )
+
+    preview_subtotal = sum(
+        float(
+            package.get(
+                "amount_due",
+                0,
+            )
+            or 0
+        )
+        for package in packages
+    )
+
+    (
+        database_subtotal,
+        database_discount_total,
+        database_payments_total,
+        database_total_due,
+    ) = fetch_invoice_totals_pg(
+        invoice_id
+    )
+
+    preview_discount_total = float(
+        getattr(
+            invoice,
+            "discount_total",
+            None,
+        )
+        if getattr(
+            invoice,
+            "discount_total",
+            None,
+        )
+        not in (None, "")
+        else (
+            database_discount_total
+            or 0
+        )
+    )
+
+    preview_payments_total = float(
+        database_payments_total or 0
+    )
+
+    invoice_status = (
+        invoice.status or ""
+    ).strip().lower()
+
+    if invoice_status == "paid":
+        preview_balance_due = 0.0
+    else:
+        preview_balance_due = max(
+            preview_subtotal
+            - preview_discount_total
+            - preview_payments_total,
+            0.0,
+        )
+
+    invoice_number = (
+        invoice.invoice_number
+        or f"INV{invoice.id:05d}"
+    )
+
+    invoice_date = (
+        invoice.date_issued
+        or invoice.date_submitted
+        or invoice.created_at
+        or datetime.utcnow()
+    )
+
     invoice_dict = {
-        "id": inv.id,
-        "user_id": inv.user_id,
+        "id": invoice.id,
+        "user_id": invoice.user_id,
         "user": user,
-        "invoice_number": inv.invoice_number,
-        "grand_total": float(inv.grand_total or subtotal or 0),
-        "date_issued": (
-            inv.date_issued
-            or inv.date_submitted
-            or inv.created_at
-            or datetime.utcnow()
+
+        "invoice_number": invoice_number,
+        "number": invoice_number,
+
+        "grand_total": float(
+            invoice.grand_total
+            or preview_subtotal
+            or database_subtotal
+            or 0
         ),
-        "customer_code": getattr(user, "registration_number", "") if user else "",
-        "customer_name": getattr(user, "full_name", "") if user else "",
-        "subtotal": subtotal,
-        "discount_total": preview_discount_total,
-        "payments_total": payments_total,
-        "total_due": total_due,
-        "description": getattr(inv, "description", "") or "",
-        "amount_due": float(saved_due if saved_due > 0.01 else 0.0),
+
+        "date": invoice_date,
+        "date_issued": invoice_date,
+
+        "customer_code": (
+            getattr(
+                user,
+                "registration_number",
+                "",
+            )
+            if user
+            else ""
+        ),
+
+        "customer_name": (
+            getattr(user, "full_name", "")
+            if user
+            else ""
+        ),
+
+        "subtotal": float(
+            database_subtotal
+            or preview_subtotal
+            or 0
+        ),
+
+        "discount_total": (
+            preview_discount_total
+        ),
+
+        "payments_total": (
+            preview_payments_total
+        ),
+
+        "total_due": (
+            preview_balance_due
+        ),
+
+        "amount_due": (
+            preview_balance_due
+        ),
+
+        "description": (
+            getattr(
+                invoice,
+                "description",
+                "",
+            )
+            or ""
+        ),
+
         "packages": packages,
-        "preview_subtotal": float(preview_subtotal),
-        "preview_discount_total": float(preview_discount_total),
-        "preview_payments_total": float(preview_payments_total),
-        "preview_total_due": float(preview_balance_due),
+
+        "preview_subtotal": float(
+            preview_subtotal
+        ),
+
+        "preview_discount_total": float(
+            preview_discount_total
+        ),
+
+        "preview_payments_total": float(
+            preview_payments_total
+        ),
+
+        "preview_total_due": float(
+            preview_balance_due
+        ),
     }
 
-    # ---------- authorised signers ----------
-    authorized_signers: list[str] = []
+    # -------------------------------------------------
+    # Authorized signers
+    # -------------------------------------------------
+    authorized_signers = []
+
     try:
-        from app.models import Settings, User
-        settings = Settings.query.get(1)
-        if settings and getattr(settings, "authorized_signers", None):
+        from app.models import Settings
+
+        settings = db.session.get(Settings, 1)
+
+        if (
+            settings
+            and getattr(
+                settings,
+                "authorized_signers",
+                None,
+            )
+        ):
             authorized_signers = [
-                s.strip() for s in settings.authorized_signers.split(",") if s.strip()
+                signer.strip()
+                for signer in (
+                    settings.authorized_signers
+                    or ""
+                ).split(",")
+                if signer.strip()
             ]
+
     except Exception:
+        current_app.logger.exception(
+            "Loading authorized invoice signers failed"
+        )
         authorized_signers = []
 
     if not authorized_signers:
         try:
-            from app.models import User
             authorized_signers = [
-                (u.full_name or u.email)
-                for u in User.query.filter_by(is_admin=True)
-                                   .order_by(User.full_name.asc())
-                                   .all()
+                user_row.full_name
+                or user_row.email
+                for user_row in (
+                    User.query
+                    .filter_by(is_admin=True)
+                    .order_by(
+                        User.full_name.asc()
+                    )
+                    .all()
+                )
             ]
+
         except Exception:
             authorized_signers = []
 
     if not authorized_signers:
-        authorized_signers = [getattr(current_user, "full_name", "Admin")]
+        authorized_signers = [
+            getattr(
+                current_user,
+                "full_name",
+                "Admin",
+            )
+            or "Admin"
+        ]
 
-    is_inline = (
-        request.headers.get('X-Requested-With') == 'XMLHttpRequest'
-        or request.args.get('inline') == '1'
+    is_inline = bool(
+        request.headers.get(
+            "X-Requested-With"
+        )
+        == "XMLHttpRequest"
+        or request.args.get("inline") == "1"
     )
-    tpl = "admin/invoices/_invoice_inline.html" if is_inline else "admin/invoice_view.html"
+
+    template_name = (
+        "admin/invoices/_invoice_inline.html"
+        if is_inline
+        else "admin/invoice_view.html"
+    )
 
     return render_template(
-        tpl,
+        template_name,
         invoice=invoice_dict,
         USD_TO_JMD=USD_TO_JMD,
         authorized_signers=authorized_signers,
-    )
-  
+    )  
+
 
 # ---------- BREAKDOWN (Lightning icon) ----------
 @admin_bp.route("/invoice/breakdown/<int:package_id>", methods=["GET"])
@@ -3039,7 +3876,10 @@ def invoice_breakdown(package_id):
             stamp_val = float(getattr(p, "stamp", 0) or 0)
 
         customs_total_val = duty_val + gct_val + scf_val + envl_val + caf_val + stamp_val
-        freight_total_val = bad_address_val
+        freight_total_val = (
+            bad_address_val
+            + other_val
+        )
 
     else:
         ch = calculate_charges(desc, value, weight)
@@ -3071,7 +3911,31 @@ def invoice_breakdown(package_id):
         customs_total_val = float(ch.get("customs_total", 0) or 0)
         freight_total_val = freight_val + handling_val + bad_address_val + other_val
 
-    grand_total_val = (
+    discount_due_val = float(
+        getattr(p, "discount_due", 0)
+        or 0
+    )
+
+    if is_subscription_covered:
+        discount_due_val = 0.0
+
+    # The exhausted subscription discount applies only
+    # to freight and handling.
+    discount_due_val = min(
+        max(discount_due_val, 0.0),
+        freight_val + handling_val,
+    )
+
+    freight_total_val = max(
+        freight_val
+        + handling_val
+        + bad_address_val
+        + other_val
+        - discount_due_val,
+        0.0,
+    )
+
+    grand_total_val = max(
         freight_val
         + handling_val
         + bad_address_val
@@ -3082,6 +3946,8 @@ def invoice_breakdown(package_id):
         + envl_val
         + caf_val
         + stamp_val
+        - discount_due_val,
+        0.0,
     )
 
     payload = {
@@ -3096,6 +3962,7 @@ def invoice_breakdown(package_id):
         "bad_address": bool(getattr(p, "bad_address", False) or getattr(p, "epc", False) or bad_address_val > 0),
         "bad_address_fee": bad_address_val,
         "other_charges": other_val,
+        "discount_due": discount_due_val,
         "grand_total": grand_total_val,
         "customs_total": customs_total_val,
         "freight_total": freight_total_val,
@@ -3108,51 +3975,303 @@ def invoice_breakdown(package_id):
 
     return jsonify(payload)
 
-@admin_bp.route("/invoice/<int:invoice_id>/delete", methods=["POST"])
+@admin_bp.route(
+    "/invoice/<int:invoice_id>/delete",
+    methods=["POST"],
+)
 @admin_required
 def delete_invoice(invoice_id):
-    inv = Invoice.query.get_or_404(invoice_id)
+    invoice = Invoice.query.get_or_404(invoice_id)
 
-    # pull "return context" from the form (Option B)
-    tab          = (request.form.get("tab") or "invoices").strip() or "invoices"
-    inv_page     = request.form.get("inv_page", 1, type=int)
-    inv_per_page = request.form.get("inv_per_page", 10, type=int)
-    inv_from     = (request.form.get("inv_from") or "").strip()
-    inv_to       = (request.form.get("inv_to") or "").strip()
+    # Save these values before deleting the invoice.
+    user_id = invoice.user_id
+    invoice_number = (
+        invoice.invoice_number
+        or f"Invoice #{invoice.id}"
+    )
+
+    # -------------------------------------------------
+    # Preserve the return page and filters
+    # -------------------------------------------------
+    tab = (
+        request.form.get("tab")
+        or "invoices"
+    ).strip() or "invoices"
+
+    inv_page = request.form.get(
+        "inv_page",
+        1,
+        type=int,
+    )
+
+    inv_per_page = request.form.get(
+        "inv_per_page",
+        10,
+        type=int,
+    )
+
+    inv_from = (
+        request.form.get("inv_from")
+        or ""
+    ).strip()
+
+    inv_to = (
+        request.form.get("inv_to")
+        or ""
+    ).strip()
 
     def back():
         kwargs = {
-            "id": inv.user_id,
+            "id": user_id,
             "tab": tab,
             "inv_page": inv_page,
             "inv_per_page": inv_per_page,
         }
+
         if inv_from:
             kwargs["inv_from"] = inv_from
+
         if inv_to:
             kwargs["inv_to"] = inv_to
-        return redirect(url_for("accounts_profiles.view_user", **kwargs))
 
-    # If any payments exist, block delete (safer)
-    pay_count = Payment.query.filter(Payment.invoice_id == inv.id).count()
-    if pay_count > 0:
-        msg = f"Cannot delete invoice: {pay_count} payment(s) are linked to it."
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify(success=False, error=msg), 400
-        flash(msg, "danger")
+        return redirect(
+            url_for(
+                "accounts_profiles.view_user",
+                **kwargs,
+            )
+        )
+
+    def error_response(message, status_code=400):
+        if (
+            request.headers.get(
+                "X-Requested-With"
+            )
+            == "XMLHttpRequest"
+        ):
+            return jsonify(
+                success=False,
+                error=message,
+            ), status_code
+
+        flash(message, "danger")
         return back()
 
-    # Unlink packages from this invoice (avoid FK errors / keep packages)
-    Package.query.filter(Package.invoice_id == inv.id).update({"invoice_id": None})
+    invoice_status = (
+        invoice.status
+        or ""
+    ).strip().lower()
 
-    db.session.delete(inv)
-    db.session.commit()
+    # -------------------------------------------------
+    # Never delete an invoice marked paid
+    # -------------------------------------------------
+    if invoice_status == "paid":
+        return error_response(
+            "This invoice is paid and cannot be deleted."
+        )
 
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        # still return JSON, but now your client-side reload can keep tab via URL if you want
-        return jsonify(success=True)
+    # -------------------------------------------------
+    # Never delete an invoice with completed payments
+    # This also protects partially paid invoices.
+    # -------------------------------------------------
+    completed_payments = (
+        Payment.query
+        .filter(
+            Payment.invoice_id == invoice.id,
+            func.lower(
+                func.coalesce(
+                    Payment.status,
+                    "",
+                )
+            ).in_(
+                [
+                    "completed",
+                    "settled",
+                ]
+            ),
+        )
+        .all()
+    )
 
-    flash("Invoice deleted.", "success")
+    if completed_payments:
+        completed_total = sum(
+            float(
+                getattr(
+                    payment,
+                    "amount_jmd",
+                    0,
+                )
+                or 0
+            )
+            for payment in completed_payments
+        )
+
+        return error_response(
+            (
+                "This invoice has completed payments "
+                f"totalling JMD {completed_total:,.2f} "
+                "and cannot be deleted."
+            )
+        )
+
+    try:
+        # -------------------------------------------------
+        # Reverse and detach pending payment attempts
+        # -------------------------------------------------
+        pending_payments = (
+            Payment.query
+            .filter(
+                Payment.invoice_id == invoice.id,
+                func.lower(
+                    func.coalesce(
+                        Payment.status,
+                        "",
+                    )
+                )
+                == "pending",
+            )
+            .all()
+        )
+
+        for payment in pending_payments:
+            payment.status = "reversed"
+            payment.invoice_id = None
+
+            old_notes = (
+                getattr(payment, "notes", None)
+                or ""
+            ).strip()
+
+            cancellation_note = (
+                f"Pending payment reversed because "
+                f"{invoice_number} was deleted before payment."
+            )
+
+            if old_notes:
+                new_notes = (
+                    f"{old_notes} | "
+                    f"{cancellation_note}"
+                )
+            else:
+                new_notes = cancellation_note
+
+            # Payment.notes is limited to 255 characters.
+            payment.notes = new_notes[:255]
+
+        # Detach any failed/reversed records that still point
+        # to the invoice so the audit record is preserved.
+        noncompleted_payments = (
+            Payment.query
+            .filter(
+                Payment.invoice_id == invoice.id,
+                func.lower(
+                    func.coalesce(
+                        Payment.status,
+                        "",
+                    )
+                ).notin_(
+                    [
+                        "completed",
+                        "settled",
+                    ]
+                ),
+            )
+            .all()
+        )
+
+        for payment in noncompleted_payments:
+            payment.invoice_id = None
+
+        # -------------------------------------------------
+        # Detach packages so they can be invoiced again
+        # -------------------------------------------------
+        packages = (
+            Package.query
+            .filter(
+                Package.invoice_id == invoice.id
+            )
+            .all()
+        )
+
+        package_count = len(packages)
+
+        for package in packages:
+            package.invoice_id = None
+
+            # An unpaid invoice must not leave the package
+            # financially or operationally locked.
+            if hasattr(package, "pricing_locked"):
+                package.pricing_locked = False
+
+            if hasattr(package, "pricing_locked_at"):
+                package.pricing_locked_at = None
+
+            if hasattr(package, "pricing_locked_by"):
+                package.pricing_locked_by = None
+
+            if (
+                hasattr(package, "is_locked")
+                and (
+                    getattr(
+                        package,
+                        "locked_reason",
+                        "",
+                    )
+                    or ""
+                )
+                .strip()
+                .lower()
+                in (
+                    "invoice paid",
+                    "invoice fully paid",
+                    "pricing locked",
+                )
+            ):
+                package.is_locked = False
+
+                if hasattr(package, "locked_reason"):
+                    package.locked_reason = None
+
+                if hasattr(package, "locked_at"):
+                    package.locked_at = None
+
+        db.session.delete(invoice)
+        db.session.commit()
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Deleting unpaid invoice %s failed",
+            invoice_id,
+        )
+
+        return error_response(
+            (
+                "The invoice could not be deleted: "
+                f"{error}"
+            ),
+            500,
+        )
+
+    message = (
+        f"{invoice_number} was deleted. "
+        f"{package_count} package(s) can now be "
+        "included in a new invoice."
+    )
+
+    if (
+        request.headers.get(
+            "X-Requested-With"
+        )
+        == "XMLHttpRequest"
+    ):
+        return jsonify(
+            success=True,
+            message=message,
+            packages_released=package_count,
+        )
+
+    flash(message, "success")
     return back()
 
 
@@ -3506,7 +4625,18 @@ def proforma_invoice_modal(invoice_id):
 
         else:
             freight = float(getattr(p, "freight_fee", getattr(p, "freight", 0)) or 0)
-            handling = float(getattr(p, "storage_fee", getattr(p, "handling", 0)) or 0)
+            handling = float(
+                getattr(
+                    p,
+                    "handling_fee",
+                    getattr(
+                        p,
+                        "storage_fee",
+                        getattr(p, "handling", 0),
+                    ),
+                )
+                or 0
+            )
             duty = float(getattr(p, "duty", 0) or 0)
             gct = float(getattr(p, "gct", 0) or 0)
             scf = float(getattr(p, "scf", 0) or 0)
@@ -3522,9 +4652,35 @@ def proforma_invoice_modal(invoice_id):
             ) and bad_address_fee <= 0:
                 bad_address_fee = 500.0
 
-        total_jmd = (
-            freight + handling + bad_address_fee + other +
-            duty + gct + scf + envl + caf + stamp
+        discount_due = float(
+            getattr(p, "discount_due", 0)
+            or 0
+        )
+
+        # Covered packages do not use the exhausted-plan discount.
+        if is_subscription_covered:
+            discount_due = 0.0
+
+        # The exhausted-plan discount may never exceed
+        # freight plus handling.
+        discount_due = min(
+            max(discount_due, 0.0),
+            freight + handling,
+        )
+
+        total_jmd = max(
+            freight
+            + handling
+            + bad_address_fee
+            + other
+            + duty
+            + gct
+            + scf
+            + envl
+            + caf
+            + stamp
+            - discount_due,
+            0.0,
         )
 
         subtotal += total_jmd
@@ -3547,7 +4703,7 @@ def proforma_invoice_modal(invoice_id):
             "caf": caf,
             "stamp": stamp,
             "other_charges": other,
-            "discount_due": float(getattr(p, "discount_due", 0) or 0),
+            "discount_due": discount_due,
             "amount_due": total_jmd,
             "subscription_applied": bool(getattr(p, "subscription_applied", False)),
             "subscription_result": getattr(p, "subscription_result", None),
@@ -3561,14 +4717,16 @@ def proforma_invoice_modal(invoice_id):
 
     _db_subtotal, discount_total, payments_total, _db_total_due = fetch_invoice_totals_pg(invoice_id)
 
-    saved_due = float(getattr(inv, "amount_due", 0) or 0)
-
-    if (inv.status or "").lower() == "paid" or saved_due <= 0.01:
+    if (
+        inv.status or ""
+    ).strip().lower() == "paid":
         balance_due = 0.0
     else:
         balance_due = max(
-            live_subtotal - float(discount_total or 0) - float(payments_total or 0),
-            0.0
+            live_subtotal
+            - float(discount_total or 0)
+            - float(payments_total or 0),
+            0.0,
         )
 
     invoice_dict = {
@@ -3731,142 +4889,505 @@ def invoice_inline(invoice_id):
         USD_TO_JMD=USD_TO_JMD,
     )
 
-@admin_bp.route("/invoice/<int:invoice_id>/email-proforma", methods=["POST"])
+@admin_bp.route(
+    "/invoice/<int:invoice_id>/email-proforma",
+    methods=["POST"],
+)
 @login_required
 @admin_required
 def email_proforma_invoice(invoice_id):
-    inv = Invoice.query.get_or_404(invoice_id)
+    invoice = Invoice.query.get_or_404(invoice_id)
 
-    # -----------------------------
-    # 1) Customer email
-    # -----------------------------
-    customer_email = None
-    if inv.user and getattr(inv.user, "email", None):
-        customer_email = inv.user.email
-    else:
-        customer_email = getattr(inv, "customer_email", None)
+    # -------------------------------------------------
+    # Customer email
+    # -------------------------------------------------
+    user = getattr(invoice, "user", None)
+
+    customer_email = (
+        getattr(user, "email", None)
+        or getattr(invoice, "customer_email", None)
+    )
 
     if not customer_email:
-        return jsonify(ok=False, error="Customer email not found for this invoice."), 400
+        return jsonify(
+            ok=False,
+            error=(
+                "Customer email not found for this invoice."
+            ),
+        ), 400
 
-    user_obj = inv.user
-
-    # -----------------------------
-    # 2) Build SAME proforma payload as modal
-    # -----------------------------
-    pkgs = (
+    # -------------------------------------------------
+    # Packages attached to this invoice
+    # -------------------------------------------------
+    packages = (
         Package.query
         .filter_by(invoice_id=invoice_id)
         .order_by(Package.created_at.asc())
         .all()
     )
 
+    if not packages:
+        return jsonify(
+            ok=False,
+            error=(
+                "This invoice does not have any packages."
+            ),
+        ), 400
+
     from app.models import Settings
+
     settings = Settings.query.get(1)
-    effective_usd_to_jmd = getattr(settings, "usd_to_jmd", None) or USD_TO_JMD
+
+    effective_usd_to_jmd = (
+        getattr(settings, "usd_to_jmd", None)
+        or USD_TO_JMD
+    )
+
+    logo_path = (
+        settings.logo_path
+        if settings
+        and getattr(settings, "logo_path", None)
+        else "logo.png"
+    )
 
     logo_url = url_for(
         "static",
-        filename=(settings.logo_path if settings and settings.logo_path else "logo.png"),
-        _external=True
+        filename=logo_path,
+        _external=True,
     )
 
     items = []
-    subtotal = 0.0
+    live_subtotal = 0.0
 
-    for p in pkgs:
-        desc = p.description or getattr(p, "category", "Miscellaneous") or "Miscellaneous"
-        wt = math.ceil(float(getattr(p, "weight", 0) or 0))
-        val = float(getattr(p, "value", 0) or getattr(p, "value_usd", 0) or 0)
+    # -------------------------------------------------
+    # Build invoice using protected saved package prices
+    # -------------------------------------------------
+    for package in packages:
+        description = (
+            getattr(package, "category", None)
+            or package.description
+            or "Miscellaneous"
+        )
 
-        ch = calculate_charges(desc, val, wt)
-        line_total = float(ch.get("grand_total", 0) or 0)
-        subtotal += line_total
+        weight = math.ceil(
+            float(
+                getattr(package, "weight", 0)
+                or 0
+            )
+        )
 
-        items.append({
-            "house_awb": p.house_awb,
-            "description": desc,
-            "weight": wt,
-            "value": val,
-            "freight": float(ch.get("freight", 0) or 0),
-            "handling": float(ch.get("handling", 0) or 0),
-            "storage": float(ch.get("handling", 0) or 0),
-            "duty": float(ch.get("duty", 0) or 0),
-            "gct": float(ch.get("gct", 0) or 0),
-            "scf": float(ch.get("scf", 0) or 0),
-            "envl": float(ch.get("envl", 0) or 0),
-            "caf": float(ch.get("caf", 0) or 0),
-            "stamp": float(ch.get("stamp", 0) or 0),
-            "other_charges": float(ch.get("other_charges", 0) or 0),
-            "discount_due": 0.0,
-        })
+        value = float(
+            getattr(
+                package,
+                "declared_value",
+                None,
+            )
+            or getattr(package, "value", 0)
+            or getattr(package, "value_usd", 0)
+            or 0
+        )
 
-    live_subtotal = float(subtotal or 0.0)
-    _db_subtotal, discount_total, payments_total, _db_total_due = fetch_invoice_totals_pg(invoice_id)
-    saved_due = float(getattr(inv, "amount_due", 0) or 0)
+        subscription_covered = bool(
+            getattr(
+                package,
+                "subscription_applied",
+                False,
+            )
+            and (
+                getattr(
+                    package,
+                    "subscription_result",
+                    "",
+                )
+                or ""
+            )
+            == "subscription_applied"
+        )
 
-    if (inv.status or "").lower() == "paid" or saved_due <= 0.01:
+        # ---------------------------------------------
+        # Saved customs charges
+        # ---------------------------------------------
+        duty = float(
+            getattr(package, "duty", 0)
+            or 0
+        )
+
+        gct = float(
+            getattr(package, "gct", 0)
+            or 0
+        )
+
+        scf = float(
+            getattr(package, "scf", 0)
+            or 0
+        )
+
+        envl = float(
+            getattr(package, "envl", 0)
+            or 0
+        )
+
+        caf = float(
+            getattr(package, "caf", 0)
+            or 0
+        )
+
+        stamp = float(
+            getattr(package, "stamp", 0)
+            or 0
+        )
+
+        # ---------------------------------------------
+        # Saved freight and handling charges
+        # ---------------------------------------------
+        freight = float(
+            getattr(
+                package,
+                "freight_fee",
+                getattr(package, "freight", 0),
+            )
+            or 0
+        )
+
+        handling = float(
+            getattr(
+                package,
+                "handling_fee",
+                getattr(
+                    package,
+                    "storage_fee",
+                    getattr(package, "handling", 0),
+                ),
+            )
+            or 0
+        )
+
+        other_charges = float(
+            getattr(
+                package,
+                "other_charges",
+                0,
+            )
+            or 0
+        )
+
+        bad_address_fee = float(
+            getattr(
+                package,
+                "bad_address_fee",
+                0,
+            )
+            or 0
+        )
+
+        # EPC/bad-address fee still applies.
+        has_bad_address = bool(
+            getattr(package, "epc", False)
+            or getattr(
+                package,
+                "bad_address",
+                False,
+            )
+        )
+
+        if has_bad_address and bad_address_fee <= 0:
+            bad_address_fee = 500.0
+
+        discount_due = float(
+            getattr(
+                package,
+                "discount_due",
+                0,
+            )
+            or 0
+        )
+
+        # ---------------------------------------------
+        # Enforce subscription pricing
+        # ---------------------------------------------
+        if subscription_covered:
+            # Covered packages never pay freight/handling.
+            freight = 0.0
+            handling = 0.0
+
+            # A previous exhausted-plan discount must not remain.
+            discount_due = 0.0
+
+            # US$100 or less also receives no customs charges.
+            if value <= 100:
+                duty = 0.0
+                gct = 0.0
+                scf = 0.0
+                envl = 0.0
+                caf = 0.0
+                stamp = 0.0
+
+        customs_total = (
+            duty
+            + gct
+            + scf
+            + envl
+            + caf
+            + stamp
+        )
+
+        # Discount_due contains the exhausted-plan discount.
+        # It applies only to freight and handling.
+        maximum_discount = (
+            freight
+            + handling
+        )
+
+        discount_due = min(
+            max(discount_due, 0.0),
+            maximum_discount,
+        )
+
+        line_total = max(
+            customs_total
+            + freight
+            + handling
+            + other_charges
+            + bad_address_fee
+            - discount_due,
+            0.0,
+        )
+
+        live_subtotal += line_total
+
+        items.append(
+            {
+                "id": package.id,
+                "house_awb": (
+                    package.house_awb or ""
+                ),
+                "tracking_number": (
+                    getattr(
+                        package,
+                        "tracking_number",
+                        "",
+                    )
+                    or ""
+                ),
+                "description": description,
+                "weight": weight,
+                "value": value,
+                "value_usd": value,
+
+                "freight": freight,
+                "freight_fee": freight,
+
+                "handling": handling,
+                "storage": handling,
+                "handling_fee": handling,
+                "storage_fee": handling,
+
+                "duty": duty,
+                "gct": gct,
+                "scf": scf,
+                "envl": envl,
+                "caf": caf,
+                "stamp": stamp,
+
+                "customs_total": customs_total,
+                "bad_address": has_bad_address,
+                "bad_address_fee": bad_address_fee,
+                "other_charges": other_charges,
+                "discount_due": discount_due,
+
+                "grand_total": line_total,
+                "amount_due": line_total,
+
+                "subscription_applied": bool(
+                    getattr(
+                        package,
+                        "subscription_applied",
+                        False,
+                    )
+                ),
+                "subscription_result": getattr(
+                    package,
+                    "subscription_result",
+                    None,
+                ),
+                "subscription_covered": (
+                    subscription_covered
+                ),
+                "customs_only_due_to_subscription": (
+                    subscription_covered
+                    and value > 100
+                    and customs_total > 0
+                ),
+            }
+        )
+
+    # -------------------------------------------------
+    # Invoice discounts, payments and balance
+    # -------------------------------------------------
+    (
+        _database_subtotal,
+        discount_total,
+        payments_total,
+        _database_total_due,
+    ) = fetch_invoice_totals_pg(invoice_id)
+
+    discount_total = float(
+        discount_total or 0
+    )
+
+    payments_total = float(
+        payments_total or 0
+    )
+
+    invoice_status = (
+        invoice.status or ""
+    ).strip().lower()
+
+    if invoice_status == "paid":
         balance_due = 0.0
     else:
         balance_due = max(
-            live_subtotal - float(discount_total or 0) - float(payments_total or 0),
-            0.0
+            live_subtotal
+            - discount_total
+            - payments_total,
+            0.0,
         )
 
-    invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
+    invoice_number = (
+        invoice.invoice_number
+        or f"INV{invoice.id:05d}"
+    )
 
     invoice_dict = {
-        "id": inv.id,
+        "id": invoice.id,
+        "user_id": invoice.user_id,
         "number": invoice_number,
-        "date": inv.date_issued or inv.date_submitted or datetime.utcnow(),
-        "customer_code": getattr(user_obj, "registration_number", ""),
-        "customer_name": getattr(user_obj, "full_name", ""),
+        "invoice_number": invoice_number,
+
+        "date": (
+            invoice.date_issued
+            or invoice.date_submitted
+            or invoice.created_at
+            or datetime.utcnow()
+        ),
+
+        "date_issued": (
+            invoice.date_issued
+            or invoice.date_submitted
+            or invoice.created_at
+            or datetime.utcnow()
+        ),
+
+        "customer_code": (
+            getattr(
+                user,
+                "registration_number",
+                "",
+            )
+            if user
+            else ""
+        ),
+
+        "customer_name": (
+            getattr(user, "full_name", "")
+            if user
+            else ""
+        ),
+
         "branch": "Main Branch",
-        "staff": getattr(current_user, "full_name", "FAFL ADMIN"),
+        "staff": getattr(
+            current_user,
+            "full_name",
+            "FAFL ADMIN",
+        ),
+
         "subtotal": live_subtotal,
-        "discount_total": float(discount_total or 0),
-        "payments_total": float(payments_total or 0),
+        "grand_total": live_subtotal,
+        "discount_total": discount_total,
+        "payments_total": payments_total,
         "total_due": balance_due,
-        "notes": getattr(inv, "description", "") or "",
+        "amount_due": balance_due,
+
+        "notes": (
+            getattr(invoice, "description", "")
+            or ""
+        ),
+
         "packages": items,
     }
 
-    # -----------------------------
-    # 3) Render invoice HTML
-    # -----------------------------
-    html = render_template(
-        "admin/invoices/_invoice_core.html",
-        invoice=invoice_dict,
-        settings=settings,
-        USD_TO_JMD=effective_usd_to_jmd,
-        logo_url=logo_url,
-    )
+    # -------------------------------------------------
+    # Render invoice HTML
+    # -------------------------------------------------
+    try:
+        html = render_template(
+            "admin/invoices/_invoice_core.html",
+            invoice=invoice_dict,
+            settings=settings,
+            USD_TO_JMD=effective_usd_to_jmd,
+            logo_url=logo_url,
+        )
+    except Exception as error:
+        current_app.logger.exception(
+            "Rendering proforma invoice %s failed",
+            invoice_id,
+        )
 
-    # -----------------------------
-    # 4) Generate PDF
-    # -----------------------------
+        return jsonify(
+            ok=False,
+            error=(
+                "The invoice could not be rendered: "
+                f"{error}"
+            ),
+        ), 500
+
+    # -------------------------------------------------
+    # Generate PDF
+    # -------------------------------------------------
     try:
         pdf_bytes = HTML(
             string=html,
-            base_url=request.url_root
+            base_url=request.url_root,
         ).write_pdf()
-    except Exception as e:
-        current_app.logger.exception("PDF generation failed")
-        return jsonify(ok=False, error=str(e)), 500
 
-    filename = f"Proforma_{invoice_number}.pdf"
+    except Exception as error:
+        current_app.logger.exception(
+            "PDF generation failed for invoice %s",
+            invoice_id,
+        )
 
-    # -----------------------------
-    # 5) Email content
-    # -----------------------------
-    subject = f"Proforma Invoice {invoice_number} - Foreign A Foot Logistics"
-    full_name = invoice_dict["customer_name"] or "Customer"
+        return jsonify(
+            ok=False,
+            error=(
+                "The invoice PDF could not be generated: "
+                f"{error}"
+            ),
+        ), 500
+
+    filename = (
+        f"Proforma_{invoice_number}.pdf"
+    )
+
+    # -------------------------------------------------
+    # Email content
+    # -------------------------------------------------
+    full_name = (
+        invoice_dict["customer_name"]
+        or "Customer"
+    )
+
+    subject = (
+        f"Proforma Invoice {invoice_number} "
+        "- Foreign A Foot Logistics"
+    )
 
     plain_body = (
         f"Hi {full_name},\n\n"
-        f"Please find your Proforma Invoice {invoice_number} attached.\n\n"
+        f"Please find your Proforma Invoice "
+        f"{invoice_number} attached.\n\n"
         f"Balance Due: JMD {balance_due:,.2f}\n\n"
-        f"If you have any questions, simply reply to this email.\n\n"
+        f"If you have any questions, simply reply "
+        f"to this email.\n\n"
         f"— Foreign A Foot Logistics\n"
         f"(876) 560-7764\n"
     )
@@ -3874,9 +5395,22 @@ def email_proforma_invoice(invoice_id):
     html_body = f"""
     <div style="font-family:Arial,sans-serif; line-height:1.6;">
       <p>Hi <b>{full_name}</b>,</p>
-      <p>Your <b>Proforma Invoice {invoice_number}</b> is attached.</p>
-      <p><b>Balance Due:</b> JMD {balance_due:,.2f}</p>
-      <p>If you have any questions, simply reply to this email.</p>
+
+      <p>
+        Your <b>Proforma Invoice {invoice_number}</b>
+        is attached.
+      </p>
+
+      <p>
+        <b>Balance Due:</b>
+        JMD {balance_due:,.2f}
+      </p>
+
+      <p>
+        If you have any questions, simply reply
+        to this email.
+      </p>
+
       <p style="margin-top:16px;">
         — Foreign A Foot Logistics<br>
         (876) 560-7764
@@ -3884,21 +5418,54 @@ def email_proforma_invoice(invoice_id):
     </div>
     """
 
-    # -----------------------------
-    # 6) Send via email_utils ✅
-    # -----------------------------
-    email_utils.send_email(
-        to_email=customer_email,
-        subject=subject,
-        plain_body=plain_body,
-        html_body=html_body,
-        attachments=[(pdf_bytes, filename, "application/pdf")],
-        recipient_user_id=inv.user_id,
+    # -------------------------------------------------
+    # Send email
+    # -------------------------------------------------
+    try:
+        email_sent = email_utils.send_email(
+            to_email=customer_email,
+            subject=subject,
+            plain_body=plain_body,
+            html_body=html_body,
+            attachments=[
+                (
+                    pdf_bytes,
+                    filename,
+                    "application/pdf",
+                )
+            ],
+            recipient_user_id=invoice.user_id,
+        )
+
+        if email_sent is False:
+            return jsonify(
+                ok=False,
+                error=(
+                    "The email service did not confirm "
+                    "that the invoice was sent."
+                ),
+            ), 500
+
+    except Exception as error:
+        current_app.logger.exception(
+            "Emailing proforma invoice %s failed",
+            invoice_id,
+        )
+
+        return jsonify(
+            ok=False,
+            error=(
+                "The invoice email could not be sent: "
+                f"{error}"
+            ),
+        ), 500
+
+    return jsonify(
+        ok=True,
+        sent_to=customer_email,
+        filename=filename,
+        balance_due=balance_due,
     )
-
-    return jsonify(ok=True, sent_to=customer_email, filename=filename)
-
-
 
 @admin_bp.route("/invoice/receipt/<int:invoice_id>")
 @admin_required

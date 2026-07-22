@@ -296,7 +296,9 @@ else 0 %}
         <div class="text-muted">Invoice</div>
         <small class="text-muted">
           {% if invoice.date_issued %}
-          {{ invoice.date_issued.strftime('%d.%m.%Y') }}
+          {{ invoice.date_issued|datetimeformat(
+          "%b %d, %Y, %I:%M %p"
+          ) }}
           {% endif %}
         </small>
       </div>
@@ -329,7 +331,9 @@ else 0 %}
 
         <div>Payment:
           <span class="fw-semibold">
-            JMD {{ "%.2f"|format(invoice.payments_total or 0) }}
+            JMD {{ "{:,.2f}".format(
+            invoice.preview_payments_total or 0
+            ) }}
           </span>
         </div>
 
@@ -353,12 +357,21 @@ else 0 %}
       </div>
 
       <div class="d-flex align-items-center gap-2">
+        {% if (invoice.preview_total_due or 0)|float > 0 %}
         <button type="button" class="btn btn-outline-purple pill-btn js-open-pay">
-          <i class="bi bi-cash-coin"></i> Add Payment
+          <i class="bi bi-cash-coin"></i>
+          Add Payment
         </button>
+
         <button type="button" class="btn btn-outline-purple pill-btn js-open-discount">
-          <i class="bi bi-percent"></i> Discount
+          <i class="bi bi-percent"></i>
+          Discount
         </button>
+        {% else %}
+        <span class="badge bg-success">
+          No Balance Due
+        </span>
+        {% endif %}
         {% if invoice.id %}
         <div class="inline-toolbar d-inline-flex border rounded ms-1">
           <button type="button" class="btn btn-light btn-sm" title="View Proforma Invoice"
@@ -374,6 +387,7 @@ else 0 %}
       <div class="col-md-7">
         <label class="form-label small text-muted">Description/Notes</label>
         <form method="POST" action="{{ url_for('admin.save_invoice_notes', invoice_id=invoice.id or 0) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <textarea name="notes" class="form-control" rows="2"
             placeholder="Notes...">{{ invoice.description or "" }}</textarea>
           <button class="btn btn-sm btn-outline-purple mt-2">
@@ -420,6 +434,10 @@ else 0 %}
             <td>
               {{ p.description or "—" }}
 
+              {% set package_discount = (
+              p.discount_due or 0
+              )|float %}
+
               {% if p.subscription_covered %}
               <div class="mt-1">
                 <span class="badge bg-success">
@@ -428,22 +446,41 @@ else 0 %}
 
                 {% if p.customs_only_due_to_subscription %}
                 <span class="badge bg-warning text-dark">
-                  Customs Charges Only
+                  Full Customs Applied
                 </span>
                 {% endif %}
               </div>
 
-              {% elif p.subscription_result == "subscription_exhausted" %}
+              {% elif package_discount > 0 %}
               <div class="mt-1">
                 <span class="badge bg-info text-dark">
-                  Subscriber Rate Applied
+                  Subscriber Freight/Handling Discount
+                </span>
+              </div>
+
+              {% elif p.subscription_result == "subscription_exhausted" %}
+              <div class="mt-1">
+                <span class="badge bg-secondary">
+                  Subscription Allowance Exhausted
                 </span>
               </div>
               {% endif %}
             </td>
             <td class="text-end">{{ "%.2f"|format(p.weight or 0) }}</td>
-            <td class="text-end">${{ "%.2f"|format(p.value_usd or p.value or 0) }}</td>
-            <td class="text-end">JMD {{ "%.2f"|format(p.amount_due or p.grand_total or 0) }}</td>
+            <td class="text-end">
+              US${{ "{:,.2f}".format(
+              p.value_usd or p.value or 0
+              ) }}
+            </td>
+
+            <td class="text-end">
+              JMD
+              {% if p.amount_due is defined and p.amount_due is not none %}
+              {{ "{:,.2f}".format(p.amount_due or 0) }}
+              {% else %}
+              {{ "{:,.2f}".format(p.grand_total or 0) }}
+              {% endif %}
+            </td>
           </tr>
           {% else %}
           <tr>
@@ -527,12 +564,12 @@ else 0 %}
                 <span><i class="bi bi-credit-card-2-front"></i> Card</span>
                 <i class="bi bi-check2"></i>
               </button>
-              <button type="button" class="payment-method-btn" data-method="Bank">
-                <span><i class="bi bi-bank"></i> Bank Transfer</span>
-                <i class="bi bi-check2"></i>
-              </button>
-              <button type="button" class="payment-method-btn" data-method="Wallet">
-                <span><i class="bi bi-wallet2"></i> Wallet</span>
+              <button type="button" class="payment-method-btn" data-method="Bank Transfer">
+                <span>
+                  <i class="bi bi-bank"></i>
+                  Bank Transfer
+                </span>
+
                 <i class="bi bi-check2"></i>
               </button>
             </div>
@@ -682,6 +719,12 @@ else 0 %}
               <th>Other</th>
               <td class="text-end" id="bd-other-inline">—</td>
             </tr>
+            <tr>
+              <th>Subscriber Discount</th>
+              <td class="text-end text-success" id="bd-discount-inline">
+                —
+              </td>
+            </tr>
             <tr class="table-light">
               <th>Total</th>
               <td class="text-end fw-bold" id="bd-total-inline">—</td>
@@ -719,6 +762,7 @@ else 0 %}
       "bd-stamp-inline",
       "bd-bad-address-inline",
       "bd-other-inline",
+      "bd-discount-inline",
       "bd-total-inline"
     ];
 
@@ -738,10 +782,6 @@ else 0 %}
       if (!resp.ok) throw new Error("Breakdown request failed");
 
       const d = await resp.json();
-      console.log("BREAKDOWN JSON:", d);
-      console.log("All overlays:", document.querySelectorAll("#inlineBreakdownOverlay").length);
-      console.log("All bad address cells:", document.querySelectorAll('#bd-bad-address-inline').length);
-      console.log("All total cells:", document.querySelectorAll('#bd-total-inline').length);
 
       const nf = new Intl.NumberFormat(undefined, {
         minimumFractionDigits: 2,
@@ -762,15 +802,30 @@ else 0 %}
       setVal("bd-caf-inline", d.caf);
       setVal("bd-stamp-inline", d.stamp);
       setVal("bd-bad-address-inline", d.bad_address_fee);
-      setVal("bd-other-inline", d.other_charges);
-      setVal("bd-total-inline", d.grand_total);
-
-      console.log("Visible bad address text:",
-        [...document.querySelectorAll('#bd-bad-address-inline')].map(el => el.textContent)
+      setVal(
+        "bd-other-inline",
+        d.other_charges
       );
 
-      console.log("Visible total text:",
-        [...document.querySelectorAll('#bd-total-inline')].map(el => el.textContent)
+      const discountAmount = Number(
+        d.discount_due || 0
+      );
+
+      const discountElement = overlay.querySelector(
+        "#bd-discount-inline"
+      );
+
+      if (discountElement) {
+        discountElement.textContent = (
+          discountAmount > 0
+            ? "- " + nf.format(discountAmount)
+            : nf.format(0)
+        );
+      }
+
+      setVal(
+        "bd-total-inline",
+        d.grand_total
       );
 
     } catch (err) {

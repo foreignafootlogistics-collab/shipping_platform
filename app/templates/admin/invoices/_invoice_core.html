@@ -12,7 +12,7 @@
     gap: 0.5rem;
     align-items: flex-start;
     margin-bottom: 1rem;
-    border-bottom: 2px solid #4A148C;
+    border-bottom: 2px solid #4a148c;
     padding-bottom: 0.75rem;
   }
 
@@ -34,14 +34,14 @@
 
   .proforma-company h2 {
     font-size: 1.2rem;
-    margin: 0 0 0.15rem 0;
+    margin: 0 0 0.15rem;
     font-weight: 700;
   }
 
   .proforma-company small {
     color: #4b5563;
     display: block;
-    line-height: 1.2;
+    line-height: 1.3;
   }
 
   .proforma-meta {
@@ -63,7 +63,7 @@
     font-weight: 700;
     margin-top: 0.75rem;
     margin-bottom: 0.25rem;
-    color: #4A148C;
+    color: #4a148c;
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -102,10 +102,6 @@
     text-align: right;
   }
 
-  .text-center {
-    text-align: center;
-  }
-
   .fw-bold {
     font-weight: 600;
   }
@@ -117,11 +113,56 @@
   .mt-2 {
     margin-top: 0.5rem;
   }
+
+  .proforma-totals {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .proforma-totals-box {
+    min-width: 290px;
+  }
+
+  .proforma-total-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 3px;
+  }
+
+  .proforma-balance-row {
+    border-top: 1px solid #e5e7eb;
+    padding-top: 0.35rem;
+    margin-top: 0.35rem;
+  }
+
+  .subscription-badge {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+  }
+
+  .subscription-covered {
+    background: #198754;
+    color: #fff;
+  }
+
+  .subscription-customs {
+    background: #ffc107;
+    color: #111;
+  }
+
+  .subscription-discount {
+    background: #0dcaf0;
+    color: #111;
+  }
 </style>
 
 <div class="proforma-wrapper">
 
-  <!-- HEADER -->
+  <!-- Header -->
   <div class="proforma-header">
     <div class="proforma-logo">
       {% if logo_data_uri or logo_url %}
@@ -130,165 +171,300 @@
     </div>
 
     <div class="proforma-company">
-      <h2>{{ (settings and settings.company_name) or "Foreign A Foot Logistics Limited" }}</h2>
+      <h2>
+        {{ (settings and settings.company_name)
+        or "Foreign A Foot Logistics Limited" }}
+      </h2>
+
       <small>
-        {{ (settings and settings.company_address) or "Unit 7, Lot C22 Cedar Manor, Gregory Park<br>Portmore, St.
-        Catherine" | safe }}
+        {{ (
+        settings.company_address
+        if settings and settings.company_address
+        else "Unit 7, Lot C22 Cedar Manor, Gregory Park<br>Portmore, St. Catherine"
+        )|safe }}
       </small>
+
       <small>
-        {{ (settings and settings.company_email) or "foreignafootlogistics@gmail.com" }}
+        {{ (settings and settings.company_email)
+        or "foreignafootlogistics@gmail.com" }}
       </small>
-      {% if settings and settings.company_phone %}
-      <small>{{ settings.company_phone }}</small>
-      {% else %}
-      <small>1-876-560-7764</small>
-      {% endif %}
-      <div class="proforma-section-title mt-2">Package Proforma Invoice</div>
+
+      <small>
+        {{ (settings and settings.company_phone)
+        or "1-876-560-7764" }}
+      </small>
+
+      <div class="proforma-section-title mt-2">
+        Package Proforma Invoice
+      </div>
     </div>
 
     <div class="proforma-meta">
-      <div><span class="label">Invoice&nbsp;</span>
-        <span class="value">{{ invoice.number }}</span>
-      </div>
-      <div><span class="label">Branch&nbsp;</span>
-        <span class="value">{{ invoice.branch or "Main Branch" }}</span>
-      </div>
-      <div><span class="label">Staff&nbsp;</span>
-        <span class="value">{{ invoice.staff or "FAFL ADMIN" }}</span>
-      </div>
-      <div><span class="label">Date&nbsp;</span>
+      <div>
+        <span class="label">Invoice&nbsp;</span>
         <span class="value">
-          {{ invoice.date.strftime("%b %d, %Y, %I:%M %p") if invoice.date else "" }}
+          {{ invoice.number or invoice.invoice_number }}
         </span>
       </div>
+
+      <div>
+        <span class="label">Branch&nbsp;</span>
+        <span class="value">
+          {{ invoice.branch or "Main Branch" }}
+        </span>
+      </div>
+
+      <div>
+        <span class="label">Staff&nbsp;</span>
+        <span class="value">
+          {{ invoice.staff or "FAFL ADMIN" }}
+        </span>
+      </div>
+
+      <div>
+        <span class="label">Date&nbsp;</span>
+        <span class="value">
+          {% if invoice.date %}
+          {{ invoice.date|datetimeformat(
+          "%b %d, %Y, %I:%M %p"
+          ) }}
+          {% endif %}
+        </span>
+      </div>
+
       <div class="mt-1">
         <span class="label">Customer&nbsp;</span>
         <span class="value">
-          [{{ invoice.customer_code }}] {{ invoice.customer_name }}
+          [{{ invoice.customer_code }}]
+          {{ invoice.customer_name }}
         </span>
       </div>
     </div>
   </div>
 
-  <!-- TABLE -->
+  <!-- Packages -->
   <table class="proforma-table">
     <thead>
       <tr>
         <th style="width:14%;">House AWB#</th>
-        <th style="width:30%;">Information</th>
-        <th style="width:26%;">Our Fees</th>
-        <th style="width:20%;">Govt Fees</th>
-        <th style="width:10%;">Discount Due</th>
+        <th style="width:29%;">Information</th>
+        <th style="width:25%;">Our Fees</th>
+        <th style="width:22%;">Government Fees</th>
+        <th style="width:10%;">Discount</th>
       </tr>
     </thead>
-    <tbody>
-      {% for p in invoice.packages %}
-      <tr>
-        <td>{{ p.house_awb or "—" }}</td>
-        <td>
-          Weight: {{ "%.1f"|format(p.weight or 0) }} lbs<br>
-          USD Value: ${{ "%.2f"|format(p.value or 0) }}<br>
-          {{ p.description }}
 
-          {% if p.subscription_covered %}
-          <div style="margin-top:4px;">
-            <span
-              style="display:inline-block;background:#198754;color:white;padding:2px 6px;border-radius:4px;font-size:11px;">
+    <tbody>
+      {% for package in invoice.packages %}
+      {% set package_discount = (
+      package.discount_due or 0
+      )|float %}
+
+      <tr>
+        <td>
+          {{ package.house_awb or "—" }}
+        </td>
+
+        <td>
+          Weight:
+          {{ "%.1f"|format(package.weight or 0) }}
+          lb<br>
+
+          USD Value:
+          US${{ "%.2f"|format(
+          package.value
+          or package.value_usd
+          or 0
+          ) }}<br>
+
+          {{ package.description or "Package" }}
+
+          {% if package.subscription_covered %}
+          <div>
+            <span class="subscription-badge subscription-covered">
               Subscription Covered
             </span>
 
-            {% if p.customs_only_due_to_subscription %}
-            <span
-              style="display:inline-block;background:#ffc107;color:#111;padding:2px 6px;border-radius:4px;font-size:11px;">
-              Customs Charges Only
+            {% if package.customs_only_due_to_subscription %}
+            <span class="subscription-badge subscription-customs">
+              Full Customs Applied
             </span>
             {% endif %}
           </div>
 
-          {% elif p.subscription_result == "subscription_exhausted" %}
-          <div style="margin-top:4px;">
-            <span
-              style="display:inline-block;background:#0dcaf0;color:#111;padding:2px 6px;border-radius:4px;font-size:11px;">
-              Subscriber Rate Applied
+          {% elif package_discount > 0 %}
+          <div>
+            <span class="subscription-badge subscription-discount">
+              Subscriber Freight/Handling Discount
+            </span>
+          </div>
+
+          {% elif package.subscription_result == "subscription_exhausted" %}
+          <div>
+            <span class="subscription-badge subscription-discount">
+              Subscription Allowance Exhausted
             </span>
           </div>
           {% endif %}
         </td>
+
         <td>
-          Freight: JMD {{ "%.2f"|format(p.freight or 0) }}<br>
-          Handling: JMD {{ "%.2f"|format(p.handling or p.storage or 0) }}<br>
-          Bad Address Fee: JMD {{ "%.2f"|format(p.bad_address_fee or 0) }}<br>
-          Other Charges: JMD {{ "%.2f"|format(p.other_charges or 0) }}
+          Freight:
+          JMD {{ "{:,.2f}".format(
+          package.freight
+          or package.freight_fee
+          or 0
+          ) }}<br>
+
+          Handling:
+          JMD {{ "{:,.2f}".format(
+          package.handling
+          or package.handling_fee
+          or package.storage
+          or package.storage_fee
+          or 0
+          ) }}<br>
+
+          Bad Address Fee:
+          JMD {{ "{:,.2f}".format(
+          package.bad_address_fee or 0
+          ) }}<br>
+
+          Other Charges:
+          JMD {{ "{:,.2f}".format(
+          package.other_charges or 0
+          ) }}
         </td>
+
         <td>
-          Duty: JMD {{ "%.2f"|format(p.duty or 0) }}<br>
-          SCF: JMD {{ "%.2f"|format(p.scf or 0) }}<br>
-          ENVL: JMD {{ "%.2f"|format(p.envl or 0) }}<br>
-          CAF: JMD {{ "%.2f"|format(p.caf or 0) }}<br>
-          GCT: JMD {{ "%.2f"|format(p.gct or 0) }}
+          Duty:
+          JMD {{ "{:,.2f}".format(package.duty or 0) }}<br>
+
+          SCF:
+          JMD {{ "{:,.2f}".format(package.scf or 0) }}<br>
+
+          ENVL:
+          JMD {{ "{:,.2f}".format(package.envl or 0) }}<br>
+
+          CAF:
+          JMD {{ "{:,.2f}".format(package.caf or 0) }}<br>
+
+          GCT:
+          JMD {{ "{:,.2f}".format(package.gct or 0) }}<br>
+
+          Stamp:
+          JMD {{ "{:,.2f}".format(package.stamp or 0) }}
         </td>
+
         <td class="text-right">
-          JMD {{ "%.2f"|format(p.discount_due or 0) }}
+          {% if package_discount > 0 %}
+          - JMD {{ "{:,.2f}".format(package_discount) }}
+          {% else %}
+          JMD 0.00
+          {% endif %}
         </td>
       </tr>
+
       {% if loop.last %}
       <tr>
         <td colspan="5" class="proforma-small">
-          USD→JMD rate used: {{ USD_TO_JMD }}
+          USD to JMD rate used:
+          {{ "%.2f"|format(USD_TO_JMD or 0) }}
         </td>
       </tr>
       {% endif %}
+      {% else %}
+      <tr>
+        <td colspan="5" style="text-align:center;">
+          No packages are attached to this invoice.
+        </td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
 
-  {# ---- totals helpers (use preview if available) ---- #}
-  {% set sub_total = (invoice.preview_subtotal if invoice.preview_subtotal is defined else invoice.subtotal or 0) |
-  float %}
-  {% set discount_total = (invoice.preview_discount_total if invoice.preview_discount_total is defined else
-  invoice.discount_total or 0) | float %}
-  {% set balance_due = (invoice.preview_total_due if invoice.preview_total_due is defined else invoice.total_due or 0) |
-  float %}
+  <!-- Totals -->
+  {% set sub_total = (
+  invoice.preview_subtotal
+  if invoice.preview_subtotal is defined
+  else invoice.subtotal
+  or invoice.grand_total
+  or 0
+  )|float %}
 
-  {# total after discount (what customer should pay before payments) #}
-  {% set total_after_discount = sub_total - discount_total %}
+  {% set discount_total = (
+  invoice.preview_discount_total
+  if invoice.preview_discount_total is defined
+  else invoice.discount_total
+  or 0
+  )|float %}
 
-  {# payments = total_after_discount - balance_due #}
-  {% set payments_total = total_after_discount - balance_due %}
-  {% if payments_total < 0 %}{% set payments_total=0 %}{% endif %} <!-- TOTALS -->
-    <div class="mt-2 proforma-small" style="display:flex;justify-content:flex-end;">
-      <div style="min-width:260px;">
-        <div class="d-flex justify-content-between">
-          <span>Sub-Total:</span>
-          <span class="fw-bold">JMD {{ "%.2f"|format(sub_total) }}</span>
-        </div>
+  {% set payments_total = (
+  invoice.preview_payments_total
+  if invoice.preview_payments_total is defined
+  else invoice.payments_total
+  if invoice.payments_total is defined
+  else 0
+  )|float %}
 
-        {% if discount_total > 0 %}
-        <div class="d-flex justify-content-between">
-          <span>Discount:</span>
-          <span class="fw-bold">- JMD {{ "%.2f"|format(discount_total) }}</span>
-        </div>
-        {% endif %}
+  {% set balance_due = (
+  invoice.preview_total_due
+  if invoice.preview_total_due is defined
+  else invoice.total_due
+  or invoice.amount_due
+  or 0
+  )|float %}
 
-        <div class="d-flex justify-content-between">
-          <span>Total:</span>
-          <span class="fw-bold">JMD {{ "%.2f"|format(total_after_discount) }}</span>
-        </div>
+  {% set total_after_discount = (
+  sub_total - discount_total
+  )|float %}
 
-        <div class="d-flex justify-content-between">
-          <span>Payment:</span>
-          <span class="fw-bold">JMD {{ "%.2f"|format(payments_total) }}</span>
-        </div>
+  {% if total_after_discount < 0 %} {% set total_after_discount=0 %} {% endif %} {% if payments_total < 0 %} {% set
+    payments_total=0 %} {% endif %} {% if balance_due < 0 %} {% set balance_due=0 %} {% endif %} <div
+    class="mt-2 proforma-small proforma-totals">
+    <div class="proforma-totals-box">
+      <div class="proforma-total-row">
+        <span>Sub-Total:</span>
+        <span class="fw-bold">
+          JMD {{ "{:,.2f}".format(sub_total) }}
+        </span>
+      </div>
 
-        <div class="d-flex justify-content-between mt-1" style="border-top:1px solid #e5e7eb;padding-top:.35rem;">
-          <span class="fw-bold">Balance:</span>
-          <span class="fw-bold">JMD {{ "%.2f"|format(balance_due) }}</span>
-        </div>
+      {% if discount_total > 0 %}
+      <div class="proforma-total-row">
+        <span>Invoice Discount:</span>
+        <span class="fw-bold">
+          - JMD {{ "{:,.2f}".format(discount_total) }}
+        </span>
+      </div>
+      {% endif %}
+
+      <div class="proforma-total-row">
+        <span>Total:</span>
+        <span class="fw-bold">
+          JMD {{ "{:,.2f}".format(total_after_discount) }}
+        </span>
+      </div>
+
+      <div class="proforma-total-row">
+        <span>Payments:</span>
+        <span class="fw-bold">
+          - JMD {{ "{:,.2f}".format(payments_total) }}
+        </span>
+      </div>
+
+      <div class="proforma-total-row proforma-balance-row">
+        <span class="fw-bold">Balance:</span>
+        <span class="fw-bold">
+          JMD {{ "{:,.2f}".format(balance_due) }}
+        </span>
       </div>
     </div>
+</div>
 
-
-    <div class="mt-2 proforma-small">
-      Thank you for shipping with {{ (settings and settings.company_name) or "Foreign A Foot Logistics" }}.
-    </div>
+<div class="mt-2 proforma-small">
+  Thank you for shipping with
+  {{ (settings and settings.company_name)
+  or "Foreign A Foot Logistics" }}.
+</div>
 </div>

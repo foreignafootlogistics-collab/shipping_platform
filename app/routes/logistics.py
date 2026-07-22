@@ -50,8 +50,13 @@ from app.forms import (
 from app.utils.file_url import is_url 
 from app.utils import email_utils, update_wallet
 from app.utils.wallet import process_first_shipment_bonus
-from app.utils.subscription_utils import apply_subscription_usage
-from app.utils.subscription_utils import get_subscription_discount_percent
+from app.utils.subscription_utils import (
+    apply_subscription_usage,
+    get_subscription_discount_percent,
+    reconcile_subscription_usage,
+    release_subscription_usage,
+    clear_package_subscription,
+)
 from app.utils.delivery_engine import (
     build_delivery_details,
     calculate_real_distance,
@@ -587,12 +592,54 @@ def _warehouse_rate_row(weight):
             "rate": 9.00,
         }
 
-def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float, weight: float):
+def _bulk_calc_apply_to_package(
+    p: Package,
+    *,
+    category: str,
+    invoice_val: float,
+    weight: float,
+):
     """
-    One official calculator+writer used by bulk shipment action.
+    One official calculator and writer used by the bulk shipment action.
     """
 
-    category = (category or getattr(p, "category", None) or "Other").strip() or "Other"
+    category = (
+        category
+        or getattr(p, "category", None)
+        or "Other"
+    ).strip() or "Other"
+
+    # Save and reconcile a weight change before calculating prices.
+    try:
+        new_weight = float(weight or 0)
+    except (TypeError, ValueError):
+        return None
+
+    if new_weight < 0:
+        return None
+
+    old_weight = float(
+        getattr(p, "weight", 0) or 0
+    )
+
+    if abs(new_weight - old_weight) > 0.0001:
+        p.weight = new_weight
+
+        subscription_result = (
+            reconcile_subscription_usage(p)
+        )
+
+        if subscription_result not in (
+            "subscription_applied",
+            "already_applied",
+        ):
+            clear_package_subscription(
+                p,
+                result=(
+                    subscription_result
+                    or "no_subscription"
+                ),
+            )
 
     # -----------------------------------
     # SUBSCRIPTION LOGIC
@@ -624,8 +671,8 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
 
             for field in [
                 "duty", "gct", "scf", "envl", "caf", "stamp",
-                "customs_total", "freight_fee", "handling_fee",
-                "freight_total"
+                "customs_total", "freight_fee", "freight", "handling_fee", "handling", "storage_fee",
+                "freight_total", "discount_due"
             ]:
                 if hasattr(p, field):
                     setattr(p, field, 0.0)
@@ -673,7 +720,7 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
                     setattr(p, field, float(breakdown.get(field, 0)))
 
             # ❌ Remove freight completely
-            for field in ["freight_fee", "handling_fee", "freight_total"]:
+            for field in ["freight_fee", "freight", "handling_fee", "handling", "storage_fee", "freight_total", "discount_due"]:
                 if hasattr(p, field):
                     setattr(p, field, 0.0)
 
@@ -754,27 +801,63 @@ def _bulk_calc_apply_to_package(p: Package, *, category: str, invoice_val: float
     # -----------------------------------
     # SUBSCRIPTION DISCOUNT (AFTER EXHAUSTION)
     # -----------------------------------
-    subscription_discount_percent = get_subscription_discount_percent(p)
+    subscription_discount_percent = (
+        get_subscription_discount_percent(p)
+    )
+
+    # Always clear an older subscription discount before recalculating.
+    if hasattr(p, "discount_due"):
+        p.discount_due = 0.0
+
     subscription_discount_amount = 0.0
 
     if subscription_discount_percent > 0:
-        subscription_discount_amount = normal_grand_total * (subscription_discount_percent / 100)
+        freight_charge = float(
+            getattr(p, "freight_fee", None)
+            or getattr(p, "freight", None)
+            or breakdown.get("freight_fee")
+            or breakdown.get("freight")
+            or 0
+        )
+
+        handling_charge = float(
+            getattr(p, "handling_fee", None)
+            or getattr(p, "handling", None)
+            or getattr(p, "storage_fee", None)
+            or breakdown.get("handling_fee")
+            or breakdown.get("handling")
+            or breakdown.get("storage_fee")
+            or 0
+        )
+
+        # The subscriber discount applies only to freight and handling.
+        discountable_amount = (
+            freight_charge + handling_charge
+        )
+
+        subscription_discount_amount = round(
+            discountable_amount
+            * (subscription_discount_percent / 100),
+            2,
+        )
 
         if hasattr(p, "discount_due"):
             p.discount_due = subscription_discount_amount
 
-    total_discount = float(getattr(p, "discount_due", 0) or 0)
-
-    final_grand_total = normal_grand_total - total_discount
-
-    if final_grand_total < 0:
-        final_grand_total = 0.0
+    final_grand_total = max(
+        normal_grand_total
+        - subscription_discount_amount,
+        0.0,
+    )
 
     if hasattr(p, "grand_total"):
         p.grand_total = final_grand_total
 
     if hasattr(p, "amount_due"):
         p.amount_due = final_grand_total
+
+    if hasattr(p, "outstanding"):
+        p.outstanding = final_grand_total
 
     return breakdown
 
@@ -2312,6 +2395,11 @@ def logistics_dashboard():
                 "subscription_result": getattr(p, "subscription_result", None),
                 "subscription_covered": bool(
                     getattr(p, "subscription_applied", False)
+                    and (
+                        getattr(p, "subscription_result", "")
+                        or ""
+                    )
+                    == "subscription_applied"
                 ),
                 "customs_only_due_to_subscription": (
                     bool(getattr(p, "subscription_applied", False))
@@ -2463,7 +2551,14 @@ def logistics_dashboard():
             "delivery_scanned_by_id": getattr(p, "delivery_scanned_by_id", None),
             "subscription_applied": bool(getattr(p, "subscription_applied", False)),
             "subscription_result": getattr(p, "subscription_result", None),
-            "subscription_covered": bool(getattr(p, "subscription_applied", False)),
+            "subscription_covered": bool(
+                getattr(p, "subscription_applied", False)
+                and (
+                    getattr(p, "subscription_result", "")
+                    or ""
+                )
+                == "subscription_applied"
+            ),
             "customs_only_due_to_subscription": (
                 bool(getattr(p, "subscription_applied", False))
                 and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
@@ -2725,6 +2820,7 @@ def create_single_package_from_view():
         # ✅ update missing fields on existing package (optional but helpful)
         try:
             updated = False
+            weight_changed = False
 
             if house_awb and not (existing.house_awb or "").strip():
                 existing.house_awb = house_awb
@@ -2737,6 +2833,7 @@ def create_single_package_from_view():
             if weight and not (existing.weight or 0):
                 existing.weight = weight
                 updated = True
+                weight_changed = True
 
             if value and not (existing.value or 0):
                 existing.value = value
@@ -2748,6 +2845,26 @@ def create_single_package_from_view():
                 updated = True
 
             if updated:
+                if weight_changed:
+                    subscription_result = (
+                        reconcile_subscription_usage(
+                            existing
+                        )
+                    )
+
+                    if subscription_result not in (
+                        "subscription_applied",
+                        "already_applied",
+                    ):
+                        clear_package_subscription(
+                            existing,
+                            result=(
+                                subscription_result
+                                or "no_subscription"
+                            ),
+                        )
+
+
                 db.session.commit()
 
         except Exception:
@@ -2866,168 +2983,444 @@ def create_single_package_from_view():
     ))
 
 
-@logistics_bp.route("/packages/<int:package_id>/update-details", methods=["POST"])
+@logistics_bp.route(
+    "/packages/<int:package_id>/update-details",
+    methods=["POST"],
+)
 @admin_required
 def update_package_details(package_id):
-    pkg = Package.query.get_or_404(package_id)
+    package = db.session.get(Package, package_id)
+
+    if not package:
+        return jsonify(
+            success=False,
+            error="Package not found.",
+        ), 404
 
     try:
-        weight = (request.form.get("weight") or "").strip()
-        value = (request.form.get("value") or "").strip()
+        raw_weight = (
+            request.form.get("weight") or ""
+        ).strip()
 
-        if weight:
-            pkg.weight = float(weight)
+        raw_value = (
+            request.form.get("value") or ""
+        ).strip()
 
-        if value:
-            pkg.value = float(value)
-            if hasattr(pkg, "declared_value"):
-                pkg.declared_value = float(value)
+        weight_changed = False
 
-        pkg.tracking_number = (request.form.get("tracking_number") or "").strip()
-        pkg.house_awb = (request.form.get("house_awb") or "").strip()
-        pkg.description = (request.form.get("description") or "").strip()
-        pkg.status = (request.form.get("status") or pkg.status or "Overseas").strip()
+        if raw_weight:
+            new_weight = float(raw_weight)
+
+            if new_weight < 0:
+                return jsonify(
+                    success=False,
+                    error="Weight cannot be negative.",
+                ), 400
+
+            old_weight = float(package.weight or 0)
+
+            if new_weight != old_weight:
+                package.weight = new_weight
+                weight_changed = True
+
+        if raw_value:
+            new_value = float(raw_value)
+
+            if new_value < 0:
+                return jsonify(
+                    success=False,
+                    error="Declared value cannot be negative.",
+                ), 400
+
+            package.value = new_value
+
+            if hasattr(package, "declared_value"):
+                package.declared_value = new_value
+
+        package.tracking_number = (
+            request.form.get("tracking_number") or ""
+        ).strip()
+
+        package.house_awb = (
+            request.form.get("house_awb") or ""
+        ).strip()
+
+        package.description = (
+            request.form.get("description") or ""
+        ).strip()
+
+        package.status = (
+            request.form.get("status")
+            or package.status
+            or "Overseas"
+        ).strip()
+
+        subscription_result = getattr(
+            package,
+            "subscription_result",
+            None,
+        )
+
+        # A weight change may alter:
+        # - Rounded billable weight
+        # - Per-package eligibility
+        # - Remaining total subscription allowance
+        if weight_changed and package.user_id:
+            subscription_result = (
+                reconcile_subscription_usage(package)
+            )
 
         db.session.commit()
-        return jsonify(success=True)
 
-    except Exception as e:
+        return jsonify(
+            success=True,
+            subscription_result=subscription_result,
+            subscription_applied=bool(
+                package.subscription_applied
+            ),
+        )
+
+    except (TypeError, ValueError):
         db.session.rollback()
-        return jsonify(success=False, error=str(e)), 400
+
+        return jsonify(
+            success=False,
+            error="Weight and declared value must be valid numbers.",
+        ), 400
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Package detail update failed for package %s",
+            package_id,
+        )
+
+        return jsonify(
+            success=False,
+            error=str(error),
+        ), 400
 
 # --------------------------------------------------------------------------------------
 # Bulk Assign to user (code/email) + optional reset Unassigned -> Overseas
 # --------------------------------------------------------------------------------------
-@logistics_bp.route('/packages/bulk-assign', methods=['POST'])
-@admin_required(roles=['operations'])   # ✅ match your dashboard role
+@logistics_bp.route(
+    "/packages/bulk-assign",
+    methods=["POST"],
+)
+@admin_required(roles=["operations"])
 def bulk_assign_packages():
-    user_code  = (request.form.get('user_code') or '').strip()
-    reset_flag = (request.form.get('reset_status') == '1')
-    pkg_ids    = [int(x) for x in request.form.getlist('package_ids') if str(x).isdigit()]
+    user_code = (
+        request.form.get("user_code") or ""
+    ).strip()
 
-    if not pkg_ids:
-        flash("No packages selected.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
+    reset_flag = (
+        request.form.get("reset_status") == "1"
+    )
+
+    package_ids = sorted({
+        int(value)
+        for value in request.form.getlist("package_ids")
+        if str(value).isdigit()
+    })
+
+    redirect_url = url_for(
+        "logistics.logistics_dashboard",
+        tab="view_packages",
+    )
+
+    if not package_ids:
+        flash(
+            "No packages selected.",
+            "warning",
+        )
+        return redirect(redirect_url, code=303)
 
     if not user_code:
-        flash("Please enter a customer code or email.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
+        flash(
+            "Please enter a customer code or email.",
+            "warning",
+        )
+        return redirect(redirect_url, code=303)
 
-    # ✅ Find user by reg number (case-insensitive) OR email (case-insensitive)
+    # Find the customer using registration number or email.
     user = (
         User.query
         .filter(
             or_(
-                func.upper(User.registration_number) == user_code.upper(),
-                func.lower(User.email) == func.lower(user_code),
+                func.upper(User.registration_number)
+                == user_code.upper(),
+                func.lower(User.email)
+                == user_code.lower(),
             )
         )
         .first()
     )
 
     if not user:
-        flash(f"No user found for “{user_code}”.", "danger")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
+        flash(
+            f"No user found for “{user_code}”.",
+            "danger",
+        )
+        return redirect(redirect_url, code=303)
 
-    # ✅ Prevent assigning TO UNASSIGNED by mistake
-    if (user.registration_number or "").upper() == "UNASSIGNED":
-        flash("Enter a real customer code (cannot assign to UNASSIGNED).", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
+    # Packages must be assigned to a real customer.
+    if (
+        user.registration_number or ""
+    ).strip().upper() == "UNASSIGNED":
+        flash(
+            "Enter a real customer code. Packages cannot "
+            "be assigned to UNASSIGNED.",
+            "warning",
+        )
+        return redirect(redirect_url, code=303)
 
-    pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
-    if not pkgs:
-        flash("No valid packages found.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
+    packages = (
+        Package.query
+        .filter(Package.id.in_(package_ids))
+        .all()
+    )
+
+    if not packages:
+        flash(
+            "No valid packages found.",
+            "warning",
+        )
+        return redirect(redirect_url, code=303)
 
     updated = 0
     skipped_invoiced = 0
+    already_assigned = 0
 
     unassigned_id = get_unassigned_user_id()
 
-
-
-    for p in pkgs:
-        # Optional safety: don't allow moving invoiced packages
-        if getattr(p, "invoice_id", None):
-            skipped_invoiced += 1
-            continue
-
-        was_unassigned_user = (unassigned_id and p.user_id == unassigned_id)
-
-        p.user_id = user.id
-
-        try:
-            result = apply_subscription_usage(p)
-
-            if result in ("subscription_applied", "already_applied"):
-                pass
-            else:
-                p.subscription_applied = False
-                p.subscription_result = result or "no_subscription"
-                p.subscription_applied_at = None
-                p.subscription_id = None
-
-        except Exception as e:
-            current_app.logger.exception(f"Subscription application failed for package {p.id}: {e}")
-            p.subscription_applied = False
-            p.subscription_result = "subscription_error"
-            p.subscription_applied_at = None
-
-        if was_unassigned_user:
-            p.status = "Overseas"   # ✅ always unlock by assigning to real customer
-        elif reset_flag and (p.status or "").strip().lower() == "unassigned":
-           p.status = "Overseas"
-
-        updated += 1
-
     try:
+        for package in packages:
+            # Do not move packages already attached to an invoice.
+            if getattr(package, "invoice_id", None):
+                skipped_invoiced += 1
+                continue
+
+            previous_user_id = package.user_id
+
+            was_unassigned = bool(
+                unassigned_id
+                and previous_user_id == unassigned_id
+            )
+
+            if previous_user_id == user.id:
+                already_assigned += 1
+
+                # This is duplicate-safe. It may apply a subscription
+                # if the package did not previously have coverage.
+                subscription_result = (
+                    apply_subscription_usage(package)
+                )
+
+            else:
+                package.user_id = user.id
+
+                # Restore allowance belonging to the previous customer,
+                # then evaluate coverage for the new customer.
+                subscription_result = (
+                    reconcile_subscription_usage(package)
+                )
+
+            if subscription_result not in (
+                "subscription_applied",
+                "already_applied",
+            ):
+                clear_package_subscription(
+                    package,
+                    result=(
+                        subscription_result
+                        or "no_subscription"
+                    ),
+                )
+
+            if was_unassigned:
+                package.status = "Overseas"
+
+            elif (
+                reset_flag
+                and (
+                    package.status or ""
+                ).strip().lower() == "unassigned"
+            ):
+                package.status = "Overseas"
+
+            updated += 1
+
         db.session.commit()
-    except Exception as e:
+
+    except Exception as error:
         db.session.rollback()
-        flash(f"Database error assigning packages: {e}", "danger")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
 
-    msg = f"Assigned {updated} package(s) to {user.registration_number}."
+        current_app.logger.exception(
+            "Bulk package assignment failed"
+        )
+
+        flash(
+            f"Database error assigning packages: {error}",
+            "danger",
+        )
+
+        return redirect(redirect_url, code=303)
+
+    message = (
+        f"Assigned {updated} package(s) to "
+        f"{user.registration_number}."
+    )
+
     if reset_flag:
-        msg += " (reset Unassigned → Overseas where applicable)"
+        message += (
+            " Reset Unassigned packages to Overseas "
+            "where applicable."
+        )
+
     if skipped_invoiced:
-        msg += f" Skipped {skipped_invoiced} invoiced package(s)."
-    flash(msg, "success")
+        message += (
+            f" Skipped {skipped_invoiced} invoiced "
+            f"package(s)."
+        )
 
-    return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'), code=303)
+    if already_assigned:
+        message += (
+            f" {already_assigned} package(s) were already "
+            f"assigned to this customer."
+        )
+
+    flash(message, "success")
+
+    return redirect(redirect_url, code=303)
 
 
-
-@logistics_bp.route("/shipments/<int:shipment_id>/packages/delete", methods=["POST"])
+@logistics_bp.route(
+    "/shipments/<int:shipment_id>/packages/delete",
+    methods=["POST"],
+)
 @admin_required
 def delete_packages_from_shipment(shipment_id):
-    package_ids = request.form.getlist("package_ids")  # from checkboxes
-    if not package_ids:
-        flash("Please select at least one package to delete.", "warning")
-        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
+    shipment = db.session.get(
+        ShipmentLog,
+        shipment_id,
+    )
 
-    # IMPORTANT: only delete packages that are in THIS shipment
-    pkgs = (
+    if not shipment:
+        flash("Shipment not found.", "warning")
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+            )
+        )
+
+    blocked = _abort_if_archived(shipment)
+    if blocked:
+        return blocked
+
+    package_ids = [
+        int(value)
+        for value in request.form.getlist("package_ids")
+        if str(value).isdigit()
+    ]
+
+    redirect_url = url_for(
+        "logistics.logistics_dashboard",
+        tab="shipmentLog",
+        shipment_id=shipment_id,
+    )
+
+    if not package_ids:
+        flash(
+            "Please select at least one package to delete.",
+            "warning",
+        )
+        return redirect(redirect_url)
+
+    packages = (
         Package.query
-        .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+        .join(
+            shipment_packages,
+            shipment_packages.c.package_id == Package.id,
+        )
         .filter(
             shipment_packages.c.shipment_id == shipment_id,
-            Package.id.in_(package_ids)
+            Package.id.in_(package_ids),
         )
         .all()
     )
 
-    if not pkgs:
-        flash("No matching packages found in this shipment.", "warning")
-        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
+    if not packages:
+        flash(
+            "No matching packages were found in this shipment.",
+            "warning",
+        )
+        return redirect(redirect_url)
 
-    for p in pkgs:
-        db.session.delete(p)
+    deleted_count = 0
+    skipped_invoiced = 0
+    skipped_locked = 0
 
-    db.session.commit()
-    flash(f"Deleted {len(pkgs)} package(s).", "success")
-    return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
+    try:
+        for package in packages:
+            if getattr(package, "invoice_id", None):
+                skipped_invoiced += 1
+                continue
 
+            if bool(getattr(package, "is_locked", False)):
+                skipped_locked += 1
+                continue
+
+            # Restore package count and billable-weight allowance
+            # before permanently deleting a covered package.
+            release_subscription_usage(
+                package,
+                result="package_deleted",
+            )
+
+            db.session.delete(package)
+            deleted_count += 1
+
+        db.session.commit()
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Deleting packages from shipment %s failed",
+            shipment_id,
+        )
+
+        flash(
+            f"Error deleting packages: {error}",
+            "danger",
+        )
+        return redirect(redirect_url)
+
+    if deleted_count:
+        message = (
+            f"Deleted {deleted_count} package(s) and restored "
+            f"their subscription usage where applicable."
+        )
+        category = "success"
+    else:
+        message = "No packages were deleted."
+        category = "warning"
+
+    if skipped_invoiced:
+        message += (
+            f" Skipped {skipped_invoiced} invoiced package(s)."
+        )
+
+    if skipped_locked:
+        message += (
+            f" Skipped {skipped_locked} locked package(s)."
+        )
+
+    flash(message, category)
+
+    return redirect(redirect_url)
 
 @logistics_bp.route("/packages/<int:package_id>/attachments", methods=["POST"])
 @admin_required
@@ -3792,6 +4185,10 @@ def packages_bulk_action():
             affected_invoice_ids = {p.invoice_id for p in pkgs if p.invoice_id}
 
             for p in pkgs:
+                release_subscription_usage(
+                    p,
+                    result="package_deleted",
+                )
                 db.session.delete(p)
             db.session.flush()
 
@@ -6548,21 +6945,59 @@ def unlock_package_pricing(pkg_id):
 # --------------------------------------------------------------------------------------
 # Misc simple APIs
 # --------------------------------------------------------------------------------------
-@logistics_bp.route('/packages/<int:package_id>/delete', methods=['POST'])
+@logistics_bp.route(
+    "/packages/<int:package_id>/delete",
+    methods=["POST"],
+)
 @admin_required
 def delete_package(package_id):
-    pkg = db.session.get(Package, package_id)
-    if not pkg:
+    package = db.session.get(Package, package_id)
+
+    if not package:
         flash("Package not found.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="view_packages",
+            )
+        )
+
     try:
-        db.session.delete(pkg)
+        # Restore any package count and billable weight previously
+        # deducted from a subscription.
+        release_subscription_usage(
+            package,
+            result="package_deleted",
+        )
+
+        db.session.delete(package)
         db.session.commit()
-        flash("Package deleted successfully.", "success")
-    except Exception as e:
+
+        flash(
+            "Package deleted successfully. Subscription usage "
+            "was restored where applicable.",
+            "success",
+        )
+
+    except Exception as error:
         db.session.rollback()
-        flash(f"Error deleting package: {e}", "danger")
-    return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+
+        current_app.logger.exception(
+            "Deleting package %s failed",
+            package_id,
+        )
+
+        flash(
+            f"Error deleting package: {error}",
+            "danger",
+        )
+
+    return redirect(
+        url_for(
+            "logistics.logistics_dashboard",
+            tab="view_packages",
+        )
+    )
 
 @logistics_bp.route('/api/calculate-charges', methods=['POST'])
 @admin_required
@@ -6624,242 +7059,573 @@ def api_calculate_charges():
 
     return jsonify(payload)
 
-@logistics_bp.route('/api/package/<int:pkg_id>', methods=['POST'], endpoint='api_update_package')
+@logistics_bp.route(
+    "/api/package/<int:pkg_id>",
+    methods=["POST"],
+    endpoint="api_update_package",
+)
 @admin_required
 def api_update_package(pkg_id):
     data = request.get_json(silent=True) or {}
 
-    def to_num(x, default=None):
+    def to_num(value, default=None):
         try:
-            if x is None:
+            if value is None or value == "":
                 return default
-            return float(x)
+            return float(value)
         except (TypeError, ValueError):
             return default
 
-    def to_bool(x, default=False):
-        if x is None:
+    def to_bool(value, default=False):
+        if value is None:
             return default
-        if isinstance(x, bool):
-            return x
-        return str(x).strip().lower() in ("1", "true", "yes", "on")
 
-    p = db.session.get(Package, pkg_id)
-    if not p:
-        return jsonify({"ok": False, "error": "Package not found"}), 404
+        if isinstance(value, bool):
+            return value
 
-    # ---------------------------------------------------
-    # If pricing is locked, you can block edits (optional)
-    # ---------------------------------------------------
-    if getattr(p, "pricing_locked", False) and not data.get("force"):
-        return jsonify({
-            "ok": False,
-            "error": "Pricing is locked for this package. Unlock or use force."
-        }), 409
-
-    updated = []
-
-    # -------------------------
-    # Basic fields
-    # -------------------------
-    if "category" in data and data["category"] is not None and hasattr(p, "category"):
-        p.category = str(data["category"]).strip() or "Other"
-        updated.append("category")
-
-    if "weight" in data and data["weight"] is not None and hasattr(p, "weight"):
-        p.weight = to_num(data["weight"], 0.0)
-        updated.append("weight")
-
-    # value: also sync declared_value
-    if "value" in data and data["value"] is not None and hasattr(p, "value"):
-        val = to_num(data["value"], 0.0)
-        p.value = val
-
-        if hasattr(p, "declared_value"):
-            p.declared_value = val
-
-        updated.append("value")
-
-    # -------------------------
-    # Bad address fields
-    # -------------------------
-    if "bad_address" in data and hasattr(p, "bad_address"):
-        p.bad_address = to_bool(data.get("bad_address"), False)
-        updated.append("bad_address")
-
-    if "bad_address_fee" in data and hasattr(p, "bad_address_fee"):
-        p.bad_address_fee = to_num(data.get("bad_address_fee"), 0.0)
-        updated.append("bad_address_fee")
-
-    # -------------------------
-    # Subscription protection:
-    # covered subscription packages should not be saved as normal freight
-    # -------------------------
-    if (
-        getattr(p, "subscription_applied", False)
-        and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
-    ):
-        declared_value = to_num(
-            data.get("value")
-            or data.get("declared_value")
-            or getattr(p, "declared_value", None)
-            or getattr(p, "value", 0),
-            0.0
+        return str(value).strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
         )
 
-        # keep category/value/weight updates
-        if "category" in data and hasattr(p, "category"):
-            p.category = (data.get("category") or "Other").strip()
+    def breakdown_value(breakdown, *keys):
+        for key in keys:
+            value = breakdown.get(key)
 
-        if "value" in data:
-            if hasattr(p, "value"):
-                p.value = declared_value
+            if value is not None and value != "":
+                return to_num(value, 0.0)
 
-            if hasattr(p, "declared_value"):
-                p.declared_value = declared_value
+        return 0.0
 
-        if "weight" in data and hasattr(p, "weight"):
-            p.weight = to_num(
-                data.get("weight"),
-                getattr(p, "weight", 0) or 0
+    package = db.session.get(Package, pkg_id)
+
+    if not package:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Package not found",
+            }
+        ), 404
+
+    if (
+        getattr(package, "pricing_locked", False)
+        and not to_bool(data.get("force"), False)
+    ):
+        return jsonify(
+            {
+                "ok": False,
+                "error": (
+                    "Pricing is locked for this package. "
+                    "Unlock it or use force."
+                ),
+            }
+        ), 409
+
+    updated = []
+    weight_changed = False
+    subscription_result = (
+        getattr(package, "subscription_result", None)
+        or "no_subscription"
+    )
+
+    try:
+        # -------------------------------------------------
+        # Category
+        # -------------------------------------------------
+        if (
+            "category" in data
+            and data["category"] is not None
+            and hasattr(package, "category")
+        ):
+            package.category = (
+                str(data["category"]).strip()
+                or "Other"
+            )
+            updated.append("category")
+
+        # -------------------------------------------------
+        # Weight
+        # -------------------------------------------------
+        if (
+            "weight" in data
+            and data["weight"] is not None
+            and hasattr(package, "weight")
+        ):
+            new_weight = to_num(data["weight"])
+
+            if new_weight is None or new_weight < 0:
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            "Weight must be a valid "
+                            "non-negative number."
+                        ),
+                    }
+                ), 400
+
+            old_weight = to_num(
+                getattr(package, "weight", 0),
+                0.0,
             )
 
-        # Allow manual negotiated/custom charges for subscription packages
-        if "other_charges" in data and hasattr(p, "other_charges"):
-            p.other_charges = to_num(data.get("other_charges"), 0.0)
-            updated.append("other_charges")
+            if abs(new_weight - old_weight) > 0.0001:
+                package.weight = new_weight
+                weight_changed = True
+                updated.append("weight")
 
-        # Always remove freight/handling for covered subscription packages
-        for field in [
-            "freight_fee",
-            "freight",
-            "handling_fee",
-            "handling",
-            "storage_fee",
-            "freight_total",                        
-            "discount_due",
-        ]:
-            if hasattr(p, field):
-                setattr(p, field, 0.0)
+        # -------------------------------------------------
+        # Declared value
+        # Accept either value or declared_value
+        # -------------------------------------------------
+        value_was_sent = (
+            "value" in data
+            or "declared_value" in data
+        )
 
-            
-            # EPC / bad address fee still applies even for subscription packages
-            is_bad_address = bool(
-                getattr(p, "epc", False)
-                or getattr(p, "bad_address", False)
+        if value_was_sent:
+            raw_value = data.get("value")
+
+            if raw_value is None:
+                raw_value = data.get("declared_value")
+
+            declared_value = to_num(raw_value)
+
+            if declared_value is None or declared_value < 0:
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            "Declared value must be a valid "
+                            "non-negative number."
+                        ),
+                    }
+                ), 400
+
+            if hasattr(package, "value"):
+                package.value = declared_value
+
+            if hasattr(package, "declared_value"):
+                package.declared_value = declared_value
+
+            updated.append("value")
+
+        # -------------------------------------------------
+        # Bad-address fields
+        # -------------------------------------------------
+        if (
+            "bad_address" in data
+            and hasattr(package, "bad_address")
+        ):
+            package.bad_address = to_bool(
+                data.get("bad_address"),
+                False,
+            )
+            updated.append("bad_address")
+
+        if (
+            "bad_address_fee" in data
+            and hasattr(package, "bad_address_fee")
+        ):
+            bad_address_fee = to_num(
+                data.get("bad_address_fee"),
+                0.0,
             )
 
-            bad_address_fee = 500.0 if is_bad_address else 0.0
+            if bad_address_fee < 0:
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            "Bad-address fee cannot be negative."
+                        ),
+                    }
+                ), 400
 
-            if hasattr(p, "bad_address_fee"):
-                p.bad_address_fee = bad_address_fee
+            package.bad_address_fee = bad_address_fee
+            updated.append("bad_address_fee")
 
-        # If value is $100 or less, also remove customs
-        if declared_value <= 100:
-            for field in [
-                "duty",
-                "gct",
-                "scf",
-                "envl",
-                "caf",
-                "stamp",
-                "customs_total",
-            ]:            
-                if hasattr(p, field):
-                    setattr(p, field, 0.0)
-
-            # Recalculate total from remaining customs only
-            customs_total = (
-                float(getattr(p, "customs_total", 0) or 0)
-                + float(getattr(p, "other_charges", 0) or 0)
-                + float(getattr(p, "bad_address_fee", 0) or 0)
+        # -------------------------------------------------
+        # Reconcile subscription usage when weight changes
+        # -------------------------------------------------
+        if weight_changed:
+            subscription_result = (
+                reconcile_subscription_usage(package)
             )
 
-            if hasattr(p, "grand_total"):
-                p.grand_total = customs_total
+            if subscription_result not in (
+                "subscription_applied",
+                "already_applied",
+            ):
+                clear_package_subscription(
+                    package,
+                    result=(
+                        subscription_result
+                        or "no_subscription"
+                    ),
+                )
 
-            if hasattr(p, "amount_due"):
-                p.amount_due = customs_total
+            updated.append("subscription_reconciled")
 
-            if "pricing_locked" in data and hasattr(p, "pricing_locked"):
-                p.pricing_locked = bool(data.get("pricing_locked"))
+        # -------------------------------------------------
+        # Subscription protection
+        # -------------------------------------------------
+        subscription_covered = bool(
+            getattr(
+                package,
+                "subscription_applied",
+                False,
+            )
+            and (
+                getattr(
+                    package,
+                    "subscription_result",
+                    "",
+                )
+                or ""
+            )
+            == "subscription_applied"
+        )
+
+        if subscription_covered:
+            declared_value = to_num(
+                getattr(package, "declared_value", None),
+                None,
+            )
+
+            if declared_value is None:
+                declared_value = to_num(
+                    getattr(package, "value", 0),
+                    0.0,
+                )
+
+            weight = to_num(
+                getattr(package, "weight", 0),
+                0.0,
+            )
+
+            category = (
+                getattr(package, "category", None)
+                or "Other"
+            )
+
+            # Manual additional charges are still allowed.
+            if (
+                "other_charges" in data
+                and hasattr(package, "other_charges")
+            ):
+                other_charges = to_num(
+                    data.get("other_charges"),
+                    0.0,
+                )
+
+                if other_charges < 0:
+                    return jsonify(
+                        {
+                            "ok": False,
+                            "error": (
+                                "Other charges cannot be negative."
+                            ),
+                        }
+                    ), 400
+
+                package.other_charges = other_charges
+                updated.append("other_charges")
+
+            # Covered subscriptions never pay freight or handling.
+            for field in (
+                "freight_fee",
+                "freight",
+                "handling_fee",
+                "handling",
+                "storage_fee",
+                "freight_total",
+                "discount_due",
+            ):
+                if hasattr(package, field):
+                    setattr(package, field, 0.0)
+
+            # EPC/bad-address fee still applies.
+            has_bad_address = bool(
+                getattr(package, "epc", False)
+                or getattr(package, "bad_address", False)
+            )
+
+            bad_address_fee = (
+                500.0 if has_bad_address else 0.0
+            )
+
+            if hasattr(package, "bad_address_fee"):
+                package.bad_address_fee = bad_address_fee
+
+            # ---------------------------------------------
+            # US$100 or less: no customs charges
+            # ---------------------------------------------
+            if declared_value <= 100:
+                for field in (
+                    "duty",
+                    "gct",
+                    "scf",
+                    "envl",
+                    "caf",
+                    "stamp",
+                    "customs_total",
+                ):
+                    if hasattr(package, field):
+                        setattr(package, field, 0.0)
+
+                customs_total = 0.0
+                subscription_message = (
+                    "Subscription applied. Freight, handling, "
+                    "and customs charges were removed."
+                )
+
+            # ---------------------------------------------
+            # Over US$100: full customs charges apply
+            # ---------------------------------------------
+            else:
+                breakdown = calculate_charges(
+                    category,
+                    declared_value,
+                    weight,
+                ) or {}
+
+                customs_fields = {
+                    "duty": ("duty", "duty_amount"),
+                    "gct": ("gct", "gct_amount"),
+                    "scf": ("scf", "scf_amount"),
+                    "envl": ("envl", "envl_amount"),
+                    "caf": ("caf", "caf_amount"),
+                    "stamp": ("stamp", "stamp_amount"),
+                    "customs_total": (
+                        "customs_total",
+                        "customs",
+                        "customs_amount",
+                        "customs_total_amount",
+                    ),
+                }
+
+                for field, possible_keys in (
+                    customs_fields.items()
+                ):
+                    if hasattr(package, field):
+                        setattr(
+                            package,
+                            field,
+                            breakdown_value(
+                                breakdown,
+                                *possible_keys,
+                            ),
+                        )
+
+                customs_total = to_num(
+                    getattr(
+                        package,
+                        "customs_total",
+                        0,
+                    ),
+                    0.0,
+                )
+
+                subscription_message = (
+                    "Subscription applied. Freight and handling "
+                    "were removed; full customs charges apply "
+                    "because the declared value exceeds US$100."
+                )
+
+            other_charges = to_num(
+                getattr(package, "other_charges", 0),
+                0.0,
+            )
+
+            final_total = (
+                customs_total
+                + other_charges
+                + bad_address_fee
+            )
+
+            if hasattr(package, "grand_total"):
+                package.grand_total = final_total
+
+            if hasattr(package, "amount_due"):
+                package.amount_due = final_total
+
+            if hasattr(package, "outstanding"):
+                package.outstanding = final_total
+
+            if (
+                "pricing_locked" in data
+                and hasattr(package, "pricing_locked")
+            ):
+                package.pricing_locked = to_bool(
+                    data.get("pricing_locked"),
+                    False,
+                )
+                updated.append("pricing_locked")
 
             db.session.commit()
 
-            return jsonify({
-                "ok": True,
-                "pkg_id": pkg_id,
-                "updated": ["subscription_zeroed"],
-                "amount_due": customs_total,
-                "grand_total": customs_total,
-                "message": "Subscription package covered. Freight removed."
-            }), 200
+            return jsonify(
+                {
+                    "ok": True,
+                    "pkg_id": pkg_id,
+                    "updated": updated,
+                    "subscription_result": (
+                        subscription_result
+                    ),
+                    "subscription_covered": True,
+                    "declared_value": declared_value,
+                    "customs_total": customs_total,
+                    "bad_address_fee": bad_address_fee,
+                    "other_charges": other_charges,
+                    "amount_due": final_total,
+                    "grand_total": final_total,
+                    "message": subscription_message,
+                }
+            ), 200
 
-    # -------------------------
-    # Breakdown fields
-    # -------------------------
-    breakdown_map = {
-        "duty": "duty",
-        "gct": "gct",
-        "scf": "scf",
-        "envl": "envl",
-        "caf": "caf",
-        "stamp": "stamp",
-        "customs_total": "customs_total",
-        "freight": "freight_fee",
-        "freight_fee": "freight_fee",
-        "handling": "handling_fee",
-        "handling_fee": "handling_fee",
-        "storage_fee": "handling_fee",
-        "freight_total": "freight_total",
-        "grand_total": "grand_total",
-        "other_charges": "other_charges",
-        "amount_due": "amount_due",
-    }
+        # -------------------------------------------------
+        # Normal/non-covered package breakdown
+        # -------------------------------------------------
+        breakdown_map = {
+            "duty": "duty",
+            "gct": "gct",
+            "scf": "scf",
+            "envl": "envl",
+            "caf": "caf",
+            "stamp": "stamp",
+            "customs_total": "customs_total",
+            "freight": "freight_fee",
+            "freight_fee": "freight_fee",
+            "handling": "handling_fee",
+            "handling_fee": "handling_fee",
+            "storage_fee": "handling_fee",
+            "freight_total": "freight_total",
+            "grand_total": "grand_total",
+            "other_charges": "other_charges",
+            "amount_due": "amount_due",
+        }
 
-    # -------------------------
-    # Backwards compatibility:
-    # accept old keys freight/handling/storage_fee if present
-    # -------------------------
-    if "freight" in data and "freight_fee" not in data:
-        data["freight_fee"] = data.get("freight")
-
-    if "handling" in data and "handling_fee" not in data:
-        data["handling_fee"] = data.get("handling")
-
-    if "storage_fee" in data and "handling_fee" not in data:
-        data["handling_fee"] = data.get("storage_fee")
-
-    for client_key, col in breakdown_map.items():
+        # Backward-compatible request keys.
         if (
-            client_key in data
-            and data[client_key] is not None
-            and hasattr(p, col)
+            "freight" in data
+            and "freight_fee" not in data
         ):
-            setattr(p, col, to_num(data[client_key], 0.0))
-            updated.append(client_key)
+            data["freight_fee"] = data.get("freight")
 
-    # -------------------------
-    # Locking flags
-    # -------------------------
-    if "pricing_locked" in data and hasattr(p, "pricing_locked"):
-        p.pricing_locked = bool(data.get("pricing_locked"))
-        updated.append("pricing_locked")
+        if (
+            "handling" in data
+            and "handling_fee" not in data
+        ):
+            data["handling_fee"] = data.get("handling")
 
-    # Keep these in sync if present
-    if hasattr(p, "grand_total") and hasattr(p, "amount_due"):
-        if "amount_due" not in data and "grand_total" in data:
-            p.amount_due = float(p.grand_total or 0)
+        if (
+            "storage_fee" in data
+            and "handling_fee" not in data
+        ):
+            data["handling_fee"] = data.get(
+                "storage_fee"
+            )
+
+        for client_key, column_name in (
+            breakdown_map.items()
+        ):
+            if (
+                client_key in data
+                and data[client_key] is not None
+                and hasattr(package, column_name)
+            ):
+                amount = to_num(
+                    data[client_key],
+                    0.0,
+                )
+
+                if amount < 0:
+                    return jsonify(
+                        {
+                            "ok": False,
+                            "error": (
+                                f"{client_key} cannot be negative."
+                            ),
+                        }
+                    ), 400
+
+                setattr(
+                    package,
+                    column_name,
+                    amount,
+                )
+                updated.append(client_key)
+
+        # -------------------------------------------------
+        # Pricing lock
+        # -------------------------------------------------
+        if (
+            "pricing_locked" in data
+            and hasattr(package, "pricing_locked")
+        ):
+            package.pricing_locked = to_bool(
+                data.get("pricing_locked"),
+                False,
+            )
+            updated.append("pricing_locked")
+
+        # Keep grand_total and amount_due synchronized.
+        if (
+            hasattr(package, "grand_total")
+            and hasattr(package, "amount_due")
+            and "grand_total" in data
+            and "amount_due" not in data
+        ):
+            package.amount_due = to_num(
+                package.grand_total,
+                0.0,
+            )
             updated.append("amount_due")
 
-    db.session.commit()
+        if (
+            hasattr(package, "amount_due")
+            and hasattr(package, "outstanding")
+            and "amount_due" in updated
+        ):
+            package.outstanding = to_num(
+                package.amount_due,
+                0.0,
+            )
 
-    return jsonify({
-        "ok": True,
-        "pkg_id": pkg_id,
-        "updated": updated
-    }), 200
+        db.session.commit()
 
+        return jsonify(
+            {
+                "ok": True,
+                "pkg_id": pkg_id,
+                "updated": updated,
+                "subscription_result": (
+                    subscription_result
+                ),
+                "subscription_covered": False,
+            }
+        ), 200
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Package API update failed for package %s",
+            pkg_id,
+        )
+
+        return jsonify(
+            {
+                "ok": False,
+                "error": (
+                    "The package could not be updated."
+                ),
+                "details": str(error),
+            }
+        ), 500
 # --------------------------------------------------------------------------------------
 # Invoice status
 # --------------------------------------------------------------------------------------

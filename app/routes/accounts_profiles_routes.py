@@ -33,7 +33,10 @@ from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import CATEGORIES
 from app.utils.time import to_jamaica
 from app.utils.messages import make_thread_key
-from app.utils.subscription_utils import get_subscription_summary
+from app.utils.subscription_utils import (
+    get_subscription_summary,
+    release_subscription_usage,
+)
 from app.utils import next_registration_number
 from app.utils.claims import (
     get_eligible_claim_package,
@@ -48,7 +51,7 @@ from app.utils.email_utils import (
 
 # Models (these exist in your file)
 from app.models import (
-    User, Invoice, Payment, Package, Prealert,
+    User, Invoice, Payment, Package, Prealert, AuthorizedPickup, 
     Message as DBMessage,  # ✅ alias it like customer_routes.py
     Settings, PackageAttachment, ScheduledDelivery, 
     Claim, ClaimAuditLog, WalletTransaction, AuditLog
@@ -858,6 +861,16 @@ def view_user(id):
         flash("User not found.", "danger")
         return redirect(url_for('accounts_profiles.manage_users'))
 
+    authorized_pickups = (
+        AuthorizedPickup.query
+        .filter_by(user_id=user.id)
+        .order_by(
+            AuthorizedPickup.created_at.desc(),
+            AuthorizedPickup.id.desc()
+        )
+        .all()
+    )
+
     # 🔹 US warehouse address pulled from Settings (row id=1)
     settings = db.session.get(Settings, 1)
 
@@ -1509,13 +1522,13 @@ def view_user(id):
             "activity_status": activity_status,
             "activity_badge": activity_badge,
             "last_login": user.last_login,
-            "last_login_display": last_login_display,
-            "authorized_person": getattr(user, "authorized_person", None),
+            "last_login_display": last_login_display,            
             "profile_pic": getattr(user, "profile_pic", None),
             "profile_picture": getattr(user, "profile_pic", None),
             "referrer": getattr(user, "referrer", None),
         },
         user_id=id,
+        authorized_pickups=authorized_pickups,
         prealerts=prealerts,
         packages=packages,
         invoices_rows=invoices_rows,
@@ -1618,6 +1631,7 @@ def create_single_package_for_user(id):
         tracking_number=tracking_number or None,
         status=status or None,
         weight=weight,
+        value=declared_value,
         declared_value=declared_value,
         date_received=date_received,
     )
@@ -1693,31 +1707,114 @@ def create_single_package_for_user(id):
     })
 
 
-@accounts_bp.route("/users/<int:id>/packages/bulk-delete", methods=["POST"])
+@accounts_bp.route(
+    "/users/<int:id>/packages/bulk-delete",
+    methods=["POST"],
+)
 @admin_required
 def bulk_delete_user_packages(id):
     user = db.session.get(User, id)
+
     if not user:
-        return jsonify({"success": False, "error": "User not found"}), 404
+        return jsonify(
+            {
+                "success": False,
+                "error": "User not found",
+            }
+        ), 404
 
     data = request.get_json(silent=True) or {}
-    ids = data.get("package_ids") or []
+    raw_ids = data.get("package_ids") or []
 
     try:
-        ids = [int(x) for x in ids]
-    except Exception:
-        return jsonify({"success": False, "error": "Invalid package ids"}), 400
+        package_ids = sorted({
+            int(value)
+            for value in raw_ids
+            if str(value).isdigit()
+        })
+    except (TypeError, ValueError):
+        return jsonify(
+            {
+                "success": False,
+                "error": "Invalid package IDs",
+            }
+        ), 400
 
-    if not ids:
-        return jsonify({"success": False, "error": "No packages selected"}), 400
+    if not package_ids:
+        return jsonify(
+            {
+                "success": False,
+                "error": "No packages selected",
+            }
+        ), 400
 
-    q = Package.query.filter(Package.user_id == user.id, Package.id.in_(ids))
-    deleted_count = q.count()
+    packages = (
+        Package.query
+        .filter(
+            Package.user_id == user.id,
+            Package.id.in_(package_ids),
+        )
+        .all()
+    )
 
-    q.delete(synchronize_session=False)
-    db.session.commit()
+    if not packages:
+        return jsonify(
+            {
+                "success": False,
+                "error": "No matching packages found",
+            }
+        ), 404
 
-    return jsonify({"success": True, "deleted": deleted_count})
+    deleted_count = 0
+    skipped_invoiced = 0
+
+    try:
+        for package in packages:
+            # Invoiced packages must be handled through the
+            # invoice-deletion workflow first.
+            if getattr(package, "invoice_id", None):
+                skipped_invoiced += 1
+                continue
+
+            release_subscription_usage(
+                package,
+                result="package_deleted",
+            )
+
+            db.session.delete(package)
+            deleted_count += 1
+
+        db.session.commit()
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Bulk deleting packages for user %s failed",
+            id,
+        )
+
+        return jsonify(
+            {
+                "success": False,
+                "error": (
+                    "Packages could not be deleted: "
+                    f"{error}"
+                ),
+            }
+        ), 500
+
+    return jsonify(
+        {
+            "success": True,
+            "deleted": deleted_count,
+            "skipped_invoiced": skipped_invoiced,
+            "message": (
+                f"Deleted {deleted_count} package(s). "
+                f"Skipped {skipped_invoiced} invoiced package(s)."
+            ),
+        }
+    )
 
 
 @accounts_bp.route("/users/<int:id>/messages/send", methods=["POST"])
@@ -2498,184 +2595,551 @@ def bulk_delete_user_messages(id):
 
     return redirect(url_for("accounts_profiles.view_user", id=id, tab="messages"))
 
-@accounts_bp.route("/users/<int:id>/subscriptions/manual-add", methods=["POST"])
+@accounts_bp.route(
+    "/users/<int:id>/subscriptions/manual-add",
+    methods=["POST"]
+)
 @admin_required
 def manual_add_subscription(id):
     user = db.session.get(User, id)
+
     if not user:
         flash("User not found.", "danger")
-        return redirect(url_for("accounts_profiles.manage_users"))
+        return redirect(
+            url_for("accounts_profiles.manage_users")
+        )
 
     plan_id = request.form.get("plan_id", type=int)
-    duration_days = request.form.get("duration_days", 30, type=int)
+    duration_days = request.form.get(
+        "duration_days",
+        30,
+        type=int,
+    )
 
-    plan = SubscriptionPlan.query.get(plan_id)
-    if not plan:
-        flash("Invalid subscription plan.", "danger")
-        return redirect(url_for("accounts_profiles.view_user", id=id))
+    plan = db.session.get(SubscriptionPlan, plan_id)
 
-    # -------------------------
-    # Capture previous active/exhausted subscription info
-    # -------------------------
-    old_subs = (
+    if not plan or not plan.is_active:
+        flash(
+            "The selected subscription plan is invalid or inactive.",
+            "danger",
+        )
+        return redirect(
+            url_for(
+                "accounts_profiles.view_user",
+                id=id,
+                tab="subscriptions",
+            )
+        )
+
+    if not duration_days or duration_days < 1:
+        flash(
+            "Subscription duration must be at least one day.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "accounts_profiles.view_user",
+                id=id,
+                tab="subscriptions",
+            )
+        )
+
+    # Prevent accidentally creating unreasonable manual durations.
+    duration_days = min(duration_days, 365)
+
+    now = datetime.utcnow()
+
+    previous_subscriptions = (
         Subscription.query
         .filter(
             Subscription.user_id == id,
-            Subscription.status.in_(["active", "exhausted"])
+            Subscription.status.in_(
+                ["active", "exhausted"]
+            ),
         )
         .all()
     )
 
-    old_plan_names = []
-    for old_sub in old_subs:
-        old_plan_names.append(old_sub.plan.name if old_sub.plan else f"Subscription #{old_sub.id}")
+    previous_plan_names = []
 
-    old_value = ", ".join(old_plan_names) if old_plan_names else "No active subscription"
+    for old_subscription in previous_subscriptions:
+        previous_plan_names.append(
+            old_subscription.plan.name
+            if old_subscription.plan
+            else f"Subscription #{old_subscription.id}"
+        )
 
-    # expire old active subs
-    for s in old_subs:
-        s.status = "expired"
+        old_subscription.status = "expired"
+        _deactivate_subscription_members(
+            old_subscription
+        )
 
-    sub = Subscription(
+    old_value = (
+        ", ".join(previous_plan_names)
+        if previous_plan_names
+        else "No active subscription"
+    )
+
+    # If this customer currently belongs to somebody else's Family
+    # subscription, remove that membership before activating an
+    # individual subscription for them.
+    active_memberships = (
+        SubscriptionMember.query
+        .filter_by(
+            user_id=id,
+            status="active",
+        )
+        .all()
+    )
+
+    for membership in active_memberships:
+        if membership.role != "owner":
+            membership.status = "removed"
+            membership.removed_at = datetime.now(timezone.utc)
+
+    subscription = Subscription(
         user_id=id,
         plan_id=plan.id,
-        start_date=datetime.utcnow(),
-        end_date=datetime.utcnow() + timedelta(days=duration_days),
+        start_date=now,
+        end_date=now + timedelta(days=duration_days),
         status="active",
     )
 
-    db.session.add(sub)
+    db.session.add(subscription)
     db.session.flush()
 
-    usage = SubscriptionUsage(subscription_id=sub.id)
-    db.session.add(usage)
+    db.session.add(
+        SubscriptionUsage(
+            subscription_id=subscription.id,
+            packages_used=0,
+            weight_used=0.0,
+        )
+    )
 
-    # -------------------------
-    # Audit log
-    # -------------------------
+    # A Family plan must include its purchaser as the owner.
+    if plan.is_family_plan:
+        db.session.add(
+            SubscriptionMember(
+                subscription_id=subscription.id,
+                user_id=id,
+                role="owner",
+                status="active",
+            )
+        )
+
     create_audit_log(
         module="Subscription",
         action="Subscription Activated",
         admin_id=current_user.id,
         user_id=user.id,
         entity_type="Subscription",
-        entity_id=sub.id,
+        entity_id=subscription.id,
         reason="Manual subscription activation",
         description=(
             f"{plan.name} subscription activated manually for "
-            f"{user.full_name or user.email} for {duration_days} day(s)."
+            f"{user.full_name or user.email} for "
+            f"{duration_days} day(s)."
         ),
         old_value=old_value,
-        new_value=f"{plan.name} - Active until {sub.end_date.strftime('%Y-%m-%d')}",
+        new_value=(
+            f"{plan.name}; Status: active; "
+            f"Ends: {subscription.end_date.strftime('%Y-%m-%d')}"
+        ),
     )
 
     db.session.commit()
 
-    flash(f"{plan.name} subscription activated for {user.full_name}.", "success")
-    return redirect(url_for("accounts_profiles.view_user", id=id, tab="packages"))
+    flash(
+        f"{plan.name} subscription activated for "
+        f"{user.full_name or user.email}.",
+        "success",
+    )
+
+    return redirect(
+        url_for(
+            "accounts_profiles.view_user",
+            id=id,
+            tab="subscriptions",
+        )
+    )
 
 def sync_expired_subscriptions():
-    now = datetime.now(timezone.utc)
+    """
+    Subscription date columns store timezone-naive UTC values.
+    """
+    now = datetime.utcnow()
 
-    expired_subs = (
+    expired_subscriptions = (
         Subscription.query
         .filter(
-            Subscription.status.in_(["active", "exhausted"]),
-            Subscription.end_date < now
+            Subscription.status.in_(
+                ["active", "exhausted"]
+            ),
+            Subscription.end_date.isnot(None),
+            Subscription.end_date < now,
         )
         .all()
     )
 
-    for sub in expired_subs:
-        sub.status = "expired"
+    for subscription in expired_subscriptions:
+        subscription.status = "expired"
+        _deactivate_subscription_members(
+            subscription
+        )
 
-    if expired_subs:
+    if expired_subscriptions:
         db.session.commit()
+
+    return len(expired_subscriptions)
 
 @accounts_bp.route("/subscriptions")
 @admin_required
 def admin_subscriptions():
+    from zoneinfo import ZoneInfo
+
     sync_expired_subscriptions()
 
-    status_filter = (request.args.get("status") or "").strip()
-    search = (request.args.get("search") or "").strip()
-    created_filter = (request.args.get("created") or "").strip()
-    sort_by = (request.args.get("sort") or "newest").strip()
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
+    status_filter = (
+        request.args.get("status") or ""
+    ).strip().lower()
 
-    if per_page not in [10, 25, 50, 100]:
-        per_page = 10
+    search = (
+        request.args.get("search") or ""
+    ).strip()
 
-    base_q = (
-        Subscription.query
-        .join(User, Subscription.user_id == User.id)
-        .join(SubscriptionPlan, Subscription.plan_id == SubscriptionPlan.id)
+    created_filter = (
+        request.args.get("created") or ""
+    ).strip().lower()
+
+    sort_by = (
+        request.args.get("sort") or "newest"
+    ).strip().lower()
+
+    export_format = (
+        request.args.get("export") or ""
+    ).strip().lower()
+
+    page = max(
+        request.args.get("page", 1, type=int),
+        1,
     )
 
-    q = base_q
+    per_page = request.args.get(
+        "per_page",
+        10,
+        type=int,
+    )
+
+    if per_page not in (10, 25, 50, 100):
+        per_page = 10
+
+    allowed_statuses = {
+        "",
+        "pending_payment",
+        "active",
+        "exhausted",
+        "expired",
+        "cancelled",
+    }
+
+    if status_filter not in allowed_statuses:
+        status_filter = ""
+
+    query = (
+        Subscription.query
+        .join(
+            User,
+            Subscription.user_id == User.id,
+        )
+        .join(
+            SubscriptionPlan,
+            Subscription.plan_id == SubscriptionPlan.id,
+        )
+    )
 
     if status_filter:
-        q = q.filter(Subscription.status == status_filter)
+        query = query.filter(
+            Subscription.status == status_filter
+        )
 
     if search:
-        like = f"%{search}%"
-        q = q.filter(or_(
-            User.full_name.ilike(like),
-            User.email.ilike(like),
-            User.registration_number.ilike(like),
-            SubscriptionPlan.name.ilike(like),
-        ))
+        search_value = f"%{search}%"
 
-    today = datetime.utcnow().date()
+        query = query.filter(
+            or_(
+                User.full_name.ilike(search_value),
+                User.email.ilike(search_value),
+                User.registration_number.ilike(
+                    search_value
+                ),
+                SubscriptionPlan.name.ilike(
+                    search_value
+                ),
+            )
+        )
+
+    # Convert Jamaica calendar-day filters to naive UTC boundaries,
+    # matching the existing Subscription.created_at column.
+    jamaica_tz = ZoneInfo("America/Jamaica")
+    utc_tz = ZoneInfo("UTC")
+    jamaica_today = datetime.now(jamaica_tz).date()
+
+    start_local = None
+    end_local = None
 
     if created_filter == "today":
-        q = q.filter(func.date(Subscription.created_at) == today)
-
+        start_date = jamaica_today
     elif created_filter == "7_days":
-        start_date = today - timedelta(days=7)
-        q = q.filter(func.date(Subscription.created_at) >= start_date)
-
+        start_date = jamaica_today - timedelta(days=6)
     elif created_filter == "30_days":
-        start_date = today - timedelta(days=30)
-        q = q.filter(func.date(Subscription.created_at) >= start_date)
+        start_date = jamaica_today - timedelta(days=29)
+    else:
+        start_date = None
+
+    if start_date:
+        start_local = datetime.combine(
+            start_date,
+            datetime.min.time(),
+            tzinfo=jamaica_tz,
+        )
+
+        end_local = datetime.combine(
+            jamaica_today + timedelta(days=1),
+            datetime.min.time(),
+            tzinfo=jamaica_tz,
+        )
+
+        start_utc = (
+            start_local
+            .astimezone(utc_tz)
+            .replace(tzinfo=None)
+        )
+
+        end_utc = (
+            end_local
+            .astimezone(utc_tz)
+            .replace(tzinfo=None)
+        )
+
+        query = query.filter(
+            Subscription.created_at >= start_utc,
+            Subscription.created_at < end_utc,
+        )
 
     if sort_by == "oldest":
-        q = q.order_by(Subscription.created_at.asc())
+        query = query.order_by(
+            Subscription.created_at.asc(),
+            Subscription.id.asc(),
+        )
+
     elif sort_by == "customer_asc":
-        q = q.order_by(User.full_name.asc())
+        query = query.order_by(
+            User.full_name.asc(),
+            Subscription.id.desc(),
+        )
+
     elif sort_by == "customer_desc":
-        q = q.order_by(User.full_name.desc())
+        query = query.order_by(
+            User.full_name.desc(),
+            Subscription.id.desc(),
+        )
+
     elif sort_by == "amount_desc":
-        q = q.order_by(SubscriptionPlan.price_usd.desc())
+        query = query.order_by(
+            SubscriptionPlan.price_usd.desc(),
+            Subscription.created_at.desc(),
+        )
+
     elif sort_by == "amount_asc":
-        q = q.order_by(SubscriptionPlan.price_usd.asc())
+        query = query.order_by(
+            SubscriptionPlan.price_usd.asc(),
+            Subscription.created_at.desc(),
+        )
+
     else:
-        q = q.order_by(Subscription.created_at.desc())
+        sort_by = "newest"
 
+        query = query.order_by(
+            Subscription.created_at.desc(),
+            Subscription.id.desc(),
+        )
 
-    pagination = q.paginate(page=page, per_page=per_page, error_out=False)
+    # Export the fully filtered result, not just the current page.
+    if export_format == "csv":
+        subscriptions_for_export = query.all()
 
-    subscriptions = pagination.items
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        writer.writerow([
+            "Subscription ID",
+            "Customer",
+            "Registration Number",
+            "Email",
+            "Plan",
+            "Status",
+            "Price USD",
+            "Packages Used",
+            "Package Limit",
+            "Weight Used (lb)",
+            "Weight Limit (lb)",
+            "Start Date (Jamaica)",
+            "End Date (Jamaica)",
+            "Created (Jamaica)",
+            "Complimentary",
+            "Waiver Reason",
+        ])
+
+        for subscription in subscriptions_for_export:
+            usage = subscription.usage
+            plan = subscription.plan
+            user = subscription.user
+
+            start_jm = (
+                to_jamaica(subscription.start_date)
+                if subscription.start_date
+                else None
+            )
+
+            end_jm = (
+                to_jamaica(subscription.end_date)
+                if subscription.end_date
+                else None
+            )
+
+            created_jm = (
+                to_jamaica(subscription.created_at)
+                if subscription.created_at
+                else None
+            )
+
+            writer.writerow([
+                subscription.id,
+                user.full_name if user else "",
+                (
+                    user.registration_number
+                    if user
+                    else ""
+                ),
+                user.email if user else "",
+                plan.name if plan else "",
+                subscription.status or "",
+                (
+                    f"{float(plan.price_usd or 0):.2f}"
+                    if plan
+                    else "0.00"
+                ),
+                int(
+                    getattr(
+                        usage,
+                        "packages_used",
+                        0,
+                    ) or 0
+                ),
+                int(plan.package_limit or 0)
+                if plan else 0,
+                f"{float(getattr(usage, 'weight_used', 0) or 0):.1f}",
+                f"{float(plan.weight_limit or 0):.1f}"
+                if plan else "0.0",
+                (
+                    start_jm.strftime(
+                        "%Y-%m-%d %I:%M %p"
+                    )
+                    if start_jm
+                    else ""
+                ),
+                (
+                    end_jm.strftime(
+                        "%Y-%m-%d %I:%M %p"
+                    )
+                    if end_jm
+                    else ""
+                ),
+                (
+                    created_jm.strftime(
+                        "%Y-%m-%d %I:%M %p"
+                    )
+                    if created_jm
+                    else ""
+                ),
+                (
+                    "Yes"
+                    if subscription.is_admin_waived
+                    else "No"
+                ),
+                subscription.waiver_reason or "",
+            ])
+
+        response = make_response(
+            "\ufeff" + output.getvalue()
+        )
+
+        response.headers["Content-Type"] = (
+            "text/csv; charset=utf-8"
+        )
+
+        response.headers[
+            "Content-Disposition"
+        ] = (
+            "attachment; "
+            f"filename=subscriptions-"
+            f"{jamaica_today.isoformat()}.csv"
+        )
+
+        return response
+
+    pagination = query.paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False,
+    )
 
     counts = {
         "all": Subscription.query.count(),
-        "pending_payment": Subscription.query.filter_by(status="pending_payment").count(),
-        "active": Subscription.query.filter_by(status="active").count(),
-        "exhausted": Subscription.query.filter_by(status="exhausted").count(),
-        "expired": Subscription.query.filter_by(status="expired").count(),
+        "pending_payment": (
+            Subscription.query
+            .filter_by(status="pending_payment")
+            .count()
+        ),
+        "active": (
+            Subscription.query
+            .filter_by(status="active")
+            .count()
+        ),
+        "exhausted": (
+            Subscription.query
+            .filter_by(status="exhausted")
+            .count()
+        ),
+        "expired": (
+            Subscription.query
+            .filter_by(status="expired")
+            .count()
+        ),
+        "cancelled": (
+            Subscription.query
+            .filter_by(status="cancelled")
+            .count()
+        ),
     }
 
     plans = (
         SubscriptionPlan.query
         .filter_by(is_active=True)
-        .order_by(SubscriptionPlan.price_usd.asc())
+        .order_by(
+            SubscriptionPlan.price_usd.asc(),
+            SubscriptionPlan.id.asc(),
+        )
         .all()
+    )
+
+    subscription_exchange_rate = (
+        _get_subscription_exchange_rate()
     )
 
     return render_template(
         "admin/accounts_profiles/subscriptions.html",
-        subscriptions=subscriptions,
+        subscriptions=pagination.items,
         status_filter=status_filter,
         search=search,
         created_filter=created_filter,
@@ -2684,279 +3148,794 @@ def admin_subscriptions():
         plans=plans,
         page=page,
         per_page=per_page,
-        total_pages=max(pagination.pages or 1, 1),
+        total_pages=max(
+            pagination.pages or 1,
+            1,
+        ),
         total_results=pagination.total,
-        start_index=((page - 1) * per_page) + 1 if pagination.total else 0,
-        end_index=min(page * per_page, pagination.total),
-        to_jamaica=to_jamaica
+        start_index=(
+            ((page - 1) * per_page) + 1
+            if pagination.total
+            else 0
+        ),
+        end_index=min(
+            page * per_page,
+            pagination.total,
+        ),
+        subscription_exchange_rate=(
+            subscription_exchange_rate
+        ),
+        to_jamaica=to_jamaica,
     )
 
-@accounts_bp.route("/subscriptions/bulk-activate", methods=["POST"])
+def _deactivate_subscription_members(
+    subscription,
+):
+    if not subscription:
+        return 0
+
+    active_members = (
+        SubscriptionMember.query
+        .filter_by(
+            subscription_id=subscription.id,
+            status="active",
+        )
+        .all()
+    )
+
+    removed_at = datetime.now(timezone.utc)
+
+    for member in active_members:
+        member.status = "removed"
+        member.removed_at = removed_at
+
+    return len(active_members)
+
+
+def _get_subscription_exchange_rate():
+    settings = db.session.get(Settings, 1)
+
+    try:
+        exchange_rate = float(
+            getattr(
+                settings,
+                "usd_to_jmd",
+                162,
+            )
+            or 162
+        )
+    except (TypeError, ValueError):
+        exchange_rate = 162.0
+
+    if exchange_rate <= 0:
+        exchange_rate = 162.0
+
+    return exchange_rate
+
+@accounts_bp.route(
+    "/subscriptions/bulk-activate",
+    methods=["POST"]
+)
 @admin_required
 def bulk_activate_subscriptions():
-    subscription_ids = request.form.getlist("subscription_ids")
-    subscription_ids = [int(x) for x in subscription_ids if str(x).isdigit()]
+    subscription_ids = [
+        int(value)
+        for value in request.form.getlist(
+            "subscription_ids"
+        )
+        if str(value).isdigit()
+    ]
 
     if not subscription_ids:
-        flash("No pending subscriptions selected.", "warning")
-        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+        flash(
+            "No pending subscriptions selected.",
+            "warning",
+        )
+        return redirect(
+            url_for("accounts_profiles.admin_subscriptions")
+        )
 
+    settings = db.session.get(Settings, 1)
+
+    try:
+        exchange_rate = float(
+            getattr(settings, "usd_to_jmd", 162) or 162
+        )
+    except (TypeError, ValueError):
+        exchange_rate = 162.0
+
+    now = datetime.utcnow()
     activated_count = 0
+    skipped_count = 0
 
-    for sub_id in subscription_ids:
-        sub = Subscription.query.get(sub_id)
+    for subscription_id in subscription_ids:
+        subscription = db.session.get(
+            Subscription,
+            subscription_id,
+        )
 
-        if not sub or sub.status != "pending_payment":
+        if (
+            not subscription
+            or subscription.status != "pending_payment"
+            or not subscription.plan
+            or not subscription.user
+        ):
+            skipped_count += 1
             continue
 
-        plan = sub.plan
-        user = sub.user
+        plan = subscription.plan
+        user = subscription.user
 
-        amount_jmd = float(plan.price_usd or 0) * 162
+        if not plan.is_active:
+            skipped_count += 1
+            continue
 
-        # expire any other active subscription for this user
-        old_active = (
+        amount_jmd = round(
+            float(plan.price_usd or 0) * exchange_rate,
+            2,
+        )
+
+        previous_subscriptions = (
             Subscription.query
             .filter(
-                Subscription.user_id == sub.user_id,
-                Subscription.status.in_(["active", "exhausted"]),
-                Subscription.id != sub.id
+                Subscription.user_id == user.id,
+                Subscription.status.in_(
+                    ["active", "exhausted"]
+                ),
+                Subscription.id != subscription.id,
             )
             .all()
         )
 
-        for old in old_active:
-            old.status = "expired"
+        previous_plan_names = []
 
-        # activate selected subscription
-        sub.status = "active"
-        sub.start_date = datetime.utcnow()
-        sub.end_date = datetime.utcnow() + timedelta(days=30)
+        for previous in previous_subscriptions:
+            previous_plan_names.append(
+                previous.plan.name
+                if previous.plan
+                else f"Subscription #{previous.id}"
+            )
+            previous.status = "expired"
+            _deactivate_subscription_members(
+                previous
+            )
 
-        # -------------------------------
-        # Add owner for Family plan
-        # -------------------------------
-        if getattr(plan, "is_family_plan", False):
-            existing_owner = SubscriptionMember.query.filter_by(
-                subscription_id=sub.id,
+        # Remove this customer from another Family subscription before
+        # activating a subscription they own.
+        active_memberships = (
+            SubscriptionMember.query
+            .filter_by(
                 user_id=user.id,
-                role="owner"
-            ).first()
+                status="active",
+            )
+            .all()
+        )
 
-            if not existing_owner:
-                owner_member = SubscriptionMember(
-                    subscription_id=sub.id,
-                    user_id=user.id,
-                    role="owner",
-                    status="active"
+        for membership in active_memberships:
+            if (
+                membership.subscription_id
+                != subscription.id
+                and membership.role != "owner"
+            ):
+                membership.status = "removed"
+                membership.removed_at = datetime.now(
+                    timezone.utc
                 )
-                db.session.add(owner_member)
 
-        # create usage if missing
-        if not sub.usage:
-            db.session.add(SubscriptionUsage(subscription_id=sub.id))
+        subscription.status = "active"
+        subscription.start_date = now
+        subscription.end_date = now + timedelta(days=30)
 
-        # create invoice
+        # A newly activated subscription always starts with unused
+        # allowances.
+        usage = subscription.usage
+
+        if usage:
+            usage.packages_used = 0
+            usage.weight_used = 0.0
+        else:
+            db.session.add(
+                SubscriptionUsage(
+                    subscription_id=subscription.id,
+                    packages_used=0,
+                    weight_used=0.0,
+                )
+            )
+
+        if plan.is_family_plan:
+            owner_membership = (
+                SubscriptionMember.query
+                .filter_by(
+                    subscription_id=subscription.id,
+                    user_id=user.id,
+                )
+                .first()
+            )
+
+            if owner_membership:
+                owner_membership.role = "owner"
+                owner_membership.status = "active"
+                owner_membership.removed_at = None
+            else:
+                db.session.add(
+                    SubscriptionMember(
+                        subscription_id=subscription.id,
+                        user_id=user.id,
+                        role="owner",
+                        status="active",
+                    )
+                )
+
         invoice = Invoice(
             user_id=user.id,
-            invoice_number=f"SUB-{sub.id:05d}",
-            description=f"{plan.name} Subscription Plan",
+            invoice_number=(
+                f"SUB-{subscription.id:05d}"
+            ),
+            description=(
+                f"{plan.name} Subscription Plan"
+            ),
             amount=amount_jmd,
             grand_total=amount_jmd,
             amount_due=0.0,
             status="paid",
-            date_issued=datetime.utcnow(),
-            date_paid=datetime.utcnow(),
+            date_issued=now,
+            date_paid=now,
         )
 
         db.session.add(invoice)
         db.session.flush()
 
-        # create payment record
         payment = Payment(
             user_id=user.id,
             invoice_id=invoice.id,
             amount_jmd=amount_jmd,
-            method="Bank Transfer / Cash",
+            method="Admin Confirmed",
             status="completed",
             transaction_type="subscription_payment",
-            reference=f"Subscription {plan.name}",
-            notes=f"Activated subscription #{sub.id}",
+            reference=(
+                f"{plan.name} Subscription"
+            ),
+            notes=(
+                f"Payment confirmed and subscription "
+                f"#{subscription.id} activated. "
+                f"Exchange rate: JMD {exchange_rate:.2f} "
+                f"per USD."
+            ),
             authorized_by_admin_id=current_user.id,
         )
 
         db.session.add(payment)
+
+        previous_text = (
+            ", ".join(previous_plan_names)
+            if previous_plan_names
+            else "No previous active subscription"
+        )
+
+        create_audit_log(
+            module="Subscription",
+            action="Subscription Activated",
+            admin_id=current_user.id,
+            user_id=user.id,
+            entity_type="Subscription",
+            entity_id=subscription.id,
+            reason="Customer payment confirmed",
+            description=(
+                f"{plan.name} subscription activated for "
+                f"{user.full_name or user.email}. "
+                f"Payment recorded: JMD {amount_jmd:.2f}. "
+                f"Invoice: {invoice.invoice_number}."
+            ),
+            old_value=(
+                f"Status: pending_payment; "
+                f"Previous: {previous_text}"
+            ),
+            new_value=(
+                f"Status: active; "
+                f"Starts: {subscription.start_date:%Y-%m-%d}; "
+                f"Ends: {subscription.end_date:%Y-%m-%d}; "
+                f"Invoice: {invoice.invoice_number}"
+            ),
+        )
+
         activated_count += 1
 
     db.session.commit()
 
-    flash(f"{activated_count} subscription(s) activated and payment recorded.", "success")
-    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+    if activated_count:
+        flash(
+            f"{activated_count} subscription(s) activated and "
+            f"payment recorded. {skipped_count} skipped.",
+            "success",
+        )
+    else:
+        flash(
+            f"No subscriptions were activated. "
+            f"{skipped_count} selected record(s) were skipped.",
+            "warning",
+        )
 
-@accounts_bp.route("/subscriptions/<int:sub_id>/add-member", methods=["POST"])
+    return redirect(
+        url_for("accounts_profiles.admin_subscriptions")
+    )
+
+@accounts_bp.route(
+    "/subscriptions/<int:sub_id>/add-member",
+    methods=["POST"],
+)
 @admin_required
 def add_subscription_member(sub_id):
-    from app.models import Subscription, SubscriptionMember, User
+    from sqlalchemy import func, or_
 
-    sub = Subscription.query.get_or_404(sub_id)
+    subscription = Subscription.query.get_or_404(
+        sub_id
+    )
 
-    if not sub.plan.is_family_plan:
-        flash("This is not a family plan.", "danger")
-        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+    plan = subscription.plan
 
-    reg = (request.form.get("registration_number") or "").strip().upper()
+    redirect_url = (
+        request.referrer
+        or url_for(
+            "accounts_profiles.view_user",
+            id=subscription.user_id,
+            tab="subscriptions",
+        )
+    )
 
-    if not reg:
-        flash("Registration number required.", "warning")
-        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+    if not plan or not plan.is_family_plan:
+        flash(
+            "This subscription is not a Family plan.",
+            "danger",
+        )
+        return redirect(redirect_url)
 
-    user = User.query.filter_by(registration_number=reg).first()
+    now = datetime.utcnow()
 
-    if not user:
-        flash("User not found.", "danger")
-        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+    if subscription.status not in (
+        "active",
+        "exhausted",
+    ):
+        flash(
+            "Members can only be added to a currently "
+            "active Family subscription.",
+            "warning",
+        )
+        return redirect(redirect_url)
 
-    # Prevent adding the subscription owner again
-    if user.id == sub.user_id:
-        flash("This user is already the owner of this subscription.", "info")
-        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+    if (
+        subscription.start_date
+        and subscription.start_date > now
+    ):
+        flash(
+            "This Family subscription has not started yet.",
+            "warning",
+        )
+        return redirect(redirect_url)
 
-    # Max 4 persons total: owner + 3 members
-    active_member_count = SubscriptionMember.query.filter_by(
-        subscription_id=sub.id,
-        status="active"
-    ).count()
+    if (
+        subscription.end_date
+        and subscription.end_date < now
+    ):
+        subscription.status = "expired"
+        db.session.commit()
 
-    if active_member_count >= 4:
-        flash("Family plan already has the maximum 4 persons.", "warning")
-        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+        flash(
+            "This Family subscription has expired.",
+            "warning",
+        )
+        return redirect(redirect_url)
 
-    # Prevent duplicate on same subscription
-    existing_same_subscription = SubscriptionMember.query.filter_by(
-        subscription_id=sub.id,
-        user_id=user.id,
-        status="active"
-    ).first()
+    # Accept either the new member_lookup field or the
+    # previous registration_number field.
+    member_lookup = (
+        request.form.get("member_lookup")
+        or request.form.get("registration_number")
+        or ""
+    ).strip()
 
-    if existing_same_subscription:
-        flash("User is already added to this family plan.", "info")
-        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+    if not member_lookup:
+        flash(
+            "Enter the customer's FAFL registration "
+            "number or email address.",
+            "warning",
+        )
+        return redirect(redirect_url)
 
-    # Prevent user being in another active family subscription
-    existing_membership = (
-        SubscriptionMember.query
+    user = (
+        User.query
         .filter(
-            SubscriptionMember.user_id == user.id,
-            SubscriptionMember.status == "active"
+            or_(
+                func.upper(
+                    User.registration_number
+                ) == member_lookup.upper(),
+                func.lower(
+                    User.email
+                ) == member_lookup.lower(),
+            )
         )
         .first()
     )
 
-    if existing_membership:
-        flash("User already belongs to another subscription.", "warning")
-        return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+    if not user:
+        flash(
+            "No customer was found with that FAFL "
+            "registration number or email address.",
+            "danger",
+        )
+        return redirect(redirect_url)
 
-    member = SubscriptionMember(
-        subscription_id=sub.id,
-        user_id=user.id,
-        role="member",
-        status="active"
+    if user.id == subscription.user_id:
+        flash(
+            "This customer is already the owner "
+            "of the subscription.",
+            "info",
+        )
+        return redirect(redirect_url)
+
+    # A customer with their own active subscription cannot
+    # simultaneously use another customer's Family plan.
+    own_subscription = (
+        Subscription.query
+        .filter(
+            Subscription.user_id == user.id,
+            Subscription.status.in_(
+                [
+                    "active",
+                    "exhausted",
+                ]
+            ),
+            Subscription.start_date <= now,
+            Subscription.end_date >= now,
+        )
+        .first()
     )
 
-    db.session.add(member)
-    db.session.flush()
+    if own_subscription:
+        flash(
+            "This customer already owns an active "
+            "subscription.",
+            "warning",
+        )
+        return redirect(redirect_url)
 
-    owner = sub.user
-    plan_name = sub.plan.name if sub.plan else "Family Plan"
-
-    create_audit_log(
-        module="Subscription",
-        action="Family Member Added",
-        admin_id=current_user.id,
-        user_id=user.id,
-        entity_type="SubscriptionMember",
-        entity_id=member.id,
-        reason="Family plan member added",
-        description=(
-            f"{user.full_name or user.email} ({user.registration_number or 'No FAFL #'}) "
-            f"was added as a member to {plan_name} subscription owned by "
-            f"{owner.full_name or owner.email if owner else 'Unknown owner'}."
+    maximum_users = max(
+        int(
+            getattr(
+                plan,
+                "max_users",
+                0,
+            )
+            or 4
         ),
-        old_value="Not a member",
-        new_value=f"Active family member on subscription #{sub.id}",
+        1,
     )
 
-    db.session.commit()
+    # This count includes the owner because the owner has an
+    # active SubscriptionMember record with role="owner".
+    active_member_count = (
+        SubscriptionMember.query
+        .filter_by(
+            subscription_id=subscription.id,
+            status="active",
+        )
+        .count()
+    )
 
-    flash(f"{user.full_name} added to family plan.", "success")
-    return redirect(request.referrer or url_for("accounts_profiles.view_user", id=sub.user_id))
+    existing_same_membership = (
+        SubscriptionMember.query
+        .filter_by(
+            subscription_id=subscription.id,
+            user_id=user.id,
+        )
+        .first()
+    )
 
-@accounts_bp.route("/subscriptions/bulk-waive", methods=["POST"])
+    if (
+        existing_same_membership
+        and existing_same_membership.status == "active"
+    ):
+        flash(
+            "This customer is already a member "
+            "of the Family plan.",
+            "info",
+        )
+        return redirect(redirect_url)
+
+    if active_member_count >= maximum_users:
+        flash(
+            (
+                "This Family plan already has its maximum "
+                f"of {maximum_users} person(s), including "
+                "the owner."
+            ),
+            "warning",
+        )
+        return redirect(redirect_url)
+
+    # Block membership in another currently valid
+    # Family subscription.
+    other_active_membership = (
+        SubscriptionMember.query
+        .join(
+            Subscription,
+            Subscription.id
+            == SubscriptionMember.subscription_id,
+        )
+        .filter(
+            SubscriptionMember.user_id == user.id,
+            SubscriptionMember.status == "active",
+            SubscriptionMember.subscription_id
+            != subscription.id,
+            Subscription.status.in_(
+                [
+                    "active",
+                    "exhausted",
+                ]
+            ),
+            Subscription.start_date <= now,
+            Subscription.end_date >= now,
+        )
+        .first()
+    )
+
+    if other_active_membership:
+        flash(
+            "This customer already belongs to another "
+            "active Family subscription.",
+            "warning",
+        )
+        return redirect(redirect_url)
+
+    try:
+        # Restore a previously removed member instead of
+        # creating a duplicate membership record.
+        if existing_same_membership:
+            existing_same_membership.role = "member"
+            existing_same_membership.status = "active"
+            existing_same_membership.removed_at = None
+            member = existing_same_membership
+
+        else:
+            member = SubscriptionMember(
+                subscription_id=subscription.id,
+                user_id=user.id,
+                role="member",
+                status="active",
+            )
+
+            db.session.add(member)
+            db.session.flush()
+
+        owner = subscription.user
+        plan_name = plan.name or "Family Plan"
+
+        if owner:
+            owner_name = (
+                owner.full_name
+                or owner.email
+                or "Unknown owner"
+            )
+        else:
+            owner_name = "Unknown owner"
+
+        create_audit_log(
+            module="Subscription",
+            action="Family Member Added",
+            admin_id=current_user.id,
+            user_id=user.id,
+            entity_type="SubscriptionMember",
+            entity_id=member.id,
+            reason="Family plan member added",
+            description=(
+                f"{user.full_name or user.email} "
+                f"({user.registration_number or 'No FAFL #'}) "
+                f"was added to the {plan_name} subscription "
+                f"owned by {owner_name}."
+            ),
+            old_value="Not an active member",
+            new_value=(
+                "Active Family member on "
+                f"subscription #{subscription.id}"
+            ),
+        )
+
+        db.session.commit()
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Adding user %s to subscription %s failed",
+            user.id,
+            subscription.id,
+        )
+
+        flash(
+            f"The member could not be added: {error}",
+            "danger",
+        )
+        return redirect(redirect_url)
+
+    flash(
+        f"{user.full_name or user.email} was added "
+        "to the Family plan.",
+        "success",
+    )
+
+    return redirect(redirect_url)
+
+
+@accounts_bp.route(
+    "/subscriptions/bulk-waive",
+    methods=["POST"]
+)
 @admin_required
 def bulk_waive_subscriptions():
-    subscription_ids = request.form.getlist("subscription_ids")
-    reason = (request.form.get("waiver_reason") or "").strip()
+    subscription_ids = [
+        int(value)
+        for value in request.form.getlist(
+            "subscription_ids"
+        )
+        if str(value).isdigit()
+    ]
 
-    subscription_ids = [int(x) for x in subscription_ids if str(x).isdigit()]
+    reason = (
+        request.form.get("waiver_reason") or ""
+    ).strip()
 
     if not subscription_ids:
-        flash("No subscriptions selected.", "warning")
-        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+        flash(
+            "No subscriptions selected.",
+            "warning",
+        )
+        return redirect(
+            url_for("accounts_profiles.admin_subscriptions")
+        )
 
     if not reason:
-        flash("Please enter a reason for waiving the subscription charge.", "warning")
-        return redirect(url_for("accounts_profiles.admin_subscriptions"))
+        flash(
+            "Please enter a reason for waiving the "
+            "subscription charge.",
+            "warning",
+        )
+        return redirect(
+            url_for("accounts_profiles.admin_subscriptions")
+        )
 
+    now = datetime.utcnow()
     waived_count = 0
+    skipped_count = 0
 
-    for sub_id in subscription_ids:
-        sub = Subscription.query.get(sub_id)
+    for subscription_id in subscription_ids:
+        subscription = db.session.get(
+            Subscription,
+            subscription_id,
+        )
 
-        if not sub or sub.status != "pending_payment":
+        if (
+            not subscription
+            or subscription.status != "pending_payment"
+            or not subscription.plan
+            or not subscription.user
+        ):
+            skipped_count += 1
             continue
 
-        plan = sub.plan
-        user = sub.user
+        plan = subscription.plan
+        user = subscription.user
 
-        old_value = f"Status: {sub.status}"
+        if not plan.is_active:
+            skipped_count += 1
+            continue
 
-        old_active = (
+        previous_subscriptions = (
             Subscription.query
             .filter(
-                Subscription.user_id == sub.user_id,
-                Subscription.status.in_(["active", "exhausted"]),
-                Subscription.id != sub.id
+                Subscription.user_id == user.id,
+                Subscription.status.in_(
+                    ["active", "exhausted"]
+                ),
+                Subscription.id != subscription.id,
             )
             .all()
         )
 
-        old_active_names = []
-        for old in old_active:
-            old_active_names.append(old.plan.name if old.plan else f"Subscription #{old.id}")
-            old.status = "expired"
+        previous_plan_names = []
 
-        sub.status = "active"
-        sub.start_date = datetime.utcnow()
-        sub.end_date = datetime.utcnow() + timedelta(days=30)
+        for previous in previous_subscriptions:
+            previous_plan_names.append(
+                previous.plan.name
+                if previous.plan
+                else f"Subscription #{previous.id}"
+            )
+            previous.status = "expired"
+            _deactivate_subscription_members(
+                previous
+            )
 
-        sub.is_admin_waived = True
-        sub.waiver_reason = reason
-        sub.waived_at = datetime.utcnow()
-        sub.waived_by_admin_id = current_user.id
+        # Remove this customer from any other Family subscription.
+        active_memberships = (
+            SubscriptionMember.query
+            .filter_by(
+                user_id=user.id,
+                status="active",
+            )
+            .all()
+        )
 
-        if not sub.usage:
-            db.session.add(SubscriptionUsage(subscription_id=sub.id))
+        for membership in active_memberships:
+            if (
+                membership.subscription_id
+                != subscription.id
+                and membership.role != "owner"
+            ):
+                membership.status = "removed"
+                membership.removed_at = datetime.now(
+                    timezone.utc
+                )
+
+        subscription.status = "active"
+        subscription.start_date = now
+        subscription.end_date = now + timedelta(days=30)
+
+        subscription.is_admin_waived = True
+        subscription.waiver_reason = reason
+        subscription.waived_at = now
+        subscription.waived_by_admin_id = current_user.id
+
+        usage = subscription.usage
+
+        if usage:
+            usage.packages_used = 0
+            usage.weight_used = 0.0
+        else:
+            db.session.add(
+                SubscriptionUsage(
+                    subscription_id=subscription.id,
+                    packages_used=0,
+                    weight_used=0.0,
+                )
+            )
+
+        if plan.is_family_plan:
+            owner_membership = (
+                SubscriptionMember.query
+                .filter_by(
+                    subscription_id=subscription.id,
+                    user_id=user.id,
+                )
+                .first()
+            )
+
+            if owner_membership:
+                owner_membership.role = "owner"
+                owner_membership.status = "active"
+                owner_membership.removed_at = None
+            else:
+                db.session.add(
+                    SubscriptionMember(
+                        subscription_id=subscription.id,
+                        user_id=user.id,
+                        role="owner",
+                        status="active",
+                    )
+                )
 
         invoice = Invoice(
             user_id=user.id,
-            invoice_number=f"SUB-WAIVED-{sub.id:05d}",
-            description=f"{plan.name} Subscription Plan - Admin Waived",
+            invoice_number=(
+                f"SUB-WAIVED-{subscription.id:05d}"
+            ),
+            description=(
+                f"{plan.name} Subscription Plan "
+                f"— Complimentary"
+            ),
             amount=0.0,
             grand_total=0.0,
             amount_due=0.0,
             status="paid",
-            date_issued=datetime.utcnow(),
-            date_paid=datetime.utcnow(),
+            date_issued=now,
+            date_paid=now,
         )
 
         db.session.add(invoice)
@@ -2969,16 +3948,23 @@ def bulk_waive_subscriptions():
             method="Admin Waiver",
             status="completed",
             transaction_type="subscription_waiver",
-            reference=f"Waived subscription {plan.name}",
-            notes=f"Admin waived subscription #{sub.id}. Reason: {reason}",
+            reference=(
+                f"Complimentary {plan.name} Subscription"
+            ),
+            notes=(
+                f"Subscription #{subscription.id} waived "
+                f"by administrator. Reason: {reason}"
+            ),
             authorized_by_admin_id=current_user.id,
         )
 
         db.session.add(payment)
 
-        expired_note = ""
-        if old_active_names:
-            expired_note = f" Previous active subscription(s) expired: {', '.join(old_active_names)}."
+        previous_text = (
+            ", ".join(previous_plan_names)
+            if previous_plan_names
+            else "No previous active subscription"
+        )
 
         create_audit_log(
             module="Subscription",
@@ -2986,17 +3972,23 @@ def bulk_waive_subscriptions():
             admin_id=current_user.id,
             user_id=user.id,
             entity_type="Subscription",
-            entity_id=sub.id,
+            entity_id=subscription.id,
             reason=reason,
             description=(
-                f"{plan.name} subscription was waived and activated for "
-                f"{user.full_name or user.email}. Invoice {invoice.invoice_number} created at $0.00."
-                f"{expired_note}"
+                f"{plan.name} subscription was activated "
+                f"as complimentary for "
+                f"{user.full_name or user.email}. "
+                f"Invoice {invoice.invoice_number} created "
+                f"at JMD 0.00."
             ),
-            old_value=old_value,
+            old_value=(
+                f"Status: pending_payment; "
+                f"Previous: {previous_text}"
+            ),
             new_value=(
                 f"Status: active; Waived: yes; "
-                f"End Date: {sub.end_date.strftime('%Y-%m-%d')}; "
+                f"Starts: {subscription.start_date:%Y-%m-%d}; "
+                f"Ends: {subscription.end_date:%Y-%m-%d}; "
                 f"Invoice: {invoice.invoice_number}"
             ),
         )
@@ -3005,8 +3997,22 @@ def bulk_waive_subscriptions():
 
     db.session.commit()
 
-    flash(f"{waived_count} subscription(s) activated as free/waived.", "success")
-    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+    if waived_count:
+        flash(
+            f"{waived_count} complimentary subscription(s) "
+            f"activated. {skipped_count} skipped.",
+            "success",
+        )
+    else:
+        flash(
+            f"No subscriptions were activated. "
+            f"{skipped_count} selected record(s) were skipped.",
+            "warning",
+        )
+
+    return redirect(
+        url_for("accounts_profiles.admin_subscriptions")
+    )
 
 @accounts_bp.route("/subscriptions/<int:sub_id>/remove-member/<int:user_id>", methods=["POST"])
 @admin_required
@@ -3078,6 +4084,25 @@ def cancel_pending_subscription(sub_id):
 def cancel_refund_unused_subscription(sub_id):
     sub = Subscription.query.get_or_404(sub_id)
 
+    if bool(
+        getattr(
+            sub,
+            "is_admin_waived",
+            False,
+        )
+    ):
+        flash(
+            "Complimentary subscriptions cannot receive "
+            "a monetary refund. Use admin override "
+            "cancellation instead.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "accounts_profiles.admin_subscriptions"
+            )
+        )
+
     if sub.status != "active":
         flash("Only active subscriptions can be cancelled/refunded.", "warning")
         return redirect(url_for("accounts_profiles.admin_subscriptions"))
@@ -3090,9 +4115,14 @@ def cancel_refund_unused_subscription(sub_id):
         flash("This subscription has already been used. Refund blocked. Use admin override if needed.", "danger")
         return redirect(url_for("accounts_profiles.admin_subscriptions"))
 
-    amount_jmd = float(sub.plan.price_usd or 0) * 162
+    amount_jmd = round(
+        float(sub.plan.price_usd or 0)
+        * _get_subscription_exchange_rate(),
+        2,
+    )
 
     sub.status = "cancelled"
+    _deactivate_subscription_members(sub)
 
     refund_payment = Payment(
         user_id=sub.user_id,
@@ -3129,6 +4159,7 @@ def override_cancel_subscription(sub_id):
     old_value = f"Status: {sub.status}; Plan: {plan_name}"
 
     sub.status = "cancelled"
+    _deactivate_subscription_members(sub)
 
     note = Payment(
         user_id=sub.user_id,
@@ -3166,50 +4197,93 @@ def override_cancel_subscription(sub_id):
     return redirect(url_for("accounts_profiles.admin_subscriptions"))
 
 
-@accounts_bp.route("/subscriptions/bulk-cancel-pending", methods=["POST"])
+@accounts_bp.route(
+    "/subscriptions/bulk-cancel-pending",
+    methods=["POST"]
+)
 @admin_required
 def bulk_cancel_pending_subscriptions():
-    ids = request.form.getlist("subscription_ids")
+    subscription_ids = [
+        int(value)
+        for value in request.form.getlist(
+            "subscription_ids"
+        )
+        if str(value).isdigit()
+    ]
 
-    count = 0
+    if not subscription_ids:
+        flash(
+            "No subscriptions were selected.",
+            "warning",
+        )
+        return redirect(
+            url_for("accounts_profiles.admin_subscriptions")
+        )
 
-    for sid in ids:
-        sub = Subscription.query.get(sid)
+    cancelled_count = 0
 
-        if not sub or sub.status != "pending_payment":
+    for subscription_id in subscription_ids:
+        subscription = db.session.get(
+            Subscription,
+            subscription_id,
+        )
+
+        if (
+            not subscription
+            or subscription.status != "pending_payment"
+        ):
             continue
 
-        user = sub.user
-        plan_name = sub.plan.name if sub.plan else "Subscription Plan"
+        user = subscription.user
+        plan_name = (
+            subscription.plan.name
+            if subscription.plan
+            else "Subscription Plan"
+        )
 
-        old_value = f"Status: {sub.status}; Plan: {plan_name}"
-
-        sub.status = "cancelled"
+        subscription.status = "cancelled"
+        _deactivate_subscription_members(
+            subscription
+        )
 
         create_audit_log(
             module="Subscription",
             action="Pending Subscription Cancelled",
             admin_id=current_user.id,
-            user_id=sub.user_id,
+            user_id=subscription.user_id,
             entity_type="Subscription",
-            entity_id=sub.id,
-            reason="Bulk cancellation",
+            entity_id=subscription.id,
+            reason="Admin cancelled pending subscription",
             description=(
-                f"Pending subscription {plan_name} for "
-                f"{user.full_name or user.email if user else 'Unknown user'} "
-                f"was cancelled through bulk cancellation."
+                f"Pending {plan_name} subscription for "
+                f"{user.full_name or user.email if user else 'Unknown customer'} "
+                f"was cancelled."
             ),
-            old_value=old_value,
+            old_value="Status: pending_payment",
             new_value="Status: cancelled",
         )
 
-        count += 1
+        cancelled_count += 1
 
     db.session.commit()
 
-    flash(f"{count} pending subscriptions cancelled.", "success")
-    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+    if cancelled_count:
+        flash(
+            f"{cancelled_count} pending subscription(s) cancelled.",
+            "success",
+        )
+    else:
+        flash(
+            "None of the selected subscriptions were pending.",
+            "warning",
+        )
 
+    return redirect(
+        url_for(
+            "accounts_profiles.admin_subscriptions",
+            status="cancelled",
+        )
+    )
 
 @accounts_bp.route("/subscriptions/bulk-refund-unused", methods=["POST"])
 @admin_required
@@ -3220,7 +4294,19 @@ def bulk_refund_unused_subscriptions():
 
     for sid in ids:
         sub = Subscription.query.get(sid)
+
         if not sub or sub.status != "active":
+            continue
+
+        # Complimentary subscriptions did not collect money,
+        # so they cannot receive a monetary refund.
+        if bool(
+            getattr(
+                sub,
+                "is_admin_waived",
+                False,
+            )
+        ):
             continue
 
         usage = sub.usage
@@ -3230,11 +4316,18 @@ def bulk_refund_unused_subscriptions():
         if packages_used == 0 and weight_used == 0:
             user = sub.user
             plan_name = sub.plan.name if sub.plan else "Subscription Plan"
-            amount_jmd = float(sub.plan.price_usd or 0) * 162
+            amount_jmd = round(
+                float(sub.plan.price_usd or 0)
+                * _get_subscription_exchange_rate(),
+                2,
+            )
 
             old_value = f"Status: {sub.status}; Plan: {plan_name}; Used: {packages_used} package(s), {weight_used:.1f} lb"
 
             sub.status = "cancelled"
+            _deactivate_subscription_members(
+                sub
+            )
 
             refund = Payment(
                 user_id=sub.user_id,
@@ -3289,6 +4382,9 @@ def bulk_override_cancel_subscriptions():
         old_value = f"Status: {sub.status}; Plan: {plan_name}"
 
         sub.status = "cancelled"
+        _deactivate_subscription_members(
+                sub
+            )
 
         note = Payment(
             user_id=sub.user_id,
@@ -3347,6 +4443,17 @@ def bulk_upgrade_subscriptions():
 
     new_plan = SubscriptionPlan.query.get_or_404(new_plan_id)
 
+    if not new_plan.is_active:
+        flash(
+            "The selected upgrade plan is inactive.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "accounts_profiles.admin_subscriptions"
+            )
+        )
+
     upgraded = 0
     skipped = 0
     blocked_usage = 0
@@ -3393,7 +4500,11 @@ def bulk_upgrade_subscriptions():
             continue
 
         difference_usd = new_price - old_price
-        difference_jmd = difference_usd * 162
+        difference_jmd = round(
+            difference_usd
+            * _get_subscription_exchange_rate(),
+            2,
+        )
 
         user = old_sub.user
 
@@ -3402,35 +4513,115 @@ def bulk_upgrade_subscriptions():
             f"Plan: {old_plan.name}; "
             f"Status: {old_sub.status}; "
             f"Price: US${old_price:.2f}; "
-            f"Usage: {packages_used} package(s), {weight_used:.1f} lb"
+            f"Usage: {packages_used} package(s), "
+            f"{weight_used:.1f} lb"
         )
 
+        # Preserve the current subscription period. Paying the
+        # upgrade difference must not silently add another 30 days.
+        now = datetime.utcnow()
+
+        original_start_date = (
+            old_sub.start_date
+            or now
+        )
+
+        original_end_date = (
+            old_sub.end_date
+            or (
+                original_start_date
+                + timedelta(days=30)
+            )
+        )
+
+        # Capture current Family members before deactivating
+        # membership records belonging to the old subscription.
+        old_family_member_ids = [
+            member.user_id
+            for member in (
+                SubscriptionMember.query
+                .filter_by(
+                    subscription_id=old_sub.id,
+                    status="active",
+                )
+                .all()
+            )
+            if (
+                member.user_id
+                and member.user_id
+                != old_sub.user_id
+            )
+        ]
+
         old_sub.status = "expired"
+
+        _deactivate_subscription_members(
+            old_sub
+        )
 
         new_sub = Subscription(
             user_id=old_sub.user_id,
             plan_id=new_plan.id,
-            start_date=datetime.now(timezone.utc),
-            end_date=datetime.now(timezone.utc) + timedelta(days=30),
-            status="active"
+            start_date=original_start_date,
+            end_date=original_end_date,
+            status="active",
         )
 
         db.session.add(new_sub)
         db.session.flush()
 
-        db.session.add(SubscriptionUsage(
-            subscription_id=new_sub.id,
-            packages_used=packages_used,
-            weight_used=weight_used,
-        ))
-
-        if getattr(new_plan, "is_family_plan", False):
-            db.session.add(SubscriptionMember(
+        db.session.add(
+            SubscriptionUsage(
                 subscription_id=new_sub.id,
-                user_id=old_sub.user_id,
-                role="owner",
-                status="active"
-            ))
+                packages_used=packages_used,
+                weight_used=weight_used,
+            )
+        )
+
+        if getattr(
+            new_plan,
+            "is_family_plan",
+            False,
+        ):
+            # The purchaser is always the Family-plan owner.
+            db.session.add(
+                SubscriptionMember(
+                    subscription_id=new_sub.id,
+                    user_id=old_sub.user_id,
+                    role="owner",
+                    status="active",
+                )
+            )
+
+            maximum_users = int(
+                getattr(
+                    new_plan,
+                    "max_users",
+                    0,
+                )
+                or 4
+            )
+
+            available_member_slots = max(
+                maximum_users - 1,
+                0,
+            )
+
+            # Preserve existing Family members when upgrading
+            # from one Family plan to another.
+            for member_user_id in (
+                old_family_member_ids[
+                    :available_member_slots
+                ]
+            ):
+                db.session.add(
+                    SubscriptionMember(
+                        subscription_id=new_sub.id,
+                        user_id=member_user_id,
+                        role="member",
+                        status="active",
+                    )
+                )
 
         invoice = Invoice(
             user_id=old_sub.user_id,
@@ -3440,8 +4631,8 @@ def bulk_upgrade_subscriptions():
             grand_total=difference_jmd,
             amount_due=0.0,
             status="paid",
-            date_issued=datetime.now(timezone.utc),
-            date_paid=datetime.now(timezone.utc),
+            date_issued=now,
+            date_paid=now,
         )
 
         db.session.add(invoice)
@@ -3508,157 +4699,329 @@ def bulk_upgrade_subscriptions():
 
     return redirect(url_for("accounts_profiles.admin_subscriptions"))
 
-@accounts_bp.route("/subscriptions/process-reminders")
+@accounts_bp.route(
+    "/subscriptions/process-reminders",
+    methods=["POST"],
+)
 @login_required
 @admin_required
 def process_subscription_reminders():
-    from datetime import datetime, timezone
     from app.utils.email_utils import send_email
 
     now = datetime.now(timezone.utc)
 
     subscriptions = (
         Subscription.query
-        .filter(Subscription.status.in_(["active", "exhausted"]))
+        .filter(
+            Subscription.status.in_(
+                [
+                    "active",
+                    "exhausted",
+                ]
+            )
+        )
         .all()
     )
 
     sent_count = 0
+    expired_count = 0
+    failed_count = 0
 
-    for sub in subscriptions:
-        if not sub.end_date:
+    def send_subscription_email(
+        *,
+        subscription,
+        user,
+        subject,
+        plain_body,
+        html_body,
+    ):
+        try:
+            result = send_email(
+                to_email=user.email,
+                subject=subject,
+                plain_body=plain_body,
+                html_body=html_body,
+                recipient_user_id=user.id,
+            )
+
+            return result is not False
+
+        except Exception:
+            current_app.logger.exception(
+                "Subscription reminder email failed "
+                "for subscription %s and user %s",
+                subscription.id,
+                user.id,
+            )
+            return False
+
+    for subscription in subscriptions:
+        if not subscription.end_date:
             continue
 
-        end_date = sub.end_date
+        end_date = subscription.end_date
+
+        # Subscription dates are stored as timezone-naive UTC.
         if end_date.tzinfo is None:
-            end_date = end_date.replace(tzinfo=timezone.utc)
+            end_date = end_date.replace(
+                tzinfo=timezone.utc
+            )
 
-        delta = end_date - now
-        days_remaining = delta.days
+        seconds_remaining = (
+            end_date - now
+        ).total_seconds()
 
-        user = sub.user
+        days_remaining = max(
+            math.ceil(
+                seconds_remaining / 86400
+            ),
+            0,
+        )
+
+        user = subscription.user
+
+        # -------------------------------------------------
+        # Expired subscription
+        # -------------------------------------------------
+        if seconds_remaining <= 0:
+            subscription.status = "expired"
+            subscription.renewal_reminder_5d_sent = True
+            subscription.renewal_reminder_2d_sent = True
+
+            _deactivate_subscription_members(
+                subscription
+            )
+
+            expired_count += 1
+
+            if (
+                user
+                and user.email
+                and not subscription.expiry_notice_sent
+            ):
+                customer_name = (
+                    user.full_name
+                    or "Customer"
+                )
+
+                email_sent = send_subscription_email(
+                    subscription=subscription,
+                    user=user,
+                    subject=(
+                        "Your FAFL Subscription "
+                        "Has Expired"
+                    ),
+                    plain_body=(
+                        f"Hi {customer_name},\n\n"
+                        "Your Foreign A Foot Logistics "
+                        "subscription has expired.\n\n"
+                        "Normal package pricing now applies. "
+                        "You may renew anytime from your "
+                        "dashboard.\n\n"
+                        "Login here:\n"
+                        "https://app.faflcourier.com/"
+                        "customer/subscriptions\n\n"
+                        "— Foreign A Foot Logistics Limited"
+                    ),
+                    html_body=(
+                        '<div style="font-family:Arial,'
+                        'sans-serif;line-height:1.6;">'
+                        f"<p>Hi {customer_name},</p>"
+                        "<p>Your <strong>Foreign A Foot "
+                        "Logistics</strong> subscription "
+                        "has expired.</p>"
+                        "<p>Normal package pricing now "
+                        "applies. You may renew anytime "
+                        "from your dashboard.</p>"
+                        '<p><a href="https://app.'
+                        'faflcourier.com/customer/'
+                        'subscriptions" '
+                        'style="background:#4A148C;'
+                        'color:#fff;padding:12px 18px;'
+                        'text-decoration:none;'
+                        'border-radius:6px;'
+                        'font-weight:600;">'
+                        "Renew Subscription"
+                        "</a></p>"
+                        "</div>"
+                    ),
+                )
+
+                if email_sent:
+                    subscription.expiry_notice_sent = True
+                    sent_count += 1
+                else:
+                    failed_count += 1
+
+            continue
+
+        # The subscription must still expire even if the
+        # customer does not have an email address.
         if not user or not user.email:
             continue
 
-        # 5-day reminder
-        if days_remaining <= 5 and days_remaining > 2 and not sub.renewal_reminder_5d_sent:
-            send_email(
-                to_email=user.email,
-                subject="Your FAFL Subscription Expires Soon",
-                plain_body=f"""
-Hi {user.full_name},
+        customer_name = (
+            user.full_name
+            or "Customer"
+        )
 
-Your Foreign A Foot Logistics subscription expires in {days_remaining} day(s).
-
-Please renew soon to continue enjoying your subscription benefits.
-
-Login here:
-https://app.faflcourier.com/customer/subscriptions
-
-— Foreign A Foot Logistics Limited
-""".strip(),
-                html_body=f"""
-<p>Hi {user.full_name},</p>
-
-<p>Your <strong>Foreign A Foot Logistics</strong> subscription expires in <strong>{days_remaining} day(s)</strong>.</p>
-
-<p>Please renew soon to continue enjoying your subscription benefits.</p>
-
-<p>
-  <a href="https://app.faflcourier.com/customer/subscriptions"
-     style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
-    Renew Subscription
-  </a>
-</p>
-""".strip(),
-                recipient_user_id=user.id,
+        # -------------------------------------------------
+        # Five-day reminder
+        # Sends once when 3–5 days remain.
+        # -------------------------------------------------
+        if (
+            3 <= days_remaining <= 5
+            and not subscription.renewal_reminder_5d_sent
+        ):
+            email_sent = send_subscription_email(
+                subscription=subscription,
+                user=user,
+                subject=(
+                    "Your FAFL Subscription "
+                    "Expires Soon"
+                ),
+                plain_body=(
+                    f"Hi {customer_name},\n\n"
+                    "Your Foreign A Foot Logistics "
+                    f"subscription expires in "
+                    f"{days_remaining} day(s).\n\n"
+                    "Please renew soon to continue "
+                    "enjoying your subscription "
+                    "benefits.\n\n"
+                    "Login here:\n"
+                    "https://app.faflcourier.com/"
+                    "customer/subscriptions\n\n"
+                    "— Foreign A Foot Logistics Limited"
+                ),
+                html_body=(
+                    '<div style="font-family:Arial,'
+                    'sans-serif;line-height:1.6;">'
+                    f"<p>Hi {customer_name},</p>"
+                    "<p>Your <strong>Foreign A Foot "
+                    "Logistics</strong> subscription "
+                    f"expires in <strong>{days_remaining} "
+                    "day(s)</strong>.</p>"
+                    "<p>Please renew soon to continue "
+                    "enjoying your subscription "
+                    "benefits.</p>"
+                    '<p><a href="https://app.'
+                    'faflcourier.com/customer/'
+                    'subscriptions" '
+                    'style="background:#4A148C;'
+                    'color:#fff;padding:12px 18px;'
+                    'text-decoration:none;'
+                    'border-radius:6px;'
+                    'font-weight:600;">'
+                    "Renew Subscription"
+                    "</a></p>"
+                    "</div>"
+                ),
             )
 
-            sub.renewal_reminder_5d_sent = True
-            sent_count += 1
+            if email_sent:
+                subscription.renewal_reminder_5d_sent = True
+                sent_count += 1
+            else:
+                failed_count += 1
 
-        # 2-day reminder
-        elif days_remaining <= 2 and days_remaining >= 0 and not sub.renewal_reminder_2d_sent:
-            send_email(
-                to_email=user.email,
-                subject="Final Reminder: Your FAFL Subscription Is Expiring",
-                plain_body=f"""
-Hi {user.full_name},
-
-Your Foreign A Foot Logistics subscription expires in {days_remaining} day(s).
-
-Please renew to avoid interruption to your subscription benefits.
-
-Login here:
-https://app.faflcourier.com/customer/subscriptions
-
-— Foreign A Foot Logistics Limited
-""".strip(),
-                html_body=f"""
-<p>Hi {user.full_name},</p>
-
-<p>Your <strong>Foreign A Foot Logistics</strong> subscription expires in <strong>{days_remaining} day(s)</strong>.</p>
-
-<p>Please renew to avoid interruption to your subscription benefits.</p>
-
-<p>
-  <a href="https://app.faflcourier.com/customer/subscriptions"
-     style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
-    Renew Subscription
-  </a>
-</p>
-""".strip(),
-                recipient_user_id=user.id,
+        # -------------------------------------------------
+        # Two-day/final reminder
+        # Sends once when 0–2 days remain.
+        # -------------------------------------------------
+        elif (
+            0 <= days_remaining <= 2
+            and not subscription.renewal_reminder_2d_sent
+        ):
+            email_sent = send_subscription_email(
+                subscription=subscription,
+                user=user,
+                subject=(
+                    "Final Reminder: Your FAFL "
+                    "Subscription Is Expiring"
+                ),
+                plain_body=(
+                    f"Hi {customer_name},\n\n"
+                    "Your Foreign A Foot Logistics "
+                    f"subscription expires in "
+                    f"{days_remaining} day(s).\n\n"
+                    "Please renew to avoid interruption "
+                    "to your subscription benefits.\n\n"
+                    "Login here:\n"
+                    "https://app.faflcourier.com/"
+                    "customer/subscriptions\n\n"
+                    "— Foreign A Foot Logistics Limited"
+                ),
+                html_body=(
+                    '<div style="font-family:Arial,'
+                    'sans-serif;line-height:1.6;">'
+                    f"<p>Hi {customer_name},</p>"
+                    "<p>Your <strong>Foreign A Foot "
+                    "Logistics</strong> subscription "
+                    f"expires in <strong>{days_remaining} "
+                    "day(s)</strong>.</p>"
+                    "<p>Please renew to avoid interruption "
+                    "to your subscription benefits.</p>"
+                    '<p><a href="https://app.'
+                    'faflcourier.com/customer/'
+                    'subscriptions" '
+                    'style="background:#4A148C;'
+                    'color:#fff;padding:12px 18px;'
+                    'text-decoration:none;'
+                    'border-radius:6px;'
+                    'font-weight:600;">'
+                    "Renew Subscription"
+                    "</a></p>"
+                    "</div>"
+                ),
             )
 
-            sub.renewal_reminder_2d_sent = True
-            sent_count += 1
+            if email_sent:
+                subscription.renewal_reminder_2d_sent = True
+                sent_count += 1
+            else:
+                failed_count += 1
 
-        # Expired notice
-        elif days_remaining < 0 and not sub.expiry_notice_sent:
-            sub.status = "expired"
-            sub.renewal_reminder_5d_sent = True
-            sub.renewal_reminder_2d_sent = True
+    try:
+        db.session.commit()
 
-            send_email(
-                to_email=user.email,
-                subject="Your FAFL Subscription Has Expired",
-                plain_body=f"""
-Hi {user.full_name},
+    except Exception as error:
+        db.session.rollback()
 
-Your Foreign A Foot Logistics subscription has expired.
+        current_app.logger.exception(
+            "Saving subscription reminder results failed"
+        )
 
-Normal package pricing now applies. You may renew anytime from your dashboard.
+        flash(
+            f"Subscription reminders could not be saved: "
+            f"{error}",
+            "danger",
+        )
 
-Login here:
-https://app.faflcourier.com/customer/subscriptions
-
-— Foreign A Foot Logistics Limited
-""".strip(),
-                html_body=f"""
-<p>Hi {user.full_name},</p>
-
-<p>Your <strong>Foreign A Foot Logistics</strong> subscription has expired.</p>
-
-<p>Normal package pricing now applies. You may renew anytime from your dashboard.</p>
-
-<p>
-  <a href="https://app.faflcourier.com/customer/subscriptions"
-     style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
-    Renew Subscription
-  </a>
-</p>
-""".strip(),
-                recipient_user_id=user.id,
+        return redirect(
+            url_for(
+                "accounts_profiles.admin_subscriptions"
             )
+        )
 
-            sub.expiry_notice_sent = True
-            sent_count += 1
+    flash(
+        (
+            "Subscription reminders processed. "
+            f"Emails sent: {sent_count}. "
+            f"Expired: {expired_count}. "
+            f"Email failures: {failed_count}."
+        ),
+        (
+            "success"
+            if failed_count == 0
+            else "warning"
+        ),
+    )
 
-    db.session.commit()
-
-    flash(f"Processed subscription reminders. Emails sent: {sent_count}", "success")
-    return redirect(url_for("accounts_profiles.admin_subscriptions"))
+    return redirect(
+        url_for(
+            "accounts_profiles.admin_subscriptions"
+        )
+    )
 
 
 @accounts_bp.route("/audit-logs")

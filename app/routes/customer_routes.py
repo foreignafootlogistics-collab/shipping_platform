@@ -83,6 +83,37 @@ DELIVERY_FEE_AMOUNT = Decimal("1000.00")
 DELIVERY_FEE_CURRENCY = "JMD"
 
 
+def _subscription_package_label(package):
+    result = (
+        getattr(package, "subscription_result", None)
+        or ""
+    ).strip().lower()
+
+    is_applied = bool(
+        getattr(package, "subscription_applied", False)
+    )
+
+    if is_applied and result in (
+        "subscription_applied",
+        "already_applied",
+    ):
+        return "Subscription Covered"
+
+    labels = {
+        "subscription_exhausted": "Subscriber Rate",
+        "subscription_allowance_exceeded": (
+            "Insufficient Remaining Subscription Allowance"
+        ),
+        "package_over_plan_limit": (
+            "Package Exceeds Plan Weight Limit"
+        ),
+        "subscription_error": (
+            "Subscription Review Required"
+        ),
+    }
+
+    return labels.get(result, "")
+
 
 def _static_image_data_uri(filename: str):
     """
@@ -301,7 +332,9 @@ def customer_dashboard():
 
         payments_list = [
             p for p in (getattr(inv, "payments", None) or [])
-            if getattr(p, "status", "completed") == "completed"
+            if (
+                getattr(p, "status", "completed") or "completed"
+            ).strip().lower() in ("completed", "settled")
             and getattr(
                 p,
                 "transaction_type",
@@ -1186,17 +1219,40 @@ def transactions_all():
         if m == "refund":
             return "Refund"
 
+        if m in (
+            "bank transfer / cash",
+            "subscription upgrade",
+        ):
+            return "Subscription Payment"
+
+        if m == "admin waiver":
+            return "Complimentary"
+
+        if m == "subscription refund":
+            return "Subscription Refund"
+
+        if m == "admin override":
+            return "Admin Adjustment"
+
         return m.title() if m else ""
 
     def transaction_label(tx_type):
         labels = {
             "invoice_payment": "Invoice Payment",
             "subscription_payment": "Subscription Payment",
+            "subscription_upgrade_payment": "Subscription Upgrade",
+            "subscription_waiver": "Complimentary Subscription",
+            "subscription_refund": "Subscription Refund",
+            "subscription_cancel_override": "Subscription Cancellation",
             "delivery_payment": "Delivery Payment",
             "package_refund": "Package Refund",
             "delivery_refund": "Delivery Refund",
         }
-        return labels.get(tx_type, "Transaction")
+
+        return labels.get(
+            (tx_type or "").strip().lower(),
+            "Transaction",
+        )
 
     rows = []
 
@@ -1208,9 +1264,27 @@ def transactions_all():
         inv_total = _num(getattr(inv, "grand_total", getattr(inv, "subtotal", 0)))
 
         payments_list = [
-            p for p in (getattr(inv, "payments", None) or [])
-            if (getattr(p, "transaction_type", "invoice_payment") in ("invoice_payment", "subscription_payment", "subscription_upgrade_payment"))
-            and getattr(p, "status", "completed") == "completed"
+            p
+            for p in (
+                getattr(inv, "payments", None) or []
+            )
+            if (
+                getattr(
+                    p,
+                    "transaction_type",
+                    "invoice_payment",
+                )
+                in (
+                    "invoice_payment",
+                    "subscription_payment",
+                    "subscription_upgrade_payment",
+                    "subscription_waiver",
+                )
+            )
+            and (
+                getattr(p, "status", "completed") or "completed"
+            ).strip().lower()
+            in ("completed", "settled")
         ]
 
         paid_sum = sum(_num(getattr(p, "amount_jmd", 0)) for p in payments_list)
@@ -1285,7 +1359,11 @@ def transactions_all():
 
             if inv:
                 reference_sub = f"{transaction_label(tx_type)} • {inv.invoice_number or f'INV-{inv.id}'}"
-        elif tx_type == "subscription_payment":
+        elif tx_type in (
+            "subscription_payment",
+            "subscription_upgrade_payment",
+            "subscription_waiver",
+        ):
             inv = Invoice.query.filter_by(
                 id=p.invoice_id,
                 user_id=current_user.id
@@ -1573,14 +1651,7 @@ def bill_invoice_modal(invoice_id):
             "discount_due": _num(getattr(p, "discount_due", 0)),
             "subscription_applied": bool(getattr(p, "subscription_applied", False)),
             "subscription_result": getattr(p, "subscription_result", None),
-            "subscription_label": (
-                "Subscription Covered"
-                if bool(getattr(p, "subscription_applied", False))
-                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
-                else "Subscriber Rate"
-                if (getattr(p, "subscription_result", "") or "") == "subscription_exhausted"
-                else ""
-            ),
+            "subscription_label": _subscription_package_label(p),
         })
 
     # ---------------------------------------
@@ -1638,8 +1709,18 @@ def bill_invoice_modal(invoice_id):
 
     pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
     payments_total = (
-        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
-        .filter(Payment.invoice_id == inv.id)
+        db.session.query(
+            func.coalesce(func.sum(pay_col), 0.0)
+        )
+        .filter(
+            Payment.invoice_id == inv.id,
+            or_(
+                Payment.status.is_(None),
+                func.lower(Payment.status).in_(
+                    ("completed", "settled")
+                ),
+            ),
+        )
         .scalar()
         or 0.0
     )
@@ -1653,12 +1734,17 @@ def bill_invoice_modal(invoice_id):
         amount_due = 0.0
 
     dt = inv.date_issued or inv.date_submitted or inv.created_at
+    dt_jamaica = to_jamaica(dt) if dt else None
 
     invoice_dict = {
         "id": inv.id,
         "number": inv.invoice_number or f"INV-{inv.id}",
-        "date": dt,
-        "date_display": dt.strftime("%b %d, %Y %I:%M %p") if dt else "",
+        "date": dt_jamaica,
+        "date_display": (
+            dt_jamaica.strftime("%b %d, %Y %I:%M %p")
+            if dt_jamaica
+            else ""
+        ),
         "status": (getattr(inv, "status", "") or "").strip() or ("Paid" if amount_due <= 0 else "Pending"),
         "customer_code": current_user.registration_number,
         "customer_name": current_user.full_name,
@@ -1771,12 +1857,59 @@ def receipt_pdf_inline(payment_id):
             "caf": _num(getattr(pkg, "caf", 0)),
             "gct": _num(getattr(pkg, "gct", 0)),
             "discount_due": _num(getattr(pkg, "discount_due", 0)),
+            "subscription_applied": bool(
+                getattr(p, "subscription_applied", False)
+            ),
+            "subscription_result": getattr(
+                p,
+                "subscription_result",
+                None,
+            ),
+            "subscription_label": _subscription_package_label(p),
         })
 
-    subtotal = _num(getattr(inv, "subtotal", None)) or _num(getattr(inv, "grand_total", 0)) or _num(getattr(inv, "amount", 0))
-    discount_total = _num(getattr(inv, "discount_total", 0))
-    payments_total = _num(getattr(p, "amount_jmd", 0))
-    balance = max((subtotal - discount_total) - payments_total, 0.0)
+    subtotal = (
+        _num(getattr(inv, "subtotal", None)) 
+        or _num(getattr(inv, "grand_total", 0))
+        or _num(getattr(inv, "amount", 0))
+    )
+    discount_total = _num(
+        getattr(inv, "discount_total", 0)
+    )
+    pay_col = (
+        Payment.amount_jmd
+        if hasattr(Payment, "amount_jmd")
+        else Payment.amount
+    )
+    payments_total = (
+        db.session.query(
+            func.coalesce(func.sum(pay_col), 0.0)
+        )
+        .filter(
+            Payment.invoice_id == inv.id,
+            Payment.id <= p.id,
+            or_(
+                Payment.status.is_(None),
+                func.lower(Payment.status).in_(
+                    ("completed", "settled")
+                ),
+            ),
+        )
+        .scalar()
+        or 0.0
+    )
+
+    invoice_total = (
+        _num(getattr(inv, "grand_total", None))
+        or subtotal
+    )
+
+    balance = max(
+        invoice_total
+        - discount_total
+        - float(payments_total),
+        0.0,
+    )
 
     invoice_dict = {
         "id": inv.id,
@@ -1905,6 +2038,7 @@ def view_invoice_customer(invoice_id):
         else:
             freight = _num(getattr(p, "freight_fee", getattr(p, "freight", 0)))
             storage = _num(getattr(p, "storage_fee", getattr(p, "handling", 0)))
+        
 
         packages.append({
             "house_awb": p.house_awb or "",
@@ -1921,6 +2055,15 @@ def view_invoice_customer(invoice_id):
             "caf": _num(getattr(p, "caf", 0)),
             "gct": _num(getattr(p, "gct", 0)),
             "discount_due": _num(getattr(p, "discount_due", 0)),
+            "subscription_applied": bool(
+                getattr(p, "subscription_applied", False)
+            ),
+            "subscription_result": getattr(
+                p,
+                "subscription_result",
+                None,
+            ),
+            "subscription_label": _subscription_package_label(p),
         })
 
     shop_request = PurchaseRequest.query.filter_by(invoice_id=inv.id).first()
@@ -1955,8 +2098,18 @@ def view_invoice_customer(invoice_id):
 
     pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
     payments_total = (
-        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
-        .filter(Payment.invoice_id == inv.id)
+        db.session.query(
+            func.coalesce(func.sum(pay_col), 0.0)
+        )
+        .filter(
+            Payment.invoice_id == inv.id,
+            or_(
+                Payment.status.is_(None),
+                func.lower(Payment.status).in_(
+                    ("completed", "settled")
+                ),
+            ),
+        )
         .scalar()
         or 0.0
     )
@@ -2048,6 +2201,15 @@ def invoice_pdf(invoice_id):
             "caf":             _num(getattr(p, "caf", 0)),
             "gct":             _num(getattr(p, "gct", 0)),
             "discount_due":    _num(getattr(p, "discount_due", 0)),
+            "subscription_applied": bool(
+                getattr(p, "subscription_applied", False)
+            ),
+            "subscription_result": getattr(
+                p,
+                "subscription_result",
+                None,
+            ),
+            "subscription_label": _subscription_package_label(p),
         })
 
     subtotal = (
@@ -2059,8 +2221,18 @@ def invoice_pdf(invoice_id):
 
     pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
     payments_total = (
-        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
-        .filter(Payment.invoice_id == inv.id)
+        db.session.query(
+            func.coalesce(func.sum(pay_col), 0.0)
+        )
+        .filter(
+            Payment.invoice_id == inv.id,
+            or_(
+                Payment.status.is_(None),
+                func.lower(Payment.status).in_(
+                    ("completed", "settled")
+                ),
+            ),
+        )
         .scalar()
         or 0.0
     )
@@ -3286,28 +3458,77 @@ def security():
 @customer_bp.route('/authorized-pickup', methods=['GET'])
 @login_required
 def authorized_pickup_overview():
-    pickups = AuthorizedPickup.query.filter_by(user_id=current_user.id).all()
-    return render_template('customer/authorized_pickup_overview.html', pickups=pickups)
+    authorized_people = (
+        AuthorizedPickup.query
+        .filter_by(user_id=current_user.id)
+        .order_by(AuthorizedPickup.id.desc())
+        .all()
+    )
+
+    return render_template(
+        'customer/authorized_pickup_overview.html',
+        authorized_people=authorized_people
+    )
 
 
 @customer_bp.route('/authorized-pickup/add', methods=['POST'])
 @login_required
 def authorized_pickup_add():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
+
+    full_name = (data.get('full_name') or '').strip()
+    email = (data.get('email') or '').strip()
+    phone_number = (
+        data.get('phone_number')
+        or data.get('phone')
+        or ''
+    ).strip()
+
+    if not full_name:
+        return jsonify({
+            'status': 'error',
+            'message': 'Full name is required.'
+        }), 400
+
+    if not phone_number:
+        return jsonify({
+            'status': 'error',
+            'message': 'Phone number is required.'
+        }), 400
+
     try:
         new_person = AuthorizedPickup(
             user_id=current_user.id,
-            full_name=data['full_name'],
-            email=data.get('email'),
-            phone_number=data.get('phone_number')
+            full_name=full_name,
+            email=email or None,
+            phone_number=phone_number
         )
+
         db.session.add(new_person)
         db.session.commit()
-        return jsonify({'success': True, 'message': 'Authorized person added successfully'})
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Authorized person added successfully.',
+            'person': {
+                'id': new_person.id,
+                'full_name': new_person.full_name,
+                'email': new_person.email or '',
+                'phone': new_person.phone_number
+            }
+        }), 201
+
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 400
 
+        current_app.logger.exception(
+            'Failed to add authorized pickup person'
+        )
+
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 400
 
 @customer_bp.route('/schedule-pickup', methods=['GET'])
 @login_required
@@ -4224,134 +4445,457 @@ def privacy():
 @customer_bp.route("/subscriptions")
 @login_required
 def customer_subscriptions():
-    from app.models import SubscriptionPlan, Subscription, SubscriptionInvite
-    from app.utils.subscription_utils import get_subscription_summary, get_active_subscription
+    from datetime import datetime, timezone
+
+    from app.models import (
+        Settings,
+        Subscription,
+        SubscriptionInvite,
+        SubscriptionPlan,
+    )
+    from app.utils.subscription_utils import (
+        get_active_subscription,
+        get_subscription_summary,
+    )
 
     plans = (
         SubscriptionPlan.query
         .filter_by(is_active=True)
-        .order_by(SubscriptionPlan.price_usd.asc())
+        .order_by(
+            SubscriptionPlan.price_usd.asc(),
+            SubscriptionPlan.id.asc(),
+        )
         .all()
     )
 
-    subscription_summary = get_subscription_summary(current_user.id)
+    active_subscription = (
+        get_active_subscription(
+            current_user.id
+        )
+    )
+
+    subscription_summary = (
+        get_subscription_summary(
+            current_user.id
+        )
+    )
 
     pending_subscription = (
         Subscription.query
-        .filter_by(user_id=current_user.id, status="pending_payment")
-        .order_by(Subscription.created_at.desc())
+        .filter(
+            Subscription.user_id
+            == current_user.id,
+            Subscription.status
+            == "pending_payment",
+        )
+        .order_by(
+            Subscription.created_at.desc(),
+            Subscription.id.desc(),
+        )
         .first()
     )
 
     pending_invites = []
 
-    active_subscription = get_active_subscription(current_user.id)
-
+    # Only the Family-plan owner can manage invitations.
     if (
         active_subscription
         and active_subscription.plan
         and active_subscription.plan.is_family_plan
-        and active_subscription.user_id == current_user.id
+        and active_subscription.user_id
+        == current_user.id
     ):
-        pending_invites = (
+        now = datetime.now(timezone.utc)
+
+        possible_invites = (
             SubscriptionInvite.query
             .filter_by(
-                subscription_id=active_subscription.id,
-                status="pending"
+                subscription_id=(
+                    active_subscription.id
+                ),
+                status="pending",
             )
-            .order_by(SubscriptionInvite.created_at.desc())
+            .order_by(
+                SubscriptionInvite.created_at.desc(),
+                SubscriptionInvite.id.desc(),
+            )
             .all()
         )
+
+        invites_changed = False
+
+        for invite in possible_invites:
+            expires_at = invite.expires_at
+
+            if (
+                expires_at
+                and expires_at.tzinfo is None
+            ):
+                expires_at = expires_at.replace(
+                    tzinfo=timezone.utc
+                )
+
+            if expires_at and expires_at <= now:
+                invite.status = "expired"
+                invites_changed = True
+            else:
+                pending_invites.append(invite)
+
+        if invites_changed:
+            db.session.commit()
+
+    # Use the current system exchange rate instead
+    # of hardcoding JMD 162 in the HTML.
+    settings = db.session.get(Settings, 1)
+
+    try:
+        subscription_exchange_rate = float(
+            getattr(
+                settings,
+                "usd_to_jmd",
+                162,
+            )
+            or 162
+        )
+    except (TypeError, ValueError):
+        subscription_exchange_rate = 162.0
+
+    if subscription_exchange_rate <= 0:
+        subscription_exchange_rate = 162.0
 
     return render_template(
         "customer/subscriptions.html",
         plans=plans,
+        active_subscription=active_subscription,
         subscription_summary=subscription_summary,
         pending_subscription=pending_subscription,
         pending_invites=pending_invites,
+        subscription_exchange_rate=(
+            subscription_exchange_rate
+        ),
+        to_jamaica=to_jamaica,
     )
 
-
-@customer_bp.route("/subscriptions/activate/<int:plan_id>", methods=["POST"])
+@customer_bp.route(
+    "/subscriptions/activate/<int:plan_id>",
+    methods=["POST"]
+)
 @login_required
 def activate_subscription(plan_id):
-    from app.models import SubscriptionPlan, Subscription
     from datetime import datetime, timedelta
 
-    plan = SubscriptionPlan.query.get_or_404(plan_id)
+    from app.models import (
+        SubscriptionPlan,
+        Subscription,
+    )
+    from app.utils.subscription_utils import (
+        get_active_subscription,
+    )
 
-    active_sub = (
+    plan = db.session.get(SubscriptionPlan, plan_id)
+
+    if not plan or not plan.is_active:
+        flash(
+            "This subscription plan is no longer available.",
+            "warning",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    # This detects a subscription owned by the customer or a Family
+    # subscription they have joined.
+    current_subscription = get_active_subscription(
+        current_user.id
+    )
+
+    if current_subscription:
+        if (
+            current_subscription.user_id == current_user.id
+            and current_subscription.plan_id == plan.id
+        ):
+            flash(
+                "You are already using this subscription plan.",
+                "info",
+            )
+        elif current_subscription.user_id != current_user.id:
+            flash(
+                "You already belong to an active Family subscription. "
+                "You cannot select another plan at this time.",
+                "warning",
+            )
+        else:
+            flash(
+                "You already have an active subscription. "
+                "Please contact us if you want to upgrade your plan.",
+                "warning",
+            )
+
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    pending_subscription = (
         Subscription.query
-        .filter_by(user_id=current_user.id, status="active")
+        .filter(
+            Subscription.user_id == current_user.id,
+            Subscription.status == "pending_payment",
+        )
+        .order_by(
+            Subscription.created_at.desc(),
+            Subscription.id.desc(),
+        )
         .first()
     )
 
-    if active_sub and active_sub.plan_id == plan.id:
-        flash("You are already on this plan.", "info")
-        return redirect(url_for("customer.customer_subscriptions"))
+    if pending_subscription:
+        if pending_subscription.plan_id == plan.id:
+            message = (
+                f"Your {plan.name} subscription is already awaiting "
+                "payment confirmation."
+            )
+        else:
+            message = (
+                "You already have a subscription awaiting payment. "
+                "Please complete the payment or contact us to change "
+                "the selected plan."
+            )
 
-    pending_sub = (
-        Subscription.query
-        .filter_by(user_id=current_user.id, status="pending_payment")
-        .first()
-    )
+        flash(message, "warning")
 
-    if pending_sub:
-        flash("You already have a pending subscription payment. Please complete payment or contact us.", "warning")
-        return redirect(url_for("customer.customer_subscriptions"))
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
 
-    sub = Subscription(
+    now = datetime.utcnow()
+
+    subscription = Subscription(
         user_id=current_user.id,
         plan_id=plan.id,
-        start_date=datetime.utcnow(),
-        end_date=datetime.utcnow() + timedelta(days=30),
-        status="pending_payment"
+
+        # These fields cannot be null in the current database.
+        # The administrator activation route will reset them so that
+        # the customer's full 30 days begins upon payment confirmation.
+        start_date=now,
+        end_date=now + timedelta(days=30),
+
+        status="pending_payment",
     )
 
-    db.session.add(sub)
+    db.session.add(subscription)
     db.session.commit()
 
-    flash(f"{plan.name} plan selected. Please complete payment so we can activate it.", "info")
-    return redirect(url_for("customer.customer_subscriptions"))
+    flash(
+        f"{plan.name} plan selected. Please complete payment so "
+        "we can activate your subscription.",
+        "info",
+    )
+
+    return redirect(
+        url_for("customer.customer_subscriptions")
+    )
 
 
-@customer_bp.route("/subscriptions/invite-family", methods=["POST"])
+@customer_bp.route(
+    "/subscriptions/invite-family",
+    methods=["POST"]
+)
 @login_required
 def invite_family_member():
-    email = (request.form.get("email") or "").strip().lower()
+    from datetime import datetime, timedelta, timezone
+    import secrets
+
+    from app.models import (
+        SubscriptionInvite,
+        SubscriptionMember,
+        User,
+    )
+    from app.utils.subscription_utils import (
+        get_active_subscription,
+    )
+
+    email = (
+        request.form.get("email") or ""
+    ).strip().lower()
 
     if not email:
         flash("Please enter an email address.", "warning")
-        return redirect(url_for("customer.customer_subscriptions"))
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    if email == (current_user.email or "").strip().lower():
+        flash(
+            "You are already the owner of this Family plan.",
+            "info",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
 
     subscription = get_active_subscription(current_user.id)
 
-    if not subscription or not subscription.plan.is_family_plan:
-        flash("You must have an active Family plan to invite members.", "danger")
-        return redirect(url_for("customer.customer_subscriptions"))
+    if (
+        not subscription
+        or not subscription.plan
+        or not subscription.plan.is_family_plan
+    ):
+        flash(
+            "You must have a current Family plan to invite members.",
+            "danger",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    if subscription.status != "active":
+        flash(
+            "New members cannot be invited after the Family plan "
+            "allowance has been exhausted.",
+            "warning",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
 
     if subscription.user_id != current_user.id:
-        flash("Only the Family plan owner can invite members.", "danger")
-        return redirect(url_for("customer.customer_subscriptions"))
+        flash(
+            "Only the Family plan owner can invite members.",
+            "danger",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
 
-    active_member_count = SubscriptionMember.query.filter_by(
-        subscription_id=subscription.id,
-        status="active"
-    ).count()
+    now = datetime.now(timezone.utc)
 
-    if active_member_count >= 4:
-        flash("Your Family plan already has the maximum 4 persons.", "warning")
-        return redirect(url_for("customer.customer_subscriptions"))
+    # Mark old pending invitations as expired.
+    pending_invites = (
+        SubscriptionInvite.query
+        .filter_by(
+            subscription_id=subscription.id,
+            status="pending",
+        )
+        .all()
+    )
 
-    existing_invite = SubscriptionInvite.query.filter_by(
-        subscription_id=subscription.id,
-        email=email,
-        status="pending"
-    ).first()
+    for pending_invite in pending_invites:
+        expires_at = pending_invite.expires_at
+
+        if expires_at and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(
+                tzinfo=timezone.utc
+            )
+
+        if expires_at and expires_at <= now:
+            pending_invite.status = "expired"
+
+    db.session.flush()
+
+    # Prevent inviting somebody who is already in this plan.
+    existing_user = (
+        User.query
+        .filter(User.email.ilike(email))
+        .first()
+    )
+
+    if existing_user:
+        existing_member = (
+            SubscriptionMember.query
+            .filter_by(
+                subscription_id=subscription.id,
+                user_id=existing_user.id,
+                status="active",
+            )
+            .first()
+        )
+
+        if (
+            existing_user.id == subscription.user_id
+            or existing_member
+        ):
+            flash(
+                "This person is already part of your Family plan.",
+                "info",
+            )
+            return redirect(
+                url_for("customer.customer_subscriptions")
+            )
+
+        other_subscription = get_active_subscription(
+            existing_user.id
+        )
+
+        if other_subscription:
+            flash(
+                "This person already has or belongs to another "
+                "current subscription.",
+                "warning",
+            )
+            return redirect(
+                url_for("customer.customer_subscriptions")
+            )
+
+    existing_invite = (
+        SubscriptionInvite.query
+        .filter_by(
+            subscription_id=subscription.id,
+            email=email,
+            status="pending",
+        )
+        .first()
+    )
 
     if existing_invite:
-        flash("An invite is already pending for this email.", "info")
-        return redirect(url_for("customer.customer_subscriptions"))
+        flash(
+            "An invitation is already pending for this email.",
+            "info",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    max_users = max(
+        int(subscription.plan.max_users or 1),
+        1,
+    )
+
+    # The owner always occupies one space, even if an older Family
+    # subscription is missing its owner membership record.
+    active_member_ids = {
+        member.user_id
+        for member in SubscriptionMember.query.filter_by(
+            subscription_id=subscription.id,
+            status="active",
+        ).all()
+    }
+
+    occupied_user_ids = {
+        subscription.user_id,
+        *active_member_ids,
+    }
+
+    active_pending_invites = (
+        SubscriptionInvite.query
+        .filter_by(
+            subscription_id=subscription.id,
+            status="pending",
+        )
+        .count()
+    )
+
+    if (
+        len(occupied_user_ids) + active_pending_invites
+        >= max_users
+    ):
+        flash(
+            f"Your Family plan allows a maximum of "
+            f"{max_users} persons, including the owner.",
+            "warning",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
 
     token = secrets.token_urlsafe(32)
 
@@ -4361,134 +4905,327 @@ def invite_family_member():
         token=token,
         status="pending",
         invited_by_user_id=current_user.id,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        expires_at=now + timedelta(days=7),
     )
 
     db.session.add(invite)
     db.session.commit()
 
-    invite_url = url_for("customer.accept_subscription_invite", token=token, _external=True)
+    invite_url = url_for(
+        "customer.accept_subscription_invite",
+        token=token,
+        _external=True,
+    )
 
-    subject = "You’ve been invited to join a Foreign A Foot Family Plan"
+    subject = (
+        "You’ve been invited to join a Foreign A Foot Family Plan"
+    )
 
     plain_body = f"""
-    Hi,
+Hi,
 
-    {current_user.full_name} invited you to join their Foreign A Foot Family Plan.
+{current_user.full_name} invited you to join their Foreign A Foot Family Plan.
 
-    Accept invite here:
-    {invite_url}
+Accept your invitation here:
+{invite_url}
 
-    If you do not have an account, please register first using this email, then accept the invite.
+If you do not have an account, register first using this email address and then accept the invitation.
 
-    This invite expires in 7 days.
+This invitation expires in 7 days.
 
-    Foreign A Foot Logistics
-    """.strip()
+Foreign A Foot Logistics
+""".strip()
 
     html_body = f"""
-    <h2 style="margin:0 0 10px 0; color:#4a148c;">
-      You’re invited to join a Family Plan
-    </h2>
+<h2 style="margin:0 0 10px;color:#4a148c;">
+  You’re invited to join a Family Plan
+</h2>
 
-    <p style="margin:0 0 12px 0;">
-      <strong>{current_user.full_name}</strong> invited you to join their
-      <strong>Foreign A Foot Family Plan</strong>.
-    </p>
+<p style="margin:0 0 12px;">
+  <strong>{current_user.full_name}</strong> invited you to join their
+  <strong>Foreign A Foot Family Plan</strong>.
+</p>
 
-    <p style="margin:16px 0;">
-      <a href="{invite_url}"
-         style="background:#4A148C;color:#fff;padding:12px 18px;text-decoration:none;border-radius:6px;font-weight:600;">
-        Accept Invite
-      </a>
-    </p>
+<p style="margin:16px 0;">
+  <a href="{invite_url}"
+     style="background:#4a148c;color:#fff;padding:12px 18px;
+            text-decoration:none;border-radius:6px;font-weight:600;">
+    Accept Invitation
+  </a>
+</p>
 
-    <p style="margin:0 0 12px 0;">
-      If you do not have an account, please register first using this email, then accept the invite.
-    </p>
+<p style="margin:0 0 12px;">
+  If you do not have an account, register first using this email
+  address and then accept the invitation.
+</p>
 
-    <p style="font-size:13px;color:#6b7280;">
-      This invite expires in 7 days.
-    </p>
-    """.strip()
+<p style="font-size:13px;color:#6b7280;">
+  This invitation expires in 7 days.
+</p>
+""".strip()
 
     try:
-
         email_utils.send_email(
             to_email=email,
             subject=subject,
             plain_body=plain_body,
             html_body=html_body,
-            reply_to=email_utils.EMAIL_FROM or email_utils.EMAIL_ADDRESS,
-        )    
-        flash("Family invite sent successfully.", "success")
-    except Exception:
-        current_app.logger.exception("[FAMILY INVITE EMAIL FAILED]")
-        flash("Invite created, but email failed to send.", "warning")
+            reply_to=(
+                email_utils.EMAIL_FROM
+                or email_utils.EMAIL_ADDRESS
+            ),
+        )
 
-    return redirect(url_for("customer.customer_subscriptions"))
+        flash(
+            "Family invitation sent successfully.",
+            "success",
+        )
+
+    except Exception:
+        current_app.logger.exception(
+            "[FAMILY INVITE EMAIL FAILED]"
+        )
+
+        flash(
+            "The invitation was created, but the email "
+            "could not be sent.",
+            "warning",
+        )
+
+    return redirect(
+        url_for("customer.customer_subscriptions")
+    )
 
 
 @customer_bp.route("/subscriptions/invite/<token>")
 @login_required
 def accept_subscription_invite(token):
-    invite = SubscriptionInvite.query.filter_by(token=token).first_or_404()
+    from datetime import datetime, timezone
 
-    now = datetime.now(timezone.utc)
+    from app.models import (
+        SubscriptionInvite,
+        SubscriptionMember,
+    )
+    from app.utils.subscription_utils import (
+        get_active_subscription,
+    )
 
-    expires_at = invite.expires_at
-    if expires_at and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    invite = (
+        SubscriptionInvite.query
+        .filter_by(token=token)
+        .first_or_404()
+    )
+
+    now_aware = datetime.now(timezone.utc)
+    now_naive = datetime.utcnow()
 
     if invite.status != "pending":
-        flash("This invite is no longer active.", "warning")
-        return redirect(url_for("customer.customer_subscriptions"))
+        flash(
+            "This invitation is no longer active.",
+            "warning",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
 
-    if expires_at and expires_at < now:
+    expires_at = invite.expires_at
+
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(
+            tzinfo=timezone.utc
+        )
+
+    if expires_at and expires_at <= now_aware:
         invite.status = "expired"
         db.session.commit()
-        flash("This invite has expired.", "warning")
-        return redirect(url_for("customer.customer_subscriptions"))
 
-    if current_user.email.lower() != invite.email.lower():
-        flash("This invite was sent to a different email address.", "danger")
-        return redirect(url_for("customer.customer_subscriptions"))
+        flash(
+            "This invitation has expired.",
+            "warning",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
 
-    active_member_count = SubscriptionMember.query.filter_by(
-        subscription_id=invite.subscription_id,
-        status="active"
-    ).count()
+    current_email = (
+        current_user.email or ""
+    ).strip().lower()
 
-    if active_member_count >= 4:
-        flash("This Family plan is already full.", "warning")
-        return redirect(url_for("customer.customer_subscriptions"))
+    invited_email = (
+        invite.email or ""
+    ).strip().lower()
 
-    existing_membership = SubscriptionMember.query.filter_by(
-        user_id=current_user.id,
-        status="active"
-    ).first()
+    if current_email != invited_email:
+        flash(
+            "This invitation was sent to a different email address.",
+            "danger",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
 
-    if existing_membership:
-        flash("You already belong to an active subscription.", "warning")
-        return redirect(url_for("customer.customer_subscriptions"))
+    subscription = invite.subscription
 
-    member = SubscriptionMember(
-        subscription_id=invite.subscription_id,
-        user_id=current_user.id,
-        role="member",
-        status="active",
+    if (
+        not subscription
+        or not subscription.plan
+        or not subscription.plan.is_family_plan
+    ):
+        invite.status = "cancelled"
+        db.session.commit()
+
+        flash(
+            "The Family subscription connected to this invitation "
+            "is no longer available.",
+            "warning",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    if subscription.status != "active":
+        invite.status = "cancelled"
+        db.session.commit()
+
+        flash(
+            "This Family subscription is no longer accepting members.",
+            "warning",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    if (
+        not subscription.start_date
+        or not subscription.end_date
+        or subscription.start_date > now_naive
+        or subscription.end_date < now_naive
+    ):
+        invite.status = "expired"
+        db.session.commit()
+
+        flash(
+            "This Family subscription has expired.",
+            "warning",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    if subscription.user_id == current_user.id:
+        invite.status = "cancelled"
+        db.session.commit()
+
+        flash(
+            "You are already the owner of this Family plan.",
+            "info",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    # Prevent a person from holding or belonging to another current
+    # subscription.
+    current_subscription = get_active_subscription(
+        current_user.id
     )
+
+    if current_subscription:
+        if current_subscription.id == subscription.id:
+            invite.status = "accepted"
+            invite.accepted_user_id = current_user.id
+            invite.accepted_at = now_aware
+            db.session.commit()
+
+            flash(
+                "You are already a member of this Family plan.",
+                "info",
+            )
+        else:
+            flash(
+                "You already have or belong to another current "
+                "subscription.",
+                "warning",
+            )
+
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    max_users = max(
+        int(subscription.plan.max_users or 1),
+        1,
+    )
+
+    active_member_ids = {
+        member.user_id
+        for member in SubscriptionMember.query.filter_by(
+            subscription_id=subscription.id,
+            status="active",
+        ).all()
+    }
+
+    # Count the owner even if an older subscription does not have a
+    # SubscriptionMember row for the owner.
+    occupied_user_ids = {
+        subscription.user_id,
+        *active_member_ids,
+    }
+
+    if len(occupied_user_ids) >= max_users:
+        invite.status = "cancelled"
+        db.session.commit()
+
+        flash(
+            "This Family plan has already reached its maximum "
+            "number of members.",
+            "warning",
+        )
+        return redirect(
+            url_for("customer.customer_subscriptions")
+        )
+
+    # The unique constraint prevents creating a second membership row
+    # for the same user and subscription. Reactivate an older removed
+    # membership when applicable.
+    membership = (
+        SubscriptionMember.query
+        .filter_by(
+            subscription_id=subscription.id,
+            user_id=current_user.id,
+        )
+        .first()
+    )
+
+    if membership:
+        membership.role = "member"
+        membership.status = "active"
+        membership.removed_at = None
+        membership.added_at = now_aware
+    else:
+        membership = SubscriptionMember(
+            subscription_id=subscription.id,
+            user_id=current_user.id,
+            role="member",
+            status="active",
+            added_at=now_aware,
+        )
+        db.session.add(membership)
 
     invite.status = "accepted"
     invite.accepted_user_id = current_user.id
-    invite.accepted_at = now
+    invite.accepted_at = now_aware
 
-    db.session.add(member)
     db.session.commit()
 
-    flash("You have joined the Family plan successfully.", "success")
-    return redirect(url_for("customer.customer_subscriptions"))
+    flash(
+        "You have joined the Family plan successfully.",
+        "success",
+    )
 
+    return redirect(
+        url_for("customer.customer_subscriptions")
+    )
 
 
 

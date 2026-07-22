@@ -4507,18 +4507,26 @@ def add_discount(invoice_id):
 
     if new_due <= 0:
         inv.status = "paid"
-        inv.date_paid = datetime.utcnow()
+        inv.date_paid = datetime.now(timezone.utc)
 
         if previous_status != "paid":
-            mark_invoice_packages_delivered(inv.id)
-            for pkg in inv.packages:
-                pkg.status = "delivered"
+            lock_delivered_packages_for_invoice(
+                inv.id,
+                reason="Invoice fully settled after discount",
+                actor_admin_id=current_user.id,
+            )
 
     elif 0 < new_due < base_total_after:
         inv.status = "partial"
 
+        if hasattr(inv, "date_paid"):
+            inv.date_paid = None
+
     else:
         inv.status = "unpaid"
+
+        if hasattr(inv, "date_paid"):
+            inv.date_paid = None
 
     db.session.add(AuditLog(
         module="Finance",

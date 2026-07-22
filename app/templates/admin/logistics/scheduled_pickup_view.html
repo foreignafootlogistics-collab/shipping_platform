@@ -1,89 +1,252 @@
-{% extends 'layout_admin.html' %}
-{% block title %}Pickup #{{ pickup.id }}{% endblock %}
+{% extends "layout_admin.html" %}
+
+{% block title %}
+Pickup #{{ pickup.id }}
+{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid py-3">
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h2 class="mb-0">🏬 Pickup #{{ pickup.id }}</h2>
-            <div class="text-muted">Scheduled store pickup details</div>
+    <!-- Unified page header -->
+    <div class="d-flex flex-wrap justify-content-between
+           align-items-center gap-3 mb-4 shadow-sm" style="
+      background:#4a148c;
+      color:#fff;
+      border-radius:12px;
+      padding:20px;
+    ">
+        <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center justify-content-center" style="
+          width:44px;
+          height:44px;
+          border-radius:10px;
+          background:rgba(255,255,255,.15);
+        ">
+                <i class="bi bi-shop fs-4"></i>
+            </div>
+
+            <div>
+                <h3 class="mb-1 fw-bold">
+                    Pickup #{{ pickup.id }}
+                </h3>
+
+                <div style="opacity:.9;">
+                    Review the scheduled store pickup, customer and packages.
+                </div>
+            </div>
         </div>
 
-        <a href="{{ url_for('logistics.scheduled_pickups') }}" class="btn btn-outline-secondary">
+        <a href="{{ url_for('logistics.scheduled_pickups') }}" class="btn btn-light">
+            <i class="bi bi-arrow-left me-1"></i>
             Back to Pickups
         </a>
     </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-header text-white" style="background:#4a148c;">
+    <!-- Pickup information -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header text-white fw-semibold" style="background:#111827;">
+            <i class="bi bi-info-circle me-1"></i>
             Pickup Information
         </div>
 
         <div class="card-body">
-            <p><strong>Customer:</strong> {{ pickup.user.full_name if pickup.user else '—' }}</p>
-            <p><strong>Email:</strong> {{ pickup.user.email if pickup.user else '—' }}</p>
-            <p><strong>Registration #:</strong> {{ pickup.user.registration_number if pickup.user else '—' }}</p>
-            <p><strong>Pickup Date:</strong> {{ pickup.pickup_date.strftime('%Y-%m-%d') if pickup.pickup_date else '—'
-                }}</p>
-            <p><strong>Branch:</strong> {{ pickup.branch }}</p>
-            <p><strong>Authorized Person:</strong> {{ pickup.authorized_person or '—' }}</p>
-            <p><strong>Notes:</strong> {{ pickup.notes or '—' }}</p>
+            <div class="row g-3">
+                <div class="col-md-6 col-xl-4">
+                    <div class="text-muted small">Customer</div>
+                    <div class="fw-semibold">
+                        {{ pickup.user.full_name if pickup.user else "—" }}
+                    </div>
+                </div>
 
-            <p>
-                <strong>Status:</strong>
-                {% if pickup.status == "Scheduled" %}
-                <span class="badge bg-warning text-dark">Scheduled</span>
-                {% elif pickup.status == "Ready" %}
-                <span class="badge bg-success">Ready</span>
-                {% elif pickup.status == "Collected" %}
-                <span class="badge bg-primary">Collected</span>
-                {% elif pickup.status == "Cancelled" %}
-                <span class="badge bg-danger">Cancelled</span>
-                {% else %}
-                <span class="badge bg-secondary">{{ pickup.status }}</span>
-                {% endif %}
-            </p>
+                <div class="col-md-6 col-xl-4">
+                    <div class="text-muted small">Registration Number</div>
+                    <div class="fw-semibold">
+                        {{
+                        pickup.user.registration_number
+                        if pickup.user
+                        else "—"
+                        }}
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-xl-4">
+                    <div class="text-muted small">Email</div>
+                    <div class="fw-semibold">
+                        {{ pickup.user.email if pickup.user else "—" }}
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-xl-4">
+                    <div class="text-muted small">Pickup Date</div>
+                    <div class="fw-semibold">
+                        {{
+                        pickup.pickup_date.strftime("%b %d, %Y")
+                        if pickup.pickup_date
+                        else "—"
+                        }}
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-xl-4">
+                    <div class="text-muted small">Branch</div>
+                    <div class="fw-semibold">
+                        {{ pickup.branch or "—" }}
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-xl-4">
+                    <div class="text-muted small">Authorized Person</div>
+                    <div class="fw-semibold">
+                        {{ pickup.authorized_person or "Customer" }}
+                    </div>
+                </div>
+
+                <div class="col-md-6 col-xl-4">
+                    <div class="text-muted small">Status</div>
+
+                    {% set pickup_status = (pickup.status or "")|lower %}
+
+                    {% if pickup_status == "scheduled" %}
+                    <span class="badge bg-warning text-dark">
+                        Scheduled
+                    </span>
+
+                    {% elif pickup_status == "ready" %}
+                    <span class="badge bg-success">
+                        Ready
+                    </span>
+
+                    {% elif pickup_status == "collected" %}
+                    <span class="badge bg-primary">
+                        Collected
+                    </span>
+
+                    {% elif pickup_status == "cancelled" %}
+                    <span class="badge bg-danger">
+                        Cancelled
+                    </span>
+
+                    {% else %}
+                    <span class="badge bg-secondary">
+                        {{ pickup.status or "Unknown" }}
+                    </span>
+                    {% endif %}
+                </div>
+
+                <div class="col-12">
+                    <div class="text-muted small">Notes</div>
+                    <div class="fw-semibold">
+                        {{ pickup.notes or "No notes provided." }}
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-dark text-white">
-            Packages For Pickup
+    <!-- Packages -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header text-white fw-semibold" style="background:#111827;">
+            <i class="bi bi-box-seam me-1"></i>
+            Packages for Pickup
         </div>
 
         <div class="card-body">
+            <div class="row g-2 align-items-end mb-3">
+                <div class="col-md-8">
+                    <label for="pickupPackageSearch" class="form-label small fw-semibold">
+                        Search
+                    </label>
+
+                    <div class="input-group">
+                        <span class="input-group-text bg-white">
+                            <i class="bi bi-search"></i>
+                        </span>
+
+                        <input type="search" id="pickupPackageSearch" class="form-control"
+                            placeholder="Search house AWB, tracking number or description..." autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <label for="pickupPackagePageLength" class="form-label small fw-semibold">
+                        Show
+                    </label>
+
+                    <select id="pickupPackagePageLength" class="form-select">
+                        <option value="10">10 per page</option>
+                        <option value="25" selected>25 per page</option>
+                        <option value="50">50 per page</option>
+                        <option value="100">100 per page</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="table-responsive">
-                <table class="table table-striped table-bordered align-middle">
-                    <thead class="table-dark">
+                <table class="table table-hover align-middle mb-0" id="pickupPackagesTable">
+                    <thead style="background:#111827;color:#fff;">
                         <tr>
                             <th>House AWB</th>
                             <th>Tracking #</th>
                             <th>Description</th>
                             <th>Status</th>
                             <th>Current Location</th>
-                            <th>Weight</th>
+                            <th class="text-end">Weight</th>
                         </tr>
                     </thead>
 
                     <tbody>
                         {% for pkg in pickup.packages.all() %}
                         <tr>
-                            <td>{{ pkg.house_awb or '—' }}</td>
-                            <td>{{ pkg.tracking_number or '—' }}</td>
-                            <td>{{ pkg.description or '—' }}</td>
-                            <td>
-                                <span class="badge bg-success">
-                                    {{ pkg.status or 'Ready for Pick Up' }}
-                                </span>
+                            <td class="fw-semibold">
+                                {{ pkg.house_awb or "—" }}
                             </td>
-                            <td>{{ pkg.current_location or 'Warehouse' }}</td>
-                            <td>{{ pkg.weight or '—' }}</td>
+
+                            <td>
+                                {{ pkg.tracking_number or "—" }}
+                            </td>
+
+                            <td>
+                                {{ pkg.description or "—" }}
+                            </td>
+
+                            <td>
+                                {% set package_status = (pkg.status or "")|lower %}
+
+                                {% if package_status == "delivered" %}
+                                <span class="badge bg-primary">
+                                    Delivered
+                                </span>
+
+                                {% elif package_status == "ready for pick up" %}
+                                <span class="badge bg-success">
+                                    Ready for Pick Up
+                                </span>
+
+                                {% elif package_status == "detained" %}
+                                <span class="badge bg-danger">
+                                    Detained
+                                </span>
+
+                                {% else %}
+                                <span class="badge bg-secondary">
+                                    {{ pkg.status or "Unknown" }}
+                                </span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {{ pkg.current_location or "Warehouse" }}
+                            </td>
+
+                            <td class="text-end">
+                                {{ "%.2f"|format(pkg.weight or 0) }} lb
+                            </td>
                         </tr>
+
                         {% else %}
                         <tr>
                             <td colspan="6" class="text-center text-muted py-4">
-                                No packages attached to this pickup.
+                                No packages are attached to this pickup.
                             </td>
                         </tr>
                         {% endfor %}
@@ -93,49 +256,133 @@
         </div>
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-header">
+    <!-- Actions -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header text-white fw-semibold" style="background:#111827;">
+            <i class="bi bi-lightning-charge me-1"></i>
             Actions
         </div>
 
         <div class="card-body d-flex flex-wrap gap-2">
+            {% set pickup_status = (pickup.status or "")|lower %}
 
-            {% if pickup.status == "Scheduled" %}
-            <form method="POST"
-                action="{{ url_for('logistics.scheduled_pickup_set_status', pickup_id=pickup.id, status='Ready') }}">
+            {% if pickup_status == "scheduled" %}
+            <form method="POST" action="{{ url_for(
+          'logistics.scheduled_pickup_set_status',
+          pickup_id=pickup.id,
+          status='Ready'
+        ) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-success" type="submit">
-                    Mark Ready At Store
+
+                <button class="btn btn-success" type="submit" onclick="return confirm(
+            'Mark this pickup as ready at the store?'
+          );">
+                    <i class="bi bi-check-circle me-1"></i>
+                    Mark Ready at Store
                 </button>
             </form>
 
-            <form method="POST"
-                action="{{ url_for('logistics.scheduled_pickup_set_status', pickup_id=pickup.id, status='Cancelled') }}"
-                onsubmit="return confirm('Cancel this pickup request?');">
+            <form method="POST" action="{{ url_for(
+          'logistics.scheduled_pickup_set_status',
+          pickup_id=pickup.id,
+          status='Cancelled'
+        ) }}" onsubmit="return confirm(
+          'Cancel this pickup request?'
+        );">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button class="btn btn-danger" type="submit">
+
+                <button class="btn btn-outline-danger" type="submit">
+                    <i class="bi bi-x-circle me-1"></i>
                     Cancel Pickup
                 </button>
             </form>
             {% endif %}
 
-            {% if pickup.status == "Ready" %}
-            <form method="POST"
-                action="{{ url_for('logistics.scheduled_pickup_set_status', pickup_id=pickup.id, status='Collected') }}"
-                onsubmit="return confirm('Mark this pickup as collected?');">
+            {% if pickup_status == "ready" %}
+            <form method="POST" action="{{ url_for(
+          'logistics.scheduled_pickup_set_status',
+          pickup_id=pickup.id,
+          status='Collected'
+        ) }}" onsubmit="return confirm(
+          'Mark this pickup as collected?'
+        );">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
                 <button class="btn btn-primary" type="submit">
+                    <i class="bi bi-bag-check me-1"></i>
                     Mark Collected
                 </button>
             </form>
             {% endif %}
 
-            {% if pickup.status in ["Collected", "Cancelled"] %}
-            <span class="text-muted">No further action available.</span>
+            {% if pickup_status in ["collected", "cancelled"] %}
+            <div class="alert alert-light border mb-0 py-2">
+                <i class="bi bi-info-circle me-1"></i>
+                No further action is available for this pickup.
+            </div>
             {% endif %}
-
         </div>
     </div>
-
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        if (
+            typeof window.jQuery === "undefined"
+            || !jQuery.fn.DataTable
+        ) {
+            return;
+        }
+
+        const tableElement = jQuery("#pickupPackagesTable");
+
+        if (!tableElement.length) {
+            return;
+        }
+
+        if (jQuery.fn.DataTable.isDataTable(tableElement)) {
+            tableElement.DataTable().destroy();
+        }
+
+        const packageTable = tableElement.DataTable({
+            pageLength: 25,
+            order: [[0, "asc"]],
+            autoWidth: false,
+            dom:
+                "rt"
+                + "<'d-flex flex-wrap justify-content-between "
+                + "align-items-center gap-2 mt-3'ip>",
+            language: {
+                emptyTable: "No packages are attached to this pickup.",
+                zeroRecords: "No matching packages were found.",
+                info: "Showing _START_ to _END_ of _TOTAL_ packages",
+                infoEmpty: "Showing 0 packages",
+                paginate: {
+                    previous: "Previous",
+                    next: "Next"
+                }
+            }
+        });
+
+        const searchInput = document.getElementById(
+            "pickupPackageSearch"
+        );
+
+        const pageLengthSelect = document.getElementById(
+            "pickupPackagePageLength"
+        );
+
+        searchInput?.addEventListener("input", function () {
+            packageTable.search(this.value).draw();
+        });
+
+        pageLengthSelect?.addEventListener("change", function () {
+            packageTable.page.len(Number(this.value)).draw();
+        });
+    });
+</script>
 {% endblock %}

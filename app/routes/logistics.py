@@ -62,6 +62,9 @@ from app.utils.delivery_engine import (
     calculate_real_distance,
 )
 from app.utils.invoice_totals import fetch_invoice_totals_pg
+from app.utils.scheduled_pickups import (
+    sync_scheduled_pickups_for_delivered_package,
+)
 
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
@@ -5582,11 +5585,19 @@ def bulk_shipment_action(shipment_id):
 
 
     elif action == "delivered":
+        delivered_at = datetime.now(timezone.utc)
+
         for p in editable_pkgs:
             p.status = "Delivered"
             p.is_locked = True
             p.locked_reason = "Auto-locked: delivered"
-            p.locked_at = datetime.now(timezone.utc)
+            p.locked_at = delivered_at
+
+        for p in editable_pkgs:
+            sync_scheduled_pickups_for_delivered_package(
+                p,
+                delivered_at
+            )
         db.session.commit()
 
     # -------------------------
@@ -7701,35 +7712,159 @@ def scheduled_pickup_view(pickup_id):
     )
 
 
-@logistics_bp.route("/scheduled-pickups/<int:pickup_id>/status/<status>", methods=["POST"])
+@logistics_bp.route(
+    "/scheduled-pickups/<int:pickup_id>/status/<status>",
+    methods=["POST"]
+)
 @admin_required()
 def scheduled_pickup_set_status(pickup_id, status):
     pickup = ScheduledPickup.query.get_or_404(pickup_id)
 
-    allowed = ["Scheduled", "Ready", "Collected", "Cancelled"]
-    if status not in allowed:
+    allowed_statuses = {
+        "Scheduled",
+        "Ready",
+        "Collected",
+        "Cancelled",
+    }
+
+    if status not in allowed_statuses:
         flash("Invalid pickup status.", "danger")
-        return redirect(url_for("logistics.scheduled_pickup_view", pickup_id=pickup.id))
+        return redirect(
+            url_for(
+                "logistics.scheduled_pickup_view",
+                pickup_id=pickup.id
+            )
+        )
 
-    pickup.status = status
+    current_status = (pickup.status or "").strip()
 
-    if status == "Ready":
-        for pkg in pickup.packages.all():
-            pkg.current_location = pickup.branch
+    # Completed or cancelled pickups cannot be reopened through
+    # this normal status route.
+    if current_status in {"Collected", "Cancelled"}:
+        flash(
+            f"This pickup is already {current_status.lower()} "
+            "and cannot be changed.",
+            "warning"
+        )
+        return redirect(
+            url_for(
+                "logistics.scheduled_pickup_view",
+                pickup_id=pickup.id
+            )
+        )
 
-    if status == "Collected":
-        pickup.completed_at = datetime.utcnow()
-        for pkg in pickup.packages.all():
-            pkg.current_location = "Collected"
+    allowed_transitions = {
+        "Scheduled": {"Ready", "Cancelled"},
+        "Ready": {"Collected", "Cancelled"},
+    }
 
-    if status == "Cancelled":
-        for pkg in pickup.packages.all():
-            pkg.current_location = "Warehouse"
+    permitted_statuses = allowed_transitions.get(
+        current_status,
+        set()
+    )
 
-    db.session.commit()
+    if status not in permitted_statuses:
+        flash(
+            f"Pickup cannot be changed from "
+            f"{current_status or 'Unknown'} to {status}.",
+            "warning"
+        )
+        return redirect(
+            url_for(
+                "logistics.scheduled_pickup_view",
+                pickup_id=pickup.id
+            )
+        )
 
-    flash(f"Pickup marked as {status}.", "success")
-    return redirect(url_for("logistics.scheduled_pickup_view", pickup_id=pickup.id))
+    now_utc = datetime.now(timezone.utc)
+    packages = pickup.packages.all()
+
+    try:
+        if status == "Ready":
+            pickup.status = "Ready"
+            pickup.completed_at = None
+
+            for pkg in packages:
+                pkg.current_location = pickup.branch
+
+        elif status == "Collected":
+            pickup.status = "Collected"
+            pickup.completed_at = now_utc
+
+            for pkg in packages:
+                pkg.status = "Delivered"
+                pkg.current_location = "Collected"
+                pkg.is_locked = True
+
+                if hasattr(pkg, "locked_reason"):
+                    pkg.locked_reason = (
+                        "Store pickup collected"
+                    )
+
+                if hasattr(pkg, "locked_at"):
+                    pkg.locked_at = now_utc
+
+                if hasattr(pkg, "locked_by_admin_id"):
+                    pkg.locked_by_admin_id = current_user.id
+
+                if hasattr(pkg, "delivery_scan_status"):
+                    pkg.delivery_scan_status = "scanned"
+
+                if hasattr(pkg, "delivery_scanned_at"):
+                    pkg.delivery_scanned_at = now_utc
+
+                if hasattr(pkg, "delivery_scanned_by_id"):
+                    pkg.delivery_scanned_by_id = current_user.id
+
+        elif status == "Cancelled":
+            pickup.status = "Cancelled"
+            pickup.completed_at = None
+
+            for pkg in packages:
+                package_status = (
+                    pkg.status or ""
+                ).strip().lower()
+
+                # Do not reverse a package that was already delivered.
+                if package_status != "delivered":
+                    pkg.current_location = "Warehouse"
+
+        db.session.commit()
+
+    except Exception:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Failed to change scheduled pickup %s "
+            "from %s to %s",
+            pickup.id,
+            current_status,
+            status,
+        )
+
+        flash(
+            "The pickup status could not be updated.",
+            "danger"
+        )
+
+        return redirect(
+            url_for(
+                "logistics.scheduled_pickup_view",
+                pickup_id=pickup.id
+            )
+        )
+
+    flash(
+        f"Pickup marked as {status}.",
+        "success"
+    )
+
+    return redirect(
+        url_for(
+            "logistics.scheduled_pickup_view",
+            pickup_id=pickup.id
+        )
+    )
 
 # --------------------------------------------------------------------------------------
 # Scheduled Deliveries (Admin / Operations)
@@ -8967,10 +9102,23 @@ def scheduled_delivery_set_status(delivery_id, status):
                 p.status = "Out for Delivery"
 
     elif status == "Delivered":
+        delivered_at = datetime.now(timezone.utc)
+
         for p in linked_pkgs:
             ps = (p.status or "").strip().lower()
+
             if ps != "detained":
                 p.status = "Delivered"
+
+        for p in linked_pkgs:
+            ps = (p.status or "").strip().lower()
+
+            if ps == "delivered":
+                sync_scheduled_pickups_for_delivered_package(
+                    p,
+                    delivered_at
+                )
+
 
     elif status == "Delivery Attempted":
         for p in linked_pkgs:

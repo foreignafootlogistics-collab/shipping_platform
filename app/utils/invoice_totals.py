@@ -11,6 +11,9 @@ from app.models import (
     ShipmentLog,
     shipment_packages,
 )
+from app.utils.scheduled_pickups import (
+    sync_scheduled_pickups_for_delivered_package,
+)
 
 
 def fetch_invoice_totals_pg(invoice_id: int):
@@ -243,6 +246,15 @@ def lock_delivered_packages_for_invoice(
             and hasattr(package, "locked_by_admin_id")
         ):
             package.locked_by_admin_id = actor_admin_id
+
+    # ---------------------------------------------------------
+    # Close completed store pickup requests
+    # ---------------------------------------------------------
+    for package in packages:
+        sync_scheduled_pickups_for_delivered_package(
+            package,
+            now_utc
+        )
 
     # ---------------------------------------------------------
     # Find shipments containing these packages

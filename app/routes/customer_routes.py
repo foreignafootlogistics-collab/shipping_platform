@@ -3551,14 +3551,28 @@ def schedule_pickup_overview():
     pickups = (
         ScheduledPickup.query
         .filter_by(user_id=current_user.id)
-        .order_by(ScheduledPickup.pickup_date.desc(), ScheduledPickup.id.desc())
+        .order_by(
+            ScheduledPickup.pickup_date.desc(),
+            ScheduledPickup.id.desc()
+        )
+        .all()
+    )
+
+    authorized_people = (
+        AuthorizedPickup.query
+        .filter_by(user_id=current_user.id)
+        .order_by(
+            AuthorizedPickup.full_name.asc(),
+            AuthorizedPickup.id.asc()
+        )
         .all()
     )
 
     return render_template(
         "customer/schedule_pickup_overview.html",
         eligible_packages=eligible_packages,
-        pickups=pickups
+        pickups=pickups,
+        authorized_people=authorized_people
     )
 
 
@@ -3569,20 +3583,81 @@ def schedule_pickup_add():
 
     pickup_date_raw = (data.get("pickup_date") or "").strip()
     branch = (data.get("branch") or "Gregory Park").strip()
-    authorized_person = (data.get("authorized_person") or "").strip()
+    authorized_pickup_id = str(
+        data.get("authorized_pickup_id") or "self"
+    ).strip()
     notes = (data.get("notes") or "").strip()
     package_ids = data.get("package_ids") or []
 
     if not pickup_date_raw:
-        return jsonify({"success": False, "message": "Please select a pickup date."}), 400
+        return jsonify({
+            "success": False,
+            "message": "Please select a pickup date."
+        }), 400
 
     if not package_ids:
-        return jsonify({"success": False, "message": "Please select at least one package."}), 400
+        return jsonify({
+            "success": False,
+            "message": "Please select at least one package."
+        }), 400
 
     try:
-        pickup_date = datetime.strptime(pickup_date_raw, "%Y-%m-%d").date()
-    except Exception:
-        return jsonify({"success": False, "message": "Invalid pickup date."}), 400
+        pickup_date = datetime.strptime(
+            pickup_date_raw,
+            "%Y-%m-%d"
+        ).date()
+    except (TypeError, ValueError):
+        return jsonify({
+            "success": False,
+            "message": "Invalid pickup date."
+        }), 400
+
+    if pickup_date < date.today():
+        return jsonify({
+            "success": False,
+            "message": "The pickup date cannot be in the past."
+        }), 400
+
+    # Determine who will collect the packages.
+    if authorized_pickup_id == "self":
+        authorized_person = current_user.full_name
+
+        if not authorized_person:
+            return jsonify({
+                "success": False,
+                "message": (
+                    "Your account does not have a full name. "
+                    "Please update your profile before scheduling pickup."
+                )
+            }), 400
+    else:
+        try:
+            authorized_pickup_id_int = int(authorized_pickup_id)
+        except (TypeError, ValueError):
+            return jsonify({
+                "success": False,
+                "message": "Please select a valid pickup person."
+            }), 400
+
+        authorized_record = (
+            AuthorizedPickup.query
+            .filter_by(
+                id=authorized_pickup_id_int,
+                user_id=current_user.id
+            )
+            .first()
+        )
+
+        if not authorized_record:
+            return jsonify({
+                "success": False,
+                "message": (
+                    "The selected authorized person was not found "
+                    "on your account."
+                )
+            }), 400
+
+        authorized_person = authorized_record.full_name
 
     active_pickup_statuses = ["Scheduled", "Ready"]
 
@@ -3591,9 +3666,12 @@ def schedule_pickup_add():
         .filter(
             Package.user_id == current_user.id,
             Package.id.in_(package_ids),
-            func.lower(func.trim(Package.status)) == "ready for pick up",
+            func.lower(func.trim(Package.status))
+            == "ready for pick up",
             ~Package.scheduled_pickups.any(
-                ScheduledPickup.status.in_(active_pickup_statuses)
+                ScheduledPickup.status.in_(
+                    active_pickup_statuses
+                )
             )
         )
         .all()
@@ -3602,7 +3680,10 @@ def schedule_pickup_add():
     if not packages:
         return jsonify({
             "success": False,
-            "message": "No eligible packages selected. They may already be scheduled for pickup."
+            "message": (
+                "No eligible packages selected. They may already "
+                "be scheduled for pickup."
+            )
         }), 400
 
     try:
@@ -3630,9 +3711,15 @@ def schedule_pickup_add():
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.exception("schedule_pickup_add failed")
-        return jsonify({"success": False, "message": str(e)}), 500
 
+        current_app.logger.exception(
+            "schedule_pickup_add failed"
+        )
+
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
 
 @customer_bp.route('/schedule-pickup/<int:pickup_id>/cancel', methods=['POST'])
 @login_required

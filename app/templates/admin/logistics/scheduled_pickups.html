@@ -1,140 +1,314 @@
-{% extends 'layout_admin.html' %}
-{% block title %}Scheduled Pickups{% endblock %}
+{% extends "layout_admin.html" %}
+
+{% block title %}
+Scheduled Pickups
+{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid py-3">
 
-    <div class="card shadow-sm border-0" style="border-radius:16px; overflow:hidden;">
-        <div class="card-header text-white d-flex justify-content-between align-items-center"
-            style="background:#4a148c;">
+    <!-- Unified page header -->
+    <div class="d-flex flex-wrap justify-content-between
+           align-items-center gap-3 mb-4 shadow-sm" style="
+      background:#4a148c;
+      color:#fff;
+      border-radius:12px;
+      padding:20px;
+    ">
+        <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center justify-content-center" style="
+          width:44px;
+          height:44px;
+          border-radius:10px;
+          background:rgba(255,255,255,.15);
+        ">
+                <i class="bi bi-shop fs-4"></i>
+            </div>
+
             <div>
-                <h4 class="mb-0">🏬 Scheduled Store Pickups</h4>
-                <small>Track packages customers requested for store pickup.</small>
+                <h3 class="mb-1 fw-bold">
+                    Scheduled Store Pickups
+                </h3>
+
+                <div style="opacity:.9;">
+                    Track and manage packages requested for store pickup.
+                </div>
             </div>
-        </div>
-
-        <div class="card-body">
-
-            <form method="get" class="row g-2 mb-3">
-                <div class="col-md-3">
-                    <label class="form-label">Status</label>
-                    <select name="status" class="form-select">
-                        <option value="">All</option>
-                        <option value="Scheduled" {% if status=="Scheduled" %}selected{% endif %}>Scheduled</option>
-                        <option value="Ready" {% if status=="Ready" %}selected{% endif %}>Ready</option>
-                        <option value="Collected" {% if status=="Collected" %}selected{% endif %}>Collected</option>
-                        <option value="Cancelled" {% if status=="Cancelled" %}selected{% endif %}>Cancelled</option>
-                    </select>
-                </div>
-
-                <div class="col-md-3">
-                    <label class="form-label">Branch</label>
-                    <select name="branch" class="form-select">
-                        <option value="">All</option>
-                        <option value="Gregory Park" {% if branch=="Gregory Park" %}selected{% endif %}>Gregory Park
-                        </option>
-                        <option value="Portmore" {% if branch=="Portmore" %}selected{% endif %}>Portmore</option>
-                    </select>
-                </div>
-
-                <div class="col-md-3 d-flex align-items-end gap-2">
-                    <button class="btn btn-dark" type="submit">Filter</button>
-                    <a href="{{ url_for('logistics.scheduled_pickups') }}" class="btn btn-outline-secondary">Clear</a>
-                </div>
-            </form>
-
-            <div class="table-responsive">
-                <table class="table table-striped table-bordered align-middle" id="scheduledPickupsTable">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>Pickup #</th>
-                            <th>Date</th>
-                            <th>Customer</th>
-                            <th>Branch</th>
-                            <th>Packages</th>
-                            <th>Status</th>
-                            <th>Authorized Person</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-
-                    <tbody>
-                        {% for p in pickups %}
-                        <tr>
-                            <td class="fw-bold">#{{ p.id }}</td>
-
-                            <td>{{ p.pickup_date.strftime('%Y-%m-%d') if p.pickup_date else '—' }}</td>
-
-                            <td>
-                                {% if p.user %}
-                                {{ p.user.full_name or p.user.email }}
-                                {% if p.user.registration_number %}
-                                <br><small class="text-muted">{{ p.user.registration_number }}</small>
-                                {% endif %}
-                                {% else %}
-                                —
-                                {% endif %}
-                            </td>
-
-                            <td>{{ p.branch or '—' }}</td>
-
-                            <td>
-                                {% if p.packages is defined %}
-                                {{ p.packages.count() }}
-                                {% else %}
-                                0
-                                {% endif %}
-                            </td>
-
-                            <td>
-                                {% if p.status == "Scheduled" %}
-                                <span class="badge bg-warning text-dark">Scheduled</span>
-                                {% elif p.status == "Ready" %}
-                                <span class="badge bg-success">Ready</span>
-                                {% elif p.status == "Collected" %}
-                                <span class="badge bg-primary">Collected</span>
-                                {% elif p.status == "Cancelled" %}
-                                <span class="badge bg-danger">Cancelled</span>
-                                {% else %}
-                                <span class="badge bg-secondary">{{ p.status or 'Unknown' }}</span>
-                                {% endif %}
-                            </td>
-
-                            <td>{{ p.authorized_person or '—' }}</td>
-
-                            <td>
-                                <a class="btn btn-sm btn-outline-dark"
-                                    href="{{ url_for('logistics.scheduled_pickup_view', pickup_id=p.id) }}">
-                                    View
-                                </a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
         </div>
     </div>
 
+    <!-- Filters -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('logistics.scheduled_pickups') }}" class="row g-3 align-items-end">
+                <div class="col-lg-4 col-md-6">
+                    <label for="pickupSearch" class="form-label fw-semibold">
+                        Search
+                    </label>
+
+                    <div class="input-group">
+                        <span class="input-group-text bg-white">
+                            <i class="bi bi-search"></i>
+                        </span>
+
+                        <input type="search" id="pickupSearch" class="form-control"
+                            placeholder="Search pickup, customer, FAFL # or authorized person..." autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="col-lg-2 col-md-6">
+                    <label for="pickupStatusFilter" class="form-label fw-semibold">
+                        Status
+                    </label>
+
+                    <select name="status" id="pickupStatusFilter" class="form-select">
+                        <option value="">All statuses</option>
+
+                        <option value="Scheduled" {% if status=="Scheduled" %}selected{% endif %}>
+                            Scheduled
+                        </option>
+
+                        <option value="Ready" {% if status=="Ready" %}selected{% endif %}>
+                            Ready
+                        </option>
+
+                        <option value="Collected" {% if status=="Collected" %}selected{% endif %}>
+                            Collected
+                        </option>
+
+                        <option value="Cancelled" {% if status=="Cancelled" %}selected{% endif %}>
+                            Cancelled
+                        </option>
+                    </select>
+                </div>
+
+                <div class="col-lg-2 col-md-6">
+                    <label for="pickupBranchFilter" class="form-label fw-semibold">
+                        Branch
+                    </label>
+
+                    <select name="branch" id="pickupBranchFilter" class="form-select">
+                        <option value="">All branches</option>
+
+                        <option value="Gregory Park" {% if branch=="Gregory Park" %}selected{% endif %}>
+                            Gregory Park
+                        </option>
+
+                        <option value="Portmore" {% if branch=="Portmore" %}selected{% endif %}>
+                            Portmore
+                        </option>
+                    </select>
+                </div>
+
+                <div class="col-lg-2 col-md-6">
+                    <label for="pickupPageLength" class="form-label fw-semibold">
+                        Show
+                    </label>
+
+                    <select id="pickupPageLength" class="form-select">
+                        <option value="10">10 per page</option>
+                        <option value="25" selected>25 per page</option>
+                        <option value="50">50 per page</option>
+                        <option value="100">100 per page</option>
+                    </select>
+                </div>
+
+                <div class="col-lg-2 col-md-12">
+                    <div class="d-flex gap-2">
+                        <button class="btn text-white flex-grow-1" style="background:#4a148c;" type="submit">
+                            <i class="bi bi-funnel me-1"></i>
+                            Filter
+                        </button>
+
+                        <a href="{{ url_for('logistics.scheduled_pickups') }}" class="btn btn-outline-secondary"
+                            title="Clear filters">
+                            Clear
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <div class="card shadow-sm border-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="scheduledPickupsTable">
+                <thead style="background:#111827;color:#fff;">
+                    <tr>
+                        <th>Pickup #</th>
+                        <th>Date</th>
+                        <th>Customer</th>
+                        <th>Branch</th>
+                        <th class="text-center">Packages</th>
+                        <th>Status</th>
+                        <th>Authorized Person</th>
+                        <th class="text-end">Action</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for pickup in pickups %}
+                    <tr>
+                        <td class="fw-bold">
+                            #{{ pickup.id }}
+                        </td>
+
+                        <td data-order="{{
+                pickup.pickup_date.strftime('%Y-%m-%d')
+                if pickup.pickup_date
+                else ''
+              }}">
+                            {{
+                            pickup.pickup_date.strftime("%b %d, %Y")
+                            if pickup.pickup_date
+                            else "—"
+                            }}
+                        </td>
+
+                        <td>
+                            {% if pickup.user %}
+                            <div class="fw-semibold">
+                                {{ pickup.user.full_name or pickup.user.email }}
+                            </div>
+
+                            <div class="small text-muted">
+                                {{ pickup.user.registration_number or "No FAFL #" }}
+                            </div>
+
+                            <div class="small text-muted">
+                                {{ pickup.user.email or "—" }}
+                            </div>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {{ pickup.branch or "—" }}
+                        </td>
+
+                        <td class="text-center">
+                            <span class="badge bg-light text-dark border">
+                                {{ pickup.packages.count() }}
+                            </span>
+                        </td>
+
+                        <td>
+                            {% set pickup_status = (pickup.status or "")|lower %}
+
+                            {% if pickup_status == "scheduled" %}
+                            <span class="badge bg-warning text-dark">
+                                Scheduled
+                            </span>
+
+                            {% elif pickup_status == "ready" %}
+                            <span class="badge bg-success">
+                                Ready
+                            </span>
+
+                            {% elif pickup_status == "collected" %}
+                            <span class="badge bg-primary">
+                                Collected
+                            </span>
+
+                            {% elif pickup_status == "cancelled" %}
+                            <span class="badge bg-danger">
+                                Cancelled
+                            </span>
+
+                            {% else %}
+                            <span class="badge bg-secondary">
+                                {{ pickup.status or "Unknown" }}
+                            </span>
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {{ pickup.authorized_person or "Customer" }}
+                        </td>
+
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-dark" href="{{ url_for(
+                  'logistics.scheduled_pickup_view',
+                  pickup_id=pickup.id
+                ) }}">
+                                <i class="bi bi-eye me-1"></i>
+                                View
+                            </a>
+                        </td>
+                    </tr>
+
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center text-muted py-5">
+                            No scheduled pickups were found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script>
-    $(document).ready(function () {
-        const table = $('#scheduledPickupsTable');
+{{ super() }}
 
-        if ($.fn.DataTable.isDataTable(table)) {
-            table.DataTable().destroy();
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        if (
+            typeof window.jQuery === "undefined"
+            || !jQuery.fn.DataTable
+        ) {
+            return;
         }
 
-        table.DataTable({
-            order: [[1, 'desc']],
+        const tableElement = jQuery("#scheduledPickupsTable");
+
+        if (!tableElement.length) {
+            return;
+        }
+
+        if (jQuery.fn.DataTable.isDataTable(tableElement)) {
+            tableElement.DataTable().destroy();
+        }
+
+        const pickupTable = tableElement.DataTable({
             pageLength: 25,
+            order: [[1, "desc"]],
+            autoWidth: false,
+            dom:
+                "rt"
+                + "<'d-flex flex-wrap justify-content-between "
+                + "align-items-center gap-2 p-3'ip>",
             language: {
-                emptyTable: "No scheduled pickups found."
+                emptyTable: "No scheduled pickups were found.",
+                zeroRecords: "No matching pickups were found.",
+                info: "Showing _START_ to _END_ of _TOTAL_ pickups",
+                infoEmpty: "Showing 0 pickups",
+                paginate: {
+                    previous: "Previous",
+                    next: "Next"
+                }
             }
+        });
+
+        const searchInput = document.getElementById(
+            "pickupSearch"
+        );
+
+        const pageLengthSelect = document.getElementById(
+            "pickupPageLength"
+        );
+
+        searchInput?.addEventListener("input", function () {
+            pickupTable.search(this.value).draw();
+        });
+
+        pageLengthSelect?.addEventListener("change", function () {
+            pickupTable.page.len(Number(this.value)).draw();
         });
     });
 </script>

@@ -9,9 +9,12 @@ from sqlalchemy import or_, func
 
 from app.extensions import db
 from flask_login import current_user
-from app.models import User, Package, Invoice, Payment, POSCloseout, AuditLog
+from app.models import User, Package, Invoice, Payment, POSCloseout, AuditLog, ScheduledPickup
 from app.routes.admin_auth_routes import admin_required
 from app.utils.invoice_totals import fetch_invoice_totals_pg
+from app.utils.scheduled_pickups import (
+    sync_scheduled_pickups_for_delivered_package,
+)
 
 from app.utils.email_utils import send_email, EMAIL_FROM, EMAIL_ADDRESS
 
@@ -26,6 +29,7 @@ def _to_decimal(value, default="0.00"):
         return Decimal(str(value))
     except Exception:
         return Decimal(default)
+
 
 def _create_or_update_pending_pos_payment(
     *,
@@ -448,6 +452,12 @@ def scan_deliver():
     package.delivery_scan_status = "scanned"
     package.delivery_scanned_at = now_utc
     package.delivery_scanned_by_id = current_user.id
+
+    _sync_scheduled_pickups_for_delivered_package(
+        package,
+        now_utc
+    )
+
     db.session.commit()
 
     user = package.user
@@ -731,6 +741,11 @@ def checkout():
                 p.delivery_scanned_at = now_utc
                 p.delivery_scanned_by_id = current_user.id
 
+                _sync_scheduled_pickups_for_delivered_package(
+                    p,
+                    now_utc
+                )
+
         if uninvoiced_packages:
             new_total = Decimal("0.00")
             new_weight = Decimal("0.00")
@@ -836,6 +851,11 @@ def checkout():
                 p.delivery_scan_status = "scanned"
                 p.delivery_scanned_at = now_utc
                 p.delivery_scanned_by_id = current_user.id
+
+                _sync_scheduled_pickups_for_delivered_package(
+                    p,
+                    now_utc
+                )
 
         db.session.commit()
 

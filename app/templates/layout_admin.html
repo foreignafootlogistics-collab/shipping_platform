@@ -655,6 +655,22 @@
   <!-- Bootstrap JS Bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
+  <script>
+    document.addEventListener(
+      "DOMContentLoaded",
+      function () {
+        // Bootstrap modals should be direct children of body.
+        // This prevents transformed, animated or overflow-controlled
+        // admin containers from making modals flicker.
+        document
+          .querySelectorAll("main .modal")
+          .forEach(function (modalElement) {
+            document.body.appendChild(modalElement);
+          });
+      }
+    );
+  </script>
+
   <!-- CSRF helper -->
   <script>
     function getCSRFToken() {

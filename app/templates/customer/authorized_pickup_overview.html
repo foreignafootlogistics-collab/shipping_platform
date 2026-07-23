@@ -1,135 +1,230 @@
 {% extends 'layout_customer.html' %}
 
-{% block title %}Authorized Pickup Person{% endblock %}
+{% block title %}Authorized Pickup Persons{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-  <h2>Authorized Pickup Person</h2>
 
-  <p>
+  <h2>Authorized Pickup Persons</h2>
+
+  <p class="text-muted">
     You may authorize someone to collect your packages on your behalf.
     They must present a valid photo ID at pickup.
   </p>
 
+  <!-- CSRF token used for adding and deleting -->
+  <input type="hidden" id="authorizedPickupCsrfToken" value="{{ csrf_token() }}">
+
+  <!-- General page message -->
+  <div id="authorizedPickupPageMessage" class="alert" style="display:none;" role="alert"></div>
+
+  <!-- Add person button -->
   <button type="button" id="addPersonBtn" class="btn btn-dashboard mb-3">
     ➕ Add Authorized Person
   </button>
 
-  <div id="addPersonForm" style="display:none;">
+  <!-- Add person form -->
+  <div id="addPersonForm" class="card shadow-sm mb-4" style="display:none;">
+    <div class="card-body">
 
-    <!-- Required for Flask-WTF CSRF protection -->
-    <input type="hidden" id="authorizedPickupCsrfToken" value="{{ csrf_token() }}">
+      <div id="authorizedPickupError" class="alert alert-danger mb-3" style="display:none;"></div>
 
-    <div id="authorizedPickupError" class="alert alert-danger mb-3" style="display:none;"></div>
+      <div class="row g-3">
 
-    <table class="table table-bordered">
-      <thead>
-        <tr>
-          <th>Full Name</th>
-          <th>Email</th>
-          <th>Phone #</th>
-        </tr>
-      </thead>
+        <div class="col-md-4">
+          <label for="authFullName" class="form-label">
+            Full Name
+            <span class="text-danger">*</span>
+          </label>
 
-      <tbody>
-        <tr>
-          <td>
-            <input type="text" id="authFullName" class="form-control" placeholder="Full Name" required>
-          </td>
+          <input type="text" id="authFullName" class="form-control" placeholder="Full Name" autocomplete="name"
+            required>
+        </div>
 
-          <td>
-            <input type="email" id="authEmail" class="form-control" placeholder="Email">
-          </td>
+        <div class="col-md-4">
+          <label for="authEmail" class="form-label">
+            Email
+            <span class="text-muted">(optional)</span>
+          </label>
 
-          <td>
-            <input type="tel" id="authPhone" class="form-control" placeholder="Phone #" required>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+          <input type="email" id="authEmail" class="form-control" placeholder="Email" autocomplete="email">
+        </div>
 
-    <button type="button" class="btn btn-success" id="saveAuthorizedPerson">
-      Save
-    </button>
+        <div class="col-md-4">
+          <label for="authPhone" class="form-label">
+            Phone Number
+            <span class="text-danger">*</span>
+          </label>
 
-    <button type="button" class="btn btn-danger" id="cancelAddPerson">
-      Cancel
-    </button>
+          <input type="tel" id="authPhone" class="form-control" placeholder="Phone #" autocomplete="tel" required>
+        </div>
+
+      </div>
+
+      <div class="mt-3">
+
+        <button type="button" class="btn btn-success" id="saveAuthorizedPerson">
+          Save
+        </button>
+
+        <button type="button" class="btn btn-outline-secondary" id="cancelAddPerson">
+          Cancel
+        </button>
+
+      </div>
+
+    </div>
   </div>
 
-  <h4 class="mt-5">Currently Authorized Persons</h4>
+  <!-- Existing authorized people -->
+  <div class="card shadow-sm">
 
-  <div class="table-responsive">
-    <table class="table table-striped" id="authorizedPickupList">
-      <thead>
-        <tr>
-          <th>Full Name</th>
-          <th>Email</th>
-          <th>Phone #</th>
-        </tr>
-      </thead>
+    <div class="card-header">
+      <strong>Currently Authorized Persons</strong>
+    </div>
 
-      <tbody>
-        {% for person in authorized_people %}
-        <tr>
-          <td>{{ person.full_name }}</td>
-          <td>{{ person.email or "—" }}</td>
-          <td>{{ person.phone_number }}</td>
-        </tr>
-        {% else %}
-        <tr id="noAuthorizedPersonsRow">
-          <td colspan="3" class="text-center text-muted">
-            No authorized pickup persons have been added.
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="card-body">
+
+      <div class="table-responsive">
+
+        <table class="table table-striped align-middle mb-0" id="authorizedPickupList">
+          <thead>
+            <tr>
+              <th>Full Name</th>
+              <th>Email</th>
+              <th>Phone #</th>
+            </tr>
+          </thead>
+
+          <tbody>
+
+            {% for person in authorized_people %}
+            <tr id="authorizedPersonRow{{ person.id }}" class="authorized-person-row">
+              <td>
+                <div class="d-flex align-items-center justify-content-between gap-2">
+                  <span class="fw-semibold">
+                    {{ person.full_name }}
+                  </span>
+
+                  <button type="button" class="btn btn-sm btn-outline-danger delete-authorized-person"
+                    data-person-id="{{ person.id }}" data-person-name="{{ person.full_name }}" data-delete-url="{{ url_for(
+                      'customer.authorized_pickup_delete',
+                      person_id=person.id
+                    ) }}" title="Remove {{ person.full_name }}" aria-label="Remove {{ person.full_name }}">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </td>
+
+              <td>
+                {{ person.email or "—" }}
+              </td>
+
+              <td>
+                {{ person.phone_number or "—" }}
+              </td>
+            </tr>
+
+            {% else %}
+
+            <tr id="noAuthorizedPersonsRow">
+              <td colspan="3" class="text-center text-muted py-4">
+                No authorized pickup persons have been added.
+              </td>
+            </tr>
+
+            {% endfor %}
+
+          </tbody>
+        </table>
+
+      </div>
+
+    </div>
   </div>
+
 </div>
 
 <script>
   document.addEventListener("DOMContentLoaded", function () {
-    const addButton = document.getElementById("addPersonBtn");
-    const cancelButton = document.getElementById("cancelAddPerson");
-    const saveButton = document.getElementById("saveAuthorizedPerson");
-    const formBox = document.getElementById("addPersonForm");
-    const errorBox = document.getElementById("authorizedPickupError");
+    const addButton =
+      document.getElementById("addPersonBtn");
 
-    const fullNameInput = document.getElementById("authFullName");
-    const emailInput = document.getElementById("authEmail");
-    const phoneInput = document.getElementById("authPhone");
+    const cancelButton =
+      document.getElementById("cancelAddPerson");
 
+    const saveButton =
+      document.getElementById("saveAuthorizedPerson");
+
+    const formBox =
+      document.getElementById("addPersonForm");
+
+    const errorBox =
+      document.getElementById("authorizedPickupError");
+
+    const fullNameInput =
+      document.getElementById("authFullName");
+
+    const emailInput =
+      document.getElementById("authEmail");
+
+    const phoneInput =
+      document.getElementById("authPhone");
+
+    const csrfToken =
+      document.getElementById(
+        "authorizedPickupCsrfToken"
+      ).value;
+
+    /*
+     * Show add-person form.
+     */
     addButton.addEventListener("click", function () {
+      hidePageMessage();
+      hideFormError();
+
       formBox.style.display = "block";
       addButton.style.display = "none";
-      errorBox.style.display = "none";
+
       fullNameInput.focus();
     });
 
+    /*
+     * Cancel adding a person.
+     */
     cancelButton.addEventListener("click", function () {
+      resetAddForm();
+
       formBox.style.display = "none";
       addButton.style.display = "inline-block";
-      errorBox.style.display = "none";
     });
 
+    /*
+     * Save an authorized person.
+     */
     saveButton.addEventListener("click", async function () {
+      hidePageMessage();
+      hideFormError();
+
       const fullName = fullNameInput.value.trim();
       const email = emailInput.value.trim();
       const phoneNumber = phoneInput.value.trim();
 
-      errorBox.style.display = "none";
-      errorBox.textContent = "";
-
       if (!fullName) {
-        errorBox.textContent = "Please enter the person's full name.";
-        errorBox.style.display = "block";
+        showFormError(
+          "Please enter the person's full name."
+        );
+
+        fullNameInput.focus();
         return;
       }
 
       if (!phoneNumber) {
-        errorBox.textContent = "Please enter the person's phone number.";
-        errorBox.style.display = "block";
+        showFormError(
+          "Please enter the person's phone number."
+        );
+
+        phoneInput.focus();
         return;
       }
 
@@ -144,9 +239,7 @@
             credentials: "same-origin",
             headers: {
               "Content-Type": "application/json",
-              "X-CSRFToken": document.getElementById(
-                "authorizedPickupCsrfToken"
-              ).value
+              "X-CSRFToken": csrfToken
             },
             body: JSON.stringify({
               full_name: fullName,
@@ -156,65 +249,213 @@
           }
         );
 
-        let data = {};
+        const data = await readJsonResponse(response);
 
-        try {
-          data = await response.json();
-        } catch (jsonError) {
+        if (
+          !response.ok ||
+          data.status !== "success"
+        ) {
           throw new Error(
-            `Server returned error ${response.status}.`
-          );
-        }
-
-        if (!response.ok || data.status !== "success") {
-          throw new Error(
-            data.error ||
             data.message ||
+            data.error ||
             "The authorized person could not be saved."
           );
         }
 
-        const noPersonsRow = document.getElementById(
-          "noAuthorizedPersonsRow"
-        );
+        /*
+         * Reload so the new row receives its server-generated
+         * delete URL and delete button.
+         */
+        window.location.reload();
 
-        if (noPersonsRow) {
-          noPersonsRow.remove();
-        }
-
-        const tableBody = document.querySelector(
-          "#authorizedPickupList tbody"
-        );
-
-        const row = document.createElement("tr");
-
-        const nameCell = document.createElement("td");
-        const emailCell = document.createElement("td");
-        const phoneCell = document.createElement("td");
-
-        nameCell.textContent = data.person.full_name;
-        emailCell.textContent = data.person.email || "—";
-        phoneCell.textContent = data.person.phone;
-
-        row.appendChild(nameCell);
-        row.appendChild(emailCell);
-        row.appendChild(phoneCell);
-        tableBody.appendChild(row);
-
-        fullNameInput.value = "";
-        emailInput.value = "";
-        phoneInput.value = "";
-
-        formBox.style.display = "none";
-        addButton.style.display = "inline-block";
       } catch (error) {
-        errorBox.textContent = error.message;
-        errorBox.style.display = "block";
-      } finally {
+        showFormError(error.message);
+
         saveButton.disabled = false;
         saveButton.textContent = "Save";
       }
     });
+
+    /*
+     * Delete buttons use event delegation.
+     */
+    document
+      .getElementById("authorizedPickupList")
+      .addEventListener("click", async function (event) {
+        const deleteButton = event.target.closest(
+          ".delete-authorized-person"
+        );
+
+        if (!deleteButton) {
+          return;
+        }
+
+        hidePageMessage();
+        hideFormError();
+
+        const personId =
+          deleteButton.dataset.personId;
+
+        const personName =
+          deleteButton.dataset.personName;
+
+        const deleteUrl =
+          deleteButton.dataset.deleteUrl;
+
+        const confirmed = window.confirm(
+          `Remove ${personName} from your authorized pickup list?`
+        );
+
+        if (!confirmed) {
+          return;
+        }
+
+        const originalButtonHtml =
+          deleteButton.innerHTML;
+
+        deleteButton.disabled = true;
+        deleteButton.innerHTML = `
+        <span
+          class="spinner-border spinner-border-sm"
+          aria-hidden="true"
+        ></span>
+      `;
+
+        try {
+          const response = await fetch(
+            deleteUrl,
+            {
+              method: "POST",
+              credentials: "same-origin",
+              headers: {
+                "X-CSRFToken": csrfToken
+              }
+            }
+          );
+
+          const data = await readJsonResponse(response);
+
+          if (
+            !response.ok ||
+            data.status !== "success"
+          ) {
+            throw new Error(
+              data.message ||
+              data.error ||
+              "The authorized person could not be removed."
+            );
+          }
+
+          const row = document.getElementById(
+            `authorizedPersonRow${personId}`
+          );
+
+          if (row) {
+            row.remove();
+          }
+
+          showPageMessage(
+            data.message ||
+            `${personName} was removed successfully.`,
+            "success"
+          );
+
+          addEmptyRowIfNeeded();
+
+        } catch (error) {
+          showPageMessage(
+            error.message,
+            "danger"
+          );
+
+          deleteButton.disabled = false;
+          deleteButton.innerHTML =
+            originalButtonHtml;
+        }
+      });
+
+
+    function resetAddForm() {
+      fullNameInput.value = "";
+      emailInput.value = "";
+      phoneInput.value = "";
+
+      hideFormError();
+
+      saveButton.disabled = false;
+      saveButton.textContent = "Save";
+    }
+
+
+    function showFormError(message) {
+      errorBox.textContent = message;
+      errorBox.style.display = "block";
+    }
+
+
+    function hideFormError() {
+      errorBox.textContent = "";
+      errorBox.style.display = "none";
+    }
+
+
+    function showPageMessage(message, type) {
+      const messageBox = document.getElementById(
+        "authorizedPickupPageMessage"
+      );
+
+      messageBox.textContent = message;
+      messageBox.className = `alert alert-${type}`;
+      messageBox.style.display = "block";
+    }
+
+
+    function hidePageMessage() {
+      const messageBox = document.getElementById(
+        "authorizedPickupPageMessage"
+      );
+
+      messageBox.textContent = "";
+      messageBox.style.display = "none";
+    }
+
+
+    function addEmptyRowIfNeeded() {
+      const remainingRows = document.querySelectorAll(
+        "#authorizedPickupList tbody .authorized-person-row"
+      );
+
+      if (remainingRows.length > 0) {
+        return;
+      }
+
+      const tableBody = document.querySelector(
+        "#authorizedPickupList tbody"
+      );
+
+      tableBody.innerHTML = `
+      <tr id="noAuthorizedPersonsRow">
+        <td
+          colspan="3"
+          class="text-center text-muted py-4"
+        >
+          No authorized pickup persons have been added.
+        </td>
+      </tr>
+    `;
+    }
+
+
+    async function readJsonResponse(response) {
+      try {
+        return await response.json();
+      } catch (error) {
+        throw new Error(
+          `The server returned error ${response.status}.`
+        );
+      }
+    }
   });
 </script>
+
 {% endblock %}

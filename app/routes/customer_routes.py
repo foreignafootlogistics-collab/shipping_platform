@@ -1299,8 +1299,17 @@ def transactions_all():
 
         owed = max(inv_total - paid_sum, 0.0)
 
-        if owed <= 0 and inv_total > 0:
+        stored_invoice_status = (
+            getattr(inv, "status", "") or ""
+        ).strip().lower()
+
+        if (
+            stored_invoice_status == "paid"
+            or owed <= 0.01
+        ):
             inv_status = "paid"
+
+
         elif paid_sum > 0:
             inv_status = "partial"
         else:
@@ -3529,6 +3538,55 @@ def authorized_pickup_add():
             'status': 'error',
             'message': str(e)
         }), 400
+
+@customer_bp.route(
+    '/authorized-pickup/<int:person_id>/delete',
+    methods=['POST']
+)
+@login_required
+def authorized_pickup_delete(person_id):
+    person = (
+        AuthorizedPickup.query
+        .filter_by(
+            id=person_id,
+            user_id=current_user.id
+        )
+        .first()
+    )
+
+    if not person:
+        return jsonify({
+            'status': 'error',
+            'message': 'Authorized person not found.'
+        }), 404
+
+    try:
+        person_name = person.full_name
+
+        db.session.delete(person)
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': (
+                f'{person_name} was removed from your '
+                'authorized pickup list.'
+            )
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            'Failed to delete authorized pickup person %s',
+            person_id
+        )
+
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
 
 @customer_bp.route('/schedule-pickup', methods=['GET'])
 @login_required

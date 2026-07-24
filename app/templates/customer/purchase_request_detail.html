@@ -1,174 +1,675 @@
 {% extends "layout_customer.html" %}
 
+{% block title %}
+Shop For Me {{ pr.request_number }}
+{% endblock %}
+
 {% block content %}
+{% set request_status = (pr.status or "requested")|lower %}
+{% set item_count = pr.items|length if pr.items else 1 %}
+{% set service_fee = pr.quoted_service_fee_jmd|float if pr.quoted_service_fee_jmd is not none else 0 %}
+{% set item_usd = pr.quoted_item_price_usd|float if pr.quoted_item_price_usd is not none else 0 %}
+{% set invoice_total = pr.invoice.grand_total|float if pr.invoice and pr.invoice.grand_total is not none else 0 %}
+{% set invoice_balance = pr.invoice.amount_due|float if pr.invoice and pr.invoice.amount_due is not none else 0 %}
+{% set item_jmd = invoice_total - service_fee %}
+
 <div class="container py-4">
 
-    <div class="card border-0 shadow-sm mb-4" style="border-radius:16px; overflow:hidden;">
-        <div class="card-body text-white p-4" style="background:#4a148c;">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-                <div>
-                    <h3 class="mb-1">
-                        <i class="fas fa-cart-plus me-2" style="color:#FACC15;"></i>
-                        {{ pr.request_number }}
-                    </h3>
-                    <p class="mb-0">Shop For Me Request Details</p>
+    <!-- HEADER -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 text-white shadow-sm mb-4 px-4 py-3"
+        style="background:#4a148c;border-radius:12px;">
+        <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center justify-content-center" style="
+          width:44px;
+          height:44px;
+          border-radius:10px;
+          background:rgba(255,255,255,.14);
+        ">
+                <i class="fas fa-cart-plus fs-5"></i>
+            </div>
+
+            <div>
+                <h3 class="fw-bold mb-1">
+                    {{ pr.request_number }}
+                </h3>
+
+                <p class="mb-0 small" style="opacity:.9;">
+                    Shop For Me request details
+                </p>
+            </div>
+        </div>
+
+        <a href="{{ url_for('customer.purchase_requests') }}" class="btn fw-semibold"
+            style="background:#FACC15;color:#2b1600;border:none;">
+            <i class="fas fa-arrow-left me-1"></i>
+            Back to Requests
+        </a>
+    </div>
+
+    <!-- STATUS MESSAGE -->
+    {% if request_status == "requested" %}
+    <div class="alert alert-info">
+        FAFL is reviewing your request. You will be able to approve
+        or decline it once a quote is ready.
+    </div>
+
+    {% elif request_status == "quoted" %}
+    <div class="alert" style="
+        background:#f3e8ff;
+        color:#4a148c;
+        border:1px solid #d8b4fe;
+      ">
+        Your quote is ready. Please review it below and approve or
+        decline it today.
+    </div>
+
+    {% elif request_status == "awaiting_payment" %}
+    <div class="alert alert-warning">
+        You approved this quote. Payment is now required before
+        FAFL can purchase your items.
+    </div>
+
+    {% elif request_status == "paid" %}
+    <div class="alert alert-success">
+        Your payment is complete. FAFL will now purchase your items.
+    </div>
+
+    {% elif request_status == "purchased" %}
+    <div class="alert alert-success">
+        Your items were purchased successfully. A pre-alert was
+        created using the merchant tracking number below.
+    </div>
+
+    {% elif request_status == "quote_expired" %}
+    <div class="alert alert-danger">
+        This quote expired. FAFL will need to prepare an updated
+        quote because online prices may have changed.
+    </div>
+
+    {% elif request_status == "cancelled" %}
+    <div class="alert alert-danger">
+        This Shop For Me request was cancelled.
+    </div>
+    {% endif %}
+
+    <!-- REQUEST SUMMARY -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+        <div class="card-body p-4">
+            <h5 class="fw-bold mb-3">
+                Request Summary
+            </h5>
+
+            <div class="row g-3">
+                <div class="col-lg-3 col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Store
+                        </div>
+
+                        <div class="fw-bold">
+                            {{ pr.store_name or "—" }}
+                        </div>
+                    </div>
                 </div>
 
-                <a href="{{ url_for('customer.purchase_requests') }}" class="btn fw-semibold"
-                    style="background:#FACC15;color:#2b1600;border:none;">
-                    Back
-                </a>
+                <div class="col-lg-3 col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Order
+                        </div>
+
+                        <div class="fw-bold">
+                            {{ item_count }}
+                            item{% if item_count != 1 %}s{% endif %}
+                        </div>
+
+                        <div class="small text-muted">
+                            {{ pr.quantity or 1 }}
+                            unit{% if (pr.quantity or 1) != 1 %}s{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-3 col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Status
+                        </div>
+
+                        {% if request_status == "requested" %}
+                        <span class="badge bg-secondary">
+                            Requested
+                        </span>
+
+                        {% elif request_status == "quoted" %}
+                        <span class="badge" style="background:#6f42c1;">
+                            Quote Ready
+                        </span>
+
+                        {% elif request_status == "awaiting_payment" %}
+                        <span class="badge bg-warning text-dark">
+                            Awaiting Payment
+                        </span>
+
+                        {% elif request_status == "paid" %}
+                        <span class="badge bg-success">
+                            Paid
+                        </span>
+
+                        {% elif request_status == "purchased" %}
+                        <span class="badge" style="background:#4a148c;">
+                            Purchased
+                        </span>
+
+                        {% elif request_status == "quote_expired" %}
+                        <span class="badge bg-danger">
+                            Quote Expired
+                        </span>
+
+                        {% elif request_status == "cancelled" %}
+                        <span class="badge bg-danger">
+                            Cancelled
+                        </span>
+
+                        {% else %}
+                        <span class="badge bg-secondary text-capitalize">
+                            {{ request_status|replace("_", " ") }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="col-lg-3 col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Submitted
+                        </div>
+
+                        {% if pr.created_at %}
+                        {% set submitted_jamaica = to_jamaica(pr.created_at) %}
+
+                        <div class="fw-bold">
+                            {{ submitted_jamaica.strftime("%b %d, %Y") }}
+                        </div>
+
+                        <div class="small text-muted">
+                            {{ submitted_jamaica.strftime("%I:%M %p") }}
+                        </div>
+                        {% else %}
+                        <div class="fw-bold">—</div>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="card shadow-sm border-0 mb-3" style="border-radius:16px;">
-        <div class="card-body">
-            <h5 class="fw-bold mb-3" style="color:#4a148c;">Request Summary</h5>
+    <!-- QUOTE SUMMARY -->
+    {% if request_status in [
+    "quoted",
+    "awaiting_payment",
+    "paid",
+    "purchased",
+    "quote_expired"
+    ] %}
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+        <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <h5 class="fw-bold mb-0">
+                    Quote Summary
+                </h5>
 
-            <p class="mb-1"><strong>Store:</strong> {{ pr.store_name or "-" }}</p>
-            <p class="mb-1"><strong>Total Qty:</strong> {{ pr.quantity or 1 }}</p>
-            <p class="mb-1">
-                <strong>Status:</strong>
-                {% if pr.status == "quote_expired" %}
+                {% if request_status == "quoted" %}
+                <span class="badge" style="background:#6f42c1;">
+                    Awaiting Your Approval
+                </span>
+
+                {% elif request_status == "quote_expired" %}
                 <span class="badge bg-danger">
-                    Quote Expired
+                    Expired
                 </span>
-                {% elif pr.status in ["paid", "purchased"] %}
-                <span class="badge bg-success text-capitalize">
-                    {{ pr.status.replace("_", " ") }}
+
+                {% elif request_status == "awaiting_payment" %}
+                <span class="badge bg-warning text-dark">
+                    Approved — Payment Required
                 </span>
-                {% elif pr.status == "awaiting_payment" %}
-                <span class="badge text-dark text-capitalize" style="background:#FACC15;">
-                    Awaiting Payment
-                </span>
-                {% else %}
-                <span class="badge text-dark text-capitalize" style="background:#FACC15;">
-                    {{ pr.status.replace("_", " ") }}
+
+                {% elif request_status in ["paid", "purchased"] %}
+                <span class="badge bg-success">
+                    Paid
                 </span>
                 {% endif %}
-            </p>
-            <p class="mb-0">
-                <strong>Submitted:</strong>
-                {% if pr.created_at %}
-                {{ pr.created_at.strftime("%Y-%m-%d") }}
-                {% else %}
-                -
-                {% endif %}
-            </p>
-        </div>
-    </div>
+            </div>
 
-    {% if pr.status in ["quoted", "awaiting_payment", "paid", "purchased", "quote_expired"] %}
-    {% set usd_rate = 162 %}
-    {% set item_usd = pr.quoted_item_price_usd or 0 %}
-    {% set service_fee = pr.quoted_service_fee_jmd or 0 %}
-    {% set item_jmd = item_usd|float * usd_rate %}
-    {% set total_due = item_jmd + service_fee|float %}
+            <div class="row g-3">
+                <div class="col-lg-3 col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Item Total
+                        </div>
 
-    <div class="card shadow-sm border-0 mb-3" style="border-radius:16px;">
-        <div class="card-body">
-            <h5 class="fw-bold mb-3" style="color:#4a148c;">Quote Summary</h5>
+                        <div class="fw-bold">
+                            US${{ "%.2f"|format(item_usd) }}
+                        </div>
+                    </div>
+                </div>
 
-            <p class="mb-1">
-                <strong>Item Total USD:</strong>
-                US${{ "%.2f"|format(item_usd) }}
-            </p>
+                <div class="col-lg-3 col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Item Cost in JMD
+                        </div>
 
-            <p class="mb-1">
-                <strong>Item Cost in JMD:</strong>
-                J${{ "{:,.2f}".format(item_jmd) }}
-            </p>
+                        <div class="fw-bold">
+                            JMD {{ "{:,.2f}".format(item_jmd) }}
+                        </div>
+                    </div>
+                </div>
 
-            <p class="mb-1">
-                <strong>Shop For Me Service Fee:</strong>
-                J${{ "{:,.2f}".format(service_fee|float) }}
-            </p>
+                <div class="col-lg-3 col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Service Fee
+                        </div>
 
-            <hr>
+                        <div class="fw-bold">
+                            JMD {{ "{:,.2f}".format(service_fee) }}
+                        </div>
+                    </div>
+                </div>
 
-            <h5 class="fw-bold mb-2" style="color:#198754;">
-                Total Due Now: J${{ "{:,.2f}".format(total_due) }}
-            </h5>
+                <div class="col-lg-3 col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Total
+                        </div>
 
-            <div class="alert mb-0 mt-3" style="background:#fff8db;color:#664d03;border:1px solid #FACC15;">
+                        <div class="fw-bold text-success">
+                            JMD {{ "{:,.2f}".format(invoice_total) }}
+                        </div>
+                    </div>
+                </div>
+            </div>
 
+            {% if pr.quoted_at %}
+            {% set quoted_jamaica = to_jamaica(pr.quoted_at) %}
+
+            <div class="small text-muted mt-3">
+                Quoted on
+                <strong>
+                    {{ quoted_jamaica.strftime("%b %d, %Y at %I:%M %p") }}
+                </strong>
+            </div>
+            {% endif %}
+
+            <div class="alert mt-3 mb-0" style="
+            background:#fff8db;
+            color:#664d03;
+            border:1px solid #FACC15;
+          ">
                 <strong>Please note:</strong>
-                Freight/shipping charges and customs charges are separate and will be billed when the package is ready
-                for pickup.
+                Freight, handling, and applicable customs charges are
+                separate. They will be calculated when the package arrives.
 
+                {% if request_status in ["quoted", "quote_expired"] %}
                 <hr>
 
                 <strong>Quote validity:</strong>
-                This quote is valid for today only.
-                If not approved and paid today, FAFL will need to provide a new quote because online prices may change.
+                Quotes are valid for the Jamaica calendar day on which
+                they are issued because online prices may change.
+                {% endif %}
             </div>
-            {% if pr.status == "quoted" %}
+
+            <!-- QUOTE DECISION -->
+            {% if request_status == "quoted" %}
             <div class="d-flex flex-wrap gap-2 mt-3">
-                <form method="POST" action="{{ url_for('customer.approve_purchase_request_quote', request_id=pr.id) }}">
+                <form method="POST" action="{{ url_for(
+                'customer.approve_purchase_request_quote',
+                request_id=pr.id
+              ) }}" onsubmit="
+                if (!confirm('Approve this Shop For Me quote?')) {
+                  return false;
+                }
+
+                const button = this.querySelector(
+                  'button[type=submit]'
+                );
+
+                if (button) {
+                  button.disabled = true;
+                  button.textContent = 'Approving...';
+                }
+              ">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
                     <button type="submit" class="btn btn-success fw-semibold">
+                        <i class="fas fa-check me-1"></i>
                         Approve Quote
                     </button>
                 </form>
 
-                <form method="POST" action="{{ url_for('customer.decline_purchase_request_quote', request_id=pr.id) }}">
+                <form method="POST" action="{{ url_for(
+                'customer.decline_purchase_request_quote',
+                request_id=pr.id
+              ) }}" onsubmit="
+                if (!confirm('Decline and cancel this quote?')) {
+                  return false;
+                }
+
+                const button = this.querySelector(
+                  'button[type=submit]'
+                );
+
+                if (button) {
+                  button.disabled = true;
+                  button.textContent = 'Declining...';
+                }
+              ">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
                     <button type="submit" class="btn btn-outline-danger fw-semibold">
+                        <i class="fas fa-times me-1"></i>
                         Decline Quote
                     </button>
                 </form>
+            </div>
+            {% endif %}
+
+            <!-- PAYMENT -->
+            {% if request_status == "awaiting_payment" and pr.invoice_id %}
+            <div class="border-top mt-4 pt-4">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+                    <div>
+                        <div class="small text-muted">
+                            Current Balance
+                        </div>
+
+                        <div class="fw-bold fs-4">
+                            JMD {{ "{:,.2f}".format(invoice_balance) }}
+                        </div>
+                    </div>
+
+                    <a href="{{ url_for(
+                  'customer.view_invoice_customer',
+                  invoice_id=pr.invoice_id
+                ) }}" class="btn fw-semibold text-white" style="background:#4a148c;">
+                        <i class="fas fa-file-invoice-dollar me-1"></i>
+                        View Invoice & Pay
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if request_status in ["paid", "purchased"] and pr.invoice_id %}
+            <div class="border-top mt-4 pt-3">
+                <a href="{{ url_for(
+                'customer.view_invoice_customer',
+                invoice_id=pr.invoice_id
+              ) }}" class="btn btn-outline-success">
+                    <i class="fas fa-file-invoice me-1"></i>
+                    View Paid Invoice
+                </a>
             </div>
             {% endif %}
         </div>
     </div>
     {% endif %}
 
-    <div class="card shadow-sm border-0 mb-3" style="border-radius:16px;">
-        <div class="card-body">
-            <h5 class="fw-bold mb-3" style="color:#4a148c;">Items</h5>
+    <!-- PURCHASE DETAILS -->
+    {% if request_status == "purchased" %}
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+        <div class="card-body p-4">
+            <h5 class="fw-bold mb-3">
+                Purchase Details
+            </h5>
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Store Order Number
+                        </div>
+
+                        <div class="fw-bold">
+                            {{ pr.order_number or "—" }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Merchant Tracking
+                        </div>
+
+                        <div class="fw-bold text-break">
+                            {{ pr.merchant_tracking_number or "—" }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="border rounded p-3 h-100">
+                        <div class="small text-muted mb-1">
+                            Purchased
+                        </div>
+
+                        {% if pr.purchased_at %}
+                        {% set purchased_jamaica = to_jamaica(pr.purchased_at) %}
+
+                        <div class="fw-bold">
+                            {{ purchased_jamaica.strftime("%b %d, %Y") }}
+                        </div>
+
+                        <div class="small text-muted">
+                            {{ purchased_jamaica.strftime("%I:%M %p") }}
+                        </div>
+                        {% else %}
+                        <div class="fw-bold">—</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- CUSTOMER CANCELLATION -->
+    {% if request_status in [
+    "requested",
+    "quote_expired",
+    "awaiting_payment"
+    ] %}
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+        <div class="card-body p-4">
+            <h5 class="fw-bold mb-2">
+                Cancel Request
+            </h5>
+
+            <p class="text-muted mb-3">
+                If this request was submitted by mistake, you may cancel
+                it before payment is made or the item is purchased.
+            </p>
+
+            <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
+                data-bs-target="#customerCancelRequestModal">
+                <i class="fas fa-times-circle me-1"></i>
+                Cancel This Request
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- REQUESTED ITEMS -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+        <div class="card-body p-4">
+            <h5 class="fw-bold mb-3">
+                Requested Items
+            </h5>
 
             {% if pr.items %}
             {% for item in pr.items %}
-            <div class="border rounded-3 p-3 mb-3" style="border-color:#e5d8f5 !important;">
-                <div class="d-flex justify-content-between">
-                    <h6 class="fw-bold" style="color:#4a148c;">Item {{ loop.index }}</h6>
-                    <span class="badge bg-success">Qty {{ item.quantity or 1 }}</span>
+            <div class="border rounded p-3 mb-3" style="border-color:#e5d8f5 !important;">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <h6 class="fw-bold mb-0" style="color:#4a148c;">
+                        Item {{ loop.index }}
+                    </h6>
+
+                    <span class="badge bg-success">
+                        Quantity {{ item.quantity or 1 }}
+                    </span>
                 </div>
 
-                <p class="mb-1"><strong>Item:</strong> {{ item.item_name or "-" }}</p>
-                <p class="mb-1"><strong>Size:</strong> {{ item.size or "-" }}</p>
-                <p class="mb-1"><strong>Color:</strong> {{ item.color or "-" }}</p>
-                <p class="mb-1"><strong>Notes:</strong> {{ item.notes or "-" }}</p>
-                <p class="mb-0">
-                    <strong>Link:</strong>
-                    <a href="{{ item.product_url }}" target="_blank" style="color:#4a148c;">
-                        Open Product
-                    </a>
-                </p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="small text-muted">
+                            Item
+                        </div>
+
+                        <div class="fw-semibold">
+                            {{ item.item_name or "—" }}
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="small text-muted">
+                            Size
+                        </div>
+
+                        <div class="fw-semibold">
+                            {{ item.size or "—" }}
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="small text-muted">
+                            Color
+                        </div>
+
+                        <div class="fw-semibold">
+                            {{ item.color or "—" }}
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="small text-muted">
+                            Notes
+                        </div>
+
+                        <div style="white-space:pre-wrap;">
+                            {{ item.notes or "—" }}
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <a href="{{ item.product_url }}" target="_blank" rel="noopener noreferrer"
+                            class="btn btn-sm btn-outline-primary">
+                            <i class="fas fa-external-link-alt me-1"></i>
+                            Open Product
+                        </a>
+                    </div>
+                </div>
             </div>
             {% endfor %}
             {% else %}
-            <p class="text-muted">No item details found.</p>
+            <div class="text-muted">
+                No item details were found.
+            </div>
             {% endif %}
         </div>
     </div>
 
+    <!-- ATTACHMENTS -->
     {% if pr.attachments %}
-    <div class="card shadow-sm border-0" style="border-radius:16px;">
-        <div class="card-body">
-            <h5 class="fw-bold mb-3" style="color:#4a148c;">Screenshots</h5>
+    <div class="card border-0 shadow-sm" style="border-radius:14px;">
+        <div class="card-body p-4">
+            <h5 class="fw-bold mb-3">
+                Screenshots
+            </h5>
 
             <div class="row g-3">
-                {% for a in pr.attachments %}
-                <div class="col-md-4">
-                    <a href="{{ a.file_url }}" target="_blank">
-                        <img src="{{ a.file_url }}" class="img-fluid rounded border"
-                            style="max-height:200px;width:100%;object-fit:cover;">
-                    </a>
+                {% for attachment in pr.attachments %}
+                <div class="col-lg-4 col-md-6">
+                    <div class="border rounded p-2 h-100">
+                        <div class="small fw-semibold text-truncate mb-2"
+                            title="{{ attachment.original_name or 'Screenshot' }}">
+                            {{ attachment.original_name or "Screenshot" }}
+                        </div>
+
+                        <a href="{{ attachment.file_url }}" target="_blank" rel="noopener noreferrer">
+                            <img src="{{ attachment.file_url }}" alt="{{ attachment.original_name or 'Screenshot' }}"
+                                class="img-fluid rounded border mb-2" style="
+                      height:200px;
+                      width:100%;
+                      object-fit:cover;
+                    ">
+                        </a>
+
+                        <a href="{{ attachment.file_url }}" target="_blank" rel="noopener noreferrer"
+                            class="btn btn-sm w-100 text-white" style="background:#4a148c;">
+                            View Full Size
+                        </a>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if request_status in [
+    "requested",
+    "quote_expired",
+    "awaiting_payment"
+    ] %}
+    <div class="modal fade" id="customerCancelRequestModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <form method="POST" action="{{ url_for(
+        'customer.cancel_purchase_request',
+        request_id=pr.id
+      ) }}" class="modal-content">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">
+                        Cancel {{ pr.request_number }}
+                    </h5>
+
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        This action will cancel the request and any unpaid
+                        quote invoice connected to it.
+                    </div>
+
+                    <label for="customerCancellationReason" class="form-label fw-semibold">
+                        Why are you cancelling?
+                    </label>
+
+                    <textarea id="customerCancellationReason" name="cancellation_reason" class="form-control" rows="3"
+                        maxlength="500" placeholder="For example: submitted the wrong item" required></textarea>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        Keep Request
+                    </button>
+
+                    <button type="submit" class="btn btn-danger" onclick="
+            if (!confirm('Cancel this Shop For Me request?')) {
+              return false;
+            }
+
+            this.disabled = true;
+            this.form.submit();
+          ">
+                        Confirm Cancellation
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
     {% endif %}

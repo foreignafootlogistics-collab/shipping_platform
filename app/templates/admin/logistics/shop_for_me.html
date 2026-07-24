@@ -1,155 +1,541 @@
 {% extends "layout_admin.html" %}
 
+{% block title %}Shop For Me{% endblock %}
+
 {% block content %}
 <div class="container-fluid py-4">
 
-    <div class="card border-0 shadow-sm mb-4" style="border-radius:16px; overflow:hidden;">
-        <div class="card-body text-white p-4" style="background:#4a148c;">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-                <div>
-                    <h3 class="mb-1">
-                        <i class="fas fa-cart-plus me-2" style="color:#FACC15;"></i>
-                        Shop For Me
-                    </h3>
-                    <p class="mb-0">Review customer purchase requests and prepare quotes.</p>
-                </div>
-
-                <span class="badge fs-6" style="background:#FACC15;color:#2b1600;">
-                    {{ requests_list|length }} Requests
-                </span>
+    <!-- UNIFIED PAGE HEADER -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 text-white shadow-sm mb-4 px-4 py-3"
+        style="background:#4a148c;border-radius:12px;">
+        <div class="d-flex align-items-center gap-3">
+            <div class="d-flex align-items-center justify-content-center" style="
+          width:44px;
+          height:44px;
+          border-radius:10px;
+          background:rgba(255,255,255,.14);
+        ">
+                <i class="fas fa-cart-plus fs-5"></i>
             </div>
+
+            <div>
+                <h3 class="fw-bold mb-1">
+                    Shop For Me
+                </h3>
+
+                <p class="mb-0 small" style="opacity:.9;">
+                    Review customer purchase requests, prepare quotes,
+                    and track purchases.
+                </p>
+            </div>
+        </div>
+
+        <div class="badge rounded-pill px-3 py-2" style="background:#FACC15;color:#2b1600;font-size:.9rem;">
+            {{ requests_list|length }}
+            Request{% if requests_list|length != 1 %}s{% endif %}
         </div>
     </div>
 
-    <div class="card shadow-sm border-0" style="border-radius:16px;">
-        <div class="card-body">
+    <!-- FILTERS -->
+    <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+        <div class="card-body p-3">
+            <div class="row g-3 align-items-end">
 
-            <form method="GET" class="mb-3">
-                <div class="row g-2 align-items-end">
-                    <div class="col-md-3">
-                        <label class="form-label fw-semibold">Status</label>
-                        <select name="status" class="form-select">
-                            <option value="all" {% if status=="all" %}selected{% endif %}>All</option>
-                            <option value="requested" {% if status=="requested" %}selected{% endif %}>Requested</option>
-                            <option value="quoted" {% if status=="quoted" %}selected{% endif %}>Quoted</option>
+                <!-- CLIENT-SIDE SEARCH -->
+                <div class="col-lg-5 col-md-6">
+                    <label for="shopForMeSearch" class="form-label fw-semibold">
+                        Search
+                    </label>
+
+                    <div class="input-group">
+                        <span class="input-group-text bg-white">
+                            <i class="fas fa-search text-muted"></i>
+                        </span>
+
+                        <input type="search" id="shopForMeSearch" class="form-control"
+                            placeholder="Search request, customer, FAFL #, or store..." autocomplete="off">
+                    </div>
+                </div>
+
+                <!-- SERVER-SIDE STATUS FILTER -->
+                <div class="col-lg-3 col-md-6">
+                    <form method="GET" id="shopForMeStatusForm">
+                        <label for="shopForMeStatus" class="form-label fw-semibold">
+                            Status
+                        </label>
+
+                        <select name="status" id="shopForMeStatus" class="form-select" onchange="this.form.submit();">
+                            <option value="all" {% if status=="all" %}selected{% endif %}>
+                                All Statuses
+                            </option>
+
+                            <option value="requested" {% if status=="requested" %}selected{% endif %}>
+                                Requested
+                            </option>
+
+                            <option value="quoted" {% if status=="quoted" %}selected{% endif %}>
+                                Quoted
+                            </option>
+
                             <option value="awaiting_payment" {% if status=="awaiting_payment" %}selected{% endif %}>
-                                Awaiting Payment</option>
-                            <option value="paid" {% if status=="paid" %}selected{% endif %}>Paid</option>
-                            <option value="purchased" {% if status=="purchased" %}selected{% endif %}>Purchased</option>
+                                Awaiting Payment
+                            </option>
+
+                            <option value="paid" {% if status=="paid" %}selected{% endif %}>
+                                Paid
+                            </option>
+
+                            <option value="purchased" {% if status=="purchased" %}selected{% endif %}>
+                                Purchased
+                            </option>
+
                             <option value="quote_expired" {% if status=="quote_expired" %}selected{% endif %}>
                                 Quote Expired
                             </option>
-                            <option value="cancelled" {% if status=="cancelled" %}selected{% endif %}>Cancelled</option>
+
+                            <option value="cancelled" {% if status=="cancelled" %}selected{% endif %}>
+                                Cancelled
+                            </option>
                         </select>
-                    </div>
-
-                    <div class="col-md-2">
-                        <button type="submit" class="btn text-white w-100" style="background:#4a148c;">
-                            Filter
-                        </button>
-                    </div>
+                    </form>
                 </div>
-            </form>
 
-            {% if requests_list %}
-            <div class="table-responsive">
-                <table class="table table-hover align-middle">
-                    <thead style="background:#f7f3fb;">
-                        <tr>
-                            <th>Request #</th>
-                            <th>Customer</th>
-                            <th>FAFL #</th>
-                            <th>Store</th>
-                            <th>Items</th>
-                            <th>Qty</th>
-                            <th>Status</th>
-                            <th>Submitted</th>
-                            <th class="text-end">Action</th>
-                        </tr>
-                    </thead>
+                <!-- PER PAGE -->
+                <div class="col-lg-2 col-md-6">
+                    <label for="shopForMePerPage" class="form-label fw-semibold">
+                        Show
+                    </label>
 
-                    <tbody>
-                        {% for req in requests_list %}
-                        <tr {% if req.status=='quote_expired' %} style="background:#fff5f5;" {% endif %}>
-                            <td class="fw-semibold" style="color:#4a148c;">
-                                {{ req.request_number }}
-                            </td>
+                    <select id="shopForMePerPage" class="form-select">
+                        <option value="10">10 per page</option>
+                        <option value="25">25 per page</option>
+                        <option value="50">50 per page</option>
+                        <option value="100">100 per page</option>
+                    </select>
+                </div>
 
-                            <td>
-                                {% if req.user %}
-                                {{ req.user.full_name or req.user.email }}
-                                {% else %}
-                                -
-                                {% endif %}
-                            </td>
+                <!-- CLEAR -->
+                <div class="col-lg-2 col-md-6">
+                    <a href="{{ url_for('logistics.admin_shop_for_me') }}" class="btn btn-outline-secondary w-100">
+                        Clear
+                    </a>
+                </div>
 
-                            <td>{{ req.customer_fafl_number or "-" }}</td>
-                            <td>{{ req.store_name or "-" }}</td>
-
-                            <td>
-                                {% if req.items %}
-                                {{ req.items|length }}
-                                {% else %}
-                                1
-                                {% endif %}
-                            </td>
-
-                            <td>{{ req.quantity or 1 }}</td>
-
-                            <td>
-                                {% set s = req.status %}
-                                {% if s in ['paid', 'ready_for_pickup', 'delivered'] %}
-                                <span class="badge bg-success text-capitalize">{{ s.replace("_", " ") }}</span>
-                                {% elif s in ['requested', 'quoted', 'awaiting_payment'] %}
-                                <span class="badge text-dark text-capitalize" style="background:#FACC15;">
-                                    {{ s.replace("_", " ") }}
-                                </span>
-                                {% elif s == 'purchased' %}
-                                <span class="badge text-white text-capitalize" style="background:#4a148c;">
-                                    {{ s.replace("_", " ") }}
-                                </span>
-                                {% elif s == 'quote_expired' %}
-                                <span class="badge bg-danger">
-                                    Quote Expired
-                                </span>
-
-                                {% elif s == 'cancelled' %}
-                                <span class="badge bg-danger text-capitalize">
-                                    {{ s.replace("_", " ") }}
-                                </span>
-                                {% else %}
-                                <span class="badge bg-secondary text-capitalize">{{ s.replace("_", " ") }}</span>
-                                {% endif %}
-                            </td>
-
-                            <td>
-                                {% if req.created_at %}
-                                {{ req.created_at.strftime("%Y-%m-%d") }}
-                                {% else %}
-                                -
-                                {% endif %}
-                            </td>
-
-                            <td class="text-end">
-                                <a href="{{ url_for('logistics.admin_shop_for_me_detail', request_id=req.id) }}"
-                                    class="btn btn-sm text-white" style="background:#4a148c;">
-                                    View
-                                </a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
             </div>
-            {% else %}
-            <div class="text-center py-5">
-                <h5 class="fw-bold" style="color:#4a148c;">No Shop For Me requests found</h5>
-                <p class="text-muted mb-0">Customer requests will appear here once submitted.</p>
-            </div>
-            {% endif %}
-
         </div>
     </div>
 
+    <!-- REQUEST TABLE -->
+    <div class="card border-0 shadow-sm" style="border-radius:14px;overflow:hidden;">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="shopForMeTable">
+                <thead class="text-white" style="background:#111827;">
+                    <tr>
+                        <th class="px-3 py-3">Request #</th>
+                        <th class="py-3">Customer</th>
+                        <th class="py-3">FAFL #</th>
+                        <th class="py-3">Store</th>
+                        <th class="py-3">Order</th>
+                        <th class="py-3">Status</th>
+                        <th class="py-3">Submitted</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for req in requests_list %}
+                    {% set request_status = (req.status or "requested")|lower %}
+
+                    <tr class="shop-request-row" data-search="{{ (
+              (req.request_number or '') ~ ' ' ~
+              (req.customer_fafl_number or '') ~ ' ' ~
+              (req.store_name or '') ~ ' ' ~
+              (req.status or '') ~ ' ' ~
+              ((req.user.full_name or '') if req.user else '') ~ ' ' ~
+              ((req.user.email or '') if req.user else '')
+            )|lower }}">
+                        <!-- REQUEST NUMBER -->
+                        <td class="px-3">
+                            <a href="{{ url_for(
+                  'logistics.admin_shop_for_me_detail',
+                  request_id=req.id
+                ) }}" class="fw-bold text-decoration-none" style="color:#4a148c;">
+                                {{ req.request_number }}
+                            </a>
+                        </td>
+
+                        <!-- CUSTOMER -->
+                        <td>
+                            {% if req.user %}
+                            <div class="fw-semibold">
+                                {{ req.user.full_name or "Customer" }}
+                            </div>
+
+                            <div class="small text-muted">
+                                {{ req.user.email or "No email" }}
+                            </div>
+                            {% else %}
+                            <span class="text-muted">
+                                Customer unavailable
+                            </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- FAFL NUMBER -->
+                        <td>
+                            <span class="fw-semibold">
+                                {{ req.customer_fafl_number or "—" }}
+                            </span>
+                        </td>
+
+                        <!-- STORE -->
+                        <td>
+                            {{ req.store_name or "—" }}
+                        </td>
+
+                        <!-- ORDER SUMMARY -->
+                        <td>
+                            {% set item_count = req.items|length if req.items else 1 %}
+
+                            <div class="fw-semibold">
+                                {{ item_count }}
+                                item{% if item_count != 1 %}s{% endif %}
+                            </div>
+
+                            <div class="small text-muted">
+                                {{ req.quantity or 1 }}
+                                unit{% if (req.quantity or 1) != 1 %}s{% endif %}
+                            </div>
+                        </td>
+
+                        <!-- STATUS -->
+                        <td>
+                            {% if request_status == "requested" %}
+                            <span class="badge bg-secondary">
+                                Requested
+                            </span>
+
+                            {% elif request_status == "quoted" %}
+                            <span class="badge" style="background:#6f42c1;">
+                                Quoted
+                            </span>
+
+                            {% elif request_status == "awaiting_payment" %}
+                            <span class="badge bg-warning text-dark">
+                                Awaiting Payment
+                            </span>
+
+                            {% elif request_status == "paid" %}
+                            <span class="badge bg-success">
+                                Paid
+                            </span>
+
+                            {% elif request_status == "purchased" %}
+                            <span class="badge" style="background:#4a148c;">
+                                Purchased
+                            </span>
+
+                            {% elif request_status == "quote_expired" %}
+                            <span class="badge bg-danger">
+                                Quote Expired
+                            </span>
+
+                            {% elif request_status == "cancelled" %}
+                            <span class="badge bg-danger">
+                                Cancelled
+                            </span>
+
+                            {% else %}
+                            <span class="badge bg-secondary text-capitalize">
+                                {{ request_status|replace("_", " ") }}
+                            </span>
+                            {% endif %}
+                        </td>
+
+                        <!-- SUBMITTED DATE -->
+                        <td>
+                            {% if req.created_at %}
+                            {% set submitted_jamaica = to_jamaica(req.created_at) %}
+
+                            <div class="fw-semibold">
+                                {{ submitted_jamaica.strftime("%Y-%m-%d") }}
+                            </div>
+
+                            <div class="small text-muted">
+                                {{ submitted_jamaica.strftime("%I:%M %p") }}
+                            </div>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr id="shopForMeServerEmptyRow">
+                        <td colspan="7" class="text-center py-5">
+                            <div class="mb-2">
+                                <i class="fas fa-cart-plus fa-2x" style="color:#4a148c;"></i>
+                            </div>
+
+                            <h5 class="fw-bold mb-1">
+                                No Shop For Me requests found
+                            </h5>
+
+                            <p class="text-muted mb-0">
+                                Customer requests will appear here once submitted.
+                            </p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    <!-- CLIENT-SIDE EMPTY SEARCH RESULT -->
+                    <tr id="shopForMeSearchEmptyRow" style="display:none;">
+                        <td colspan="7" class="text-center text-muted py-5">
+                            No requests match your search.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- TABLE FOOTER -->
+        {% if requests_list %}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 px-3 py-3 border-top">
+            <div id="shopForMeResultCount" class="small text-muted fw-semibold">
+                Showing 0 results
+            </div>
+
+            <nav aria-label="Shop For Me pagination">
+                <ul class="pagination pagination-sm mb-0" id="shopForMePagination"></ul>
+            </nav>
+        </div>
+        {% endif %}
+    </div>
+
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const searchInput = document.getElementById(
+            "shopForMeSearch"
+        );
+
+        const perPageSelect = document.getElementById(
+            "shopForMePerPage"
+        );
+
+        const resultCount = document.getElementById(
+            "shopForMeResultCount"
+        );
+
+        const pagination = document.getElementById(
+            "shopForMePagination"
+        );
+
+        const emptyRow = document.getElementById(
+            "shopForMeSearchEmptyRow"
+        );
+
+        const allRows = Array.from(
+            document.querySelectorAll(".shop-request-row")
+        );
+
+        if (
+            !searchInput ||
+            !perPageSelect ||
+            !resultCount ||
+            !pagination
+        ) {
+            return;
+        }
+
+        let currentPage = 1;
+
+        function getFilteredRows() {
+            const searchValue = (
+                searchInput.value || ""
+            ).trim().toLowerCase();
+
+            if (!searchValue) {
+                return allRows;
+            }
+
+            return allRows.filter(function (row) {
+                const searchableText = (
+                    row.dataset.search || ""
+                ).toLowerCase();
+
+                return searchableText.includes(searchValue);
+            });
+        }
+
+        function createPageButton(
+            label,
+            pageNumber,
+            disabled,
+            active
+        ) {
+            const item = document.createElement("li");
+            item.className = "page-item";
+
+            if (disabled) {
+                item.classList.add("disabled");
+            }
+
+            if (active) {
+                item.classList.add("active");
+            }
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "page-link";
+            button.textContent = label;
+
+            if (active) {
+                button.style.background = "#4a148c";
+                button.style.borderColor = "#4a148c";
+            } else {
+                button.style.color = "#4a148c";
+            }
+
+            button.addEventListener("click", function () {
+                if (disabled || active) {
+                    return;
+                }
+
+                currentPage = pageNumber;
+                renderTable();
+            });
+
+            item.appendChild(button);
+            pagination.appendChild(item);
+        }
+
+        function renderPagination(totalPages) {
+            pagination.innerHTML = "";
+
+            if (totalPages <= 1) {
+                return;
+            }
+
+            createPageButton(
+                "‹",
+                currentPage - 1,
+                currentPage === 1,
+                false
+            );
+
+            const startPage = Math.max(
+                1,
+                currentPage - 2
+            );
+
+            const endPage = Math.min(
+                totalPages,
+                startPage + 4
+            );
+
+            for (
+                let pageNumber = startPage;
+                pageNumber <= endPage;
+                pageNumber += 1
+            ) {
+                createPageButton(
+                    String(pageNumber),
+                    pageNumber,
+                    false,
+                    pageNumber === currentPage
+                );
+            }
+
+            createPageButton(
+                "›",
+                currentPage + 1,
+                currentPage === totalPages,
+                false
+            );
+        }
+
+        function renderTable() {
+            const filteredRows = getFilteredRows();
+            const perPage = Number(
+                perPageSelect.value || 10
+            );
+
+            const totalResults = filteredRows.length;
+            const totalPages = Math.max(
+                Math.ceil(totalResults / perPage),
+                1
+            );
+
+            if (currentPage > totalPages) {
+                currentPage = totalPages;
+            }
+
+            allRows.forEach(function (row) {
+                row.style.display = "none";
+            });
+
+            const startIndex = (
+                currentPage - 1
+            ) * perPage;
+
+            const endIndex = Math.min(
+                startIndex + perPage,
+                totalResults
+            );
+
+            filteredRows
+                .slice(startIndex, endIndex)
+                .forEach(function (row) {
+                    row.style.display = "";
+                });
+
+            if (emptyRow) {
+                emptyRow.style.display = (
+                    totalResults === 0
+                        ? ""
+                        : "none"
+                );
+            }
+
+            if (totalResults === 0) {
+                resultCount.textContent = "Showing 0 results";
+            } else {
+                resultCount.textContent = (
+                    "Showing " +
+                    (startIndex + 1) +
+                    " to " +
+                    endIndex +
+                    " of " +
+                    totalResults +
+                    " result" +
+                    (totalResults === 1 ? "" : "s")
+                );
+            }
+
+            renderPagination(totalPages);
+        }
+
+        searchInput.addEventListener(
+            "input",
+            function () {
+                currentPage = 1;
+                renderTable();
+            }
+        );
+
+        perPageSelect.addEventListener(
+            "change",
+            function () {
+                currentPage = 1;
+                renderTable();
+            }
+        );
+
+        renderTable();
+    });
+</script>
 {% endblock %}

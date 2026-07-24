@@ -357,7 +357,27 @@ else 0 %}
       </div>
 
       <div class="d-flex align-items-center gap-2">
-        {% if (invoice.preview_total_due or 0)|float > 0 %}
+        {% set inline_invoice_status = (
+        invoice.status or "unpaid"
+        )|lower %}
+
+        {% if inline_invoice_status in [
+        "draft",
+        "quoted"
+        ] %}
+        <span class="badge bg-secondary">
+          Draft — Awaiting Customer Approval
+        </span>
+
+        {% elif inline_invoice_status in [
+        "cancelled",
+        "canceled"
+        ] %}
+        <span class="badge bg-danger">
+          Cancelled
+        </span>
+
+        {% elif (invoice.preview_total_due or 0)|float > 0 %}
         <button type="button" class="btn btn-outline-purple pill-btn js-open-pay">
           <i class="bi bi-cash-coin"></i>
           Add Payment
@@ -367,6 +387,7 @@ else 0 %}
           <i class="bi bi-percent"></i>
           Discount
         </button>
+
         {% else %}
         <span class="badge bg-success">
           No Balance Due

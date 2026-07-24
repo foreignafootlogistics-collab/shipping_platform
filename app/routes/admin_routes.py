@@ -54,6 +54,10 @@ from app.utils.subscription_utils import (
     get_subscription_discount_percent,
     reconcile_subscription_usage,
 )
+from app.utils.shop_for_me_utils import (
+    shop_for_me_invoice_is_payable,
+    sync_shop_for_me_payment_status,
+)
 
 
 import sqlalchemy as sa
@@ -2634,6 +2638,15 @@ def mark_invoice_paid():
 
         inv = Invoice.query.get_or_404(invoice_id)
 
+        if not shop_for_me_invoice_is_payable(inv):
+            return jsonify({
+                "success": False,
+                "error": (
+                    "This Shop For Me quote has not been "
+                    "approved for payment."
+                ),
+            }), 400
+
         old_status = inv.status or "unpaid"
         old_amount_due = round(
             float(inv.amount_due or 0),
@@ -2658,7 +2671,7 @@ def mark_invoice_paid():
         # The invoice is already fully paid.
         # Close/synchronize it without creating another payment.
         # ---------------------------------------------------------
-        if total_due == 0:
+        if total_due <= 0.01:
             now_utc = datetime.now(timezone.utc)
 
             inv.amount_due = 0.00
@@ -2666,6 +2679,11 @@ def mark_invoice_paid():
 
             if not inv.date_paid:
                 inv.date_paid = now_utc
+
+            sync_shop_for_me_payment_status(
+                inv,
+                total_due=0.0,
+            )
 
             if old_status != "paid":
                 lock_delivered_packages_for_invoice(
@@ -2783,7 +2801,8 @@ def mark_invoice_paid():
 
         inv.amount_due = total_due
 
-        if total_due == 0:
+        if total_due <= 0.01:
+            inv.amount_due = 0.00
             inv.status = "paid"
             inv.date_paid = datetime.now(timezone.utc)
 
@@ -2801,6 +2820,11 @@ def mark_invoice_paid():
         else:
             inv.status = "unpaid"
             inv.date_paid = None
+
+        sync_shop_for_me_payment_status(
+            inv,
+            total_due=inv.amount_due,
+        )
 
         db.session.add(AuditLog(
             module="Finance",
@@ -2918,135 +2942,386 @@ def invoice_cart_summary():
         db.session.rollback()
         return jsonify({"success": False, "error": str(e)}), 500
 
-@admin_bp.route("/invoice/bulk_payment", methods=["POST"])
+@admin_bp.route(
+    "/invoice/bulk_payment",
+    methods=["POST"],
+)
 @admin_required
 def bulk_invoice_payment():
     try:
-        data = request.get_json(silent=True) or {}
+        data = request.get_json(
+            silent=True
+        ) or {}
 
-        user_id = int(data.get("user_id") or 0)
-        invoice_ids = data.get("invoice_ids") or []
-        amount = float(data.get("amount") or 0)
-        method = (data.get("payment_type") or "Cash").strip()
-        authorized_by = (data.get("authorized_by") or "").strip()
-        allocation = (data.get("allocation") or "oldest_first").strip()
+        try:
+            user_id = int(
+                data.get("user_id")
+                or 0
+            )
+        except (TypeError, ValueError):
+            user_id = 0
+
+        invoice_ids = (
+            data.get("invoice_ids")
+            or []
+        )
+
+        try:
+            amount = round(
+                float(
+                    data.get("amount")
+                    or 0
+                ),
+                2,
+            )
+        except (TypeError, ValueError):
+            amount = 0.00
+
+        method = (
+            data.get("payment_type")
+            or "Cash"
+        ).strip()
+
+        authorized_by = (
+            data.get("authorized_by")
+            or ""
+        ).strip()
+
+        allocation = (
+            data.get("allocation")
+            or "oldest_first"
+        ).strip().lower()
+
+        allowed_allocations = {
+            "oldest_first",
+            "newest_first",
+            "highest_owed_first",
+        }
+
+        if allocation not in allowed_allocations:
+            allocation = "oldest_first"
 
         if not user_id or not invoice_ids:
-            return jsonify({"success": False, "error": "No invoices selected."}), 400
+            return jsonify({
+                "success": False,
+                "error": (
+                    "No invoices selected."
+                ),
+            }), 400
+
         if amount <= 0:
-            return jsonify({"success": False, "error": "Amount must be greater than 0."}), 400
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Amount must be greater than 0."
+                ),
+            }), 400
+
         if not authorized_by:
-            return jsonify({"success": False, "error": "Authorized By is required."}), 400
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Authorized By is required."
+                ),
+            }), 400
 
         ids = []
-        for x in invoice_ids:
+
+        for value in invoice_ids:
             try:
-                ids.append(int(x))
-            except Exception:
-                pass
+                ids.append(int(value))
+            except (TypeError, ValueError):
+                continue
+
+        # Remove duplicate invoice IDs while
+        # retaining the original order.
         ids = list(dict.fromkeys(ids))
 
+        if not ids:
+            return jsonify({
+                "success": False,
+                "error": (
+                    "No valid invoice IDs were supplied."
+                ),
+            }), 400
+
         invoices = []
-        for inv_id in ids:
-            inv = Invoice.query.get(inv_id)
+
+        # Lock selected invoices until this transaction
+        # has finished to prevent duplicate allocation.
+        for invoice_id in ids:
+            inv = (
+                Invoice.query
+                .filter(
+                    Invoice.id == invoice_id
+                )
+                .with_for_update()
+                .first()
+            )
+
             if not inv:
                 continue
 
-            ok = False
-            if hasattr(inv, "user_id") and inv.user_id == user_id:
-                ok = True
-            if hasattr(inv, "customer_id") and inv.customer_id == user_id:
-                ok = True
+            invoice_user_id = getattr(
+                inv,
+                "user_id",
+                None,
+            )
 
-            if ok:
+            if invoice_user_id is None:
+                invoice_user_id = getattr(
+                    inv,
+                    "customer_id",
+                    None,
+                )
+
+            if invoice_user_id == user_id:
                 invoices.append(inv)
 
         if not invoices:
-            return jsonify({"success": False, "error": "No valid invoices found for this user."}), 400
+            return jsonify({
+                "success": False,
+                "error": (
+                    "No valid invoices were found "
+                    "for this customer."
+                ),
+            }), 400
+
+        # Do not allow bulk payment to bypass
+        # Shop For Me customer approval.
+        blocked_shop_invoices = [
+            inv
+            for inv in invoices
+            if not shop_for_me_invoice_is_payable(
+                inv
+            )
+        ]
+
+        if blocked_shop_invoices:
+            blocked_numbers = ", ".join(
+                (
+                    inv.invoice_number
+                    or f"Invoice #{inv.id}"
+                )
+                for inv in blocked_shop_invoices
+            )
+
+            return jsonify({
+                "success": False,
+                "error": (
+                    "The following Shop For Me "
+                    "quote(s) have not been approved "
+                    f"for payment: {blocked_numbers}"
+                ),
+            }), 400
 
         inv_rows = []
         old_state = {}
 
         for inv in invoices:
-            subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
-            owed = float(total_due or 0.0)
+            (
+                _subtotal,
+                _discount_total,
+                payments_total,
+                total_due,
+            ) = fetch_invoice_totals_pg(
+                inv.id
+            )
+
+            owed = round(
+                max(
+                    float(total_due or 0),
+                    0.0,
+                ),
+                2,
+            )
 
             old_state[inv.id] = {
-                "status": inv.status or "unpaid",
-                "amount_due": float(getattr(inv, "amount_due", 0) or owed or 0),
-                "paid_sum": float(payments_total or 0),
+                "status": (
+                    inv.status
+                    or "unpaid"
+                ),
+                "amount_due": float(
+                    getattr(
+                        inv,
+                        "amount_due",
+                        0,
+                    )
+                    or owed
+                    or 0
+                ),
+                "paid_sum": float(
+                    payments_total or 0
+                ),
                 "owed": owed,
-                "invoice_number": inv.invoice_number or f"Invoice #{inv.id}",
+                "invoice_number": (
+                    inv.invoice_number
+                    or f"Invoice #{inv.id}"
+                ),
             }
 
-            inv_rows.append((inv, owed))
+            inv_rows.append(
+                (inv, owed)
+            )
 
-        def inv_date(inv):
+        def invoice_date(invoice):
             return (
-                getattr(inv, "date", None)
-                or getattr(inv, "date_submitted", None)
-                or getattr(inv, "created_at", None)
-                or getattr(inv, "id", 0)
+                getattr(
+                    invoice,
+                    "date",
+                    None,
+                )
+                or getattr(
+                    invoice,
+                    "date_submitted",
+                    None,
+                )
+                or getattr(
+                    invoice,
+                    "created_at",
+                    None,
+                )
+                or datetime.min
             )
 
         if allocation == "newest_first":
-            inv_rows.sort(key=lambda t: inv_date(t[0]), reverse=True)
-        elif allocation == "highest_owed_first":
-            inv_rows.sort(key=lambda t: t[1], reverse=True)
-        else:
-            inv_rows.sort(key=lambda t: inv_date(t[0]))
-
-        remaining = float(amount)
-        created = []
-        now = datetime.now(timezone.utc)
-
-        for inv, owed in inv_rows:
-            if remaining <= 0:
-                break
-            if owed <= 0:
-                continue
-
-            pay_amt = min(remaining, owed)
-            notes = f"Authorized by: {authorized_by}" if authorized_by else None
-
-            p = Payment(
-                invoice_id=inv.id,
-                user_id=getattr(inv, "user_id", user_id) or user_id,
-                method=method,
-                amount_jmd=float(pay_amt),
-                notes=notes,
-                transaction_type="invoice_payment",
-                status="completed",
-                source="admin",
-                authorized_by_admin_id=current_user.id,
-                created_at=now,
+            inv_rows.sort(
+                key=lambda row: (
+                    invoice_date(row[0]),
+                    row[0].id,
+                ),
+                reverse=True,
             )
 
-            db.session.add(p)
+        elif allocation == "highest_owed_first":
+            inv_rows.sort(
+                key=lambda row: (
+                    row[1],
+                    row[0].id,
+                ),
+                reverse=True,
+            )
 
-            created.append((inv.id, float(pay_amt)))
-            remaining -= float(pay_amt)
+        else:
+            inv_rows.sort(
+                key=lambda row: (
+                    invoice_date(row[0]),
+                    row[0].id,
+                )
+            )
+
+        remaining = amount
+        created = []
+        now_utc = datetime.now(
+            timezone.utc
+        )
+
+        for inv, owed in inv_rows:
+            if remaining <= 0.01:
+                break
+
+            if owed <= 0.01:
+                continue
+
+            payment_amount = round(
+                min(remaining, owed),
+                2,
+            )
+
+            if payment_amount <= 0:
+                continue
+
+            notes = (
+                f"Authorized by: {authorized_by}"
+            )
+
+            payment = Payment(
+                invoice_id=inv.id,
+                user_id=(
+                    getattr(
+                        inv,
+                        "user_id",
+                        user_id,
+                    )
+                    or user_id
+                ),
+                method=method,
+                amount_jmd=float(
+                    payment_amount
+                ),
+                notes=notes,
+                transaction_type=(
+                    "invoice_payment"
+                ),
+                status="completed",
+                source="admin",
+                authorized_by_admin_id=(
+                    current_user.id
+                ),
+                created_at=now_utc,
+            )
+
+            db.session.add(payment)
+
+            created.append(
+                (
+                    inv.id,
+                    float(payment_amount),
+                )
+            )
+
+            remaining = round(
+                remaining - payment_amount,
+                2,
+            )
+
+        # Ensure the new Payment rows are visible to
+        # fetch_invoice_totals_pg().
+        db.session.flush()
 
         updated = []
 
-        for inv, _ in inv_rows:
-            subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
+        for inv, _old_owed in inv_rows:
+            (
+                _subtotal,
+                _discount_total,
+                payments_total,
+                total_due,
+            ) = fetch_invoice_totals_pg(
+                inv.id
+            )
 
-            prev_status = (inv.status or "").lower()
-            inv.amount_due = float(total_due)
+            previous_status = (
+                inv.status or ""
+            ).strip().lower()
 
-            if inv.amount_due <= 0:
+            new_due = round(
+                max(
+                    float(total_due or 0),
+                    0.0,
+                ),
+                2,
+            )
+
+            inv.amount_due = new_due
+
+            if new_due <= 0.01:
+                inv.amount_due = 0.00
                 inv.status = "paid"
-                inv.date_paid = now
+                inv.date_paid = now_utc
 
-                if prev_status != "paid":
+                if previous_status != "paid":
                     lock_delivered_packages_for_invoice(
                         inv.id,
                         reason="Invoice fully paid",
-                        actor_admin_id=current_user.id
+                        actor_admin_id=(
+                            current_user.id
+                        ),
                     )
 
-            elif float(payments_total or 0) > 0:
+            elif float(
+                payments_total or 0
+            ) > 0:
                 inv.status = "partial"
                 inv.date_paid = None
 
@@ -3054,60 +3329,115 @@ def bulk_invoice_payment():
                 inv.status = "unpaid"
                 inv.date_paid = None
 
-            applied_to_invoice = 0.0
-            for created_inv_id, created_amount in created:
-                if created_inv_id == inv.id:
-                    applied_to_invoice += float(created_amount or 0)
+            # Automatically update a linked Shop For Me
+            # request to paid or awaiting_payment.
+            sync_shop_for_me_payment_status(
+                inv,
+                total_due=inv.amount_due,
+            )
+
+            applied_to_invoice = sum(
+                float(created_amount or 0)
+                for (
+                    created_invoice_id,
+                    created_amount,
+                ) in created
+                if created_invoice_id == inv.id
+            )
 
             if applied_to_invoice > 0:
-                old = old_state.get(inv.id, {})
+                old = old_state.get(
+                    inv.id,
+                    {},
+                )
 
-                db.session.add(AuditLog(
-                    module="Finance",
-                    action="Bulk Invoice Payment Applied",
-                    admin_id=current_user.id,
-                    user_id=getattr(inv, "user_id", user_id) or user_id,
-                    entity_type="Invoice",
-                    entity_id=inv.id,
-                    reason="Bulk invoice payment",
-                    description=(
-                        f"Bulk payment of JMD {applied_to_invoice:,.2f} applied to "
-                        f"{inv.invoice_number or ('Invoice #' + str(inv.id))}. "
-                        f"Method: {method}. Authorized by: {authorized_by}. "
-                        f"Allocation: {allocation}."
-                    ),
-                    old_value=(
-                        f"Status: {old.get('status', 'unpaid')}; "
-                        f"Amount Due: JMD {float(old.get('amount_due', 0)):,.2f}; "
-                        f"Paid Sum: JMD {float(old.get('paid_sum', 0)):,.2f}"
-                    ),
-                    new_value=(
-                        f"Status: {inv.status}; "
-                        f"Amount Due: JMD {float(inv.amount_due or 0):,.2f}; "
-                        f"Total Paid: JMD {float(payments_total or 0):,.2f}"
-                    ),
-                ))
+                db.session.add(
+                    AuditLog(
+                        module="Finance",
+                        action=(
+                            "Bulk Invoice Payment Applied"
+                        ),
+                        admin_id=current_user.id,
+                        user_id=(
+                            getattr(
+                                inv,
+                                "user_id",
+                                user_id,
+                            )
+                            or user_id
+                        ),
+                        entity_type="Invoice",
+                        entity_id=inv.id,
+                        reason=(
+                            "Bulk invoice payment"
+                        ),
+                        description=(
+                            f"Bulk payment of JMD "
+                            f"{applied_to_invoice:,.2f} "
+                            f"applied to "
+                            f"{inv.invoice_number or ('Invoice #' + str(inv.id))}. "
+                            f"Method: {method}. "
+                            f"Authorized by: "
+                            f"{authorized_by}. "
+                            f"Allocation: "
+                            f"{allocation}."
+                        ),
+                        old_value=(
+                            f"Status: "
+                            f"{old.get('status', 'unpaid')}; "
+                            f"Amount Due: JMD "
+                            f"{float(old.get('amount_due', 0)):,.2f}; "
+                            f"Paid Sum: JMD "
+                            f"{float(old.get('paid_sum', 0)):,.2f}"
+                        ),
+                        new_value=(
+                            f"Status: {inv.status}; "
+                            f"Amount Due: JMD "
+                            f"{float(inv.amount_due or 0):,.2f}; "
+                            f"Total Paid: JMD "
+                            f"{float(payments_total or 0):,.2f}"
+                        ),
+                    )
+                )
 
             updated.append({
                 "invoice_id": inv.id,
-                "amount_due": float(inv.amount_due),
+                "amount_due": float(
+                    inv.amount_due or 0
+                ),
                 "status": inv.status,
-                "paid_sum": float(payments_total or 0),
+                "paid_sum": float(
+                    payments_total or 0
+                ),
             })
 
         db.session.commit()
 
         return jsonify({
             "success": True,
-            "applied_total": float(amount - remaining),
-            "unused_amount": float(max(remaining, 0.0)),
+            "applied_total": round(
+                amount - remaining,
+                2,
+            ),
+            "unused_amount": round(
+                max(remaining, 0.0),
+                2,
+            ),
             "created_payments": created,
             "updated": updated,
         })
 
-    except Exception as e:
+    except Exception as error:
         db.session.rollback()
-        return jsonify({"success": False, "error": str(e)}), 500
+
+        current_app.logger.exception(
+            "Bulk invoice payment failed"
+        )
+
+        return jsonify({
+            "success": False,
+            "error": str(error),
+        }), 500
 
 @admin_bp.route('/generate-pdf-invoice/<int:user_id>')
 @admin_required
@@ -3647,10 +3977,20 @@ def view_invoice(invoice_id):
     )
 
     invoice_status = (
-        invoice.status or ""
+        invoice.status or "unpaid"
     ).strip().lower()
 
-    if invoice_status == "paid":
+    non_payable_statuses = {
+        "draft",
+        "quoted",
+        "cancelled",
+        "canceled",
+    }
+
+    if (
+        invoice_status == "paid"
+        or invoice_status in non_payable_statuses
+    ):
         preview_balance_due = 0.0
     else:
         preview_balance_due = max(
@@ -3674,6 +4014,7 @@ def view_invoice(invoice_id):
 
     invoice_dict = {
         "id": invoice.id,
+        "status": invoice_status,
         "user_id": invoice.user_id,
         "user": user,
 
@@ -4061,6 +4402,12 @@ def delete_invoice(invoice_id):
         or ""
     ).strip().lower()
 
+    shop_request = (
+        PurchaseRequest.query
+        .filter_by(invoice_id=invoice.id)
+        .first()
+    )
+
     # -------------------------------------------------
     # Never delete an invoice marked paid
     # -------------------------------------------------
@@ -4234,6 +4581,35 @@ def delete_invoice(invoice_id):
                 if hasattr(package, "locked_at"):
                     package.locked_at = None
 
+        if shop_request:
+            shop_request.invoice_id = None
+
+            if (
+                shop_request.status or ""
+            ).strip().lower() in {
+                "quoted",
+                "quote_expired",
+                "awaiting_payment",
+            }:
+                shop_request.status = "requested"
+
+            old_notes = (
+                shop_request.notes or ""
+            ).strip()
+
+            deletion_note = (
+                f"Invoice {invoice_number} was deleted "
+                "before payment. A new quote is required."
+            )
+
+            shop_request.notes = (
+                f"{old_notes}\n\n{deletion_note}"
+                if old_notes
+                else deletion_note
+            )
+
+            db.session.flush()
+
         db.session.delete(invoice)
         db.session.commit()
 
@@ -4253,11 +4629,18 @@ def delete_invoice(invoice_id):
             500,
         )
 
-    message = (
-        f"{invoice_number} was deleted. "
-        f"{package_count} package(s) can now be "
-        "included in a new invoice."
-    )
+    if shop_request:
+        message = (
+            f"{invoice_number} was deleted. "
+            "The Shop For Me request was returned "
+            "to Requested and must be quoted again."
+        )
+    else:
+        message = (
+            f"{invoice_number} was deleted. "
+            f"{package_count} package(s) can now be "
+            "included in a new invoice."
+        )
 
     if (
         request.headers.get(
@@ -4274,8 +4657,10 @@ def delete_invoice(invoice_id):
     flash(message, "success")
     return back()
 
-
-@admin_bp.route("/invoice/add-payment/<int:invoice_id>", methods=["POST"])
+@admin_bp.route(
+    "/invoice/add-payment/<int:invoice_id>",
+    methods=["POST"],
+)
 @admin_required
 def add_payment(invoice_id):
     inv = (
@@ -4285,56 +4670,153 @@ def add_payment(invoice_id):
         .first_or_404()
     )
 
-    # Read form fields
+    is_ajax = (
+        request.headers.get("X-Requested-With")
+        == "XMLHttpRequest"
+    )
+
+    # Prevent payment of an unapproved Shop For Me quote.
+    if not shop_for_me_invoice_is_payable(inv):
+        message = (
+            "This Shop For Me quote has not been "
+            "approved for payment."
+        )
+
+        if is_ajax:
+            return jsonify({
+                "ok": False,
+                "error": message,
+            }), 400
+
+        flash(message, "warning")
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=inv.id,
+            )
+        )
+
     try:
         amount = round(
-            float(request.form.get("amount_jmd", 0) or 0),
-            2
+            float(
+                request.form.get(
+                    "amount_jmd",
+                    0,
+                )
+                or 0
+            ),
+            2,
         )
     except (TypeError, ValueError):
         amount = 0.00
 
-    method        = (request.form.get("method") or "Cash").strip()
-    authorized_by = (request.form.get("authorized_by") or "").strip()
-    reference     = (request.form.get("reference") or "").strip()
-    extra_notes   = (request.form.get("notes") or "").strip()
+    method = (
+        request.form.get("method")
+        or "Cash"
+    ).strip()
 
-    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    authorized_by = (
+        request.form.get("authorized_by")
+        or ""
+    ).strip()
+
+    reference = (
+        request.form.get("reference")
+        or ""
+    ).strip()
+
+    extra_notes = (
+        request.form.get("notes")
+        or ""
+    ).strip()
 
     if amount <= 0:
-        msg = "Payment amount must be greater than 0."
-        if is_ajax:
-            return jsonify({"ok": False, "error": msg}), 400
-        flash(msg, "warning")
-        return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
+        message = (
+            "Payment amount must be greater than 0."
+        )
 
-    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
+        if is_ajax:
+            return jsonify({
+                "ok": False,
+                "error": message,
+            }), 400
+
+        flash(message, "warning")
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=inv.id,
+            )
+        )
+
+    (
+        _subtotal,
+        _discount_total,
+        _payments_total,
+        total_due,
+    ) = fetch_invoice_totals_pg(inv.id)
+
     current_due = round(
         max(float(total_due or 0), 0.0),
-        2
+        2,
     )
 
-    if current_due <= 0:
-        msg = "This invoice is already fully paid."
+    if current_due <= 0.01:
+        message = (
+            "This invoice is already fully paid."
+        )
+
         if is_ajax:
-            return jsonify({"ok": False, "error": msg}), 400
-        flash(msg, "warning")
-        return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
+            return jsonify({
+                "ok": False,
+                "error": message,
+            }), 400
+
+        flash(message, "warning")
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=inv.id,
+            )
+        )
 
     if amount > current_due:
-        msg = f"Payment cannot exceed balance due of JMD {current_due:,.2f}."
-        if is_ajax:
-            return jsonify({"ok": False, "error": msg}), 400
-        flash(msg, "warning")
-        return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
+        message = (
+            "Payment cannot exceed balance due "
+            f"of JMD {current_due:,.2f}."
+        )
 
-    # Build notes safely
+        if is_ajax:
+            return jsonify({
+                "ok": False,
+                "error": message,
+            }), 400
+
+        flash(message, "warning")
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=inv.id,
+            )
+        )
+
     notes_parts = []
+
     if extra_notes:
         notes_parts.append(extra_notes)
+
     if authorized_by:
-        notes_parts.append(f"Authorised by: {authorized_by}")
-    notes = "\n".join(notes_parts) if notes_parts else None
+        notes_parts.append(
+            f"Authorised by: {authorized_by}"
+        )
+
+    notes = (
+        "\n".join(notes_parts)
+        if notes_parts
+        else None
+    )
+
+    now_utc = datetime.now(timezone.utc)
 
     payment_kwargs = {
         "invoice_id": inv.id,
@@ -4343,221 +4825,464 @@ def add_payment(invoice_id):
         "status": "completed",
         "source": "admin",
         "authorized_by_admin_id": current_user.id,
+        "created_at": now_utc,
     }
 
-    # amount field name
     if hasattr(Payment, "amount_jmd"):
         payment_kwargs["amount_jmd"] = amount
     else:
         payment_kwargs["amount"] = amount
 
-    # method field name
     if hasattr(Payment, "method"):
         payment_kwargs["method"] = method
     else:
         payment_kwargs["payment_type"] = method
 
-    # optional scalar fields only
     if hasattr(Payment, "reference"):
-        payment_kwargs["reference"] = reference or None
+        payment_kwargs["reference"] = (
+            reference or None
+        )
 
     if hasattr(Payment, "notes"):
         payment_kwargs["notes"] = notes
 
     if hasattr(Payment, "payment_date"):
-        payment_kwargs["payment_date"] = datetime.now(timezone.utc)
+        payment_kwargs["payment_date"] = now_utc
 
     if hasattr(Payment, "bill_number"):
         payment_kwargs["bill_number"] = (
             f"BILL-{inv.id}-"
-            f"{to_jamaica(datetime.now(timezone.utc)).strftime('%Y%m%d%H%M%S')}"
+            f"{to_jamaica(now_utc).strftime('%Y%m%d%H%M%S')}"
         )
 
-    # ---------------------------------
-    # Prevent duplicate payment submit
-    # ---------------------------------
-    recent_payment = (
-        Payment.query
-        .filter(
-            Payment.invoice_id == inv.id,
-            Payment.amount_jmd == amount,
+    duplicate_filters = [
+        Payment.invoice_id == inv.id,
+    ]
+
+    if hasattr(Payment, "amount_jmd"):
+        duplicate_filters.append(
+            Payment.amount_jmd == amount
+        )
+    else:
+        duplicate_filters.append(
+            Payment.amount == amount
+        )
+
+    if hasattr(Payment, "method"):
+        duplicate_filters.append(
             Payment.method == method
         )
+    else:
+        duplicate_filters.append(
+            Payment.payment_type == method
+        )
+
+    recent_payment = (
+        Payment.query
+        .filter(*duplicate_filters)
         .order_by(Payment.created_at.desc())
         .first()
     )
 
-    if recent_payment:
+    if recent_payment and recent_payment.created_at:
         recent_created_at = recent_payment.created_at
 
-        # Database timestamps may be returned without timezone information.
         if recent_created_at.tzinfo is None:
-            recent_created_at = recent_created_at.replace(
-                tzinfo=timezone.utc
+            recent_created_at = (
+                recent_created_at.replace(
+                    tzinfo=timezone.utc
+                )
             )
 
-        time_diff = (
-            datetime.now(timezone.utc) - recent_created_at
+        time_difference = (
+            now_utc - recent_created_at
         ).total_seconds()
 
-        # If the same payment was added in the last 10 seconds, block it
-        if time_diff < 10:
-            msg = "Duplicate payment detected. Please refresh."
-
-            if is_ajax:
-                return jsonify({"ok": False, "error": msg}), 400
-
-            flash(msg, "warning")
-            return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
-
-    p = Payment(**payment_kwargs)
-    db.session.add(p)
-    db.session.flush()
-
-    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
-    new_due = round(
-        max(float(total_due or 0), 0.0),
-        2
-    )
-    base_total = round(
-        max(float(subtotal or 0) - float(discount_total or 0), 0.0),
-        2
-    )
-    paid_sum = round(
-        float(payments_total or 0),
-        2
-    )
-
-    inv.amount_due = new_due
-
-    previous_status = inv.status
-    if new_due <= 0:
-        inv.status = "paid"
-        if hasattr(inv, "date_paid"):
-            inv.date_paid = datetime.now(timezone.utc)
-
-        shop_request = PurchaseRequest.query.filter_by(invoice_id=inv.id).first()
-
-        if shop_request:
-            shop_request.status = "paid"
-
-        if previous_status != "paid":
-            lock_delivered_packages_for_invoice(
-                inv.id,
-                reason="Invoice fully paid",
-                actor_admin_id=current_user.id,
+        if time_difference < 10:
+            message = (
+                "Duplicate payment detected. "
+                "Please refresh."
             )
 
-    elif 0 < new_due < base_total:
-        inv.status = "partial"
+            if is_ajax:
+                return jsonify({
+                    "ok": False,
+                    "error": message,
+                }), 400
 
-        if hasattr(inv, "date_paid"):
-            inv.date_paid = None
+            flash(message, "warning")
+            return redirect(
+                url_for(
+                    "admin.view_invoice",
+                    invoice_id=inv.id,
+                )
+            )
 
-    else:
-        inv.status = "unpaid"
-        if hasattr(inv, "date_paid"):
-            inv.date_paid = None
-    db.session.commit()
+    try:
+        payment = Payment(**payment_kwargs)
+        db.session.add(payment)
+        db.session.flush()
+
+        (
+            subtotal,
+            discount_total,
+            payments_total,
+            total_due,
+        ) = fetch_invoice_totals_pg(inv.id)
+
+        new_due = round(
+            max(float(total_due or 0), 0.0),
+            2,
+        )
+
+        base_total = round(
+            max(
+                float(subtotal or 0)
+                - float(discount_total or 0),
+                0.0,
+            ),
+            2,
+        )
+
+        paid_sum = round(
+            float(payments_total or 0),
+            2,
+        )
+
+        previous_status = (
+            inv.status or ""
+        ).strip().lower()
+
+        inv.amount_due = new_due
+
+        if new_due <= 0.01:
+            inv.amount_due = 0.00
+            inv.status = "paid"
+
+            if hasattr(inv, "date_paid"):
+                inv.date_paid = now_utc
+
+            if previous_status != "paid":
+                lock_delivered_packages_for_invoice(
+                    inv.id,
+                    reason="Invoice fully paid",
+                    actor_admin_id=current_user.id,
+                )
+
+        elif paid_sum > 0 and new_due < base_total:
+            inv.status = "partial"
+
+            if hasattr(inv, "date_paid"):
+                inv.date_paid = None
+
+        else:
+            inv.status = "unpaid"
+
+            if hasattr(inv, "date_paid"):
+                inv.date_paid = None
+
+        sync_shop_for_me_payment_status(
+            inv,
+            total_due=inv.amount_due,
+        )
+
+        db.session.commit()
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Adding payment to invoice %s failed",
+            inv.id,
+        )
+
+        message = (
+            f"The payment could not be recorded: {error}"
+        )
+
+        if is_ajax:
+            return jsonify({
+                "ok": False,
+                "error": message,
+            }), 500
+
+        flash(message, "danger")
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=inv.id,
+            )
+        )
+
     if is_ajax:
         return jsonify({
             "ok": True,
             "invoice_id": inv.id,
             "status": inv.status,
             "paid_sum": float(paid_sum),
-            "amount_due": float(inv.amount_due),
+            "amount_due": float(
+                inv.amount_due or 0
+            ),
         })
 
-    flash(f"Payment of {amount:,.2f} JMD recorded for {inv.invoice_number}.", "success")
-    return redirect(url_for("admin.view_invoice", invoice_id=inv.id))
-
-
-@admin_bp.route("/invoice/add-discount/<int:invoice_id>", methods=["POST"])
-@admin_required
-def add_discount(invoice_id):
-    inv = Invoice.query.get_or_404(invoice_id)
-
-    previous_status = inv.status or "unpaid"
-    old_grand_total = float(inv.grand_total or inv.amount or 0)
-    old_amount_due = float(inv.amount_due or 0)
-
-    amount = float(request.form.get("amount_jmd", 0) or 0)
-
-    if amount <= 0:
-        flash("Discount amount must be greater than 0.", "warning")
-        return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
-
-    base_total_before = float(inv.grand_total or inv.amount or 0)
-    base_total_after = max(base_total_before - amount, 0.0)
-
-    inv.grand_total = base_total_after
-    inv.amount = base_total_after
-
-    pay_col = Payment.amount_jmd if hasattr(Payment, "amount_jmd") else Payment.amount
-
-    paid_sum = (
-        db.session.query(func.coalesce(func.sum(pay_col), 0.0))
-        .filter(Payment.invoice_id == inv.id)
-        .scalar()
-        or 0.0
+    flash(
+        f"Payment of JMD {amount:,.2f} recorded "
+        f"for {inv.invoice_number}.",
+        "success",
     )
 
-    new_due = max(base_total_after - paid_sum, 0.0)
-    inv.amount_due = new_due
+    return redirect(
+        url_for(
+            "admin.view_invoice",
+            invoice_id=inv.id,
+        )
+    )
 
-    if new_due <= 0:
-        inv.status = "paid"
-        inv.date_paid = datetime.now(timezone.utc)
 
-        if previous_status != "paid":
-            lock_delivered_packages_for_invoice(
-                inv.id,
-                reason="Invoice fully settled after discount",
-                actor_admin_id=current_user.id,
+@admin_bp.route(
+    "/invoice/add-discount/<int:invoice_id>",
+    methods=["POST"],
+)
+@admin_required
+def add_discount(invoice_id):
+    inv = (
+        Invoice.query
+        .filter(Invoice.id == invoice_id)
+        .with_for_update()
+        .first_or_404()
+    )
+
+    if not shop_for_me_invoice_is_payable(inv):
+        flash(
+            "A discount cannot be applied to an "
+            "unapproved Shop For Me quote.",
+            "warning",
+        )
+
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=inv.id,
+            )
+        )
+
+    previous_status = (
+        inv.status or "unpaid"
+    ).strip().lower()
+
+    old_grand_total = float(
+        inv.grand_total
+        or inv.amount
+        or 0
+    )
+
+    old_amount_due = float(
+        inv.amount_due or 0
+    )
+
+    try:
+        amount = round(
+            float(
+                request.form.get(
+                    "amount_jmd",
+                    0,
+                )
+                or 0
+            ),
+            2,
+        )
+    except (TypeError, ValueError):
+        amount = 0.00
+
+    if amount <= 0:
+        flash(
+            "Discount amount must be greater than 0.",
+            "warning",
+        )
+
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=inv.id,
+            )
+        )
+
+    base_total_before = round(
+        float(
+            inv.grand_total
+            or inv.amount
+            or 0
+        ),
+        2,
+    )
+
+    if amount > base_total_before:
+        flash(
+            "Discount cannot exceed the invoice "
+            f"total of JMD {base_total_before:,.2f}.",
+            "warning",
+        )
+
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=inv.id,
+            )
+        )
+
+    try:
+        base_total_after = round(
+            max(
+                base_total_before - amount,
+                0.0,
+            ),
+            2,
+        )
+
+        inv.grand_total = base_total_after
+
+        if hasattr(inv, "amount"):
+            inv.amount = base_total_after
+
+        payment_column = (
+            Payment.amount_jmd
+            if hasattr(Payment, "amount_jmd")
+            else Payment.amount
+        )
+
+        paid_query = (
+            db.session.query(
+                func.coalesce(
+                    func.sum(payment_column),
+                    0.0,
+                )
+            )
+            .filter(
+                Payment.invoice_id == inv.id
+            )
+        )
+
+        if hasattr(Payment, "status"):
+            paid_query = paid_query.filter(
+                func.lower(Payment.status).in_(
+                    ["completed", "settled"]
+                )
             )
 
-    elif 0 < new_due < base_total_after:
-        inv.status = "partial"
+        paid_sum = float(
+            paid_query.scalar() or 0.0
+        )
 
-        if hasattr(inv, "date_paid"):
-            inv.date_paid = None
+        new_due = round(
+            max(
+                base_total_after - paid_sum,
+                0.0,
+            ),
+            2,
+        )
 
-    else:
-        inv.status = "unpaid"
+        inv.amount_due = new_due
+        now_utc = datetime.now(timezone.utc)
 
-        if hasattr(inv, "date_paid"):
-            inv.date_paid = None
+        if new_due <= 0.01:
+            inv.amount_due = 0.00
+            inv.status = "paid"
 
-    db.session.add(AuditLog(
-        module="Finance",
-        action="Invoice Discount Added",
-        admin_id=current_user.id,
-        user_id=inv.user_id,
-        entity_type="Invoice",
-        entity_id=inv.id,
-        reason="Manual invoice discount",
-        description=(
-            f"Discount of JMD {amount:,.2f} added to invoice "
-            f"{inv.invoice_number or ('#' + str(inv.id))}. "
-            f"Status changed from {previous_status} to {inv.status}."
-        ),
-        old_value=(
-            f"Status: {previous_status}; "
-            f"Grand Total: JMD {old_grand_total:,.2f}; "
-            f"Amount Due: JMD {old_amount_due:,.2f}"
-        ),
-        new_value=(
-            f"Status: {inv.status}; "
-            f"Grand Total: JMD {float(inv.grand_total or 0):,.2f}; "
-            f"Amount Due: JMD {float(inv.amount_due or 0):,.2f}; "
-            f"Discount: JMD {amount:,.2f}"
-        ),
-    ))
+            if hasattr(inv, "date_paid"):
+                inv.date_paid = now_utc
 
-    db.session.commit()
+            if previous_status != "paid":
+                lock_delivered_packages_for_invoice(
+                    inv.id,
+                    reason=(
+                        "Invoice fully settled "
+                        "after discount"
+                    ),
+                    actor_admin_id=current_user.id,
+                )
+
+        elif paid_sum > 0:
+            inv.status = "partial"
+
+            if hasattr(inv, "date_paid"):
+                inv.date_paid = None
+
+        else:
+            inv.status = "unpaid"
+
+            if hasattr(inv, "date_paid"):
+                inv.date_paid = None
+
+        sync_shop_for_me_payment_status(
+            inv,
+            total_due=inv.amount_due,
+        )
+
+        db.session.add(
+            AuditLog(
+                module="Finance",
+                action="Invoice Discount Added",
+                admin_id=current_user.id,
+                user_id=inv.user_id,
+                entity_type="Invoice",
+                entity_id=inv.id,
+                reason="Manual invoice discount",
+                description=(
+                    f"Discount of JMD {amount:,.2f} "
+                    f"added to invoice "
+                    f"{inv.invoice_number or ('#' + str(inv.id))}. "
+                    f"Status changed from "
+                    f"{previous_status} to "
+                    f"{inv.status}."
+                ),
+                old_value=(
+                    f"Status: {previous_status}; "
+                    f"Grand Total: JMD "
+                    f"{old_grand_total:,.2f}; "
+                    f"Amount Due: JMD "
+                    f"{old_amount_due:,.2f}"
+                ),
+                new_value=(
+                    f"Status: {inv.status}; "
+                    f"Grand Total: JMD "
+                    f"{float(inv.grand_total or 0):,.2f}; "
+                    f"Amount Due: JMD "
+                    f"{float(inv.amount_due or 0):,.2f}; "
+                    f"Discount: JMD {amount:,.2f}"
+                ),
+            )
+        )
+
+        db.session.commit()
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Adding discount to invoice %s failed",
+            inv.id,
+        )
+
+        flash(
+            f"The discount could not be added: {error}",
+            "danger",
+        )
+
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=inv.id,
+            )
+        )
 
     flash("Discount added.", "success")
-    return redirect(url_for("admin.view_invoice", invoice_id=invoice_id))
+
+    return redirect(
+        url_for(
+            "admin.view_invoice",
+            invoice_id=inv.id,
+        )
+    )
 
 
 @admin_bp.route(
@@ -5649,37 +6374,82 @@ def admin_profile():
 
 @admin_bp.app_context_processor
 def inject_admin_badges():
-    # defaults
     unread_broadcast_count = 0
     unread_messages_count = 0
+    shop_for_me_action_count = 0
 
     try:
         if current_user.is_authenticated:
-            # Broadcast notifications unread (for admin view)
-            unread_broadcast_count = db.session.scalar(
-                sa.select(func.count()).select_from(Notification).where(
-                    Notification.is_broadcast.is_(True),
-                    Notification.is_read.is_(False),
+            # Broadcast notifications unread.
+            unread_broadcast_count = (
+                db.session.scalar(
+                    sa.select(func.count())
+                    .select_from(Notification)
+                    .where(
+                        Notification.is_broadcast.is_(True),
+                        Notification.is_read.is_(False),
+                    )
                 )
-            ) or 0
+                or 0
+            )
 
-            # Admin unread messages (where admin is the recipient)
-            unread_messages_count = db.session.scalar(
-                sa.select(func.count()).select_from(Message).where(
-                    Message.recipient_id == current_user.id,
-                    Message.is_read.is_(False)
+            # Messages where the current admin is the recipient.
+            unread_messages_count = (
+                db.session.scalar(
+                    sa.select(func.count())
+                    .select_from(Message)
+                    .where(
+                        Message.recipient_id
+                        == current_user.id,
+                        Message.is_read.is_(False),
+                    )
                 )
-            ) or 0
+                or 0
+            )
 
-    except Exception as e:
+            # Shop For Me requests requiring an admin action:
+            # requested       -> admin must prepare a quote
+            # quote_expired   -> admin must prepare a new quote
+            # paid            -> admin must purchase the item
+            from app.models import PurchaseRequest
+
+            shop_for_me_action_count = (
+                db.session.scalar(
+                    sa.select(func.count())
+                    .select_from(PurchaseRequest)
+                    .where(
+                        PurchaseRequest.status.in_(
+                            [
+                                "requested",
+                                "quote_expired",
+                                "paid",
+                            ]
+                        )
+                    )
+                )
+                or 0
+            )
+
+    except Exception as error:
         db.session.rollback()
-        # optional logging
-        # current_app.logger.warning("inject_admin_badges failed: %s", e)
+
+        current_app.logger.warning(
+            "Admin badge count failed: %s",
+            error,
+        )
+
         unread_broadcast_count = 0
         unread_messages_count = 0
+        shop_for_me_action_count = 0
 
-    return dict(
-        unread_broadcast_count=int(unread_broadcast_count),
-        unread_messages_count=int(unread_messages_count),
-    )
-
+    return {
+        "unread_broadcast_count": int(
+            unread_broadcast_count
+        ),
+        "unread_messages_count": int(
+            unread_messages_count
+        ),
+        "shop_for_me_action_count": int(
+            shop_for_me_action_count
+        ),
+    }

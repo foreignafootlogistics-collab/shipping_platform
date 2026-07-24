@@ -145,9 +145,19 @@
       <i class="fas fa-box"></i> Packages
     </a>
 
-    <a href="{{ url_for('customer.purchase_requests') }}"
-      class="{% if request.endpoint in ['customer.purchase_requests', 'customer.new_purchase_request'] %}active{% endif %}">
-      <i class="fas fa-cart-plus"></i> Shop For Me
+    <a href="{{ url_for('customer.purchase_requests') }}" class="{% if request.endpoint in [
+    'customer.purchase_requests',
+    'customer.new_purchase_request',
+    'customer.purchase_request_detail'
+  ] %}active{% endif %}">
+      <i class="fas fa-cart-plus"></i>
+      Shop For Me
+
+      {% if shop_for_me_customer_action_count|default(0) > 0 %}
+      <span class="badge rounded-pill bg-danger ms-1" title="Shop For Me requests requiring your attention">
+        {{ shop_for_me_customer_action_count }}
+      </span>
+      {% endif %}
     </a>
 
     <a href="{{ url_for('customer.transactions_all') }}"
@@ -288,9 +298,18 @@
           </li>
 
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['customer.purchase_requests', 'customer.new_purchase_request'] %}active{% endif %}"
-              href="{{ url_for('customer.purchase_requests') }}">
+            <a class="nav-link {% if request.endpoint in [
+    'customer.purchase_requests',
+    'customer.new_purchase_request',
+    'customer.purchase_request_detail'
+  ] %}active{% endif %}" href="{{ url_for('customer.purchase_requests') }}">
               Shop For Me
+
+              {% if shop_for_me_customer_action_count|default(0) > 0 %}
+              <span class="badge rounded-pill bg-danger ms-1">
+                {{ shop_for_me_customer_action_count }}
+              </span>
+              {% endif %}
             </a>
           </li>
 

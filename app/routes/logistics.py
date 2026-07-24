@@ -10,14 +10,28 @@ import random
 import bcrypt
 import mimetypes
 from datetime import datetime, timedelta, timezone, date
-from decimal import Decimal
+from decimal import (
+    Decimal,
+    InvalidOperation,
+    ROUND_HALF_UP,
+)
 import requests
 from flask import stream_with_context
-
+from flask import current_app
 from flask import (
-    Blueprint, render_template, request, redirect, url_for,
-    flash, jsonify, send_file, Response, current_app, session,
-    abort, send_from_directory
+    Blueprint,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    jsonify,
+    send_file,
+    Response,
+    current_app,
+    session,
+    abort,
+    send_from_directory,
 )
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
@@ -28,7 +42,14 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Table,
+    TableStyle,
+    Paragraph,
+    Spacer,
+    Image,
+)
 from sqlalchemy import func, or_, and_, asc, desc, cast, distinct
 from sqlalchemy.types import Date
 from weasyprint import HTML
@@ -36,18 +57,38 @@ from weasyprint import HTML
 from app.extensions import db
 from app.routes.admin_auth_routes import admin_required
 from app.models import (
-    Prealert, PrealertAttachment, User, ScheduledDelivery, ShipmentLog, Invoice, ShipmentArchiveLog, Settings,
-    Package, Payment, shipment_packages, ScheduledPickup, PackageAttachment, ShipmentScanLog, 
+    Prealert,
+    PrealertAttachment,
+    User,
+    ScheduledDelivery,
+    ShipmentLog,
+    Invoice,
+    ShipmentArchiveLog,
+    Settings,
+    Package,
+    Payment,
+    shipment_packages,
+    ScheduledPickup,
+    PackageAttachment,
+    ShipmentScanLog,
 )
 from app.models import Message as DBMessage
 from app.models import normalize_tracking
-from app.models import PurchaseRequest, PurchaseRequestItem, calculate_purchase_service_fee
+from app.models import (
+    PurchaseRequest,
+    PurchaseRequestItem,
+    calculate_purchase_service_fee,
+)
 
 from app.forms import (
-    PackageBulkActionForm, UploadPackageForm, PreAlertForm, InvoiceFinalizeForm,
-    PaymentForm, ScheduledDeliveryForm
+    PackageBulkActionForm,
+    UploadPackageForm,
+    PreAlertForm,
+    InvoiceFinalizeForm,
+    PaymentForm,
+    ScheduledDeliveryForm,
 )
-from app.utils.file_url import is_url 
+from app.utils.file_url import is_url
 from app.utils import email_utils, update_wallet
 from app.utils.wallet import process_first_shipment_bonus
 from app.utils.subscription_utils import (
@@ -76,6 +117,10 @@ from app.utils.files import allowed_file
 from app.utils.prealert_sync import sync_package_and_prealert
 from app.utils.time import to_jamaica
 
+from app.utils.shop_for_me_utils import (
+    link_shop_for_me_package,
+)
+
 from app.utils.unassigned import (
     ensure_unassigned_user,
     get_unassigned_user_id,
@@ -83,12 +128,8 @@ from app.utils.unassigned import (
 )
 from urllib.parse import urlsplit, urlunsplit
 
-
 # Base URL for links used in emails (fallback to Render URL)
-DASHBOARD_URL = os.environ.get(
-    "DASHBOARD_URL",
-    "https://app-faflcourier.onrender.com"
-)
+DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "https://app-faflcourier.onrender.com")
 
 # --------------------------------------------------------------------------------------
 # Blueprint
@@ -110,32 +151,36 @@ TAB_ALIASES = {
 ALLOWED_TABS = {"prealert", "view_packages", "shipmentLog", "uploadPackages"}
 
 HEADER_MAP = {
-    "USER CODE":        "registration_number",
-    "SHIPPER":          "shipper",
-    "HOUSE AWB":        "house_awb",
+    "USER CODE": "registration_number",
+    "SHIPPER": "shipper",
+    "HOUSE AWB": "house_awb",
     "HOUSE AWB/CONTROL #": "house_awb",
     "HOUSE AWB / CONTROL #": "house_awb",
-    "WEIGHT":           "weight",
-    "TRACKING NUMBER":  "tracking_number",
-    "TRACKING #":       "tracking_number",   # 👈 new
-    "TRACKING#":        "tracking_number",
-    "DATE":             "date_received",
-    "DATE RECEIVED":    "date_received",
-    "RECEIVED DATE":    "date_received",
-    "DESCRIPTION":      "description",
-    "VALUE":            "value",
-    "FULL NAME":        "full_name",
-    "EMAIL":            "email",
+    "WEIGHT": "weight",
+    "TRACKING NUMBER": "tracking_number",
+    "TRACKING #": "tracking_number",  # 👈 new
+    "TRACKING#": "tracking_number",
+    "DATE": "date_received",
+    "DATE RECEIVED": "date_received",
+    "RECEIVED DATE": "date_received",
+    "DESCRIPTION": "description",
+    "VALUE": "value",
+    "FULL NAME": "full_name",
+    "EMAIL": "email",
 }
 REQUIRED_FIELDS = ["registration_number", "tracking_number", "description", "weight"]
 
 
 def _is_internal_user(u) -> bool:
     role = getattr(u, "role", None)
-    return (role in ("admin", "operations", "finance")) or bool(getattr(u, "is_superadmin", False))
+    return (role in ("admin", "operations", "finance")) or bool(
+        getattr(u, "is_superadmin", False)
+    )
+
 
 def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 def _date(name):
     v = (request.form.get(name) or "").strip()
@@ -145,6 +190,7 @@ def _date(name):
         return datetime.strptime(v, "%Y-%m-%d").date()
     except Exception:
         return None
+
 
 def normalize_tab(raw: str | None) -> str:
     t = (raw or "prealert").strip().lower()
@@ -158,6 +204,7 @@ def normalize_tab(raw: str | None) -> str:
     t = lower_map.get(t, "prealert")
     t = TAB_ALIASES.get(t, t)
     return t if t in ALLOWED_TABS else "prealert"
+
 
 def _preview_dir() -> str:
     try:
@@ -198,6 +245,7 @@ def _load_preview_blob(token: str) -> dict | None:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+
 def _abort_if_archived(shipment):
     """
     If shipment is archived, block edits/mutations.
@@ -209,11 +257,16 @@ def _abort_if_archived(shipment):
     if bool(getattr(shipment, "is_archived", False)):
         flash("🚫 This shipment is archived and cannot be modified.", "warning")
         return redirect(
-            url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id),
-            code=303
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+                shipment_id=shipment.id,
+            ),
+            code=303,
         )
 
     return None
+
 
 def _normalize_headers(cols):
     norm = []
@@ -266,7 +319,11 @@ def _validate_rows(df: pd.DataFrame):
         except Exception:
             errs.append("Weight must be a number")
         try:
-            if "value" in r and not pd.isna(r["value"]) and str(r["value"]).strip() != "":
+            if (
+                "value" in r
+                and not pd.isna(r["value"])
+                and str(r["value"]).strip() != ""
+            ):
                 r["value"] = float(r["value"])
             else:
                 r["value"] = 50.0
@@ -391,16 +448,27 @@ def _apply_pkg_filters(
         status_filter = (request.args.get("status") or "").strip()
 
     if epc_only is None:
-        epc_only = (request.args.get("epc_only") or "").lower() in ("1", "true", "on", "yes")
+        epc_only = (request.args.get("epc_only") or "").lower() in (
+            "1",
+            "true",
+            "on",
+            "yes",
+        )
 
     if unassigned_only is None:
         unassigned_only = (
-            (request.args.get("show_unassigned") or request.args.get("unassigned_only") or "")
-            .lower() in ("1", "true", "on", "yes")
-        )
+            request.args.get("show_unassigned")
+            or request.args.get("unassigned_only")
+            or ""
+        ).lower() in ("1", "true", "on", "yes")
 
     if not_notified_only is None:
-        not_notified_only = (request.args.get("not_notified_only") or "").lower() in ("1", "true", "on", "yes")
+        not_notified_only = (request.args.get("not_notified_only") or "").lower() in (
+            "1",
+            "true",
+            "on",
+            "yes",
+        )
 
     # ✅ Always use the same date expression everywhere
     dt_expr = func.date(func.coalesce(Package.date_received, Package.created_at))
@@ -439,21 +507,21 @@ def _apply_pkg_filters(
 
     if search:
         like = f"%{search}%"
-        q = q.filter(or_(
-            User.full_name.ilike(like),
-            User.registration_number.ilike(like),
-            Package.tracking_number.ilike(like),
-            Package.description.ilike(like),
-            Package.house_awb.ilike(like),
-        ))
+        q = q.filter(
+            or_(
+                User.full_name.ilike(like),
+                User.registration_number.ilike(like),
+                Package.tracking_number.ilike(like),
+                Package.description.ilike(like),
+                Package.house_awb.ilike(like),
+            )
+        )
 
     if status_filter:
         q = q.filter(Package.status == status_filter)
 
     if subscription_only:
-        q = q.filter(
-            Package.subscription_applied.is_(True)            
-        )
+        q = q.filter(Package.subscription_applied.is_(True))
 
     # -------------------------
     # Shipment filter
@@ -465,11 +533,7 @@ def _apply_pkg_filters(
         q = q.filter(~Package.shipments.any())
 
     if shipment_id_filter:
-        q = q.filter(
-            Package.shipments.any(
-                ShipmentLog.id == shipment_id_filter
-            )
-        )
+        q = q.filter(Package.shipments.any(ShipmentLog.id == shipment_id_filter))
 
     # -------------------------
     # EPC filter
@@ -494,25 +558,26 @@ def _apply_pkg_filters(
 
     return q
 
+
 def _paginate(q, per_page_default=10):
     allowed = [10, 25, 50, 100, 500, 1000]
 
-    page = request.args.get('page', default=1, type=int)
+    page = request.args.get("page", default=1, type=int)
 
     # 1) See if a per_page was explicitly requested in URL
-    per_page_arg = request.args.get('per_page', type=int)
+    per_page_arg = request.args.get("per_page", type=int)
 
     if per_page_arg in allowed:
         per_page = per_page_arg
         # Remember this choice in the session
-        session['view_packages_per_page'] = per_page
+        session["view_packages_per_page"] = per_page
     else:
         # 2) Fall back to last choice from session (if valid)
-        per_page = session.get('view_packages_per_page', per_page_default)
+        per_page = session.get("view_packages_per_page", per_page_default)
         if per_page not in allowed:
             per_page = per_page_default
 
-    items = q.limit(per_page).offset((page-1)*per_page).all()
+    items = q.limit(per_page).offset((page - 1) * per_page).all()
     total = db.session.query(func.count()).select_from(q.subquery()).scalar()
     total_pages = max((total + per_page - 1) // per_page, 1)
     return page, per_page, total, total_pages, items
@@ -530,6 +595,7 @@ def _parse_dt_maybe(v):
     except Exception:
         return None
 
+
 def _normalize_weight(w):
     """
     Normalize weight to a positive float and
@@ -545,6 +611,7 @@ def _normalize_weight(w):
 
     # Always round UP to nearest whole lb
     return float(math.ceil(val))
+
 
 def _warehouse_rate_row(weight):
     """
@@ -595,6 +662,7 @@ def _warehouse_rate_row(weight):
             "rate": 9.00,
         }
 
+
 def _bulk_calc_apply_to_package(
     p: Package,
     *,
@@ -606,11 +674,7 @@ def _bulk_calc_apply_to_package(
     One official calculator and writer used by the bulk shipment action.
     """
 
-    category = (
-        category
-        or getattr(p, "category", None)
-        or "Other"
-    ).strip() or "Other"
+    category = (category or getattr(p, "category", None) or "Other").strip() or "Other"
 
     # Save and reconcile a weight change before calculating prices.
     try:
@@ -621,16 +685,12 @@ def _bulk_calc_apply_to_package(
     if new_weight < 0:
         return None
 
-    old_weight = float(
-        getattr(p, "weight", 0) or 0
-    )
+    old_weight = float(getattr(p, "weight", 0) or 0)
 
     if abs(new_weight - old_weight) > 0.0001:
         p.weight = new_weight
 
-        subscription_result = (
-            reconcile_subscription_usage(p)
-        )
+        subscription_result = reconcile_subscription_usage(p)
 
         if subscription_result not in (
             "subscription_applied",
@@ -638,10 +698,7 @@ def _bulk_calc_apply_to_package(
         ):
             clear_package_subscription(
                 p,
-                result=(
-                    subscription_result
-                    or "no_subscription"
-                ),
+                result=(subscription_result or "no_subscription"),
             )
 
     # -----------------------------------
@@ -661,7 +718,9 @@ def _bulk_calc_apply_to_package(
 
         if hasattr(p, "declared_value"):
             try:
-                p.declared_value = float(invoice_val or getattr(p, "declared_value", 0) or 0)
+                p.declared_value = float(
+                    invoice_val or getattr(p, "declared_value", 0) or 0
+                )
             except Exception:
                 pass
 
@@ -673,17 +732,29 @@ def _bulk_calc_apply_to_package(
         if declared_value <= 100:
 
             for field in [
-                "duty", "gct", "scf", "envl", "caf", "stamp",
-                "customs_total", "freight_fee", "freight", "handling_fee", "handling", "storage_fee",
-                "freight_total", "discount_due"
+                "duty",
+                "gct",
+                "scf",
+                "envl",
+                "caf",
+                "stamp",
+                "customs_total",
+                "freight_fee",
+                "freight",
+                "handling_fee",
+                "handling",
+                "storage_fee",
+                "freight_total",
+                "discount_due",
             ]:
                 if hasattr(p, field):
                     setattr(p, field, 0.0)
 
-            bad_address_fee = 500.0 if bool(
-                getattr(p, "epc", False)
-                or getattr(p, "bad_address", False)
-            ) else 0.0
+            bad_address_fee = (
+                500.0
+                if bool(getattr(p, "epc", False) or getattr(p, "bad_address", False))
+                else 0.0
+            )
 
             if hasattr(p, "bad_address_fee"):
                 p.bad_address_fee = bad_address_fee
@@ -703,7 +774,7 @@ def _bulk_calc_apply_to_package(
 
             return {
                 "subscription_applied": True,
-                "message": "Covered by subscription (no charges)"
+                "message": "Covered by subscription (no charges)",
             }
 
         # -----------------------------------
@@ -711,26 +782,44 @@ def _bulk_calc_apply_to_package(
         # -----------------------------------
         else:
 
-            breakdown = calculate_charges(
-                category,
-                declared_value,
-                float(getattr(p, "weight", 0) or 0)
-            ) or {}
+            breakdown = (
+                calculate_charges(
+                    category, declared_value, float(getattr(p, "weight", 0) or 0)
+                )
+                or {}
+            )
 
             # ✅ Apply ONLY customs-related fields
-            for field in ["duty", "gct", "scf", "envl", "caf", "stamp", "customs_total"]:
+            for field in [
+                "duty",
+                "gct",
+                "scf",
+                "envl",
+                "caf",
+                "stamp",
+                "customs_total",
+            ]:
                 if hasattr(p, field):
                     setattr(p, field, float(breakdown.get(field, 0)))
 
             # ❌ Remove freight completely
-            for field in ["freight_fee", "freight", "handling_fee", "handling", "storage_fee", "freight_total", "discount_due"]:
+            for field in [
+                "freight_fee",
+                "freight",
+                "handling_fee",
+                "handling",
+                "storage_fee",
+                "freight_total",
+                "discount_due",
+            ]:
                 if hasattr(p, field):
                     setattr(p, field, 0.0)
 
-            bad_address_fee = 500.0 if bool(
-                getattr(p, "epc", False)
-                or getattr(p, "bad_address", False)
-            ) else 0.0
+            bad_address_fee = (
+                500.0
+                if bool(getattr(p, "epc", False) or getattr(p, "bad_address", False))
+                else 0.0
+            )
 
             if hasattr(p, "bad_address_fee"):
                 p.bad_address_fee = bad_address_fee
@@ -752,7 +841,7 @@ def _bulk_calc_apply_to_package(
 
             return {
                 "subscription_applied": True,
-                "message": "Subscription applied (customs charges only)"
+                "message": "Subscription applied (customs charges only)",
             }
 
     # -----------------------------------
@@ -804,9 +893,7 @@ def _bulk_calc_apply_to_package(
     # -----------------------------------
     # SUBSCRIPTION DISCOUNT (AFTER EXHAUSTION)
     # -----------------------------------
-    subscription_discount_percent = (
-        get_subscription_discount_percent(p)
-    )
+    subscription_discount_percent = get_subscription_discount_percent(p)
 
     # Always clear an older subscription discount before recalculating.
     if hasattr(p, "discount_due"):
@@ -834,13 +921,10 @@ def _bulk_calc_apply_to_package(
         )
 
         # The subscriber discount applies only to freight and handling.
-        discountable_amount = (
-            freight_charge + handling_charge
-        )
+        discountable_amount = freight_charge + handling_charge
 
         subscription_discount_amount = round(
-            discountable_amount
-            * (subscription_discount_percent / 100),
+            discountable_amount * (subscription_discount_percent / 100),
             2,
         )
 
@@ -848,8 +932,7 @@ def _bulk_calc_apply_to_package(
             p.discount_due = subscription_discount_amount
 
     final_grand_total = max(
-        normal_grand_total
-        - subscription_discount_amount,
+        normal_grand_total - subscription_discount_amount,
         0.0,
     )
 
@@ -867,113 +950,179 @@ def _bulk_calc_apply_to_package(
 
 def _try_link_prealert_invoice_to_package(pkg: Package) -> bool:
     """
-    SAFE prealert ➜ package invoice attachment sync.
+    Safely synchronize a matching pre-alert with a package.
 
-    Match:
-      - same customer (Prealert.customer_id == pkg.user_id)
-      - same tracking number (case-insensitive)
-      - prealert must have an invoice uploaded
+    Match requirements:
+      - same customer
+      - same tracking number, case-insensitive
+      - newest matching pre-alert is used
 
-    Action:
-      - create PackageAttachment on the package (dedup safe)
-      - mark Prealert.linked_package_id + linked_at
-      - DO NOT commit here (caller commits)
+    Actions:
+      - copies the pre-alert invoice value to the package
+      - links the pre-alert to the package
+      - links a purchased Shop For Me request to the package
+      - copies the pre-alert invoice attachment when available
+      - does not commit; the caller must commit
+
+    Returns True when the pre-alert/package relationship was
+    successfully processed, even if no invoice attachment exists.
     """
+
     try:
-        tracking = (getattr(pkg, "tracking_number", "") or "").strip()
+        tracking = (
+            getattr(pkg, "tracking_number", "") or ""
+        ).strip()
+
         if not tracking:
             return False
 
         customer_id = getattr(pkg, "user_id", None)
+
         if not customer_id:
             return False
 
-        # newest matching prealert for THIS customer + tracking
+        # Find the newest matching pre-alert belonging to this customer.
         pa = (
             Prealert.query
             .filter(
                 Prealert.customer_id == customer_id,
                 Prealert.tracking_number.ilike(tracking),
             )
-            .order_by(Prealert.created_at.desc(), Prealert.id.desc())
+            .order_by(
+                Prealert.created_at.desc(),
+                Prealert.id.desc(),
+            )
             .first()
         )
+
         if not pa:
             return False
 
-        # ✅ Use customer pre-alert invoice value when available
-        prealert_value = float(getattr(pa, "item_value_usd", 0) or 0)
+        existing_package_id = getattr(
+            pa,
+            "linked_package_id",
+            None,
+        )
+
+        # Never move a pre-alert already linked to another package.
+        if (
+            existing_package_id
+            and int(existing_package_id) != int(pkg.id)
+        ):
+            return False
+
+        # Use the customer's pre-alert invoice value when available.
+        prealert_value = float(
+            getattr(pa, "item_value_usd", 0) or 0
+        )
+
         if prealert_value > 0:
-            pkg.value = prealert_value
+            if hasattr(pkg, "value"):
+                pkg.value = prealert_value
 
             if hasattr(pkg, "declared_value"):
                 pkg.declared_value = prealert_value
 
-        invoice_url = (getattr(pa, "invoice_filename", None) or "").strip()
+        # Link and lock the pre-alert even when no invoice file exists.
+        if not existing_package_id:
+            pa.linked_package_id = pkg.id
+            pa.linked_at = datetime.now(timezone.utc)
+
+        if hasattr(pa, "is_locked"):
+            pa.is_locked = True
+
+        # Link a matching purchased Shop For Me request.
+        link_shop_for_me_package(pkg)
+
+        invoice_url = (
+            getattr(pa, "invoice_filename", None) or ""
+        ).strip()
+
+        # The pre-alert and Shop For Me request are still linked
+        # successfully when the customer did not upload an invoice.
         if not invoice_url:
-            return False
-
-        # If already linked to a different package, do nothing
-        if getattr(pa, "linked_package_id", None) and int(pa.linked_package_id) != int(pkg.id):
-            return False
-
-        pub_id = (getattr(pa, "invoice_public_id", None) or "").strip()
-        rtype  = (getattr(pa, "invoice_resource_type", None) or "").strip() or "raw"
-        orig   = (getattr(pa, "invoice_original_name", None) or "").strip() or "prealert_invoice"
-
-        # Dedup: prefer matching cloud_public_id
-        existing = None
-        if pub_id:
-            existing = (
-                PackageAttachment.query
-                .filter_by(package_id=pkg.id, cloud_public_id=pub_id)
-                .first()
-            )
-
-        # Fallback dedup: match same URL
-        if not existing:
-            existing = (
-                PackageAttachment.query
-                .filter_by(package_id=pkg.id, file_url=invoice_url)
-                .first()
-            )
-
-        if existing:
-            # mark linked if not yet marked
-            if not getattr(pa, "linked_package_id", None):
-                pa.linked_package_id = pkg.id
-                pa.linked_at = datetime.now(timezone.utc)
-                pa.is_locked = True
             return True
 
-        # Create attachment row from prealert invoice
-        db.session.add(PackageAttachment(
-            package_id=pkg.id,
-            file_name=invoice_url,          # legacy
-            file_url=invoice_url,           # ✅ required NOT NULL
-            original_name=orig,
-            cloud_public_id=(pub_id or None),
-            cloud_resource_type=(rtype or None),
-        ))
+        public_id = (
+            getattr(pa, "invoice_public_id", None) or ""
+        ).strip()
 
-        # Optional: mirror onto package main invoice field too
-        if not (getattr(pkg, "invoice_file", None) or "").strip():
+        resource_type = (
+            getattr(pa, "invoice_resource_type", None) or ""
+        ).strip() or "raw"
+
+        original_name = (
+            getattr(pa, "invoice_original_name", None) or ""
+        ).strip() or "prealert_invoice"
+
+        # First, check for an attachment with the same cloud public ID.
+        existing_attachment = None
+
+        if public_id:
+            existing_attachment = (
+                PackageAttachment.query
+                .filter_by(
+                    package_id=pkg.id,
+                    cloud_public_id=public_id,
+                )
+                .first()
+            )
+
+        # Fall back to checking the file URL.
+        if not existing_attachment:
+            existing_attachment = (
+                PackageAttachment.query
+                .filter_by(
+                    package_id=pkg.id,
+                    file_url=invoice_url,
+                )
+                .first()
+            )
+
+        if existing_attachment:
+            # Keep the package's legacy invoice field synchronized.
+            if (
+                hasattr(pkg, "invoice_file")
+                and not (
+                    getattr(pkg, "invoice_file", None) or ""
+                ).strip()
+            ):
+                pkg.invoice_file = invoice_url
+
+            return True
+
+        attachment_kwargs = {
+            "package_id": pkg.id,
+            "file_name": invoice_url,
+            "file_url": invoice_url,
+            "original_name": original_name,
+            "cloud_public_id": public_id or None,
+            "cloud_resource_type": resource_type or None,
+        }
+
+        db.session.add(
+            PackageAttachment(**attachment_kwargs)
+        )
+
+        # Mirror the attachment onto the legacy package field.
+        if (
+            hasattr(pkg, "invoice_file")
+            and not (
+                getattr(pkg, "invoice_file", None) or ""
+            ).strip()
+        ):
             pkg.invoice_file = invoice_url
-
-        # Mark prealert linked
-        pa.linked_package_id = pkg.id
-        pa.linked_at = datetime.now(timezone.utc)
-        pa.is_locked = True
 
         return True
 
-    except Exception as e:
+    except Exception as error:
         current_app.logger.exception(
-            f"Prealert link failed for pkg {getattr(pkg,'id',None)}: {e}"
+            "Pre-alert link failed for package %s: %s",
+            getattr(pkg, "id", None),
+            error,
         )
+
         return False
-
-
 
 def move_package_to_shipment(package: Package, shipment: ShipmentLog | None):
     """
@@ -990,6 +1139,7 @@ def move_package_to_shipment(package: Package, shipment: ShipmentLog | None):
 
     # Don’t commit here; calling code will handle db.session.commit()
 
+
 def _effective_value(p: Package) -> float:
     """
     Single source of truth for package value.
@@ -998,6 +1148,7 @@ def _effective_value(p: Package) -> float:
     if hasattr(p, "declared_value") and p.declared_value is not None:
         return float(p.declared_value)
     return float(p.value or 0)
+
 
 def _system_sender_user():
     """
@@ -1034,6 +1185,7 @@ def _log_in_app_message(recipient_id: int, subject: str, body: str):
     db.session.add(m)
     # do NOT commit here; caller commits
 
+
 def _email_throttle(i: int, base: float | None = None):
     """
     Simple rate limiter for bulk sends.
@@ -1041,7 +1193,11 @@ def _email_throttle(i: int, base: float | None = None):
     - Uses jitter so traffic doesn't look like a bot.
     """
     try:
-        base = float(base if base is not None else os.environ.get("EMAIL_THROTTLE_SECONDS", "2.0"))
+        base = float(
+            base
+            if base is not None
+            else os.environ.get("EMAIL_THROTTLE_SECONDS", "2.0")
+        )
     except Exception:
         base = 2.0
 
@@ -1055,6 +1211,7 @@ def _email_throttle(i: int, base: float | None = None):
         return
 
     time.sleep(max(0.0, base + random.uniform(0, jitter)))
+
 
 def _redirect_or_send_attachment(path_or_url: str):
     u = (path_or_url or "").strip()
@@ -1071,15 +1228,12 @@ def _redirect_or_send_attachment(path_or_url: str):
 
     return send_from_directory(upload_folder, u, as_attachment=False)
 
+
 def _get_shipment_export_rows(shipment_id: int):
     shipment = ShipmentLog.query.get_or_404(shipment_id)
 
     rows = (
-        db.session.query(
-            Package,
-            User.full_name,
-            User.registration_number
-        )
+        db.session.query(Package, User.full_name, User.registration_number)
         .join(User, Package.user_id == User.id)
         .join(shipment_packages, shipment_packages.c.package_id == Package.id)
         .filter(shipment_packages.c.shipment_id == shipment_id)
@@ -1101,19 +1255,21 @@ def _get_shipment_export_rows(shipment_id: int):
         total_value += value
         total_due += amount_due
 
-        packages.append({
-            "id": p.id,
-            "customer_name": full_name or "",
-            "registration_number": reg or "",
-            "tracking_number": p.tracking_number or "",
-            "house_awb": p.house_awb or "",
-            "description": p.description or "",
-            "date_received": getattr(p, "date_received", None),
-            "weight": weight,
-            "value": value,
-            "amount_due": amount_due,
-            "status": p.status or "",
-        })
+        packages.append(
+            {
+                "id": p.id,
+                "customer_name": full_name or "",
+                "registration_number": reg or "",
+                "tracking_number": p.tracking_number or "",
+                "house_awb": p.house_awb or "",
+                "description": p.description or "",
+                "date_received": getattr(p, "date_received", None),
+                "weight": weight,
+                "value": value,
+                "amount_due": amount_due,
+                "status": p.status or "",
+            }
+        )
 
     return {
         "shipment": shipment,
@@ -1124,7 +1280,6 @@ def _get_shipment_export_rows(shipment_id: int):
         "total_due": total_due,
     }
 
-  
 
 # --------------------------------------------------------------------------------------
 # Prealerts
@@ -1149,6 +1304,7 @@ def _redirect_after_admin_prealert(
         )
     )
 
+
 @logistics_bp.route(
     "/prealerts/create",
     methods=["POST"],
@@ -1161,38 +1317,21 @@ def admin_create_prealert():
             type=int,
         )
 
-        vendor_name = (
-            request.form.get("vendor_name") or ""
-        ).strip()
+        vendor_name = (request.form.get("vendor_name") or "").strip()
 
-        courier_name = (
-            request.form.get("courier_name") or ""
-        ).strip()
+        courier_name = (request.form.get("courier_name") or "").strip()
 
         tracking_number = normalize_tracking(
-            (
-                request.form.get("tracking_number")
-                or ""
-            ).strip()
+            (request.form.get("tracking_number") or "").strip()
         )
 
-        purchase_date_raw = (
-            request.form.get("purchase_date") or ""
-        ).strip()
+        purchase_date_raw = (request.form.get("purchase_date") or "").strip()
 
-        package_contents = (
-            request.form.get("package_contents")
-            or ""
-        ).strip()
+        package_contents = (request.form.get("package_contents") or "").strip()
 
-        item_value_raw = (
-            request.form.get("item_value_usd")
-            or ""
-        ).strip()
+        item_value_raw = (request.form.get("item_value_usd") or "").strip()
 
-        source = (
-            request.form.get("source") or "logistics"
-        ).strip()
+        source = (request.form.get("source") or "logistics").strip()
 
         # -----------------------------------------
         # Required-field validation
@@ -1289,9 +1428,7 @@ def admin_create_prealert():
             )
 
         try:
-            item_value_usd = float(
-                item_value_raw or 0
-            )
+            item_value_usd = float(item_value_raw or 0)
         except (TypeError, ValueError):
             flash(
                 "Item value must be a valid number.",
@@ -1316,11 +1453,9 @@ def admin_create_prealert():
         # Prevent duplicate active pre-alert
         # -----------------------------------------
         existing_prealert = (
-            Prealert.query
-            .filter(
+            Prealert.query.filter(
                 Prealert.customer_id == customer_id,
-                Prealert.tracking_number
-                == tracking_number,
+                Prealert.tracking_number == tracking_number,
                 Prealert.linked_package_id.is_(None),
             )
             .order_by(Prealert.id.desc())
@@ -1328,10 +1463,7 @@ def admin_create_prealert():
         )
 
         if existing_prealert:
-            existing_number = (
-                existing_prealert.prealert_number
-                or existing_prealert.id
-            )
+            existing_number = existing_prealert.prealert_number or existing_prealert.id
 
             flash(
                 (
@@ -1352,17 +1484,12 @@ def admin_create_prealert():
         # -----------------------------------------
         files = [
             file
-            for file in request.files.getlist(
-                "invoices"
-            )
-            if file
-            and getattr(file, "filename", "")
+            for file in request.files.getlist("invoices")
+            if file and getattr(file, "filename", "")
         ]
 
         for file in files:
-            original_name = (
-                file.filename or ""
-            ).strip()
+            original_name = (file.filename or "").strip()
 
             if not allowed_file(original_name):
                 flash(
@@ -1386,9 +1513,7 @@ def admin_create_prealert():
         uploaded_invoices = []
 
         for file in files:
-            original_name = (
-                file.filename or ""
-            ).strip()
+            original_name = (file.filename or "").strip()
 
             (
                 invoice_url,
@@ -1396,31 +1521,22 @@ def admin_create_prealert():
                 invoice_resource_type,
             ) = upload_prealert_invoice(file)
 
-            uploaded_invoices.append({
-                "url": invoice_url,
-                "original_name": original_name,
-                "public_id": invoice_public_id,
-                "resource_type":
-                    invoice_resource_type,
-            })
+            uploaded_invoices.append(
+                {
+                    "url": invoice_url,
+                    "original_name": original_name,
+                    "public_id": invoice_public_id,
+                    "resource_type": invoice_resource_type,
+                }
+            )
 
-        first_invoice = (
-            uploaded_invoices[0]
-            if uploaded_invoices
-            else None
-        )
+        first_invoice = uploaded_invoices[0] if uploaded_invoices else None
 
         # -----------------------------------------
         # Generate next pre-alert number
         # -----------------------------------------
         current_max = (
-            db.session.query(
-                func.max(
-                    Prealert.prealert_number
-                )
-            )
-            .scalar()
-            or 100000
+            db.session.query(func.max(Prealert.prealert_number)).scalar() or 100000
         )
 
         prealert_number = int(current_max) + 1
@@ -1437,34 +1553,15 @@ def admin_create_prealert():
             purchase_date=purchase_date,
             package_contents=package_contents,
             item_value_usd=item_value_usd,
-
-            invoice_filename=(
-                first_invoice["url"]
-                if first_invoice
-                else None
-            ),
-
+            invoice_filename=(first_invoice["url"] if first_invoice else None),
             invoice_original_name=(
-                first_invoice["original_name"]
-                if first_invoice
-                else None
+                first_invoice["original_name"] if first_invoice else None
             ),
-
-            invoice_public_id=(
-                first_invoice["public_id"]
-                if first_invoice
-                else None
-            ),
-
+            invoice_public_id=(first_invoice["public_id"] if first_invoice else None),
             invoice_resource_type=(
-                first_invoice["resource_type"]
-                if first_invoice
-                else None
+                first_invoice["resource_type"] if first_invoice else None
             ),
-
-            created_at=datetime.now(
-                timezone.utc
-            ),
+            created_at=datetime.now(timezone.utc),
         )
 
         db.session.add(prealert)
@@ -1478,15 +1575,9 @@ def admin_create_prealert():
                 PrealertAttachment(
                     prealert_id=prealert.id,
                     file_url=uploaded["url"],
-                    original_name=(
-                        uploaded["original_name"]
-                    ),
-                    cloud_public_id=(
-                        uploaded["public_id"]
-                    ),
-                    cloud_resource_type=(
-                        uploaded["resource_type"]
-                    ),
+                    original_name=(uploaded["original_name"]),
+                    cloud_public_id=(uploaded["public_id"]),
+                    cloud_resource_type=(uploaded["resource_type"]),
                 )
             )
 
@@ -1497,13 +1588,9 @@ def admin_create_prealert():
         # -----------------------------------------
         try:
             matching_package = (
-                Package.query
-                .filter(
-                    Package.user_id
-                    == customer_id,
-
-                    Package.tracking_number
-                    == tracking_number,
+                Package.query.filter(
+                    Package.user_id == customer_id,
+                    Package.tracking_number == tracking_number,
                 )
                 .order_by(Package.id.desc())
                 .first()
@@ -1514,19 +1601,14 @@ def admin_create_prealert():
                     sync_prealert_invoice_to_package,
                 )
 
-                if (
-                    sync_prealert_invoice_to_package(
-                        matching_package
-                    )
-                ):
+                if sync_prealert_invoice_to_package(matching_package):
                     db.session.commit()
 
         except Exception:
             db.session.rollback()
 
             current_app.logger.exception(
-                "Unable to synchronize admin "
-                "pre-alert %s with a package.",
+                "Unable to synchronize admin " "pre-alert %s with a package.",
                 prealert.id,
             )
 
@@ -1564,6 +1646,7 @@ def admin_create_prealert():
             )
         )
 
+
 @logistics_bp.route("/prealerts")
 @logistics_bp.route("/prealerts/<int:user_id>")
 @admin_required
@@ -1578,8 +1661,7 @@ def prealerts(user_id=None):
             return redirect(url_for("logistics.logistics_dashboard"))
 
         rows = (
-            Prealert.query
-            .filter_by(customer_id=user_id)
+            Prealert.query.filter_by(customer_id=user_id)
             .order_by(Prealert.id.desc())
             .all()
         )
@@ -1596,47 +1678,42 @@ def prealerts(user_id=None):
                 {
                     "id": a.id,
                     "file_url": a.file_url,
-                    "original_name": a.original_name,                    
+                    "original_name": a.original_name,
                 }
                 for a in getattr(p, "attachments", [])
             ]
 
-            prealerts_data.append({
-                "id": p.id,
-                "code": f"PA-{code_number:05d}",
-                "customer_name": customer.full_name,
-                "registration_number": customer.registration_number,
-                "vendor_name": p.vendor_name,
-                "courier_name": p.courier_name,
-                "tracking_number": p.tracking_number,
-                "purchase_date": p.purchase_date,
-                "package_contents": p.package_contents,
-                "item_value_usd": p.item_value_usd,
-
-                # old single invoice fields
-                "invoice_filename": p.invoice_filename,
-                "invoice_original_name": p.invoice_original_name,
-                "invoice_public_id": p.invoice_public_id,
-                "invoice_resource_type": p.invoice_resource_type,
-
-                # new multiple attachments
-                "attachments": attachments,
-                "attachment_count": len(attachments),
-
-                "created_at": p.created_at,
-                "is_locked": p.is_locked,
-                "lock_reason": p.lock_reason,
-                "linked_package_id": p.linked_package_id,
-                "linked_at": p.linked_at,
-            })
+            prealerts_data.append(
+                {
+                    "id": p.id,
+                    "code": f"PA-{code_number:05d}",
+                    "customer_name": customer.full_name,
+                    "registration_number": customer.registration_number,
+                    "vendor_name": p.vendor_name,
+                    "courier_name": p.courier_name,
+                    "tracking_number": p.tracking_number,
+                    "purchase_date": p.purchase_date,
+                    "package_contents": p.package_contents,
+                    "item_value_usd": p.item_value_usd,
+                    # old single invoice fields
+                    "invoice_filename": p.invoice_filename,
+                    "invoice_original_name": p.invoice_original_name,
+                    "invoice_public_id": p.invoice_public_id,
+                    "invoice_resource_type": p.invoice_resource_type,
+                    # new multiple attachments
+                    "attachments": attachments,
+                    "attachment_count": len(attachments),
+                    "created_at": p.created_at,
+                    "is_locked": p.is_locked,
+                    "lock_reason": p.lock_reason,
+                    "linked_package_id": p.linked_package_id,
+                    "linked_at": p.linked_at,
+                }
+            )
 
     else:
         rows = (
-            db.session.query(
-                Prealert,
-                User.full_name,
-                User.registration_number
-            )
+            db.session.query(Prealert, User.full_name, User.registration_number)
             .join(User, Prealert.customer_id == User.id)
             .order_by(Prealert.id.desc())
             .all()
@@ -1651,39 +1728,38 @@ def prealerts(user_id=None):
                 {
                     "id": a.id,
                     "file_url": a.file_url,
-                    "original_name": a.original_name,                    
+                    "original_name": a.original_name,
                 }
                 for a in getattr(prealert, "attachments", [])
             ]
 
-            prealerts_data.append({
-                "id": prealert.id,
-                "code": f"PA-{code_number:05d}",
-                "customer_name": full_name,
-                "registration_number": reg_no,
-                "vendor_name": prealert.vendor_name,
-                "courier_name": prealert.courier_name,
-                "tracking_number": prealert.tracking_number,
-                "purchase_date": prealert.purchase_date,
-                "package_contents": prealert.package_contents,
-                "item_value_usd": prealert.item_value_usd,
-
-                # old single invoice fields
-                "invoice_filename": prealert.invoice_filename,
-                "invoice_original_name": prealert.invoice_original_name,
-                "invoice_public_id": prealert.invoice_public_id,
-                "invoice_resource_type": prealert.invoice_resource_type,
-
-                # new multiple attachments
-                "attachments": attachments,
-                "attachment_count": len(attachments),
-
-                "linked_package_id": prealert.linked_package_id,
-                "linked_at": prealert.linked_at,
-                "is_locked": prealert.is_locked,
-                "lock_reason": prealert.lock_reason,
-                "created_at": prealert.created_at,
-            })
+            prealerts_data.append(
+                {
+                    "id": prealert.id,
+                    "code": f"PA-{code_number:05d}",
+                    "customer_name": full_name,
+                    "registration_number": reg_no,
+                    "vendor_name": prealert.vendor_name,
+                    "courier_name": prealert.courier_name,
+                    "tracking_number": prealert.tracking_number,
+                    "purchase_date": prealert.purchase_date,
+                    "package_contents": prealert.package_contents,
+                    "item_value_usd": prealert.item_value_usd,
+                    # old single invoice fields
+                    "invoice_filename": prealert.invoice_filename,
+                    "invoice_original_name": prealert.invoice_original_name,
+                    "invoice_public_id": prealert.invoice_public_id,
+                    "invoice_resource_type": prealert.invoice_resource_type,
+                    # new multiple attachments
+                    "attachments": attachments,
+                    "attachment_count": len(attachments),
+                    "linked_package_id": prealert.linked_package_id,
+                    "linked_at": prealert.linked_at,
+                    "is_locked": prealert.is_locked,
+                    "lock_reason": prealert.lock_reason,
+                    "created_at": prealert.created_at,
+                }
+            )
 
     print("DEBUG prealerts count:", len(prealerts_data))
 
@@ -1699,13 +1775,19 @@ def prealerts(user_id=None):
 @admin_required
 def admin_prealert_invoice(prealert_id):
     pa = Prealert.query.get_or_404(prealert_id)
-    return serve_prealert_invoice_file(pa, download_name_prefix="prealert", as_attachment=False)
+    return serve_prealert_invoice_file(
+        pa, download_name_prefix="prealert", as_attachment=False
+    )
+
 
 @logistics_bp.route("/prealerts/invoice/<int:prealert_id>/download")
 @admin_required
 def admin_prealert_invoice_download(prealert_id):
     pa = Prealert.query.get_or_404(prealert_id)
-    return serve_prealert_invoice_file(pa, download_name_prefix="prealert", as_attachment=True)
+    return serve_prealert_invoice_file(
+        pa, download_name_prefix="prealert", as_attachment=True
+    )
+
 
 @logistics_bp.route("/prealerts/<int:prealert_id>/lock", methods=["POST"])
 @admin_required
@@ -1714,17 +1796,27 @@ def admin_lock_prealert(prealert_id):
 
     if pa.is_locked:
         flash("Pre-alert is already locked.", "info")
-        return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="prealert"), code=303)
+        return redirect(
+            request.referrer
+            or url_for("logistics.logistics_dashboard", tab="prealert"),
+            code=303,
+        )
 
     pa.is_locked = True
     pa.locked_at = datetime.now(timezone.utc)
     pa.locked_by_admin_id = current_user.id
-    pa.lock_reason = (request.form.get("lock_reason") or "Locked manually by admin").strip()
+    pa.lock_reason = (
+        request.form.get("lock_reason") or "Locked manually by admin"
+    ).strip()
 
     db.session.commit()
 
     flash(f"Pre-alert PA-{pa.prealert_number} locked.", "success")
-    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="prealert"), code=303)
+    return redirect(
+        request.referrer or url_for("logistics.logistics_dashboard", tab="prealert"),
+        code=303,
+    )
+
 
 @logistics_bp.route("/prealerts/attachment/<int:attachment_id>")
 @admin_required
@@ -1747,28 +1839,34 @@ def scan_package_in_shipment(shipment_id):
 
     blocked = _abort_if_archived(shipment)
     if blocked:
-        return jsonify({
-            "ok": False,
-            "status": "archived",
-            "message": "This shipment is archived and cannot be scanned."
-        }), 403
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "status": "archived",
+                    "message": "This shipment is archived and cannot be scanned.",
+                }
+            ),
+            403,
+        )
 
     payload = request.get_json(silent=True) or {}
 
-    raw_scan = (
-        request.form.get("scan_value")
-        or payload.get("scan_value")
-        or ""
-    )
+    raw_scan = request.form.get("scan_value") or payload.get("scan_value") or ""
 
     scan_value = normalize_tracking(raw_scan)
 
     if not scan_value:
-        return jsonify({
-            "ok": False,
-            "status": "empty",
-            "message": "Please scan or enter a tracking number."
-        }), 400
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "status": "empty",
+                    "message": "Please scan or enter a tracking number.",
+                }
+            ),
+            400,
+        )
 
     package = (
         db.session.query(Package)
@@ -1776,7 +1874,8 @@ def scan_package_in_shipment(shipment_id):
         .filter(shipment_packages.c.shipment_id == shipment.id)
         .filter(
             or_(
-                func.upper(func.replace(Package.tracking_number, " ", "")) == scan_value,
+                func.upper(func.replace(Package.tracking_number, " ", ""))
+                == scan_value,
                 func.upper(func.replace(Package.house_awb, " ", "")) == scan_value,
             )
         )
@@ -1784,78 +1883,100 @@ def scan_package_in_shipment(shipment_id):
     )
 
     if not package:
-        db.session.add(ShipmentScanLog(
-            shipment_id=shipment.id,
-            package_id=None,
-            scanned_value=scan_value,
-            scan_result="not_found",
-            scanned_by_id=current_user.id,
-            notes="Scanned value not found in this shipment"
-        ))
+        db.session.add(
+            ShipmentScanLog(
+                shipment_id=shipment.id,
+                package_id=None,
+                scanned_value=scan_value,
+                scan_result="not_found",
+                scanned_by_id=current_user.id,
+                notes="Scanned value not found in this shipment",
+            )
+        )
         db.session.commit()
 
-        return jsonify({
-            "ok": False,
-            "status": "not_found",
-            "message": f"{scan_value} was not found in this shipment."
-        }), 404
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "status": "not_found",
+                    "message": f"{scan_value} was not found in this shipment.",
+                }
+            ),
+            404,
+        )
 
     if package.received_scan_status == "scanned":
-        db.session.add(ShipmentScanLog(
-            shipment_id=shipment.id,
-            package_id=package.id,
-            scanned_value=scan_value,
-            scan_result="already_scanned",
-            scanned_by_id=current_user.id,
-            notes="Package was already scanned"
-        ))
+        db.session.add(
+            ShipmentScanLog(
+                shipment_id=shipment.id,
+                package_id=package.id,
+                scanned_value=scan_value,
+                scan_result="already_scanned",
+                scanned_by_id=current_user.id,
+                notes="Package was already scanned",
+            )
+        )
         db.session.commit()
 
-        return jsonify({
-            "ok": True,
-            "status": "already_scanned",
-            "message": "This package was already scanned.",
-            "package_id": package.id,
-            "tracking_number": package.tracking_number,
-            "house_awb": package.house_awb,
-        }), 200
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "status": "already_scanned",
+                    "message": "This package was already scanned.",
+                    "package_id": package.id,
+                    "tracking_number": package.tracking_number,
+                    "house_awb": package.house_awb,
+                }
+            ),
+            200,
+        )
 
     allowed_statuses = ["overseas", "received at local port"]
     current_status = (package.status or "").strip().lower()
 
     if current_status not in allowed_statuses:
-        db.session.add(ShipmentScanLog(
-            shipment_id=shipment.id,
-            package_id=package.id,
-            scanned_value=scan_value,
-            scan_result="not_allowed",
-            scanned_by_id=current_user.id,
-            notes=f"Package status is {package.status}; scan-in not allowed"
-        ))
+        db.session.add(
+            ShipmentScanLog(
+                shipment_id=shipment.id,
+                package_id=package.id,
+                scanned_value=scan_value,
+                scan_result="not_allowed",
+                scanned_by_id=current_user.id,
+                notes=f"Package status is {package.status}; scan-in not allowed",
+            )
+        )
         db.session.commit()
 
-        return jsonify({
-            "ok": False,
-            "status": "not_allowed",
-            "message": f"This package is already {package.status} and cannot be scanned in.",
-            "package_id": package.id,
-            "tracking_number": package.tracking_number,
-            "house_awb": package.house_awb,
-        }), 400
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "status": "not_allowed",
+                    "message": f"This package is already {package.status} and cannot be scanned in.",
+                    "package_id": package.id,
+                    "tracking_number": package.tracking_number,
+                    "house_awb": package.house_awb,
+                }
+            ),
+            400,
+        )
 
     package.received_scan_status = "scanned"
     package.received_scanned_at = datetime.now(timezone.utc)
     package.received_scanned_by_id = current_user.id
-    
 
-    db.session.add(ShipmentScanLog(
-        shipment_id=shipment.id,
-        package_id=package.id,
-        scanned_value=scan_value,
-        scan_result="matched",
-        scanned_by_id=current_user.id,
-        notes="Package scanned into shipment"
-    ))
+    db.session.add(
+        ShipmentScanLog(
+            shipment_id=shipment.id,
+            package_id=package.id,
+            scanned_value=scan_value,
+            scan_result="matched",
+            scanned_by_id=current_user.id,
+            notes="Package scanned into shipment",
+        )
+    )
 
     db.session.commit()
 
@@ -1876,24 +1997,31 @@ def scan_package_in_shipment(shipment_id):
         or 0
     )
 
-    return jsonify({
-        "ok": True,
-        "status": "scanned",
-        "message": "Package scanned successfully.",
-        "package_id": package.id,
-        "tracking_number": package.tracking_number,
-        "house_awb": package.house_awb,
-        "total_count": total_count,
-        "scanned_count": scanned_count,
-        "missing_count": max(total_count - scanned_count, 0),
-    }), 200
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "status": "scanned",
+                "message": "Package scanned successfully.",
+                "package_id": package.id,
+                "tracking_number": package.tracking_number,
+                "house_awb": package.house_awb,
+                "total_count": total_count,
+                "scanned_count": scanned_count,
+                "missing_count": max(total_count - scanned_count, 0),
+            }
+        ),
+        200,
+    )
 
 
 # --------------------------------------------------------------------------------------
 # Dashboard (Tabs: prealert, view_packages, shipmentLog, uploadPackages)
 # --------------------------------------------------------------------------------------
-@logistics_bp.route('/dashboard', methods=["GET", "POST"], endpoint="logistics_dashboard")
-@admin_required(roles=['operations'])
+@logistics_bp.route(
+    "/dashboard", methods=["GET", "POST"], endpoint="logistics_dashboard"
+)
+@admin_required(roles=["operations"])
 def logistics_dashboard():
     upload_form = UploadPackageForm()
     prealert_form = PreAlertForm()
@@ -1905,13 +2033,14 @@ def logistics_dashboard():
 
     unassigned_id = get_unassigned_user_id()
 
-
     # New preview context
     preview_headers = None
-    preview_rows    = None
-    preview_errors  = None
-    summary_counts  = None
-    preview_token   = request.args.get("preview_token") or request.form.get("preview_token")
+    preview_rows = None
+    preview_errors = None
+    summary_counts = None
+    preview_token = request.args.get("preview_token") or request.form.get(
+        "preview_token"
+    )
 
     # Work out which tab is active (use normalizer)
     raw_tab = request.args.get("tab") or request.form.get("tab")
@@ -1924,14 +2053,14 @@ def logistics_dashboard():
             sync_auto_archive_for_eligible_shipments(limit=200)
         except Exception as e:
             print("AUTO-ARCHIVE ERROR:", e)
-    
+
     selected_shipment = None
     selected_shipment_id = None
     shipment_pkg_rows = []
 
     if request.method == "GET" and tab == "view_packages":
         raw_date_from = (request.args.get("date_from") or "").strip()
-        raw_date_to   = (request.args.get("date_to") or "").strip()
+        raw_date_to = (request.args.get("date_to") or "").strip()
 
         if not raw_date_from and not raw_date_to:
             today = to_jamaica(datetime.now(timezone.utc)).strftime("%Y-%m-%d")
@@ -1941,10 +2070,7 @@ def logistics_dashboard():
             args["date_from"] = today
             args["date_to"] = today
 
-            return redirect(
-                url_for("logistics.logistics_dashboard", **args),
-                code=303
-            )   
+            return redirect(url_for("logistics.logistics_dashboard", **args), code=303)
 
     # If we're on the upload tab, clean up old preview files
     if tab == "uploadPackages":
@@ -1958,8 +2084,7 @@ def logistics_dashboard():
 
     if tab == "prealert":
         prealert_customers = (
-            User.query
-            .filter(User.is_admin.is_(False))
+            User.query.filter(User.is_admin.is_(False))
             .order_by(
                 User.full_name.asc(),
                 User.registration_number.asc(),
@@ -1967,28 +2092,20 @@ def logistics_dashboard():
             .all()
         )
         rows = (
-            db.session.query(
-                Prealert,
-                User.full_name,
-                User.registration_number
-            )
+            db.session.query(Prealert, User.full_name, User.registration_number)
             .join(User, Prealert.customer_id == User.id)
             .order_by(Prealert.id.desc())
             .all()
         )
 
         for prealert, full_name, reg_no in rows:
-            code_number = (
-               prealert.prealert_number
-                or prealert.id
-            )
+            code_number = prealert.prealert_number or prealert.id
 
             attachments = [
                 {
                     "id": attachment.id,
                     "file_url": attachment.file_url,
-                    "original_name":
-                        attachment.original_name,
+                    "original_name": attachment.original_name,
                 }
                 for attachment in getattr(
                     prealert,
@@ -1997,76 +2114,98 @@ def logistics_dashboard():
                 )
             ]
 
-            prealerts_data.append({
-                "id": prealert.id,
-                "code": f"PA-{code_number:05d}",
-                "customer_name": full_name,
-                "registration_number": reg_no,
-                "vendor_name": prealert.vendor_name,
-                "courier_name": prealert.courier_name,
-                "tracking_number": prealert.tracking_number,
-                "purchase_date": prealert.purchase_date,
-                "package_contents": prealert.package_contents,
-                "item_value_usd": prealert.item_value_usd,
-                "invoice_filename": prealert.invoice_filename,
-                "invoice_original_name": prealert.invoice_original_name,
-                "invoice_public_id": prealert.invoice_public_id,
-                "invoice_resource_type":
-                    prealert.invoice_resource_type,
-
-                "attachments": attachments,
-                "attachment_count": len(attachments),
-
-                "linked_package_id":
-                    prealert.linked_package_id,
-                "linked_at": prealert.linked_at,
-
-                "is_locked": prealert.is_locked,
-                "lock_reason": prealert.lock_reason,
-
-                "created_at": prealert.created_at,                
-            })
+            prealerts_data.append(
+                {
+                    "id": prealert.id,
+                    "code": f"PA-{code_number:05d}",
+                    "customer_name": full_name,
+                    "registration_number": reg_no,
+                    "vendor_name": prealert.vendor_name,
+                    "courier_name": prealert.courier_name,
+                    "tracking_number": prealert.tracking_number,
+                    "purchase_date": prealert.purchase_date,
+                    "package_contents": prealert.package_contents,
+                    "item_value_usd": prealert.item_value_usd,
+                    "invoice_filename": prealert.invoice_filename,
+                    "invoice_original_name": prealert.invoice_original_name,
+                    "invoice_public_id": prealert.invoice_public_id,
+                    "invoice_resource_type": prealert.invoice_resource_type,
+                    "attachments": attachments,
+                    "attachment_count": len(attachments),
+                    "linked_package_id": prealert.linked_package_id,
+                    "linked_at": prealert.linked_at,
+                    "is_locked": prealert.is_locked,
+                    "lock_reason": prealert.lock_reason,
+                    "created_at": prealert.created_at,
+                }
+            )
 
         print("DEBUG dashboard prealerts count:", len(prealerts_data))
-# ----------------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------------
     # Upload Tab — Stage: preview
     # ----------------------------------------------------------------------------------
-    if request.method == "POST" and tab == "uploadPackages" and request.form.get("stage") == "preview":
+    if (
+        request.method == "POST"
+        and tab == "uploadPackages"
+        and request.form.get("stage") == "preview"
+    ):
         f = request.files.get("file")
         if not f or f.filename.strip() == "":
             flash("Please choose a file.", "danger")
-            return redirect(url_for("logistics.logistics_dashboard", tab="uploadPackages"), code=303)
+            return redirect(
+                url_for("logistics.logistics_dashboard", tab="uploadPackages"), code=303
+            )
         try:
             df = _read_any_table(f)
             cleanup_preview_dir(24)
             rows, row_errors, original_headers = _validate_rows(df)
             original_rows = df.to_dict(orient="records")
-            preview_token = _save_preview_blob({
-                "rows": rows,
-                "row_errors": row_errors,
-                "display_headers": original_headers,
-                "original_rows": original_rows,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-            valid_count   = len(rows) - len(row_errors)
+            preview_token = _save_preview_blob(
+                {
+                    "rows": rows,
+                    "row_errors": row_errors,
+                    "display_headers": original_headers,
+                    "original_rows": original_rows,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            )
+            valid_count = len(rows) - len(row_errors)
             invalid_count = len(row_errors)
-            flash(f"Preview ready: {valid_count} valid / {invalid_count} invalid out of {len(rows)}.", "info")
-            return redirect(url_for("logistics.logistics_dashboard", tab="uploadPackages", preview_token=preview_token), code=303)
+            flash(
+                f"Preview ready: {valid_count} valid / {invalid_count} invalid out of {len(rows)}.",
+                "info",
+            )
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    tab="uploadPackages",
+                    preview_token=preview_token,
+                ),
+                code=303,
+            )
         except Exception as e:
             flash(f"Failed to read file: {e}", "danger")
-            return redirect(url_for("logistics.logistics_dashboard", tab="uploadPackages"), code=303)
+            return redirect(
+                url_for("logistics.logistics_dashboard", tab="uploadPackages"), code=303
+            )
 
     # ----------------------------------------------------------------------------------
     # Upload Tab — Stage: confirm (ORM inserts)
     # ----------------------------------------------------------------------------------
-    if request.method == "POST" and tab == "uploadPackages" and request.form.get("stage") == "confirm":
+    if (
+        request.method == "POST"
+        and tab == "uploadPackages"
+        and request.form.get("stage") == "confirm"
+    ):
         preview_token = request.form.get("preview_token")
         data = _load_preview_blob(preview_token)
         if not data:
             flash("Preview session expired. Please upload again.", "warning")
-            return redirect(url_for("logistics.logistics_dashboard", tab="uploadPackages"), code=303)
+            return redirect(
+                url_for("logistics.logistics_dashboard", tab="uploadPackages"), code=303
+            )
 
-        rows       = data.get("rows", [])
+        rows = data.get("rows", [])
         row_errors = data.get("row_errors", {})
         try:
             selected_indices = json.loads(request.form.get("selected_indices", "[]"))
@@ -2076,7 +2215,6 @@ def logistics_dashboard():
 
         flash(f"DEBUG selected indices: {selected_indices}", "info")
 
-
         try:
             batch_size = int(request.form.get("batch_size") or 0)
         except Exception:
@@ -2085,7 +2223,7 @@ def logistics_dashboard():
             selected_indices = selected_indices[:batch_size]
 
         created, skipped = 0, 0
-        hard_errors: list[str] = []        
+        hard_errors: list[str] = []
 
         for i in selected_indices:
             try:
@@ -2093,44 +2231,50 @@ def logistics_dashboard():
                     skipped += 1
                     continue
                 errs = (row_errors or {}).get(str(i)) or (row_errors or {}).get(i) or []
-                filtered_errs = [e for e in errs if "registration" not in str(e).lower()]
+                filtered_errs = [
+                    e for e in errs if "registration" not in str(e).lower()
+                ]
                 if filtered_errs:
                     skipped += 1
                     continue
                 r = rows[i]
 
                 # Resolve user by code, else email, else UNASSIGNED
-                reg = (str(r.get("registration_number") or "").strip())
+                reg = str(r.get("registration_number") or "").strip()
                 user = None
                 if reg:
                     user = User.query.filter(User.registration_number == reg).first()
                 if not user:
-                    email = (str(r.get("email") or "").strip())
+                    email = str(r.get("email") or "").strip()
                     if email:
-                        user = User.query.filter(func.lower(User.email) == func.lower(email)).first()
+                        user = User.query.filter(
+                            func.lower(User.email) == func.lower(email)
+                        ).first()
                 assigned_unassigned = False
                 if not user and unassigned_id is not None:
                     user = db.session.get(User, unassigned_id)
                     assigned_unassigned = True
                 if not user:
                     skipped += 1
-                    hard_errors.append(f"Row {i+1}: No matching user and UNASSIGNED user missing.")
+                    hard_errors.append(
+                        f"Row {i+1}: No matching user and UNASSIGNED user missing."
+                    )
                     continue
 
-                shipper         = (str(r.get("shipper", "")).strip() or None)
-                house_awb       = (str(r.get("house_awb", "")).strip() or None)
-                tracking_number = (str(r.get("tracking_number", "")).strip() or None)
-                description     = (str(r.get("description", "")).strip() or None)
-                value           = float(r.get("value") or 0)
-                weight_actual   = float(r.get("weight") or 0)
-                date_raw        = r.get("date_received") or r.get("date")
+                shipper = str(r.get("shipper", "")).strip() or None
+                house_awb = str(r.get("house_awb", "")).strip() or None
+                tracking_number = str(r.get("tracking_number", "")).strip() or None
+                description = str(r.get("description", "")).strip() or None
+                value = float(r.get("value") or 0)
+                weight_actual = float(r.get("weight") or 0)
+                date_raw = r.get("date_received") or r.get("date")
                 date_received = _parse_date_any(date_raw) or datetime.now(timezone.utc)
-                status_value    = 'Unassigned' if assigned_unassigned else 'Overseas'
+                status_value = "Unassigned" if assigned_unassigned else "Overseas"
 
                 p = Package(
                     user_id=user.id,
-                    shipper=shipper if hasattr(Package, 'shipper') else None,
-                    merchant=shipper if hasattr(Package, 'merchant') else None,
+                    shipper=shipper if hasattr(Package, "shipper") else None,
+                    merchant=shipper if hasattr(Package, "merchant") else None,
                     house_awb=house_awb,
                     weight=weight_actual,
                     tracking_number=tracking_number,
@@ -2143,7 +2287,7 @@ def logistics_dashboard():
                     created_at=datetime.now(timezone.utc),
                 )
                 db.session.add(p)
-                db.session.flush()  # ✅ get p.id now 
+                db.session.flush()  # ✅ get p.id now
 
                 try:
                     result = apply_subscription_usage(p)
@@ -2157,11 +2301,12 @@ def logistics_dashboard():
                         p.subscription_id = None
 
                 except Exception as e:
-                    current_app.logger.exception(f"Subscription application failed for package {p.id}: {e}")
+                    current_app.logger.exception(
+                        f"Subscription application failed for package {p.id}: {e}"
+                    )
                     p.subscription_applied = False
                     p.subscription_result = "subscription_error"
                     p.subscription_applied_at = None
-                              
 
                 # ✅ AUTO-LINK prealert invoice -> package attachment
                 _try_link_prealert_invoice_to_package(p)
@@ -2180,7 +2325,14 @@ def logistics_dashboard():
         except Exception as e:
             db.session.rollback()
             flash(f"Database error: {e}", "danger")
-            return redirect(url_for("logistics.logistics_dashboard", tab="uploadPackages", preview_token=preview_token), code=303)
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    tab="uploadPackages",
+                    preview_token=preview_token,
+                ),
+                code=303,
+            )
 
         if created:
             flash(f"Imported {created} package(s).", "success")
@@ -2190,7 +2342,9 @@ def logistics_dashboard():
             flash(err, "danger")
         if len(hard_errors) > 5:
             flash(f"...and {len(hard_errors)-5} more errors.", "danger")
-        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+        return redirect(
+            url_for("logistics.logistics_dashboard", tab="view_packages"), code=303
+        )
 
     # ----------------------------------------------------------------------------------
     # Upload Tab — Show preview from token
@@ -2199,11 +2353,11 @@ def logistics_dashboard():
         data = _load_preview_blob(preview_token)
         if data:
             preview_headers = data.get("display_headers", [])
-            preview_rows    = data.get("original_rows", [])
-            preview_errors  = data.get("row_errors", {})
-            total   = len(data.get("rows", []))
+            preview_rows = data.get("original_rows", [])
+            preview_errors = data.get("row_errors", {})
+            total = len(data.get("rows", []))
             invalid = len(preview_errors or {})
-            valid   = total - invalid
+            valid = total - invalid
             summary_counts = {"total": total, "valid": valid, "invalid": invalid}
         else:
             flash("Preview session expired. Please upload again.", "warning")
@@ -2218,30 +2372,32 @@ def logistics_dashboard():
     # ACTIVE shipments (paginated)
     # --------------------------
     active_pagination = (
-        ShipmentLog.query
-        .filter(ShipmentLog.is_archived.is_(False))
+        ShipmentLog.query.filter(ShipmentLog.is_archived.is_(False))
         .order_by(ShipmentLog.created_at.desc())
         .paginate(page=ship_page, per_page=ship_per_page, error_out=False)
     )
 
     active_shipments = []
     for s in active_pagination.items:
-        active_shipments.append({
-            "id": s.id,
-            "sl_id": s.sl_id,
-            "sl_name": s.sl_name,
-            "created_at": s.created_at,
-            "is_archived": bool(getattr(s, "is_archived", False)),
-            "archived_at": getattr(s, "archived_at", None),
-        })
+        active_shipments.append(
+            {
+                "id": s.id,
+                "sl_id": s.sl_id,
+                "sl_name": s.sl_name,
+                "created_at": s.created_at,
+                "is_archived": bool(getattr(s, "is_archived", False)),
+                "archived_at": getattr(s, "archived_at", None),
+            }
+        )
 
     # --------------------------
     # ARCHIVED shipments (small list for sidebar)
     # --------------------------
     archived_shipments = (
-        ShipmentLog.query
-        .filter(ShipmentLog.is_archived.is_(True))
-        .order_by(ShipmentLog.archived_at.desc().nullslast(), ShipmentLog.created_at.desc())
+        ShipmentLog.query.filter(ShipmentLog.is_archived.is_(True))
+        .order_by(
+            ShipmentLog.archived_at.desc().nullslast(), ShipmentLog.created_at.desc()
+        )
         .limit(50)
         .all()
     )
@@ -2255,14 +2411,16 @@ def logistics_dashboard():
 
     archived_shipments_parsed = []
     for s in archived_shipments:
-        archived_shipments_parsed.append({
-            "id": s.id,
-            "sl_id": s.sl_id,
-            "sl_name": s.sl_name,
-            "created_at": s.created_at,
-            "is_archived": True,
-            "archived_at": getattr(s, "archived_at", None),
-        })
+        archived_shipments_parsed.append(
+            {
+                "id": s.id,
+                "sl_id": s.sl_id,
+                "sl_name": s.sl_name,
+                "created_at": s.created_at,
+                "is_archived": True,
+                "archived_at": getattr(s, "archived_at", None),
+            }
+        )
 
     archived_ids = {s["id"] for s in archived_shipments_parsed}
 
@@ -2279,8 +2437,6 @@ def logistics_dashboard():
         selected_shipment = first_active
         selected_shipment_id = selected_shipment.id if selected_shipment else None
 
-
-    
     shipment_pkg_rows = []
     if selected_shipment:
 
@@ -2297,7 +2453,7 @@ def logistics_dashboard():
             )
             .join(User, Package.user_id == User.id)
             .join(shipment_packages, shipment_packages.c.package_id == Package.id)
-            .outerjoin(Invoice, Package.invoice_id == Invoice.id)            
+            .outerjoin(Invoice, Package.invoice_id == Invoice.id)
             .filter(shipment_packages.c.shipment_id == selected_shipment.id)
             .order_by(Package.id.desc())
             .all()
@@ -2321,137 +2477,160 @@ def logistics_dashboard():
             )
 
             for att_id, pkg_id, original_name, file_name in att_rows:
-                attachments_by_pkg.setdefault(pkg_id, []).append({
-                    "id": att_id,
-                    "original_name": original_name,
-                    "file_name": file_name,
-                })
+                attachments_by_pkg.setdefault(pkg_id, []).append(
+                    {
+                        "id": att_id,
+                        "original_name": original_name,
+                        "file_name": file_name,
+                    }
+                )
 
         # 3) build final dict rows INCLUDING attachments
         shipment_pkg_rows = []
-        for p, full_name, reg, invoice_number, invoice_emailed_at, invoice_email_failed, invoice_email_failure_reason in rows:
+        for (
+            p,
+            full_name,
+            reg,
+            invoice_number,
+            invoice_emailed_at,
+            invoice_email_failed,
+            invoice_email_failure_reason,
+        ) in rows:
             atts = attachments_by_pkg.get(p.id, [])
             created_dt = _parse_dt_maybe(p.created_at)
             recv_dt = _parse_dt_maybe(
                 getattr(p, "date_received", None)
                 or getattr(p, "received_date", None)
-               or getattr(p, "created_at", None)
+                or getattr(p, "created_at", None)
             )
 
-
-            shipment_pkg_rows.append({
-                "id": p.id,
-                "user_id": p.user_id,
-                "full_name": full_name,
-                "registration_number": reg,
-                "tracking_number": p.tracking_number,
-
-                "received_scan_status": getattr(p, "received_scan_status", "not_scanned"),
-                "received_scanned_at": getattr(p, "received_scanned_at", None),
-                "received_scanned_by_id": getattr(p, "received_scanned_by_id", None),
-
-                "description": p.description,
-                "weight": p.weight,
-                "status": p.status,
-                "created_at": created_dt,
-                "date_received": recv_dt,
-                "date_any": recv_dt or created_dt,
-                "house_awb": p.house_awb,
-                "value": p.value,
-                "declared_value": getattr(p, "declared_value", None),
-                "amount_due": p.amount_due,                
-
-                "duty": getattr(p, "duty", 0),
-                "gct": getattr(p, "gct", 0),
-                "scf": getattr(p, "scf", 0),
-                "envl": getattr(p, "envl", 0),
-                "caf": getattr(p, "caf", 0),
-                "stamp": getattr(p, "stamp", 0),
-
-                "customs_total": getattr(p, "customs_total", 0),
-
-                "freight_fee": getattr(p, "freight_fee", 0),
-                "handling_fee": getattr(p, "handling_fee", 0),
-                "storage_fee": getattr(p, "storage_fee", 0),
-                "freight_total": getattr(p, "freight_total", 0),
-
-                "grand_total": getattr(p, "grand_total", 0),
-
-                "bad_address": getattr(p, "bad_address", False),
-                "bad_address_fee": getattr(p, "bad_address_fee", 0),
-
-                "pricing_locked": getattr(p, "pricing_locked", False),
-
-                "other_charges": getattr(p, "other_charges", 0),
-                "epc": getattr(p, "epc", 0),
-                "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
-                "invoice_id": p.invoice_id,
-                "invoice_number": invoice_number,
-                "invoice_emailed_at": invoice_emailed_at,
-                "invoice_email_failed": bool(invoice_email_failed) if invoice_email_failed is not None else False,
-                "invoice_email_failure_reason": invoice_email_failure_reason,
-
-                # ✅ NEW
-                "att_count": len(atts),
-                "attachments": atts,
-                "subscription_applied": bool(getattr(p, "subscription_applied", False)),
-                "subscription_result": getattr(p, "subscription_result", None),
-                "subscription_covered": bool(
-                    getattr(p, "subscription_applied", False)
-                    and (
-                        getattr(p, "subscription_result", "")
-                        or ""
-                    )
-                    == "subscription_applied"
-                ),
-                "customs_only_due_to_subscription": (
-                    bool(getattr(p, "subscription_applied", False))
-                    and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
-                    and float(getattr(p, "customs_total", 0) or 0) > 0
-                ),
-            })
-
+            shipment_pkg_rows.append(
+                {
+                    "id": p.id,
+                    "user_id": p.user_id,
+                    "full_name": full_name,
+                    "registration_number": reg,
+                    "tracking_number": p.tracking_number,
+                    "received_scan_status": getattr(
+                        p, "received_scan_status", "not_scanned"
+                    ),
+                    "received_scanned_at": getattr(p, "received_scanned_at", None),
+                    "received_scanned_by_id": getattr(
+                        p, "received_scanned_by_id", None
+                    ),
+                    "description": p.description,
+                    "weight": p.weight,
+                    "status": p.status,
+                    "created_at": created_dt,
+                    "date_received": recv_dt,
+                    "date_any": recv_dt or created_dt,
+                    "house_awb": p.house_awb,
+                    "value": p.value,
+                    "declared_value": getattr(p, "declared_value", None),
+                    "amount_due": p.amount_due,
+                    "duty": getattr(p, "duty", 0),
+                    "gct": getattr(p, "gct", 0),
+                    "scf": getattr(p, "scf", 0),
+                    "envl": getattr(p, "envl", 0),
+                    "caf": getattr(p, "caf", 0),
+                    "stamp": getattr(p, "stamp", 0),
+                    "customs_total": getattr(p, "customs_total", 0),
+                    "freight_fee": getattr(p, "freight_fee", 0),
+                    "handling_fee": getattr(p, "handling_fee", 0),
+                    "storage_fee": getattr(p, "storage_fee", 0),
+                    "freight_total": getattr(p, "freight_total", 0),
+                    "grand_total": getattr(p, "grand_total", 0),
+                    "bad_address": getattr(p, "bad_address", False),
+                    "bad_address_fee": getattr(p, "bad_address_fee", 0),
+                    "pricing_locked": getattr(p, "pricing_locked", False),
+                    "other_charges": getattr(p, "other_charges", 0),
+                    "epc": getattr(p, "epc", 0),
+                    "shipper": getattr(p, "merchant", None)
+                    or getattr(p, "shipper", None),
+                    "invoice_id": p.invoice_id,
+                    "invoice_number": invoice_number,
+                    "invoice_emailed_at": invoice_emailed_at,
+                    "invoice_email_failed": (
+                        bool(invoice_email_failed)
+                        if invoice_email_failed is not None
+                        else False
+                    ),
+                    "invoice_email_failure_reason": invoice_email_failure_reason,
+                    # ✅ NEW
+                    "att_count": len(atts),
+                    "attachments": atts,
+                    "subscription_applied": bool(
+                        getattr(p, "subscription_applied", False)
+                    ),
+                    "subscription_result": getattr(p, "subscription_result", None),
+                    "subscription_covered": bool(
+                        getattr(p, "subscription_applied", False)
+                        and (getattr(p, "subscription_result", "") or "")
+                        == "subscription_applied"
+                    ),
+                    "customs_only_due_to_subscription": (
+                        bool(getattr(p, "subscription_applied", False))
+                        and (getattr(p, "subscription_result", "") or "")
+                        == "subscription_applied"
+                        and float(getattr(p, "customs_total", 0) or 0) > 0
+                    ),
+                }
+            )
 
     # ----------------------------------------------------------------------------------
     # View Packages table (filters + pagination) ORM version
     # ----------------------------------------------------------------------------------
 
     # ---- Read filters FIRST (so they exist before we use them anywhere) ----
-    raw_date_from = (request.args.get('date_from') or '').strip()
-    raw_date_to   = (request.args.get('date_to')   or '').strip()
+    raw_date_from = (request.args.get("date_from") or "").strip()
+    raw_date_to = (request.args.get("date_to") or "").strip()
 
     # TRUE only when the user actually applied a date filter in the URL
     user_date_filter = bool(raw_date_from or raw_date_to)
 
     date_from = raw_date_from
-    date_to   = raw_date_to
+    date_to = raw_date_to
 
     # filters used by _apply_pkg_filters
-    epc_only = (request.args.get('epc_only') or '').lower() in ('1','true','on','yes')
-    not_notified_only = (request.args.get('not_notified_only') or '').lower() in ('1','true','on','yes')
-    subscription_only = (request.args.get('subscription_only') or '').lower() in ('1','true','on','yes')
+    epc_only = (request.args.get("epc_only") or "").lower() in (
+        "1",
+        "true",
+        "on",
+        "yes",
+    )
+    not_notified_only = (request.args.get("not_notified_only") or "").lower() in (
+        "1",
+        "true",
+        "on",
+        "yes",
+    )
+    subscription_only = (request.args.get("subscription_only") or "").lower() in (
+        "1",
+        "true",
+        "on",
+        "yes",
+    )
     shipment_filter = (request.args.get("shipment_filter") or "").strip().lower()
     shipment_id_filter = request.args.get("shipment_id_filter", type=int)
 
-    house = request.args.get('house', '', type=str)
-    tracking = request.args.get('tracking', '', type=str)
-    user_code = request.args.get('user_code', '', type=str)
-    first_name = request.args.get('first_name', '', type=str)
-    last_name = request.args.get('last_name', '', type=str)
+    house = request.args.get("house", "", type=str)
+    tracking = request.args.get("tracking", "", type=str)
+    user_code = request.args.get("user_code", "", type=str)
+    first_name = request.args.get("first_name", "", type=str)
+    last_name = request.args.get("last_name", "", type=str)
 
-    search = (request.args.get('search') or '').strip()
-    status_filter = (request.args.get('status') or '').strip()
+    search = (request.args.get("search") or "").strip()
+    status_filter = (request.args.get("status") or "").strip()
 
     unassigned_only = (
-        (request.args.get('show_unassigned') or request.args.get('unassigned_only') or '')
-        .lower() in ('1','true','on','yes')
-    )
+        request.args.get("show_unassigned") or request.args.get("unassigned_only") or ""
+    ).lower() in ("1", "true", "on", "yes")
 
     # ---- attachments count subquery ----
     att_counts_sq = (
         db.session.query(
             PackageAttachment.package_id.label("pkg_id"),
-            func.count(PackageAttachment.id).label("att_count")
+            func.count(PackageAttachment.id).label("att_count"),
         )
         .group_by(PackageAttachment.package_id)
         .subquery()
@@ -2462,7 +2641,7 @@ def logistics_dashboard():
             Package,
             User.full_name,
             User.registration_number,
-            func.coalesce(att_counts_sq.c.att_count, 0).label("att_count")
+            func.coalesce(att_counts_sq.c.att_count, 0).label("att_count"),
         )
         .join(User, Package.user_id == User.id)
         .outerjoin(att_counts_sq, att_counts_sq.c.pkg_id == Package.id)
@@ -2489,7 +2668,9 @@ def logistics_dashboard():
         shipment_id_filter=shipment_id_filter,
     )
 
-    pkg_q = pkg_q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).desc())
+    pkg_q = pkg_q.order_by(
+        func.date(func.coalesce(Package.date_received, Package.created_at)).desc()
+    )
 
     page, per_page, total_count, total_pages, pkg_rows = _paginate(pkg_q)
 
@@ -2512,69 +2693,73 @@ def logistics_dashboard():
         )
 
         for att_id, pkg_id, original_name, file_name in att_rows:
-            attachments_by_pkg.setdefault(pkg_id, []).append({
-                "id": att_id,
-                "original_name": original_name,
-                "file_name": file_name,
-            })
+            attachments_by_pkg.setdefault(pkg_id, []).append(
+                {
+                    "id": att_id,
+                    "original_name": original_name,
+                    "file_name": file_name,
+                }
+            )
 
     parsed_packages = []
     for p, full_name, reg, att_count in pkg_rows:
         created_dt = _parse_dt_maybe(p.created_at)
         recv_dt = _parse_dt_maybe(p.date_received)
 
-        parsed_packages.append({
-            "id": p.id,
-            "user_id": p.user_id,
-            "full_name": full_name,
-            "registration_number": reg,
-            "tracking_number": p.tracking_number,
-            "description": p.description,
-            "weight": p.weight,
-            "status": p.status,
-            "created_at": created_dt,
-            "date_received": recv_dt,
-            "date_any": recv_dt or created_dt,
-            "house_awb": p.house_awb,
-            "declared_value": getattr(p, "declared_value", None),
-            "value": p.value,
-            "att_count": int(att_count or 0),
-            "attachments": attachments_by_pkg.get(p.id, []),
-            "amount_due": p.amount_due,
-            "epc": getattr(p, "epc", 0),
-            "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
-            "invoice_id": p.invoice_id,
-            "customer_notified_at": getattr(p, "customer_notified_at", None),
-            "received_scan_status": getattr(p, "received_scan_status", "not_scanned"),
-            "received_scanned_at": getattr(p, "received_scanned_at", None),
-            "received_scanned_by_id": getattr(p, "received_scanned_by_id", None),
-
-            "delivery_scan_status": getattr(p, "delivery_scan_status", "not_scanned"),
-            "delivery_scanned_at": getattr(p, "delivery_scanned_at", None),
-            "delivery_scanned_by_id": getattr(p, "delivery_scanned_by_id", None),
-            "subscription_applied": bool(getattr(p, "subscription_applied", False)),
-            "subscription_result": getattr(p, "subscription_result", None),
-            "subscription_covered": bool(
-                getattr(p, "subscription_applied", False)
-                and (
-                    getattr(p, "subscription_result", "")
-                    or ""
-                )
-                == "subscription_applied"
-            ),
-            "customs_only_due_to_subscription": (
-                bool(getattr(p, "subscription_applied", False))
-                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
-                and float(getattr(p, "customs_total", 0) or 0) > 0
-            ),
-            "shipments": list(getattr(p, "shipments", [])),
-        })
+        parsed_packages.append(
+            {
+                "id": p.id,
+                "user_id": p.user_id,
+                "full_name": full_name,
+                "registration_number": reg,
+                "tracking_number": p.tracking_number,
+                "description": p.description,
+                "weight": p.weight,
+                "status": p.status,
+                "created_at": created_dt,
+                "date_received": recv_dt,
+                "date_any": recv_dt or created_dt,
+                "house_awb": p.house_awb,
+                "declared_value": getattr(p, "declared_value", None),
+                "value": p.value,
+                "att_count": int(att_count or 0),
+                "attachments": attachments_by_pkg.get(p.id, []),
+                "amount_due": p.amount_due,
+                "epc": getattr(p, "epc", 0),
+                "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
+                "invoice_id": p.invoice_id,
+                "customer_notified_at": getattr(p, "customer_notified_at", None),
+                "received_scan_status": getattr(
+                    p, "received_scan_status", "not_scanned"
+                ),
+                "received_scanned_at": getattr(p, "received_scanned_at", None),
+                "received_scanned_by_id": getattr(p, "received_scanned_by_id", None),
+                "delivery_scan_status": getattr(
+                    p, "delivery_scan_status", "not_scanned"
+                ),
+                "delivery_scanned_at": getattr(p, "delivery_scanned_at", None),
+                "delivery_scanned_by_id": getattr(p, "delivery_scanned_by_id", None),
+                "subscription_applied": bool(getattr(p, "subscription_applied", False)),
+                "subscription_result": getattr(p, "subscription_result", None),
+                "subscription_covered": bool(
+                    getattr(p, "subscription_applied", False)
+                    and (getattr(p, "subscription_result", "") or "")
+                    == "subscription_applied"
+                ),
+                "customs_only_due_to_subscription": (
+                    bool(getattr(p, "subscription_applied", False))
+                    and (getattr(p, "subscription_result", "") or "")
+                    == "subscription_applied"
+                    and float(getattr(p, "customs_total", 0) or 0) > 0
+                ),
+                "shipments": list(getattr(p, "shipments", [])),
+            }
+        )
 
     # Agg totals for the current filter
     totals_q = _apply_pkg_filters(
         db.session.query(
-            func.count(Package.id),
-            func.coalesce(func.sum(Package.weight), 0.0)
+            func.count(Package.id), func.coalesce(func.sum(Package.weight), 0.0)
         ).join(User, Package.user_id == User.id),
         unassigned_id=unassigned_id,
         date_from=date_from,
@@ -2596,56 +2781,67 @@ def logistics_dashboard():
 
     cnt, tw = totals_q.first()
     filtered_total_packages = int(cnt or 0)
-    filtered_total_weight   = float(tw or 0.0)
+    filtered_total_weight = float(tw or 0.0)
 
     # Daily breakdown when date filters present
     daily_totals = []
     if user_date_filter:
-        dtcol = func.date(func.coalesce(Package.date_received, Package.created_at)).label("day")
+        dtcol = func.date(
+            func.coalesce(Package.date_received, Package.created_at)
+        ).label("day")
 
-        dq = _apply_pkg_filters(
-            db.session.query(
-                dtcol,
-                func.count(Package.id),
-                func.coalesce(func.sum(Package.weight), 0.0)
-            ).join(User, Package.user_id == User.id),
-            unassigned_id=unassigned_id,
-            date_from=date_from,
-            date_to=date_to,
-            epc_only=epc_only,
-            not_notified_only=not_notified_only,
-            house=house,
-            tracking=tracking,
-            user_code=user_code,
-            first_name=first_name,
-            last_name=last_name,
-            status_filter=status_filter,
-            search=search,
-            unassigned_only=unassigned_only,
-            subscription_only=subscription_only,
-            shipment_filter=shipment_filter,
-            shipment_id_filter=shipment_id_filter,
-        ).group_by(dtcol).order_by(dtcol.asc())
+        dq = (
+            _apply_pkg_filters(
+                db.session.query(
+                    dtcol,
+                    func.count(Package.id),
+                    func.coalesce(func.sum(Package.weight), 0.0),
+                ).join(User, Package.user_id == User.id),
+                unassigned_id=unassigned_id,
+                date_from=date_from,
+                date_to=date_to,
+                epc_only=epc_only,
+                not_notified_only=not_notified_only,
+                house=house,
+                tracking=tracking,
+                user_code=user_code,
+                first_name=first_name,
+                last_name=last_name,
+                status_filter=status_filter,
+                search=search,
+                unassigned_only=unassigned_only,
+                subscription_only=subscription_only,
+                shipment_filter=shipment_filter,
+                shipment_id_filter=shipment_id_filter,
+            )
+            .group_by(dtcol)
+            .order_by(dtcol.asc())
+        )
 
         for day, cnt, tw in dq.all():
-            daily_totals.append({"day": str(day), "count": int(cnt or 0), "total_weight": float(tw or 0.0)})
+            daily_totals.append(
+                {
+                    "day": str(day),
+                    "count": int(cnt or 0),
+                    "total_weight": float(tw or 0.0),
+                }
+            )
 
     # showing range
     offset = (page - 1) * per_page
     showing_from = 0 if total_count == 0 else (offset + 1)
-    showing_to   = min(offset + len(parsed_packages), total_count)
+    showing_to = min(offset + len(parsed_packages), total_count)
 
     categories = list(CATEGORIES.keys())
 
     allowed_page_sizes = [10, 25, 50, 100, 500, 1000]
-    prev_page   = page - 1 if page > 1 else None
-    next_page   = page + 1 if page < total_pages else None
-    first_page  = 1 if page != 1 else None
-    last_page   = total_pages if page != total_pages else None
+    prev_page = page - 1 if page > 1 else None
+    next_page = page + 1 if page < total_pages else None
+    first_page = 1 if page != 1 else None
+    last_page = total_pages if page != total_pages else None
 
     shipments = (
-        ShipmentLog.query
-        .filter(ShipmentLog.is_archived.is_(False))
+        ShipmentLog.query.filter(ShipmentLog.is_archived.is_(False))
         .order_by(ShipmentLog.created_at.desc())
         .all()
     )
@@ -2656,26 +2852,22 @@ def logistics_dashboard():
         prealert_form=prealert_form,
         bulk_form=bulk_form,
         invoice_finalize_form=invoice_finalize_form,
-
         message=message,
         errors=errors,
-
         preview_headers=preview_headers,
         preview_token=preview_token,
         preview_rows=preview_rows,
         preview_errors=preview_errors,
         summary_counts=summary_counts,
-
         active_shipments=active_shipments,
         active_pagination=active_pagination,
         shipments=shipments,
         archived_shipments=archived_shipments_parsed,
-        archived_count=archived_count,        
+        archived_count=archived_count,
         selected_shipment=selected_shipment,
         selected_shipment_id=selected_shipment_id,
         shipment_packages=shipment_pkg_rows,
-        all_packages=parsed_packages,        
-
+        all_packages=parsed_packages,
         search=search,
         status_filter=status_filter,
         date_from=date_from,
@@ -2693,7 +2885,6 @@ def logistics_dashboard():
         subscription_only=subscription_only,
         shipment_filter=shipment_filter,
         shipment_id_filter=shipment_id_filter,
-
         page=page,
         per_page=per_page,
         allowed_page_sizes=allowed_page_sizes,
@@ -2705,11 +2896,9 @@ def logistics_dashboard():
         total_count=total_count,
         showing_from=showing_from,
         showing_to=showing_to,
-
         total_packages=filtered_total_packages,
         total_weight=filtered_total_weight,
         daily_totals=daily_totals,
-
         now=datetime.now,
         active_tab=tab,
         categories=categories,
@@ -2718,6 +2907,7 @@ def logistics_dashboard():
         prealerts=prealerts_data,
         prealert_customers=prealert_customers,
     )
+
 
 @logistics_bp.get("/api/user-lookup")
 @admin_required  # keep it protected since it exposes customer info
@@ -2747,15 +2937,21 @@ def api_user_lookup():
 
     full_name = (f"{user.first_name or ''} {user.last_name or ''}").strip()
 
-    return jsonify({
-        "found": True,
-        "user": {
-            "id": user.id,
-            "registration_number": user.registration_number,
-            "full_name": full_name,
-            "email": user.email
-        }
-    }), 200
+    return (
+        jsonify(
+            {
+                "found": True,
+                "user": {
+                    "id": user.id,
+                    "registration_number": user.registration_number,
+                    "full_name": full_name,
+                    "email": user.email,
+                },
+            }
+        ),
+        200,
+    )
+
 
 @logistics_bp.post("/packages/create-single")
 @admin_required
@@ -2766,8 +2962,8 @@ def create_single_package_from_view():
     tracking = normalize_tracking(tracking_raw)  # ✅ normalize
 
     house_awb = (request.form.get("house_awb") or "").strip()
-    desc      = (request.form.get("description") or "").strip()
-    status    = (request.form.get("status") or "Overseas").strip()
+    desc = (request.form.get("description") or "").strip()
+    status = (request.form.get("status") or "Overseas").strip()
 
     # ✅ NEW: date_received from admin modal (HTML input type=date => YYYY-MM-DD)
     def _dt_from_date(name):
@@ -2789,7 +2985,7 @@ def create_single_package_from_view():
             return float(default)
 
     weight = _num("weight", 0.0)
-    value  = _num("value", 0.0)
+    value = _num("value", 0.0)
 
     if not user_code:
         flash("Customer Reg # / Email is required.", "danger")
@@ -2813,11 +3009,12 @@ def create_single_package_from_view():
         return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
     # ✅ optional: if a package already exists for this user+tracking, do NOT create duplicates
-    existing = (Package.query
-                .filter(Package.user_id == user.id)
-                .filter(Package.tracking_number == tracking)
-                .order_by(Package.id.desc())
-                .first())
+    existing = (
+        Package.query.filter(Package.user_id == user.id)
+        .filter(Package.tracking_number == tracking)
+        .order_by(Package.id.desc())
+        .first()
+    )
 
     if existing:
         # ✅ update missing fields on existing package (optional but helpful)
@@ -2849,11 +3046,7 @@ def create_single_package_from_view():
 
             if updated:
                 if weight_changed:
-                    subscription_result = (
-                        reconcile_subscription_usage(
-                            existing
-                        )
-                    )
+                    subscription_result = reconcile_subscription_usage(existing)
 
                     if subscription_result not in (
                         "subscription_applied",
@@ -2861,17 +3054,15 @@ def create_single_package_from_view():
                     ):
                         clear_package_subscription(
                             existing,
-                            result=(
-                                subscription_result
-                                or "no_subscription"
-                            ),
+                            result=(subscription_result or "no_subscription"),
                         )
-
 
                 db.session.commit()
 
         except Exception:
-            current_app.logger.exception("[ADMIN CREATE SINGLE] failed updating existing package")
+            current_app.logger.exception(
+                "[ADMIN CREATE SINGLE] failed updating existing package"
+            )
             db.session.rollback()
 
         try:
@@ -2888,39 +3079,49 @@ def create_single_package_from_view():
             db.session.commit()
 
         except Exception as e:
-            current_app.logger.exception(f"Subscription application failed for existing package {existing.id}: {e}")
+            current_app.logger.exception(
+                f"Subscription application failed for existing package {existing.id}: {e}"
+            )
             existing.subscription_applied = False
             existing.subscription_result = "subscription_error"
             existing.subscription_applied_at = None
             db.session.commit()
 
-        flash(f"Package already exists for {user.registration_number}: {tracking}", "warning")
+        flash(
+            f"Package already exists for {user.registration_number}: {tracking}",
+            "warning",
+        )
 
         # ✅ still try to sync prealert invoice onto the existing package
         try:
             from app.utils.prealert_sync import sync_prealert_invoice_to_package
+
             if sync_prealert_invoice_to_package(existing):
                 db.session.commit()
         except Exception:
-            current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed (admin existing package)")
+            current_app.logger.exception(
+                "[PREALERT->PACKAGE SYNC] failed (admin existing package)"
+            )
             db.session.rollback()
 
         return_tab = request.form.get("return_tab") or "view_packages"
-        return redirect(url_for(
-            "logistics.logistics_dashboard",
-            tab=return_tab,
-            page=request.form.get("return_page") or 1,
-            per_page=request.form.get("return_per_page") or 25,
-            date_from=request.form.get("return_date_from") or None,
-            date_to=request.form.get("return_date_to") or None,
-            house=request.form.get("return_house") or None,
-            tracking=request.form.get("return_tracking") or None,
-            user_code=request.form.get("return_user_code") or None,
-            first_name=request.form.get("return_first_name") or None,
-            last_name=request.form.get("return_last_name") or None,
-            unassigned_only=request.form.get("return_unassigned_only") or None,
-            epc_only=request.form.get("return_epc_only") or None,
-        ))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                tab=return_tab,
+                page=request.form.get("return_page") or 1,
+                per_page=request.form.get("return_per_page") or 25,
+                date_from=request.form.get("return_date_from") or None,
+                date_to=request.form.get("return_date_to") or None,
+                house=request.form.get("return_house") or None,
+                tracking=request.form.get("return_tracking") or None,
+                user_code=request.form.get("return_user_code") or None,
+                first_name=request.form.get("return_first_name") or None,
+                last_name=request.form.get("return_last_name") or None,
+                unassigned_only=request.form.get("return_unassigned_only") or None,
+                epc_only=request.form.get("return_epc_only") or None,
+            )
+        )
 
     # create package
     p = Package(
@@ -2949,41 +3150,47 @@ def create_single_package_from_view():
             p.subscription_id = None
 
     except Exception as e:
-        current_app.logger.exception(f"Subscription application failed for package {p.id}: {e}")
+        current_app.logger.exception(
+            f"Subscription application failed for package {p.id}: {e}"
+        )
         p.subscription_applied = False
         p.subscription_result = "subscription_error"
         p.subscription_applied_at = None
 
     db.session.commit()
-    
 
     # ✅ sync prealert invoice -> package attachments immediately after create
     try:
         from app.utils.prealert_sync import sync_prealert_invoice_to_package
+
         if sync_prealert_invoice_to_package(p):
             db.session.commit()
     except Exception:
-        current_app.logger.exception("[PREALERT->PACKAGE SYNC] failed after admin create single package")
+        current_app.logger.exception(
+            "[PREALERT->PACKAGE SYNC] failed after admin create single package"
+        )
         db.session.rollback()
 
     flash(f"Package created for {user.registration_number}: {tracking}", "success")
 
     return_tab = request.form.get("return_tab") or "view_packages"
-    return redirect(url_for(
-        "logistics.logistics_dashboard",
-        tab=return_tab,
-        page=request.form.get("return_page") or 1,
-        per_page=request.form.get("return_per_page") or 25,
-        date_from=request.form.get("return_date_from") or None,
-        date_to=request.form.get("return_date_to") or None,
-        house=request.form.get("return_house") or None,
-        tracking=request.form.get("return_tracking") or None,
-        user_code=request.form.get("return_user_code") or None,
-        first_name=request.form.get("return_first_name") or None,
-        last_name=request.form.get("return_last_name") or None,
-        unassigned_only=request.form.get("return_unassigned_only") or None,
-        epc_only=request.form.get("return_epc_only") or None,
-    ))
+    return redirect(
+        url_for(
+            "logistics.logistics_dashboard",
+            tab=return_tab,
+            page=request.form.get("return_page") or 1,
+            per_page=request.form.get("return_per_page") or 25,
+            date_from=request.form.get("return_date_from") or None,
+            date_to=request.form.get("return_date_to") or None,
+            house=request.form.get("return_house") or None,
+            tracking=request.form.get("return_tracking") or None,
+            user_code=request.form.get("return_user_code") or None,
+            first_name=request.form.get("return_first_name") or None,
+            last_name=request.form.get("return_last_name") or None,
+            unassigned_only=request.form.get("return_unassigned_only") or None,
+            epc_only=request.form.get("return_epc_only") or None,
+        )
+    )
 
 
 @logistics_bp.route(
@@ -2995,19 +3202,18 @@ def update_package_details(package_id):
     package = db.session.get(Package, package_id)
 
     if not package:
-        return jsonify(
-            success=False,
-            error="Package not found.",
-        ), 404
+        return (
+            jsonify(
+                success=False,
+                error="Package not found.",
+            ),
+            404,
+        )
 
     try:
-        raw_weight = (
-            request.form.get("weight") or ""
-        ).strip()
+        raw_weight = (request.form.get("weight") or "").strip()
 
-        raw_value = (
-            request.form.get("value") or ""
-        ).strip()
+        raw_value = (request.form.get("value") or "").strip()
 
         weight_changed = False
 
@@ -3015,10 +3221,13 @@ def update_package_details(package_id):
             new_weight = float(raw_weight)
 
             if new_weight < 0:
-                return jsonify(
-                    success=False,
-                    error="Weight cannot be negative.",
-                ), 400
+                return (
+                    jsonify(
+                        success=False,
+                        error="Weight cannot be negative.",
+                    ),
+                    400,
+                )
 
             old_weight = float(package.weight or 0)
 
@@ -3030,32 +3239,27 @@ def update_package_details(package_id):
             new_value = float(raw_value)
 
             if new_value < 0:
-                return jsonify(
-                    success=False,
-                    error="Declared value cannot be negative.",
-                ), 400
+                return (
+                    jsonify(
+                        success=False,
+                        error="Declared value cannot be negative.",
+                    ),
+                    400,
+                )
 
             package.value = new_value
 
             if hasattr(package, "declared_value"):
                 package.declared_value = new_value
 
-        package.tracking_number = (
-            request.form.get("tracking_number") or ""
-        ).strip()
+        package.tracking_number = (request.form.get("tracking_number") or "").strip()
 
-        package.house_awb = (
-            request.form.get("house_awb") or ""
-        ).strip()
+        package.house_awb = (request.form.get("house_awb") or "").strip()
 
-        package.description = (
-            request.form.get("description") or ""
-        ).strip()
+        package.description = (request.form.get("description") or "").strip()
 
         package.status = (
-            request.form.get("status")
-            or package.status
-            or "Overseas"
+            request.form.get("status") or package.status or "Overseas"
         ).strip()
 
         subscription_result = getattr(
@@ -3069,27 +3273,26 @@ def update_package_details(package_id):
         # - Per-package eligibility
         # - Remaining total subscription allowance
         if weight_changed and package.user_id:
-            subscription_result = (
-                reconcile_subscription_usage(package)
-            )
+            subscription_result = reconcile_subscription_usage(package)
 
         db.session.commit()
 
         return jsonify(
             success=True,
             subscription_result=subscription_result,
-            subscription_applied=bool(
-                package.subscription_applied
-            ),
+            subscription_applied=bool(package.subscription_applied),
         )
 
     except (TypeError, ValueError):
         db.session.rollback()
 
-        return jsonify(
-            success=False,
-            error="Weight and declared value must be valid numbers.",
-        ), 400
+        return (
+            jsonify(
+                success=False,
+                error="Weight and declared value must be valid numbers.",
+            ),
+            400,
+        )
 
     except Exception as error:
         db.session.rollback()
@@ -3099,10 +3302,14 @@ def update_package_details(package_id):
             package_id,
         )
 
-        return jsonify(
-            success=False,
-            error=str(error),
-        ), 400
+        return (
+            jsonify(
+                success=False,
+                error=str(error),
+            ),
+            400,
+        )
+
 
 # --------------------------------------------------------------------------------------
 # Bulk Assign to user (code/email) + optional reset Unassigned -> Overseas
@@ -3113,19 +3320,17 @@ def update_package_details(package_id):
 )
 @admin_required(roles=["operations"])
 def bulk_assign_packages():
-    user_code = (
-        request.form.get("user_code") or ""
-    ).strip()
+    user_code = (request.form.get("user_code") or "").strip()
 
-    reset_flag = (
-        request.form.get("reset_status") == "1"
+    reset_flag = request.form.get("reset_status") == "1"
+
+    package_ids = sorted(
+        {
+            int(value)
+            for value in request.form.getlist("package_ids")
+            if str(value).isdigit()
+        }
     )
-
-    package_ids = sorted({
-        int(value)
-        for value in request.form.getlist("package_ids")
-        if str(value).isdigit()
-    })
 
     redirect_url = url_for(
         "logistics.logistics_dashboard",
@@ -3147,18 +3352,12 @@ def bulk_assign_packages():
         return redirect(redirect_url, code=303)
 
     # Find the customer using registration number or email.
-    user = (
-        User.query
-        .filter(
-            or_(
-                func.upper(User.registration_number)
-                == user_code.upper(),
-                func.lower(User.email)
-                == user_code.lower(),
-            )
+    user = User.query.filter(
+        or_(
+            func.upper(User.registration_number) == user_code.upper(),
+            func.lower(User.email) == user_code.lower(),
         )
-        .first()
-    )
+    ).first()
 
     if not user:
         flash(
@@ -3168,21 +3367,14 @@ def bulk_assign_packages():
         return redirect(redirect_url, code=303)
 
     # Packages must be assigned to a real customer.
-    if (
-        user.registration_number or ""
-    ).strip().upper() == "UNASSIGNED":
+    if (user.registration_number or "").strip().upper() == "UNASSIGNED":
         flash(
-            "Enter a real customer code. Packages cannot "
-            "be assigned to UNASSIGNED.",
+            "Enter a real customer code. Packages cannot " "be assigned to UNASSIGNED.",
             "warning",
         )
         return redirect(redirect_url, code=303)
 
-    packages = (
-        Package.query
-        .filter(Package.id.in_(package_ids))
-        .all()
-    )
+    packages = Package.query.filter(Package.id.in_(package_ids)).all()
 
     if not packages:
         flash(
@@ -3206,28 +3398,21 @@ def bulk_assign_packages():
 
             previous_user_id = package.user_id
 
-            was_unassigned = bool(
-                unassigned_id
-                and previous_user_id == unassigned_id
-            )
+            was_unassigned = bool(unassigned_id and previous_user_id == unassigned_id)
 
             if previous_user_id == user.id:
                 already_assigned += 1
 
                 # This is duplicate-safe. It may apply a subscription
                 # if the package did not previously have coverage.
-                subscription_result = (
-                    apply_subscription_usage(package)
-                )
+                subscription_result = apply_subscription_usage(package)
 
             else:
                 package.user_id = user.id
 
                 # Restore allowance belonging to the previous customer,
                 # then evaluate coverage for the new customer.
-                subscription_result = (
-                    reconcile_subscription_usage(package)
-                )
+                subscription_result = reconcile_subscription_usage(package)
 
             if subscription_result not in (
                 "subscription_applied",
@@ -3235,21 +3420,13 @@ def bulk_assign_packages():
             ):
                 clear_package_subscription(
                     package,
-                    result=(
-                        subscription_result
-                        or "no_subscription"
-                    ),
+                    result=(subscription_result or "no_subscription"),
                 )
 
             if was_unassigned:
                 package.status = "Overseas"
 
-            elif (
-                reset_flag
-                and (
-                    package.status or ""
-                ).strip().lower() == "unassigned"
-            ):
+            elif reset_flag and (package.status or "").strip().lower() == "unassigned":
                 package.status = "Overseas"
 
             updated += 1
@@ -3259,9 +3436,7 @@ def bulk_assign_packages():
     except Exception as error:
         db.session.rollback()
 
-        current_app.logger.exception(
-            "Bulk package assignment failed"
-        )
+        current_app.logger.exception("Bulk package assignment failed")
 
         flash(
             f"Database error assigning packages: {error}",
@@ -3270,22 +3445,13 @@ def bulk_assign_packages():
 
         return redirect(redirect_url, code=303)
 
-    message = (
-        f"Assigned {updated} package(s) to "
-        f"{user.registration_number}."
-    )
+    message = f"Assigned {updated} package(s) to " f"{user.registration_number}."
 
     if reset_flag:
-        message += (
-            " Reset Unassigned packages to Overseas "
-            "where applicable."
-        )
+        message += " Reset Unassigned packages to Overseas " "where applicable."
 
     if skipped_invoiced:
-        message += (
-            f" Skipped {skipped_invoiced} invoiced "
-            f"package(s)."
-        )
+        message += f" Skipped {skipped_invoiced} invoiced " f"package(s)."
 
     if already_assigned:
         message += (
@@ -3342,8 +3508,7 @@ def delete_packages_from_shipment(shipment_id):
         return redirect(redirect_url)
 
     packages = (
-        Package.query
-        .join(
+        Package.query.join(
             shipment_packages,
             shipment_packages.c.package_id == Package.id,
         )
@@ -3412,25 +3577,22 @@ def delete_packages_from_shipment(shipment_id):
         category = "warning"
 
     if skipped_invoiced:
-        message += (
-            f" Skipped {skipped_invoiced} invoiced package(s)."
-        )
+        message += f" Skipped {skipped_invoiced} invoiced package(s)."
 
     if skipped_locked:
-        message += (
-            f" Skipped {skipped_locked} locked package(s)."
-        )
+        message += f" Skipped {skipped_locked} locked package(s)."
 
     flash(message, category)
 
     return redirect(redirect_url)
 
+
 @logistics_bp.route("/packages/<int:package_id>/attachments", methods=["POST"])
 @admin_required
-def admin_upload_package_attachments(package_id): 
+def admin_upload_package_attachments(package_id):
     if not _is_internal_user(current_user):
         abort(403)
-   
+
     pkg = Package.query.get_or_404(package_id)
 
     # ✅ ADD THIS BLOCK HERE
@@ -3472,8 +3634,8 @@ def admin_upload_package_attachments(package_id):
 
         att = PackageAttachment(
             package_id=pkg.id,
-            file_name=url,     # legacy synced (Option A)
-            file_url=url,      # new
+            file_name=url,  # legacy synced (Option A)
+            file_url=url,  # new
             original_name=original,
             cloud_public_id=public_id,
             cloud_resource_type=rtype,
@@ -3481,19 +3643,24 @@ def admin_upload_package_attachments(package_id):
         db.session.add(att)
         db.session.flush()
 
-        created.append({
-            "id": att.id,
-            "original_name": att.original_name,
-            "view_url": url_for("logistics.admin_view_package_attachment", attachment_id=att.id),
-            "delete_url": url_for("logistics.delete_package_attachment_admin", attachment_id=att.id),
-        })
+        created.append(
+            {
+                "id": att.id,
+                "original_name": att.original_name,
+                "view_url": url_for(
+                    "logistics.admin_view_package_attachment", attachment_id=att.id
+                ),
+                "delete_url": url_for(
+                    "logistics.delete_package_attachment_admin", attachment_id=att.id
+                ),
+            }
+        )
 
     if not created:
         return jsonify(success=False, error="No valid files were uploaded."), 400
 
     db.session.commit()
     return jsonify(success=True, attachments=created)
-
 
 
 @logistics_bp.route("/package-attachments/<int:attachment_id>/delete", methods=["POST"])
@@ -3506,6 +3673,7 @@ def delete_package_attachment_admin(attachment_id):
 
     # ✅ delete from Cloudinary if we have public_id
     from app.utils.cloudinary_storage import delete_cloudinary_file
+
     if getattr(att, "cloud_public_id", None):
         delete_cloudinary_file(att.cloud_public_id, att.cloud_resource_type or "raw")
 
@@ -3515,7 +3683,9 @@ def delete_package_attachment_admin(attachment_id):
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify(success=True)
 
-    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog"))
+    return redirect(
+        request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog")
+    )
 
 
 @logistics_bp.route("/package-attachment/<int:attachment_id>")
@@ -3527,11 +3697,7 @@ def admin_view_package_attachment(attachment_id):
 
     a = PackageAttachment.query.get_or_404(attachment_id)
 
-    url = (
-        getattr(a, "file_url", None)
-        or getattr(a, "file_name", None)
-        or ""
-    ).strip()
+    url = (getattr(a, "file_url", None) or getattr(a, "file_name", None) or "").strip()
 
     if not url:
         abort(404)
@@ -3583,11 +3749,10 @@ def admin_view_package_attachment(attachment_id):
         abort(404)
 
     return send_from_directory(
-        upload_folder,
-        url,
-        as_attachment=False,
-        download_name=safe_name
+        upload_folder, url, as_attachment=False, download_name=safe_name
     )
+
+
 @logistics_bp.route("/shipmentlog/<int:shipment_id>/print", methods=["GET"])
 @admin_required
 def print_shipment_log(shipment_id):
@@ -3603,6 +3768,7 @@ def print_shipment_log(shipment_id):
         total_due=data["total_due"],
     )
 
+
 @logistics_bp.route("/shipmentlog/<int:shipment_id>/download-csv", methods=["GET"])
 @admin_required
 def download_shipment_log_csv(shipment_id):
@@ -3613,34 +3779,38 @@ def download_shipment_log_csv(shipment_id):
     sio = io.StringIO()
     writer = csv.writer(sio)
 
-    writer.writerow([
-        "Package ID",
-        "Customer Name",
-        "Registration Number",
-        "Tracking Number",
-        "House AWB",
-        "Description",
-        "Date Received",
-        "Weight (lbs)",
-        "Item Value (USD)",
-        "Outstanding (JMD)",
-        "Status",
-    ])
+    writer.writerow(
+        [
+            "Package ID",
+            "Customer Name",
+            "Registration Number",
+            "Tracking Number",
+            "House AWB",
+            "Description",
+            "Date Received",
+            "Weight (lbs)",
+            "Item Value (USD)",
+            "Outstanding (JMD)",
+            "Status",
+        ]
+    )
 
     for p in packages:
-        writer.writerow([
-            p["id"],
-            p["customer_name"],
-            p["registration_number"],
-            p["tracking_number"],
-            p["house_awb"],
-            p["description"],
-            p["date_received"].strftime("%Y-%m-%d") if p["date_received"] else "",
-            f'{p["weight"]:.2f}',
-            f'{p["value"]:.2f}',
-            f'{p["amount_due"]:.2f}',
-            p["status"],
-        ])
+        writer.writerow(
+            [
+                p["id"],
+                p["customer_name"],
+                p["registration_number"],
+                p["tracking_number"],
+                p["house_awb"],
+                p["description"],
+                p["date_received"].strftime("%Y-%m-%d") if p["date_received"] else "",
+                f'{p["weight"]:.2f}',
+                f'{p["value"]:.2f}',
+                f'{p["amount_due"]:.2f}',
+                p["status"],
+            ]
+        )
 
     writer.writerow([])
     writer.writerow(["TOTAL PACKAGES", data["total_packages"]])
@@ -3654,8 +3824,9 @@ def download_shipment_log_csv(shipment_id):
     return Response(
         output,
         mimetype="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
 
 @logistics_bp.route("/shipmentlog/<int:shipment_id>/download-excel", methods=["GET"])
 @admin_required
@@ -3666,19 +3837,25 @@ def download_shipment_log_excel(shipment_id):
 
     rows = []
     for p in packages:
-        rows.append({
-            "Package ID": p["id"],
-            "Customer Name": p["customer_name"],
-            "Registration Number": p["registration_number"],
-            "Tracking Number": p["tracking_number"],
-            "House AWB": p["house_awb"],
-            "Description": p["description"],
-            "Date Received": p["date_received"].strftime("%Y-%m-%d") if p["date_received"] else "",
-            "Weight (lbs)": p["weight"],
-            "Item Value (USD)": p["value"],
-            "Outstanding (JMD)": p["amount_due"],
-            "Status": p["status"],
-        })
+        rows.append(
+            {
+                "Package ID": p["id"],
+                "Customer Name": p["customer_name"],
+                "Registration Number": p["registration_number"],
+                "Tracking Number": p["tracking_number"],
+                "House AWB": p["house_awb"],
+                "Description": p["description"],
+                "Date Received": (
+                    p["date_received"].strftime("%Y-%m-%d")
+                    if p["date_received"]
+                    else ""
+                ),
+                "Weight (lbs)": p["weight"],
+                "Item Value (USD)": p["value"],
+                "Outstanding (JMD)": p["amount_due"],
+                "Status": p["status"],
+            }
+        )
 
     df = pd.DataFrame(rows)
 
@@ -3720,6 +3897,7 @@ def download_shipment_log_excel(shipment_id):
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
+
 @logistics_bp.route("/shipmentlog/<int:shipment_id>/download-pdf", methods=["GET"])
 @admin_required
 def download_shipment_log_pdf(shipment_id):
@@ -3741,26 +3919,26 @@ def download_shipment_log_pdf(shipment_id):
 
     filename = f'{(data["shipment"].sl_name or data["shipment"].sl_id or "shipment").replace(" ", "_")}_log.pdf'
     return send_file(
-        pdf_io,
-        as_attachment=True,
-        download_name=filename,
-        mimetype="application/pdf"
+        pdf_io, as_attachment=True, download_name=filename, mimetype="application/pdf"
     )
+
 
 # --------------------------------------------------------------------------------------
 # Preview invalid rows CSV download
 # --------------------------------------------------------------------------------------
-@logistics_bp.route('/preview/<token>/invalid.csv', methods=['GET'])
+@logistics_bp.route("/preview/<token>/invalid.csv", methods=["GET"])
 @admin_required
 def download_preview_invalid(token):
     data = _load_preview_blob(token)
     if not data:
         flash("Preview session expired.", "warning")
-        return redirect(url_for("logistics.logistics_dashboard", tab="uploadPackages"), code=303)
+        return redirect(
+            url_for("logistics.logistics_dashboard", tab="uploadPackages"), code=303
+        )
 
     display_headers = data.get("display_headers", [])
-    original_rows   = data.get("original_rows", [])
-    row_errors      = data.get("row_errors", {}) or {}
+    original_rows = data.get("original_rows", [])
+    row_errors = data.get("row_errors", {}) or {}
 
     invalid_idxs = sorted([int(k) for k in row_errors.keys() if str(k).isdigit()])
 
@@ -3773,25 +3951,29 @@ def download_preview_invalid(token):
         writer.writerow([row.get(h, "") for h in display_headers] + ["; ".join(errors)])
 
     output = sio.getvalue().encode("utf-8")
-    return Response(output, mimetype="text/csv", headers={"Content-Disposition": "attachment; filename=invalid_rows.csv"})
+    return Response(
+        output,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=invalid_rows.csv"},
+    )
 
 
 # --------------------------------------------------------------------------------------
 # Export packages (CSV / XLSX) — ORM
 # --------------------------------------------------------------------------------------
-@logistics_bp.route('/download-packages', methods=['GET'])
+@logistics_bp.route("/download-packages", methods=["GET"])
 @admin_required
 def download_packages():
-    fmt       = (request.args.get('format') or '').lower()
-    date_from = request.args.get('date_from')
-    date_to   = request.args.get('date_to')
-    house     = request.args.get('house', '', type=str)
-    tracking  = request.args.get('tracking', '', type=str)
-    user_code = request.args.get('user_code', '', type=str)
-    first     = request.args.get('first_name', '', type=str)
-    last      = request.args.get('last_name', '', type=str)
-    search    = request.args.get('search', '', type=str)
-    status    = request.args.get('status', '', type=str)
+    fmt = (request.args.get("format") or "").lower()
+    date_from = request.args.get("date_from")
+    date_to = request.args.get("date_to")
+    house = request.args.get("house", "", type=str)
+    tracking = request.args.get("tracking", "", type=str)
+    user_code = request.args.get("user_code", "", type=str)
+    first = request.args.get("first_name", "", type=str)
+    last = request.args.get("last_name", "", type=str)
+    search = request.args.get("search", "", type=str)
+    status = request.args.get("status", "", type=str)
     shipment_filter = (request.args.get("shipment_filter") or "").strip().lower()
     shipment_id_filter = request.args.get("shipment_id_filter", type=int)
 
@@ -3803,36 +3985,35 @@ def download_packages():
             return None
 
     start_date = parse_date(date_from)
-    end_date   = parse_date(date_to)
+    end_date = parse_date(date_to)
 
-    q = (
-        db.session.query(
-            Package.id.label("pkg_id"),
-            Package.tracking_number,
-            Package.house_awb,
-            (
-                getattr(Package, 'merchant', Package.shipper).label("shipper")
-                if hasattr(Package, 'merchant')
-                else Package.shipper.label("shipper")
-            ),
-            Package.weight,
-            func.coalesce(Package.date_received, Package.created_at).label("date_any"),
-            Package.description,
-            User.full_name,
-            User.registration_number.label("reg_no"),
-            User.trn,
-        )
-        .join(User, Package.user_id == User.id)
-    )
+    q = db.session.query(
+        Package.id.label("pkg_id"),
+        Package.tracking_number,
+        Package.house_awb,
+        (
+            getattr(Package, "merchant", Package.shipper).label("shipper")
+            if hasattr(Package, "merchant")
+            else Package.shipper.label("shipper")
+        ),
+        Package.weight,
+        func.coalesce(Package.date_received, Package.created_at).label("date_any"),
+        Package.description,
+        User.full_name,
+        User.registration_number.label("reg_no"),
+        User.trn,
+    ).join(User, Package.user_id == User.id)
 
     # ✅ use real date objects in filters so Postgres sees DATE >= DATE
     if start_date:
         q = q.filter(
-            func.date(func.coalesce(Package.date_received, Package.created_at)) >= start_date
+            func.date(func.coalesce(Package.date_received, Package.created_at))
+            >= start_date
         )
     if end_date:
         q = q.filter(
-            func.date(func.coalesce(Package.date_received, Package.created_at)) <= end_date
+            func.date(func.coalesce(Package.date_received, Package.created_at))
+            <= end_date
         )
 
     if house:
@@ -3864,11 +4045,7 @@ def download_packages():
         q = q.filter(~Package.shipments.any())
 
     if shipment_id_filter:
-        q = q.filter(
-            Package.shipments.any(
-                ShipmentLog.id == shipment_id_filter
-            )
-        )
+        q = q.filter(Package.shipments.any(ShipmentLog.id == shipment_id_filter))
 
     rows = [
         {
@@ -3890,9 +4067,23 @@ def download_packages():
 
     if fmt == "csv":
         HEADERS = [
-            "GUID","USER CODE","FIRST NAME","LAST NAME","SHIPPER","HOUSE AWB",
-            "MANIFEST CODE","COLLECTION CODE","COLLECTION ID","WEIGHT",
-            "TRACKING Number","DATE","BRANCH","DESCRIPTION","HS CODE","UNKNOWN","TRN"
+            "GUID",
+            "USER CODE",
+            "FIRST NAME",
+            "LAST NAME",
+            "SHIPPER",
+            "HOUSE AWB",
+            "MANIFEST CODE",
+            "COLLECTION CODE",
+            "COLLECTION ID",
+            "WEIGHT",
+            "TRACKING Number",
+            "DATE",
+            "BRANCH",
+            "DESCRIPTION",
+            "HS CODE",
+            "UNKNOWN",
+            "TRN",
         ]
 
         def split_name(full):
@@ -3910,32 +4101,34 @@ def download_packages():
             first_name, last_name = split_name(r["full_name"])
             guid = uuid.uuid5(
                 uuid.NAMESPACE_URL,
-                f"pkg|{r['pkg_id']}|{r.get('tracking_number') or ''}|{r.get('house_awb') or ''}"
+                f"pkg|{r['pkg_id']}|{r.get('tracking_number') or ''}|{r.get('house_awb') or ''}",
             ).hex
             d = r.get("date_any")
             if isinstance(d, datetime):
                 date_str = d.date().isoformat()
             else:
                 date_str = str(d)[:10] if d else ""
-            w.writerow([
-                guid,
-                r.get("reg_no") or "",
-                first_name,
-                last_name,
-                r.get("shipper") or "",
-                r.get("house_awb") or "",
-                "",
-                "",
-                "",
-                r.get("weight") or "",
-                r.get("tracking_number") or "",
-                date_str,
-                "",
-                r.get("description") or "",
-                "",
-                "",
-                r.get("trn") or ""
-            ])
+            w.writerow(
+                [
+                    guid,
+                    r.get("reg_no") or "",
+                    first_name,
+                    last_name,
+                    r.get("shipper") or "",
+                    r.get("house_awb") or "",
+                    "",
+                    "",
+                    "",
+                    r.get("weight") or "",
+                    r.get("tracking_number") or "",
+                    date_str,
+                    "",
+                    r.get("description") or "",
+                    "",
+                    "",
+                    r.get("trn") or "",
+                ]
+            )
         out = sio.getvalue().encode("utf-8")
         return Response(
             out,
@@ -3945,23 +4138,35 @@ def download_packages():
 
     # Excel (default)
     buf = io.BytesIO()
-    df = pd.DataFrame([
-        {
-            "User": r.get("full_name"),
-            "User Code": r.get("reg_no"),
-            "Tracking Number": r.get("tracking_number"),
-            "House AWB": r.get("house_awb"),
-            "Description": r.get("description"),
-            "Weight (lbs)": r.get("weight"),
-            "TRN": r.get("trn"),
-            "Created/Date": r.get("date_any"),
-        }
-        for r in rows
-    ]) if rows else pd.DataFrame(
-        columns=[
-            "User","User Code","Tracking Number","House AWB",
-            "Description","Weight (lbs)","TRN","Created/Date"
-        ]
+    df = (
+        pd.DataFrame(
+            [
+                {
+                    "User": r.get("full_name"),
+                    "User Code": r.get("reg_no"),
+                    "Tracking Number": r.get("tracking_number"),
+                    "House AWB": r.get("house_awb"),
+                    "Description": r.get("description"),
+                    "Weight (lbs)": r.get("weight"),
+                    "TRN": r.get("trn"),
+                    "Created/Date": r.get("date_any"),
+                }
+                for r in rows
+            ]
+        )
+        if rows
+        else pd.DataFrame(
+            columns=[
+                "User",
+                "User Code",
+                "Tracking Number",
+                "House AWB",
+                "Description",
+                "Weight (lbs)",
+                "TRN",
+                "Created/Date",
+            ]
+        )
     )
 
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
@@ -3970,8 +4175,12 @@ def download_packages():
         for col in ws.columns:
             header = col[0].value or ""
             width = min(
-                max(len(str(header)), *(len(str(c.value)) for c in col[1:] if c.value is not None)) + 2,
-                40
+                max(
+                    len(str(header)),
+                    *(len(str(c.value)) for c in col[1:] if c.value is not None),
+                )
+                + 2,
+                40,
             )
             ws.column_dimensions[col[0].column_letter].width = width
 
@@ -3987,24 +4196,26 @@ def download_packages():
 # --------------------------------------------------------------------------------------
 # Email selected packages (group by user)
 # --------------------------------------------------------------------------------------
-@logistics_bp.route('/email-selected-packages', methods=['POST'], endpoint='email_selected_packages')
+@logistics_bp.route(
+    "/email-selected-packages", methods=["POST"], endpoint="email_selected_packages"
+)
 @admin_required
 def email_selected_packages():
-    package_ids = request.form.getlist('package_ids')
+    package_ids = request.form.getlist("package_ids")
 
     if not package_ids:
         flash("Please select at least one package to email.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
     try:
         package_ids_int = [int(pid) for pid in package_ids if str(pid).strip()]
     except ValueError:
         flash("Invalid package IDs received.", "danger")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
     if not package_ids_int:
         flash("No valid packages selected.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
     rows = (
         db.session.query(Package, User)
@@ -4015,7 +4226,7 @@ def email_selected_packages():
 
     if not rows:
         flash("No matching packages found.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
     # group by customer
     grouped: dict[int, dict] = {}
@@ -4037,22 +4248,18 @@ def email_selected_packages():
         pkgs_all = bundle["packages"]
 
         # ✅ Only email packages NOT previously notified
-        pkgs_to_send = [p for p in pkgs_all if not getattr(p, "customer_notified_at", None)]
+        pkgs_to_send = [
+            p for p in pkgs_all if not getattr(p, "customer_notified_at", None)
+        ]
 
         if not pkgs_to_send:
             skipped_customers += 1
             skipped_packages += len(pkgs_all)
             continue
 
-        regular_pkgs = [
-            p for p in pkgs_to_send
-            if not bool(getattr(p, "epc", False))
-        ]
+        regular_pkgs = [p for p in pkgs_to_send if not bool(getattr(p, "epc", False))]
 
-        epc_pkgs = [
-            p for p in pkgs_to_send
-            if bool(getattr(p, "epc", False))
-        ]
+        epc_pkgs = [p for p in pkgs_to_send if bool(getattr(p, "epc", False))]
 
         ok_regular = True
         ok_epc = True
@@ -4095,8 +4302,8 @@ def email_selected_packages():
             body = (
                 f"Hi {user.full_name or ''},\n\n"
                 "Your selected package(s) have been updated:\n\n"
-                + "\n".join(pkg_lines) +
-                "\n\nIf any package was claimed without your FAFL#, it may require manual warehouse search, relabeling, and reprocessing, which may delay shipping time.\n\n"
+                + "\n".join(pkg_lines)
+                + "\n\nIf any package was claimed without your FAFL#, it may require manual warehouse search, relabeling, and reprocessing, which may delay shipping time.\n\n"
                 "Log in to your account to track updates.\n"
                 "— Foreign A Foot Logistics Limited"
             )
@@ -4112,14 +4319,17 @@ def email_selected_packages():
             db.session.commit()
 
         if sent_count:
-            flash(f"Emailed {sent_count} customer(s) about selected package(s).", "success")
+            flash(
+                f"Emailed {sent_count} customer(s) about selected package(s).",
+                "success",
+            )
         else:
             flash("No emails were sent.", "warning")
 
         if skipped_customers or skipped_packages:
             flash(
                 f"Skipped {skipped_customers} customer(s) / {skipped_packages} package(s) already notified.",
-                "info"
+                "info",
             )
 
         if failed:
@@ -4136,22 +4346,24 @@ def email_selected_packages():
         except Exception:
             return default
 
-    return redirect(url_for(
-        "logistics.logistics_dashboard",
-        tab="view_packages",
-        page=_int(request.form.get("page"), 1),
-        per_page=_int(request.form.get("per_page"), 25),
-        date_from=request.form.get("date_from") or None,
-        date_to=request.form.get("date_to") or None,
-        house=request.form.get("house") or None,
-        tracking=request.form.get("tracking") or None,
-        user_code=request.form.get("user_code") or None,
-        first_name=request.form.get("first_name") or None,
-        last_name=request.form.get("last_name") or None,
-        unassigned_only=request.form.get("unassigned_only") or None,
-        epc_only=request.form.get("epc_only") or None,
-        not_notified_only=request.form.get("not_notified_only") or None,  # ✅ NEW
-    ))
+    return redirect(
+        url_for(
+            "logistics.logistics_dashboard",
+            tab="view_packages",
+            page=_int(request.form.get("page"), 1),
+            per_page=_int(request.form.get("per_page"), 25),
+            date_from=request.form.get("date_from") or None,
+            date_to=request.form.get("date_to") or None,
+            house=request.form.get("house") or None,
+            tracking=request.form.get("tracking") or None,
+            user_code=request.form.get("user_code") or None,
+            first_name=request.form.get("first_name") or None,
+            last_name=request.form.get("last_name") or None,
+            unassigned_only=request.form.get("unassigned_only") or None,
+            epc_only=request.form.get("epc_only") or None,
+            not_notified_only=request.form.get("not_notified_only") or None,  # ✅ NEW
+        )
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -4165,11 +4377,15 @@ def packages_bulk_action():
         flash("Invalid request (CSRF or form).", "danger")
         return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
-    action = (request.form.get("action") or request.form.get("bulk_action") or "").strip()
+    action = (
+        request.form.get("action") or request.form.get("bulk_action") or ""
+    ).strip()
 
     pkg_ids = [
         int(x)
-        for x in (request.form.getlist("package_ids") or request.form.getlist("selected_ids"))
+        for x in (
+            request.form.getlist("package_ids") or request.form.getlist("selected_ids")
+        )
         if str(x).isdigit()
     ]
 
@@ -4203,10 +4419,14 @@ def packages_bulk_action():
                     .all()
                 )
                 still_used_ids = {row[0] for row in still_used}
-                to_delete = [iid for iid in affected_invoice_ids if iid not in still_used_ids]
+                to_delete = [
+                    iid for iid in affected_invoice_ids if iid not in still_used_ids
+                ]
 
                 if to_delete:
-                    Invoice.query.filter(Invoice.id.in_(to_delete)).delete(synchronize_session=False)
+                    Invoice.query.filter(Invoice.id.in_(to_delete)).delete(
+                        synchronize_session=False
+                    )
 
             db.session.commit()
             flash(f"Deleted {len(pkgs)} package(s).", "success")
@@ -4231,9 +4451,10 @@ def packages_bulk_action():
 
             for row in pkgs:
                 c.drawString(
-                    50, y,
+                    50,
+                    y,
                     f"Tracking: {row.tracking_number}, Desc: {row.description}, "
-                    f"Weight: {row.weight} lbs, Status: {row.status}"
+                    f"Weight: {row.weight} lbs, Status: {row.status}",
                 )
                 y -= 20
                 if y < 60:
@@ -4246,7 +4467,7 @@ def packages_bulk_action():
                 buf,
                 as_attachment=True,
                 download_name="packages.pdf",
-                mimetype="application/pdf"
+                mimetype="application/pdf",
             )
 
         elif action == "create_shipment":
@@ -4265,13 +4486,17 @@ def packages_bulk_action():
                 if p.user_id not in grouped:
                     grouped[p.user_id] = {"user": p.user, "packages": []}
 
-                grouped[p.user_id]["packages"].append({
-                    "shipper": getattr(p, "shipper", None) or getattr(p, "vendor", None) or "-",
-                    "house_awb": p.house_awb or "-",
-                    "tracking_number": p.tracking_number or "-",
-                    "weight": p.weight or 0,
-                    "status": p.status or "At Overseas Warehouse",
-                })
+                grouped[p.user_id]["packages"].append(
+                    {
+                        "shipper": getattr(p, "shipper", None)
+                        or getattr(p, "vendor", None)
+                        or "-",
+                        "house_awb": p.house_awb or "-",
+                        "tracking_number": p.tracking_number or "-",
+                        "weight": p.weight or 0,
+                        "status": p.status or "At Overseas Warehouse",
+                    }
+                )
 
             sent = 0
             failed = []
@@ -4297,7 +4522,9 @@ def packages_bulk_action():
             if sent:
                 flash(f"Sent invoice request email to {sent} customer(s).", "success")
             if failed:
-                flash("Some invoice request emails failed: " + ", ".join(failed), "danger")
+                flash(
+                    "Some invoice request emails failed: " + ", ".join(failed), "danger"
+                )
 
         elif action == "mark_epc":
             for p in pkgs:
@@ -4330,62 +4557,74 @@ def packages_bulk_action():
     page = _safe_int(request.form.get("page"), 1)
     per_page = _safe_int(request.form.get("per_page"), 10)
 
-    return redirect(url_for(
-        "logistics.logistics_dashboard",
-        tab="view_packages",
-        page=page,
-        per_page=per_page,
-        date_from=request.form.get("date_from") or None,
-        date_to=request.form.get("date_to") or None,
-        house=request.form.get("house") or None,
-        tracking=request.form.get("tracking") or None,
-        user_code=request.form.get("user_code") or None,
-        first_name=request.form.get("first_name") or None,
-        last_name=request.form.get("last_name") or None,
-        unassigned_only=request.form.get("unassigned_only") or None,
-        epc_only=request.form.get("epc_only") or None,
-    ))
+    return redirect(
+        url_for(
+            "logistics.logistics_dashboard",
+            tab="view_packages",
+            page=page,
+            per_page=per_page,
+            date_from=request.form.get("date_from") or None,
+            date_to=request.form.get("date_to") or None,
+            house=request.form.get("house") or None,
+            tracking=request.form.get("tracking") or None,
+            user_code=request.form.get("user_code") or None,
+            first_name=request.form.get("first_name") or None,
+            last_name=request.form.get("last_name") or None,
+            unassigned_only=request.form.get("unassigned_only") or None,
+            epc_only=request.form.get("epc_only") or None,
+        )
+    )
+
 
 # --------------------------------------------------------------------------------------
 # Simple view (kept for backwards-compat with existing template)
 # --------------------------------------------------------------------------------------
-@logistics_bp.route('/view-packages')
+@logistics_bp.route("/view-packages")
 @admin_required
 def view_packages():
-    rows = (db.session.query(Package, User.full_name, User.registration_number)
-            .join(User, Package.user_id == User.id)
-            .order_by((Package.created_at if hasattr(Package, 'created_at') else Package.id).desc())
-            .all())
+    rows = (
+        db.session.query(Package, User.full_name, User.registration_number)
+        .join(User, Package.user_id == User.id)
+        .order_by(
+            (
+                Package.created_at if hasattr(Package, "created_at") else Package.id
+            ).desc()
+        )
+        .all()
+    )
     all_packages = []
     for p, full_name, reg in rows:
-        all_packages.append({
-            "id": p.id,
-            "user_id": p.user_id,
-            "full_name": full_name,
-            "registration_number": reg,
-            "tracking_number": p.tracking_number,
-            "description": p.description,
-            "weight": p.weight,
-            "status": p.status,
-            "created_at": p.created_at,
-            "date_received": getattr(p, "date_received", None),
-            "house_awb": p.house_awb,
-            "value": p.value,
-            "amount_due": p.amount_due,
-            "epc": getattr(p, "epc", 0),
-            "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
-            "invoice_id": p.invoice_id,
-        })
-    return render_template("admin/logistics/view_packages.html",
-                           all_packages=all_packages,
-                           bulk_form=PackageBulkActionForm())
-
+        all_packages.append(
+            {
+                "id": p.id,
+                "user_id": p.user_id,
+                "full_name": full_name,
+                "registration_number": reg,
+                "tracking_number": p.tracking_number,
+                "description": p.description,
+                "weight": p.weight,
+                "status": p.status,
+                "created_at": p.created_at,
+                "date_received": getattr(p, "date_received", None),
+                "house_awb": p.house_awb,
+                "value": p.value,
+                "amount_due": p.amount_due,
+                "epc": getattr(p, "epc", 0),
+                "shipper": getattr(p, "merchant", None) or getattr(p, "shipper", None),
+                "invoice_id": p.invoice_id,
+            }
+        )
+    return render_template(
+        "admin/logistics/view_packages.html",
+        all_packages=all_packages,
+        bulk_form=PackageBulkActionForm(),
+    )
 
 
 @logistics_bp.post("/shipmentlog/assign")
 @admin_required(roles=["operations"])
 def assign_packages_to_shipment():
-    return_to = (request.form.get("return_to") or "").strip() 
+    return_to = (request.form.get("return_to") or "").strip()
 
     mode = (request.form.get("mode") or "existing").strip()  # "new" or "existing"
     target_id = request.form.get("shipment_id", type=int)
@@ -4395,7 +4634,9 @@ def assign_packages_to_shipment():
 
     if not pkg_ids:
         flash("No packages selected.", "warning")
-        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+        return redirect(
+            url_for("logistics.logistics_dashboard", tab="view_packages"), code=303
+        )
 
     # 🚫 block UNASSIGNED
     unassigned_id = get_unassigned_user_id()
@@ -4407,8 +4648,13 @@ def assign_packages_to_shipment():
             or 0
         )
         if bad_count:
-            flash("🚫 UNASSIGNED packages cannot be moved into shipments. Assign them to a customer first.", "danger")
-            return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+            flash(
+                "🚫 UNASSIGNED packages cannot be moved into shipments. Assign them to a customer first.",
+                "danger",
+            )
+            return redirect(
+                url_for("logistics.logistics_dashboard", tab="view_packages"), code=303
+            )
 
     # pick or create shipment
     shipment = None
@@ -4425,12 +4671,16 @@ def assign_packages_to_shipment():
     else:
         if not target_id:
             flash("Please choose an existing shipment.", "warning")
-            return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+            return redirect(
+                url_for("logistics.logistics_dashboard", tab="view_packages"), code=303
+            )
 
         shipment = db.session.get(ShipmentLog, target_id)
         if not shipment:
             flash("Shipment not found.", "danger")
-            return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+            return redirect(
+                url_for("logistics.logistics_dashboard", tab="view_packages"), code=303
+            )
 
         blocked = _abort_if_archived(shipment)
         if blocked:
@@ -4440,7 +4690,9 @@ def assign_packages_to_shipment():
     pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
     if not pkgs:
         flash("No matching packages found.", "warning")
-        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"), code=303)
+        return redirect(
+            url_for("logistics.logistics_dashboard", tab="view_packages"), code=303
+        )
 
     # move packages (ensures 1 shipment max)
     moved = 0
@@ -4450,11 +4702,16 @@ def assign_packages_to_shipment():
 
     db.session.commit()
 
-    flash(
-        f"Moved {moved} package(s) to shipment {shipment.sl_id}.",
-        "success"
+    flash(f"Moved {moved} package(s) to shipment {shipment.sl_id}.", "success")
+    return redirect(
+        url_for(
+            "logistics.logistics_dashboard",
+            tab="shipmentLog",
+            shipment_id=shipment.id,
+            return_to=return_to,
+        ),
+        code=303,
     )
-    return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id, return_to=return_to), code=303)
 
 
 @logistics_bp.route("/archived_shipments")
@@ -4495,9 +4752,7 @@ def archived_shipments():
             admins[u.id] = u
 
     return render_template(
-        "admin/logistics/archived_shipments.html",
-        rows=rows,
-        admins=admins
+        "admin/logistics/archived_shipments.html", rows=rows, admins=admins
     )
 
 
@@ -4509,8 +4764,12 @@ def archive_shipment(shipment_id):
     if bool(getattr(shipment, "is_archived", False)):
         flash("Shipment is already archived.", "info")
         return redirect(
-            url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id),
-            code=303
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+                shipment_id=shipment.id,
+            ),
+            code=303,
         )
 
     shipment.is_archived = True
@@ -4531,8 +4790,10 @@ def archive_shipment(shipment_id):
     flash("Shipment archived successfully.", "success")
 
     return redirect(
-        url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id),
-        code=303
+        url_for(
+            "logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id
+        ),
+        code=303,
     )
 
 
@@ -4544,8 +4805,12 @@ def unarchive_shipment(shipment_id):
     if not bool(getattr(shipment, "is_archived", False)):
         flash("Shipment is already active.", "info")
         return redirect(
-            url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id),
-            code=303
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+                shipment_id=shipment.id,
+            ),
+            code=303,
         )
 
     shipment.is_archived = False
@@ -4566,8 +4831,10 @@ def unarchive_shipment(shipment_id):
     flash("Shipment unarchived successfully.", "success")
 
     return redirect(
-        url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id),
-        code=303
+        url_for(
+            "logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id
+        ),
+        code=303,
     )
 
 
@@ -4594,17 +4861,19 @@ def shipment_archive_logs_page():
 
     rows = []
     for log, sl_id, sl_name, actor_name, actor_email in pagination.items:
-        rows.append({
-            "id": log.id,
-            "shipment_id": log.shipment_id,
-            "shipment_label": (sl_name or sl_id),
-            "shipment_ref": sl_id,
-            "action": log.action,
-            "reason": log.reason,
-            "actor_name": actor_name,
-            "actor_email": actor_email,
-            "created_at": log.created_at,
-        })
+        rows.append(
+            {
+                "id": log.id,
+                "shipment_id": log.shipment_id,
+                "shipment_label": (sl_name or sl_id),
+                "shipment_ref": sl_id,
+                "action": log.action,
+                "reason": log.reason,
+                "actor_name": actor_name,
+                "actor_email": actor_email,
+                "created_at": log.created_at,
+            }
+        )
 
     return render_template(
         "admin/logistics/shipment_archive_logs.html",
@@ -4613,13 +4882,13 @@ def shipment_archive_logs_page():
         per_page=per_page,
     )
 
+
 @logistics_bp.route("/shipments/<int:shipment_id>/archive_logs")
 @admin_required
 def shipment_archive_logs_api(shipment_id):
 
     logs = (
-        ShipmentArchiveLog.query
-        .filter(ShipmentArchiveLog.shipment_id == shipment_id)
+        ShipmentArchiveLog.query.filter(ShipmentArchiveLog.shipment_id == shipment_id)
         .order_by(ShipmentArchiveLog.created_at.desc())
         .limit(200)
         .all()
@@ -4632,18 +4901,23 @@ def shipment_archive_logs_api(shipment_id):
         if l.actor_admin:
             actor = l.actor_admin.full_name or l.actor_admin.email
 
-        rows.append({
-            "id": l.id,
-            "action": l.action,
-            "reason": l.reason,
-            "actor": actor or "System",
-            "created_at": l.created_at.isoformat() if l.created_at else None,
-        })
+        rows.append(
+            {
+                "id": l.id,
+                "action": l.action,
+                "reason": l.reason,
+                "actor": actor or "System",
+                "created_at": l.created_at.isoformat() if l.created_at else None,
+            }
+        )
 
     return jsonify({"success": True, "rows": rows})
+
+
 # --------------------------------------------------------------------------------------
 # Shipment Utilities & Routes (ORM-only)
 # --------------------------------------------------------------------------------------
+
 
 def _next_sl_id():
     """
@@ -4655,7 +4929,7 @@ def _next_sl_id():
     # Look for the last shipment overall (not just today)
     last = (
         db.session.query(ShipmentLog.sl_id)
-        .filter(ShipmentLog.sl_id.like("SL-%-%"))   # safety: matches your format
+        .filter(ShipmentLog.sl_id.like("SL-%-%"))  # safety: matches your format
         .order_by(ShipmentLog.id.desc())
         .first()
     )
@@ -4671,6 +4945,7 @@ def _next_sl_id():
     next_num = last_num + 1
     return f"SL-{today}-{next_num:05d}"
 
+
 @logistics_bp.route("/shipment/<int:shipment_id>/rename", methods=["POST"])
 @admin_required
 def rename_shipment(shipment_id):
@@ -4683,7 +4958,13 @@ def rename_shipment(shipment_id):
     new_name = (request.form.get("sl_name") or "").strip()
     if not new_name:
         flash("Shipment name cannot be empty.", "warning")
-        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+                shipment_id=shipment_id,
+            )
+        )
 
     s.sl_name = new_name
     db.session.commit()
@@ -4692,36 +4973,39 @@ def rename_shipment(shipment_id):
     db.session.refresh(s)
     flash(f"✅ Saved: sl_name='{s.sl_name}' for {s.sl_id} (id={s.id})", "success")
 
-    return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id))
+    return redirect(
+        url_for(
+            "logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id
+        )
+    )
 
 
-@logistics_bp.route('/shipmentlog/create', methods=['POST'])
+@logistics_bp.route("/shipmentlog/create", methods=["POST"])
 @admin_required
 def create_shipment():
-    raw_ids = request.form.getlist('package_ids')
+    raw_ids = request.form.getlist("package_ids")
     pkg_ids = [int(x) for x in raw_ids if str(x).isdigit()]
 
     if not pkg_ids:
         flash("No packages selected.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
     # ✅ BLOCK UNASSIGNED packages from being shipped
     unassigned_id = get_unassigned_user_id()
 
-
     if unassigned_id:
-        bad = (
-            Package.query
-            .filter(Package.id.in_(pkg_ids), Package.user_id == unassigned_id)
-            .all()
-        )
+        bad = Package.query.filter(
+            Package.id.in_(pkg_ids), Package.user_id == unassigned_id
+        ).all()
         if bad:
             flash(
                 f"🚫 {len(bad)} selected package(s) are UNASSIGNED. "
                 "Assign them to a customer before creating a shipment.",
-                "danger"
+                "danger",
             )
-            return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+            return redirect(
+                url_for("logistics.logistics_dashboard", tab="view_packages")
+            )
 
     try:
         sl = ShipmentLog(sl_id=_next_sl_id())
@@ -4732,7 +5016,9 @@ def create_shipment():
         if not pkgs:
             db.session.rollback()
             flash("No matching packages found.", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+            return redirect(
+                url_for("logistics.logistics_dashboard", tab="view_packages")
+            )
 
         for p in pkgs:
             move_package_to_shipment(p, sl)
@@ -4740,39 +5026,56 @@ def create_shipment():
         if not sl.packages:
             db.session.rollback()
             flash("No packages could be added to the shipment.", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+            return redirect(
+                url_for("logistics.logistics_dashboard", tab="view_packages")
+            )
 
         db.session.commit()
-        flash(f"Shipment {sl.sl_id} created with {len(sl.packages)} package(s).", "success")
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=sl.id, tab="shipmentLog"))
+        flash(
+            f"Shipment {sl.sl_id} created with {len(sl.packages)} package(s).",
+            "success",
+        )
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard", shipment_id=sl.id, tab="shipmentLog"
+            )
+        )
 
     except Exception as e:
         db.session.rollback()
         flash(f"Error creating shipment: {e}", "danger")
-        return redirect(url_for('logistics.logistics_dashboard', tab='view_packages'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="view_packages"))
 
 
-@logistics_bp.route('/shipmentlog/create-empty', methods=['POST', 'GET'])
+@logistics_bp.route("/shipmentlog/create-empty", methods=["POST", "GET"])
 @admin_required
 def create_empty_shipment():
     try:
         sl = ShipmentLog(sl_id=_next_sl_id())
         db.session.add(sl)
         db.session.commit()
-        flash(f"Blank shipment {sl.sl_id} created. You can now move packages into it.", "success")
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=sl.id, tab='shipmentLog'))
+        flash(
+            f"Blank shipment {sl.sl_id} created. You can now move packages into it.",
+            "success",
+        )
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard", shipment_id=sl.id, tab="shipmentLog"
+            )
+        )
     except Exception as e:
         db.session.rollback()
         flash(f"Error creating blank shipment: {e}", "danger")
-        return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
-@logistics_bp.route('/shipmentlog/<int:shipment_id>/delete', methods=['POST'])
+
+@logistics_bp.route("/shipmentlog/<int:shipment_id>/delete", methods=["POST"])
 @admin_required
 def delete_shipment(shipment_id):
     sl = db.session.get(ShipmentLog, shipment_id)
     if not sl:
         flash("Shipment not found.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
     blocked = _abort_if_archived(sl)
     if blocked:
@@ -4786,26 +5089,37 @@ def delete_shipment(shipment_id):
     except Exception as e:
         db.session.rollback()
         flash(f"Error deleting shipment: {e}", "danger")
-    return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+    return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
-@logistics_bp.route('/shipmentlog/search', methods=['GET'])
+
+@logistics_bp.route("/shipmentlog/search", methods=["GET"])
 @admin_required
 def search_shipment_packages():
-    name     = (request.args.get('name') or '').strip()
-    tracking = (request.args.get('tracking') or '').strip()
-    house    = (request.args.get('house') or '').strip()
-    reg      = (request.args.get('reg') or '').strip()
+    name = (request.args.get("name") or "").strip()
+    tracking = (request.args.get("tracking") or "").strip()
+    house = (request.args.get("house") or "").strip()
+    reg = (request.args.get("reg") or "").strip()
 
-    q = (db.session.query(Package.id,
-                          Package.tracking_number,
-                          Package.description,
-                          Package.house_awb,
-                          User.full_name,
-                          User.registration_number,
-                          ShipmentLog.sl_id)
-         .join(User, Package.user_id == User.id)
-         .join(shipment_packages, shipment_packages.c.package_id == Package.id, isouter=True)
-         .join(ShipmentLog, ShipmentLog.id == shipment_packages.c.shipment_id, isouter=True))
+    q = (
+        db.session.query(
+            Package.id,
+            Package.tracking_number,
+            Package.description,
+            Package.house_awb,
+            User.full_name,
+            User.registration_number,
+            ShipmentLog.sl_id,
+        )
+        .join(User, Package.user_id == User.id)
+        .join(
+            shipment_packages,
+            shipment_packages.c.package_id == Package.id,
+            isouter=True,
+        )
+        .join(
+            ShipmentLog, ShipmentLog.id == shipment_packages.c.shipment_id, isouter=True
+        )
+    )
 
     if name:
         q = q.filter(User.full_name.ilike(f"%{name}%"))
@@ -4817,16 +5131,20 @@ def search_shipment_packages():
         q = q.filter(User.registration_number.ilike(f"%{reg}%"))
 
     q = q.order_by(ShipmentLog.sl_id.nullslast(), User.full_name.asc()).limit(200)
-    rows = [{
-        "id": r[0],
-        "tracking_number": r[1],
-        "description": r[2],
-        "house_awb": r[3],
-        "full_name": r[4],
-        "registration_number": r[5],
-        "sl_id": r[6],
-    } for r in q.all()]
+    rows = [
+        {
+            "id": r[0],
+            "tracking_number": r[1],
+            "description": r[2],
+            "house_awb": r[3],
+            "full_name": r[4],
+            "registration_number": r[5],
+            "sl_id": r[6],
+        }
+        for r in q.all()
+    ]
     return jsonify({"rows": rows})
+
 
 @logistics_bp.route("/shipmentlog/search-packages", methods=["GET"])
 @admin_required
@@ -4892,26 +5210,33 @@ def shipmentlog_search_packages():
             else:
                 state = "in_other_shipment"
 
-        results.append({
-            "id": r.package_id,
-            "customer_name": r.full_name,
-            "registration_number": r.registration_number,
-            "tracking_number": r.tracking_number or "",
-            "house_awb": r.house_awb or "",
-            "description": r.description or "",
-            "weight": float(r.weight or 0),
-            "date_received": r.date_received.strftime("%Y-%m-%d") if r.date_received else "",
-            "status": r.status or "",
-            "is_locked": bool(r.is_locked),
-            "shipment_id": r.shipment_id,
-            "shipment_label": shipment_label,
-            "shipment_archived": bool(r.shipment_archived) if r.shipment_id else False,
-            "state": state,
-        })
+        results.append(
+            {
+                "id": r.package_id,
+                "customer_name": r.full_name,
+                "registration_number": r.registration_number,
+                "tracking_number": r.tracking_number or "",
+                "house_awb": r.house_awb or "",
+                "description": r.description or "",
+                "weight": float(r.weight or 0),
+                "date_received": (
+                    r.date_received.strftime("%Y-%m-%d") if r.date_received else ""
+                ),
+                "status": r.status or "",
+                "is_locked": bool(r.is_locked),
+                "shipment_id": r.shipment_id,
+                "shipment_label": shipment_label,
+                "shipment_archived": (
+                    bool(r.shipment_archived) if r.shipment_id else False
+                ),
+                "state": state,
+            }
+        )
 
     return jsonify({"rows": results})
 
-@logistics_bp.route('/shipmentlog/search-results/assign', methods=['POST'])
+
+@logistics_bp.route("/shipmentlog/search-results/assign", methods=["POST"])
 @admin_required
 def assign_search_results_to_shipment():
     mode = (request.form.get("mode") or "existing").strip()
@@ -4923,7 +5248,7 @@ def assign_search_results_to_shipment():
 
     if not pkg_ids:
         flash("No packages selected.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
     unassigned_id = get_unassigned_user_id()
     if unassigned_id:
@@ -4934,8 +5259,11 @@ def assign_search_results_to_shipment():
             or 0
         )
         if bad_count:
-            flash("🚫 UNASSIGNED packages cannot be moved into shipments. Assign them to a customer first.", "danger")
-            return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+            flash(
+                "🚫 UNASSIGNED packages cannot be moved into shipments. Assign them to a customer first.",
+                "danger",
+            )
+            return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
     shipment = None
 
@@ -4948,12 +5276,12 @@ def assign_search_results_to_shipment():
     else:
         if not target_id:
             flash("Please choose an existing shipment.", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+            return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
         shipment = db.session.get(ShipmentLog, target_id)
         if not shipment:
             flash("Shipment not found.", "danger")
-            return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+            return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
         blocked = _abort_if_archived(shipment)
         if blocked:
@@ -4962,7 +5290,7 @@ def assign_search_results_to_shipment():
     pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
     if not pkgs:
         flash("No matching packages found.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog'))
+        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
     moved = 0
     for p in pkgs:
@@ -4971,37 +5299,47 @@ def assign_search_results_to_shipment():
 
     db.session.commit()
 
-    flash(f"Moved {moved} package(s) to shipment {shipment.sl_name or shipment.sl_id}.", "success")
-    return redirect(url_for('logistics.logistics_dashboard', tab='shipmentLog', shipment_id=shipment.id))
+    flash(
+        f"Moved {moved} package(s) to shipment {shipment.sl_name or shipment.sl_id}.",
+        "success",
+    )
+    return redirect(
+        url_for(
+            "logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment.id
+        )
+    )
 
-@logistics_bp.route('/shipmentlog/move', methods=['POST'])
+
+@logistics_bp.route("/shipmentlog/move", methods=["POST"])
 @admin_required
 def move_packages_between_shipments():
-    from_id = request.form.get('from_shipment_id', type=int)
-    to_id   = request.form.get('to_shipment_id', type=int)
+    from_id = request.form.get("from_shipment_id", type=int)
+    to_id = request.form.get("to_shipment_id", type=int)
 
-    raw_ids = request.form.getlist('package_ids')
+    raw_ids = request.form.getlist("package_ids")
     if not raw_ids:
-        csv_ids = (request.form.get('package_ids') or '')
-        raw_ids = [x.strip() for x in csv_ids.split(',') if x.strip()]
+        csv_ids = request.form.get("package_ids") or ""
+        raw_ids = [x.strip() for x in csv_ids.split(",") if x.strip()]
 
     pkg_ids = [int(x) for x in raw_ids if str(x).isdigit()]
 
     if not to_id or not pkg_ids:
         flash("Select destination shipment and at least one package.", "warning")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            tab='shipmentLog',
-            shipment_id=from_id or None
-        ))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+                shipment_id=from_id or None,
+            )
+        )
 
     if from_id and to_id and from_id == to_id:
         flash("Selected packages are already in that shipment.", "info")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            tab='shipmentLog',
-            shipment_id=from_id
-        ))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard", tab="shipmentLog", shipment_id=from_id
+            )
+        )
 
     # ✅ BLOCK UNASSIGNED from being moved into any shipment
     unassigned_id = get_unassigned_user_id()
@@ -5014,30 +5352,34 @@ def move_packages_between_shipments():
             or 0
         )
         if bad_count:
-            flash("🚫 UNASSIGNED packages cannot be moved into shipments. Assign them to a customer first.", "danger")
-            return redirect(url_for(
-                'logistics.logistics_dashboard',
-                tab='shipmentLog',
-                shipment_id=from_id or None
-            ))
+            flash(
+                "🚫 UNASSIGNED packages cannot be moved into shipments. Assign them to a customer first.",
+                "danger",
+            )
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    tab="shipmentLog",
+                    shipment_id=from_id or None,
+                )
+            )
 
     from_sl = db.session.get(ShipmentLog, from_id) if from_id else None
     to_sl = db.session.get(ShipmentLog, to_id)
 
     if from_id and not from_sl:
         flash("Source shipment not found.", "danger")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            tab='shipmentLog'
-        ))
+        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
     if not to_sl:
         flash("Destination shipment not found.", "danger")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            tab='shipmentLog',
-            shipment_id=from_id or None
-        ))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+                shipment_id=from_id or None,
+            )
+        )
 
     if from_sl:
         blocked = _abort_if_archived(from_sl)
@@ -5051,11 +5393,13 @@ def move_packages_between_shipments():
     pkgs = Package.query.filter(Package.id.in_(pkg_ids)).all()
     if not pkgs:
         flash("No matching packages found to move.", "warning")
-        return redirect(url_for(
-            'logistics.logistics_dashboard',
-            tab='shipmentLog',
-            shipment_id=from_id or None
-        ))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+                shipment_id=from_id or None,
+            )
+        )
 
     moved = 0
     for p in pkgs:
@@ -5065,13 +5409,12 @@ def move_packages_between_shipments():
     db.session.commit()
 
     flash(f"Moved {moved} package(s) to shipment {to_sl.sl_id}.", "success")
-    return redirect(url_for(
-        'logistics.logistics_dashboard',
-        tab='shipmentLog',
-        shipment_id=to_id
-    ))
+    return redirect(
+        url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=to_id)
+    )
 
-@logistics_bp.route('/shipmentlog/<int:shipment_id>/bulk-action', methods=['POST'])
+
+@logistics_bp.route("/shipmentlog/<int:shipment_id>/bulk-action", methods=["POST"])
 @admin_required
 def bulk_shipment_action(shipment_id):
     shipment = ShipmentLog.query.get_or_404(shipment_id)
@@ -5085,20 +5428,26 @@ def bulk_shipment_action(shipment_id):
     bulk_form = PackageBulkActionForm()
     invoice_finalize_form = InvoiceFinalizeForm()
 
-    package_ids = sorted({int(x) for x in request.form.getlist('package_ids') if str(x).isdigit()})
-    action = (request.form.get('action') or '').strip()
-    force = (request.form.get("force") == "1")  # admin override
-
+    package_ids = sorted(
+        {int(x) for x in request.form.getlist("package_ids") if str(x).isdigit()}
+    )
+    action = (request.form.get("action") or "").strip()
+    force = request.form.get("force") == "1"  # admin override
 
     if not action or not package_ids:
         flash("⚠️ Please select both an action and at least one package.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     # ---------------------------------------------------------
     # UNASSIGNED LOCK (single source of truth)
     # ---------------------------------------------------------
-    unassigned_id = get_unassigned_user_id()   
-
+    unassigned_id = get_unassigned_user_id()
 
     # -------------------------
     # helper: safe float
@@ -5119,11 +5468,17 @@ def bulk_shipment_action(shipment_id):
     pkgs_all = Package.query.filter(Package.id.in_(package_ids)).all()
     if not pkgs_all:
         flash("No matching packages found.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     # Split into eligible vs blocked
     blocked_unassigned = [p for p in pkgs_all if is_pkg_unassigned(p)]
-    eligible_pkgs      = [p for p in pkgs_all if not is_pkg_unassigned(p)]
+    eligible_pkgs = [p for p in pkgs_all if not is_pkg_unassigned(p)]
     skipped_unassigned = len(blocked_unassigned)
 
     # -------------------------
@@ -5132,11 +5487,10 @@ def bulk_shipment_action(shipment_id):
     def _is_locked(p):
         return bool(getattr(p, "is_locked", False))
 
-    locked_pkgs   = [p for p in eligible_pkgs if _is_locked(p)]
+    locked_pkgs = [p for p in eligible_pkgs if _is_locked(p)]
     editable_pkgs = [p for p in eligible_pkgs if (not _is_locked(p)) or force]
 
     skipped_locked = len(locked_pkgs) if not force else 0
-
 
     # ---------------------------------------------------------
     # ACTIONS
@@ -5152,7 +5506,8 @@ def bulk_shipment_action(shipment_id):
             # ✅ Respect lock: locked packages should NOT be recalculated in bulk
             is_subscription_covered = (
                 bool(getattr(p, "subscription_applied", False))
-                and (getattr(p, "subscription_result", "") or "") == "subscription_applied"
+                and (getattr(p, "subscription_result", "") or "")
+                == "subscription_applied"
             )
 
             has_epc_fee = bool(
@@ -5176,10 +5531,7 @@ def bulk_shipment_action(shipment_id):
             # Hard locked packages stay protected.
             # Pricing locked packages are skipped only if they already have a charge.
             # This lets blank/0 packages calculate again.
-            if (
-                is_hard_locked
-                and not (is_subscription_covered and has_epc_fee)
-            ):
+            if is_hard_locked and not (is_subscription_covered and has_epc_fee):
                 skipped_locked += 1
                 continue
 
@@ -5224,20 +5576,34 @@ def bulk_shipment_action(shipment_id):
             raw_other_charge = request.form.get(f"other_{p.id}")
 
             try:
-                other_charge = float(str(raw_other_charge).strip()) if raw_other_charge not in (None, "", "None") else 0.0
+                other_charge = (
+                    float(str(raw_other_charge).strip())
+                    if raw_other_charge not in (None, "", "None")
+                    else 0.0
+                )
             except Exception:
                 other_charge = 0.0
 
             if hasattr(p, "other_charges"):
                 p.other_charges = other_charge
 
-            form_bad_address = str(raw_bad_address or "0").strip() in ("1", "true", "True", "yes", "on")
+            form_bad_address = str(raw_bad_address or "0").strip() in (
+                "1",
+                "true",
+                "True",
+                "yes",
+                "on",
+            )
             is_epc = bool(getattr(p, "epc", False))
 
             bad_address = form_bad_address or is_epc
 
             try:
-                bad_address_fee = float(str(raw_bad_address_fee).strip()) if raw_bad_address_fee not in (None, "", "None") else 0.0
+                bad_address_fee = (
+                    float(str(raw_bad_address_fee).strip())
+                    if raw_bad_address_fee not in (None, "", "None")
+                    else 0.0
+                )
             except Exception:
                 bad_address_fee = 0.0
 
@@ -5252,10 +5618,7 @@ def bulk_shipment_action(shipment_id):
                 p.bad_address_fee = bad_address_fee if bad_address else 0.0
 
             breakdown = _bulk_calc_apply_to_package(
-                p,
-                category=category,
-                invoice_val=invoice_val,
-                weight=weight
+                p, category=category, invoice_val=invoice_val, weight=weight
             )
 
             # helper returns None if invalid/protected
@@ -5275,13 +5638,28 @@ def bulk_shipment_action(shipment_id):
             msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s) (assign to a customer first)."
         flash(msg, "success" if updated else "warning")
 
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     # Placeholder (kept)
     elif action == "generate_invoice":
         if skipped_unassigned:
-            flash(f"🚫 Skipped {skipped_unassigned} UNASSIGNED package(s). Assign them to a customer first.", "warning")
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+            flash(
+                f"🚫 Skipped {skipped_unassigned} UNASSIGNED package(s). Assign them to a customer first.",
+                "warning",
+            )
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     # -------------------------
     # STATUS CHANGES (blocked for UNASSIGNED)
@@ -5299,14 +5677,19 @@ def bulk_shipment_action(shipment_id):
             msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
         flash(msg, "success" if editable_pkgs else "warning")
 
-
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     elif action == "revert_overseas":
         for p in editable_pkgs:
             p.status = "Overseas"
         db.session.commit()
-        
+
         msg = f"{len(editable_pkgs)} package(s) reverted back to Overseas."
         if skipped_locked:
             msg += f" 🔒 Skipped {skipped_locked} LOCKED package(s)."
@@ -5314,8 +5697,13 @@ def bulk_shipment_action(shipment_id):
             msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
         flash(msg, "success" if editable_pkgs else "warning")
 
-
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     elif action == "received_local_port":
         for p in editable_pkgs:
@@ -5329,7 +5717,13 @@ def bulk_shipment_action(shipment_id):
             msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
         flash(msg, "success" if editable_pkgs else "warning")
 
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     # -------------------------
     # READY FOR PICKUP EMAILS (blocked for UNASSIGNED)
@@ -5338,8 +5732,17 @@ def bulk_shipment_action(shipment_id):
         # only users tied to eligible packages
         eligible_ids = [p.id for p in eligible_pkgs]
         if not eligible_ids:
-            flash("🚫 All selected packages are UNASSIGNED. Assign them to a customer first.", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+            flash(
+                "🚫 All selected packages are UNASSIGNED. Assign them to a customer first.",
+                "warning",
+            )
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    shipment_id=shipment_id,
+                    tab="shipmentLog",
+                )
+            )
 
         users = (
             db.session.query(User)
@@ -5355,16 +5758,19 @@ def bulk_shipment_action(shipment_id):
             _email_throttle(idx)
 
             pkgs = Package.query.filter(
-                Package.id.in_(eligible_ids),
-                Package.user_id == u.id
+                Package.id.in_(eligible_ids), Package.user_id == u.id
             ).all()
 
-            rows = [{
-                "shipper": getattr(p, 'merchant', None) or getattr(p, 'shipper', None),
-                "house_awb": p.house_awb,
-                "tracking_number": p.tracking_number,
-                "weight": p.weight
-            } for p in pkgs]
+            rows = [
+                {
+                    "shipper": getattr(p, "merchant", None)
+                    or getattr(p, "shipper", None),
+                    "house_awb": p.house_awb,
+                    "tracking_number": p.tracking_number,
+                    "weight": p.weight,
+                }
+                for p in pkgs
+            ]
 
             subject, plain, html = compose_ready_pickup_email(u.full_name, rows)
             send_email(u.email, subject, plain, html)
@@ -5372,7 +5778,8 @@ def bulk_shipment_action(shipment_id):
             _log_in_app_message(
                 u.id,
                 subject or "Packages ready for pickup",
-                plain or "Your packages are ready for pickup. Please log in to view details."
+                plain
+                or "Your packages are ready for pickup. Please log in to view details.",
             )
 
         db.session.commit()
@@ -5382,22 +5789,49 @@ def bulk_shipment_action(shipment_id):
             msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
         flash(msg, "success")
 
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     # -------------------------
     # SEND INVOICE EMAILS (blocked for UNASSIGNED)
     # -------------------------
     elif action == "send_invoices":
         if not eligible_pkgs:
-            flash("🚫 All selected packages are UNASSIGNED. Assign them to a customer first.", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+            flash(
+                "🚫 All selected packages are UNASSIGNED. Assign them to a customer first.",
+                "warning",
+            )
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    shipment_id=shipment_id,
+                    tab="shipmentLog",
+                )
+            )
 
         invoice_ids = sorted({p.invoice_id for p in eligible_pkgs if p.invoice_id})
         if not invoice_ids:
-            flash("The eligible selected packages are not attached to any invoices yet.", "warning")
+            flash(
+                "The eligible selected packages are not attached to any invoices yet.",
+                "warning",
+            )
             if skipped_unassigned:
-                flash(f"🚫 Also skipped {skipped_unassigned} UNASSIGNED package(s).", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+                flash(
+                    f"🚫 Also skipped {skipped_unassigned} UNASSIGNED package(s).",
+                    "warning",
+                )
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    shipment_id=shipment_id,
+                    tab="shipmentLog",
+                )
+            )
 
         rows = (
             db.session.query(Invoice, User)
@@ -5408,7 +5842,13 @@ def bulk_shipment_action(shipment_id):
 
         if not rows:
             flash("No invoices found for the selected packages.", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    shipment_id=shipment_id,
+                    tab="shipmentLog",
+                )
+            )
 
         from app.utils import email_utils
 
@@ -5426,33 +5866,40 @@ def bulk_shipment_action(shipment_id):
                 inv.invoice_email_failed = True
                 inv.invoice_email_failed_at = datetime.now(timezone.utc)
                 inv.invoice_email_failure_reason = "No email address on file"
-                failed.append(f"Invoice {inv.invoice_number or inv.id} (no email on file)")
+                failed.append(
+                    f"Invoice {inv.invoice_number or inv.id} (no email on file)"
+                )
                 continue
 
             amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
 
             invoice_dict = {
                 "number": inv.invoice_number or f"INV-{inv.id}",
-                "date": getattr(inv, "date_issued", None) or getattr(inv, "created_at", None),
+                "date": getattr(inv, "date_issued", None)
+                or getattr(inv, "created_at", None),
                 "total_due": amount_due,
-                "packages": []
+                "packages": [],
             }
 
             inv_pkgs = Package.query.filter(Package.invoice_id == inv.id).all()
             for p in inv_pkgs:
-                invoice_dict["packages"].append({
-                    "house_awb": p.house_awb or "-",
-                    "merchant": getattr(p, "merchant", None) or getattr(p, "shipper", None) or "-",
-                    "tracking_number": p.tracking_number or "-",
-                    "weight": float(p.weight or 0),
-                })
+                invoice_dict["packages"].append(
+                    {
+                        "house_awb": p.house_awb or "-",
+                        "merchant": getattr(p, "merchant", None)
+                        or getattr(p, "shipper", None)
+                        or "-",
+                        "tracking_number": p.tracking_number or "-",
+                        "weight": float(p.weight or 0),
+                    }
+                )
 
             ok = email_utils.send_invoice_email(
                 to_email=user.email,
                 full_name=user.full_name or user.email,
                 invoice=invoice_dict,
                 pdf_bytes=None,
-                recipient_user_id=user.id
+                recipient_user_id=user.id,
             )
 
             if ok:
@@ -5478,22 +5925,49 @@ def bulk_shipment_action(shipment_id):
         if failed:
             flash("Some invoice emails failed: " + ", ".join(failed), "danger")
 
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     # -------------------------
     # RESEND FAILED INVOICE EMAILS
     # -------------------------
     elif action == "resend_failed_invoices":
         if not eligible_pkgs:
-            flash("🚫 All selected packages are UNASSIGNED. Assign them to a customer first.", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+            flash(
+                "🚫 All selected packages are UNASSIGNED. Assign them to a customer first.",
+                "warning",
+            )
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    shipment_id=shipment_id,
+                    tab="shipmentLog",
+                )
+            )
 
         invoice_ids = sorted({p.invoice_id for p in eligible_pkgs if p.invoice_id})
         if not invoice_ids:
-            flash("The eligible selected packages are not attached to any invoices yet.", "warning")
+            flash(
+                "The eligible selected packages are not attached to any invoices yet.",
+                "warning",
+            )
             if skipped_unassigned:
-                flash(f"🚫 Also skipped {skipped_unassigned} UNASSIGNED package(s).", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+                flash(
+                    f"🚫 Also skipped {skipped_unassigned} UNASSIGNED package(s).",
+                    "warning",
+                )
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    shipment_id=shipment_id,
+                    tab="shipmentLog",
+                )
+            )
 
         rows = (
             db.session.query(Invoice, User)
@@ -5504,7 +5978,13 @@ def bulk_shipment_action(shipment_id):
 
         if not rows:
             flash("No invoices found for the selected packages.", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    shipment_id=shipment_id,
+                    tab="shipmentLog",
+                )
+            )
 
         from app.utils import email_utils
 
@@ -5529,33 +6009,40 @@ def bulk_shipment_action(shipment_id):
                 inv.invoice_email_failed = True
                 inv.invoice_email_failed_at = datetime.now(timezone.utc)
                 inv.invoice_email_failure_reason = "No email address on file"
-                failed.append(f"Invoice {inv.invoice_number or inv.id} (no email on file)")
+                failed.append(
+                    f"Invoice {inv.invoice_number or inv.id} (no email on file)"
+                )
                 continue
 
             amount_due = float(inv.amount_due or inv.grand_total or inv.amount or 0)
 
             invoice_dict = {
                 "number": inv.invoice_number or f"INV-{inv.id}",
-                "date": getattr(inv, "date_issued", None) or getattr(inv, "created_at", None),
+                "date": getattr(inv, "date_issued", None)
+                or getattr(inv, "created_at", None),
                 "total_due": amount_due,
-                "packages": []
+                "packages": [],
             }
 
             inv_pkgs = Package.query.filter(Package.invoice_id == inv.id).all()
             for p in inv_pkgs:
-                invoice_dict["packages"].append({
-                    "house_awb": p.house_awb or "-",
-                    "merchant": getattr(p, "merchant", None) or getattr(p, "shipper", None) or "-",
-                    "tracking_number": p.tracking_number or "-",
-                    "weight": float(p.weight or 0),
-                })
+                invoice_dict["packages"].append(
+                    {
+                        "house_awb": p.house_awb or "-",
+                        "merchant": getattr(p, "merchant", None)
+                        or getattr(p, "shipper", None)
+                        or "-",
+                        "tracking_number": p.tracking_number or "-",
+                        "weight": float(p.weight or 0),
+                    }
+                )
 
             ok = email_utils.send_invoice_email(
                 to_email=user.email,
                 full_name=user.full_name or user.email,
                 invoice=invoice_dict,
                 pdf_bytes=None,
-                recipient_user_id=user.id
+                recipient_user_id=user.id,
             )
 
             if ok:
@@ -5581,8 +6068,13 @@ def bulk_shipment_action(shipment_id):
         if failed:
             flash("Some retry invoice emails failed: " + ", ".join(failed), "danger")
 
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
-
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     elif action == "delivered":
         delivered_at = datetime.now(timezone.utc)
@@ -5594,10 +6086,7 @@ def bulk_shipment_action(shipment_id):
             p.locked_at = delivered_at
 
         for p in editable_pkgs:
-            sync_scheduled_pickups_for_delivered_package(
-                p,
-                delivered_at
-            )
+            sync_scheduled_pickups_for_delivered_package(p, delivered_at)
         db.session.commit()
 
     # -------------------------
@@ -5605,15 +6094,24 @@ def bulk_shipment_action(shipment_id):
     # -------------------------
     elif action == "remove_from_shipment":
         if not eligible_pkgs:
-            flash("🚫 All selected packages are UNASSIGNED. Assign them to a customer first.", "warning")
-            return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+            flash(
+                "🚫 All selected packages are UNASSIGNED. Assign them to a customer first.",
+                "warning",
+            )
+            return redirect(
+                url_for(
+                    "logistics.logistics_dashboard",
+                    shipment_id=shipment_id,
+                    tab="shipmentLog",
+                )
+            )
 
         eligible_ids = [p.id for p in editable_pkgs]
 
         db.session.execute(
             shipment_packages.delete().where(
                 shipment_packages.c.shipment_id == shipment_id,
-                shipment_packages.c.package_id.in_(eligible_ids)
+                shipment_packages.c.package_id.in_(eligible_ids),
             )
         )
 
@@ -5627,15 +6125,29 @@ def bulk_shipment_action(shipment_id):
             msg += f" 🔒 Skipped {skipped_locked} LOCKED package(s)."
         if skipped_unassigned:
             msg += f" 🚫 Skipped {skipped_unassigned} UNASSIGNED package(s)."
-        flash(msg, "success")       
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+        flash(msg, "success")
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
     else:
         flash(f"Unknown action: {action}", "danger")
-        return redirect(url_for('logistics.logistics_dashboard', shipment_id=shipment_id, tab="shipmentLog"))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                shipment_id=shipment_id,
+                tab="shipmentLog",
+            )
+        )
 
 
-@logistics_bp.route("/shipmentlog/<int:shipment_id>/finance-invoice/preview", methods=["GET"])
+@logistics_bp.route(
+    "/shipmentlog/<int:shipment_id>/finance-invoice/preview", methods=["GET"]
+)
 @admin_required
 def shipment_finance_invoice_preview_html(shipment_id):
     shipment = ShipmentLog.query.get_or_404(shipment_id)
@@ -5645,8 +6157,9 @@ def shipment_finance_invoice_preview_html(shipment_id):
         return blocked
 
     packages = (
-        Package.query
-        .join(shipment_packages, shipment_packages.c.package_id == Package.id)
+        Package.query.join(
+            shipment_packages, shipment_packages.c.package_id == Package.id
+        )
         .filter(shipment_packages.c.shipment_id == shipment_id)
         .order_by(Package.id.desc())
         .all()
@@ -5678,38 +6191,33 @@ def shipment_finance_invoice_preview_html(shipment_id):
         "admin/logistics/_shipment_finance_invoice_preview.html",
         shipment=shipment,
         shipment_id=shipment_id,
-
         packages=packages,
         total_packages=total_packages,
         total_weight_lbs=total_weight_lbs,
         total_weight_kg=total_weight_kg,
-
         base_rate_usd_per_kg=base_rate_usd_per_kg,
         base_freight_usd=base_freight_usd,
-
         # ✅ force all old band counters to zero
         c_0_10=0,
         c_10_25=0,
         c_25_50=0,
         c_50_100=0,
         c_100_plus=0,
-
         service_usd_total=0.0,
         service_jmd_total=0.0,
-
         service_charge_jmd=service_charge_jmd,
         extra_usd=0.0,
         extra_jmd=0.0,
-
         total_usd=total_usd,
         total_jmd=total_jmd,
         usd_to_jmd=usd_to_jmd,
     )
 
+
 @logistics_bp.route(
     "/shipmentlog/<int:shipment_id>/finance-invoice/preview-json",
     methods=["POST"],
-    endpoint="shipment_finance_invoice_preview_json"
+    endpoint="shipment_finance_invoice_preview_json",
 )
 @admin_required
 def shipment_finance_invoice_preview_json(shipment_id):
@@ -5722,11 +6230,9 @@ def shipment_finance_invoice_preview_json(shipment_id):
     if blocked:
         return blocked
 
-    q = (
-        Package.query
-        .join(shipment_packages, shipment_packages.c.package_id == Package.id)
-        .filter(shipment_packages.c.shipment_id == shipment_id)
-    )
+    q = Package.query.join(
+        shipment_packages, shipment_packages.c.package_id == Package.id
+    ).filter(shipment_packages.c.shipment_id == shipment_id)
 
     if package_ids:
         clean_ids = []
@@ -5740,7 +6246,12 @@ def shipment_finance_invoice_preview_json(shipment_id):
 
     pkgs = q.all()
     if not pkgs:
-        return jsonify({"ok": False, "error": "No packages found for this shipment selection."}), 404
+        return (
+            jsonify(
+                {"ok": False, "error": "No packages found for this shipment selection."}
+            ),
+            404,
+        )
 
     total_weight_lbs = sum(float(p.weight or 0) for p in pkgs)
     total_weight_kg = total_weight_lbs * 0.45359237
@@ -5760,38 +6271,36 @@ def shipment_finance_invoice_preview_json(shipment_id):
     total_usd = base_freight_usd
     total_jmd = (total_usd * usd_to_jmd) + service_charge_jmd
 
-    return jsonify({
-        "ok": True,
-        "shipment_id": shipment_id,
-        "package_count": len(pkgs),
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "shipment_id": shipment_id,
+                "package_count": len(pkgs),
+                "total_lbs": round(total_weight_lbs, 2),
+                "total_kg": round(total_weight_kg, 2),
+                # keep both names so existing JS won’t break
+                "base_rate_usd_per_kg": round(base_rate_usd_per_kg, 2),
+                "rate_usd_per_kg": round(base_rate_usd_per_kg, 2),
+                "freight_usd": round(base_freight_usd, 2),
+                # ✅ no band rows anymore
+                "service_bands": [],
+                "service_usd_total": 0.0,
+                "service_jmd_total": 0.0,
+                # keep both names so existing JS/card labels still work
+                "service_charge_jmd": round(service_charge_jmd, 2),
+                "extra_service_jmd": round(service_charge_jmd, 2),
+                # subtotals for the existing JS cards
+                "subtotal_usd": round(total_usd, 2),
+                "subtotal_jmd": round(total_usd * usd_to_jmd, 2),
+                "usd_to_jmd": round(usd_to_jmd, 2),
+                "total_usd": round(total_usd, 2),
+                "total_jmd": round(total_jmd, 2),
+            }
+        ),
+        200,
+    )
 
-        "total_lbs": round(total_weight_lbs, 2),
-        "total_kg": round(total_weight_kg, 2),
-
-        # keep both names so existing JS won’t break
-        "base_rate_usd_per_kg": round(base_rate_usd_per_kg, 2),
-        "rate_usd_per_kg": round(base_rate_usd_per_kg, 2),
-
-        "freight_usd": round(base_freight_usd, 2),
-
-        # ✅ no band rows anymore
-        "service_bands": [],
-
-        "service_usd_total": 0.0,
-        "service_jmd_total": 0.0,
-
-        # keep both names so existing JS/card labels still work
-        "service_charge_jmd": round(service_charge_jmd, 2),
-        "extra_service_jmd": round(service_charge_jmd, 2),
-
-        # subtotals for the existing JS cards
-        "subtotal_usd": round(total_usd, 2),
-        "subtotal_jmd": round(total_usd * usd_to_jmd, 2),
-
-        "usd_to_jmd": round(usd_to_jmd, 2),
-        "total_usd": round(total_usd, 2),
-        "total_jmd": round(total_jmd, 2),
-    }), 200
 
 @logistics_bp.route("/shipmentlog/calc-charges", methods=["GET"])
 @admin_required
@@ -5800,8 +6309,8 @@ def shipment_calc_charges():
     Lightweight API used by the shipment-log modal to calculate charges
     for a single package (category + invoice USD + weight).
     """
-    category  = (request.args.get("category") or "").strip()
-    weight    = float(request.args.get("weight") or 0)
+    category = (request.args.get("category") or "").strip()
+    weight = float(request.args.get("weight") or 0)
     value_usd = float(request.args.get("value_usd") or 0)
 
     if not category:
@@ -5814,20 +6323,13 @@ def shipment_calc_charges():
 
         # we’ll surface the core fields; everything else is still in "data"
         grand_total = float(
-            breakdown.get("grand_total")
-            or breakdown.get("total_jmd")
-            or 0
+            breakdown.get("grand_total") or breakdown.get("total_jmd") or 0
         )
 
-        return jsonify({
-            "ok": True,
-            "data": {
-                **breakdown,
-                "grand_total": grand_total
-            }
-        })
+        return jsonify({"ok": True, "data": {**breakdown, "grand_total": grand_total}})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
 
 @logistics_bp.route("/packages/<int:pkg_id>/charges/save", methods=["POST"])
 @admin_required
@@ -5836,8 +6338,8 @@ def api_save_package_charges(pkg_id):
     data = request.get_json(force=True) or {}
 
     pkg.category = data.get("category") or pkg.category or "Other"
-    pkg.weight   = float(data.get("weight") or 0)
-    pkg.value    = float(data.get("value_usd") or data.get("value") or 0)
+    pkg.weight = float(data.get("weight") or 0)
+    pkg.value = float(data.get("value_usd") or data.get("value") or 0)
     if hasattr(pkg, "declared_value"):
         pkg.declared_value = pkg.value
 
@@ -5847,7 +6349,9 @@ def api_save_package_charges(pkg_id):
     return jsonify({"ok": True})
 
 
-@logistics_bp.route('/api/package/<int:pkg_id>', methods=['GET'], endpoint='api_get_package')
+@logistics_bp.route(
+    "/api/package/<int:pkg_id>", methods=["GET"], endpoint="api_get_package"
+)
 @admin_required
 def api_get_package(pkg_id):
     p = db.session.get(Package, pkg_id)
@@ -5857,21 +6361,26 @@ def api_get_package(pkg_id):
     value = float(getattr(p, "declared_value", None) or p.value or 0)
     weight = float(p.weight or 0)
 
-    return jsonify({
-        "ok": True,
-        "pkg": {
-            "id": p.id,
-            "category": getattr(p, "category", "Other") or "Other",
-            "weight": weight,
-            "value_usd": value
-        }
-    }), 200
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "pkg": {
+                    "id": p.id,
+                    "category": getattr(p, "category", "Other") or "Other",
+                    "weight": weight,
+                    "value_usd": value,
+                },
+            }
+        ),
+        200,
+    )
 
 
 # ================================
 #  BULK INVOICE PREVIEW (JSON)
 # ================================
-@logistics_bp.route('/shipmentlog/invoices/preview', methods=['POST'])
+@logistics_bp.route("/shipmentlog/invoices/preview", methods=["POST"])
 @admin_required
 def bulk_invoice_preview():
     """
@@ -5891,7 +6400,7 @@ def bulk_invoice_preview():
     data = request.get_json(silent=True) or {}
 
     pkg_ids = []
-    for x in (data.get("package_ids") or []):
+    for x in data.get("package_ids") or []:
         try:
             pkg_ids.append(int(x))
         except Exception:
@@ -5900,15 +6409,20 @@ def bulk_invoice_preview():
     pkg_ids = list({x for x in pkg_ids if x > 0})
 
     if not pkg_ids:
-        return jsonify({
-            "ok": True,
-            "rows": [],
-            "detained_skipped": 0,
-            "already_invoiced_skipped": 0,
-            "requested": 0,
-            "eligible": 0,
-            "message": "No packages selected."
-        }), 200
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "rows": [],
+                    "detained_skipped": 0,
+                    "already_invoiced_skipped": 0,
+                    "requested": 0,
+                    "eligible": 0,
+                    "message": "No packages selected.",
+                }
+            ),
+            200,
+        )
 
     rows = (
         db.session.query(
@@ -5941,14 +6455,17 @@ def bulk_invoice_preview():
 
         due = float(amount_due or 0.0)
 
-        g = grouped.setdefault(uid, {
-            "user_id": uid,
-            "full_name": full_name,
-            "registration_number": reg,
-            "package_ids": [],
-            "package_count": 0,
-            "total_due": 0.0,
-        })
+        g = grouped.setdefault(
+            uid,
+            {
+                "user_id": uid,
+                "full_name": full_name,
+                "registration_number": reg,
+                "package_ids": [],
+                "package_count": 0,
+                "total_due": 0.0,
+            },
+        )
 
         g["package_ids"].append(pid)
         g["package_count"] += 1
@@ -5961,21 +6478,26 @@ def bulk_invoice_preview():
     if not out_rows:
         msg = "No eligible packages. (They may already be invoiced or detained.)"
 
-    return jsonify({
-        "ok": True,
-        "rows": out_rows,
-        "detained_skipped": detained,
-        "already_invoiced_skipped": already_invoiced,
-        "requested": len(pkg_ids),
-        "eligible": eligible_count,
-        "message": msg
-    }), 200
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "rows": out_rows,
+                "detained_skipped": detained,
+                "already_invoiced_skipped": already_invoiced,
+                "requested": len(pkg_ids),
+                "eligible": eligible_count,
+                "message": msg,
+            }
+        ),
+        200,
+    )
 
 
 @logistics_bp.route(
     "/view-packages/finance-invoice/preview-json",
     methods=["POST"],
-    endpoint="view_packages_finance_invoice_preview_json"
+    endpoint="view_packages_finance_invoice_preview_json",
 )
 @admin_required
 def view_packages_finance_invoice_preview_json():
@@ -5992,23 +6514,30 @@ def view_packages_finance_invoice_preview_json():
     status_filter = (payload.get("status") or "").strip()
 
     epc_only = str(payload.get("epc_only") or "").lower() in ("1", "true", "yes", "on")
-    unassigned_only = str(payload.get("unassigned_only") or "").lower() in ("1", "true", "yes", "on")
-    not_notified_only = str(payload.get("not_notified_only") or "").lower() in ("1", "true", "yes", "on")
+    unassigned_only = str(payload.get("unassigned_only") or "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    not_notified_only = str(payload.get("not_notified_only") or "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
     unassigned_id = get_unassigned_user_id()
 
-    q = (
-        db.session.query(
-            Package.id,
-            Package.weight,
-            Package.tracking_number,
-            Package.house_awb,
-            Package.description,
-            Package.date_received,
-            Package.created_at,
-        )
-        .join(User, Package.user_id == User.id)
-    )
+    q = db.session.query(
+        Package.id,
+        Package.weight,
+        Package.tracking_number,
+        Package.house_awb,
+        Package.description,
+        Package.date_received,
+        Package.created_at,
+    ).join(User, Package.user_id == User.id)
 
     q = _apply_pkg_filters(
         q,
@@ -6027,7 +6556,10 @@ def view_packages_finance_invoice_preview_json():
         not_notified_only=not_notified_only,
     )
 
-    q = q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).asc(), Package.id.asc())
+    q = q.order_by(
+        func.date(func.coalesce(Package.date_received, Package.created_at)).asc(),
+        Package.id.asc(),
+    )
 
     packages = q.all()
 
@@ -6067,7 +6599,15 @@ def view_packages_finance_invoice_preview_json():
     package_rows = []
     grand_total = 0.0
 
-    for pid, weight, tracking_number, house_awb, description, date_received, created_at in packages:
+    for (
+        pid,
+        weight,
+        tracking_number,
+        house_awb,
+        description,
+        date_received,
+        created_at,
+    ) in packages:
         meta = _warehouse_rate_row(weight)
         if not meta:
             continue
@@ -6077,36 +6617,44 @@ def view_packages_finance_invoice_preview_json():
         grand_total += float(meta["rate"])
 
         dt = date_received or created_at
-        package_rows.append({
-            "id": pid,
-            "tracking_number": tracking_number or "",
-            "house_awb": house_awb or "",
-            "description": description or "",
-            "weight": float(weight or 0),
-            "date_received": dt.strftime("%Y-%m-%d") if dt else "",
-            "band": meta["label"],
-            "rate": float(meta["rate"]),
-        })
+        package_rows.append(
+            {
+                "id": pid,
+                "tracking_number": tracking_number or "",
+                "house_awb": house_awb or "",
+                "description": description or "",
+                "weight": float(weight or 0),
+                "date_received": dt.strftime("%Y-%m-%d") if dt else "",
+                "band": meta["label"],
+                "rate": float(meta["rate"]),
+            }
+        )
 
     summary_rows = [row for row in brackets.values() if row["count"] > 0]
 
-    return jsonify({
-        "ok": True,
-        "period": {
-            "date_from": date_from,
-            "date_to": date_to,
-        },
-        "package_count": len(package_rows),
-        "summary_rows": summary_rows,
-        "package_rows": package_rows,
-        "grand_total": round(grand_total, 2),
-        "grand_total_jmd": round(grand_total * float(USD_TO_JMD or 1), 2),
-    }), 200
+    return (
+        jsonify(
+            {
+                "ok": True,
+                "period": {
+                    "date_from": date_from,
+                    "date_to": date_to,
+                },
+                "package_count": len(package_rows),
+                "summary_rows": summary_rows,
+                "package_rows": package_rows,
+                "grand_total": round(grand_total, 2),
+                "grand_total_jmd": round(grand_total * float(USD_TO_JMD or 1), 2),
+            }
+        ),
+        200,
+    )
+
 
 @logistics_bp.route(
     "/view-packages/finance-invoice/export-excel",
     methods=["POST"],
-    endpoint="view_packages_finance_invoice_export_excel"
+    endpoint="view_packages_finance_invoice_export_excel",
 )
 @admin_required
 def view_packages_finance_invoice_export_excel():
@@ -6123,23 +6671,30 @@ def view_packages_finance_invoice_export_excel():
     status_filter = (payload.get("status") or "").strip()
 
     epc_only = str(payload.get("epc_only") or "").lower() in ("1", "true", "yes", "on")
-    unassigned_only = str(payload.get("unassigned_only") or "").lower() in ("1", "true", "yes", "on")
-    not_notified_only = str(payload.get("not_notified_only") or "").lower() in ("1", "true", "yes", "on")
+    unassigned_only = str(payload.get("unassigned_only") or "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    not_notified_only = str(payload.get("not_notified_only") or "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
     unassigned_id = get_unassigned_user_id()
 
-    q = (
-        db.session.query(
-            Package.id,
-            Package.weight,
-            Package.tracking_number,
-            Package.house_awb,
-            Package.description,
-            Package.date_received,
-            Package.created_at,
-        )
-        .join(User, Package.user_id == User.id)
-    )
+    q = db.session.query(
+        Package.id,
+        Package.weight,
+        Package.tracking_number,
+        Package.house_awb,
+        Package.description,
+        Package.date_received,
+        Package.created_at,
+    ).join(User, Package.user_id == User.id)
 
     q = _apply_pkg_filters(
         q,
@@ -6158,7 +6713,10 @@ def view_packages_finance_invoice_export_excel():
         not_notified_only=not_notified_only,
     )
 
-    q = q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).asc(), Package.id.asc())
+    q = q.order_by(
+        func.date(func.coalesce(Package.date_received, Package.created_at)).asc(),
+        Package.id.asc(),
+    )
     packages = q.all()
 
     brackets = {
@@ -6197,7 +6755,15 @@ def view_packages_finance_invoice_export_excel():
     detail_rows = []
     grand_total = 0.0
 
-    for pid, weight, tracking_number, house_awb, description, date_received, created_at in packages:
+    for (
+        pid,
+        weight,
+        tracking_number,
+        house_awb,
+        description,
+        date_received,
+        created_at,
+    ) in packages:
         meta = _warehouse_rate_row(weight)
         if not meta:
             continue
@@ -6207,25 +6773,29 @@ def view_packages_finance_invoice_export_excel():
         grand_total += float(meta["rate"])
 
         dt = date_received or created_at
-        detail_rows.append({
-            "Date Received": dt.strftime("%Y-%m-%d") if dt else "",
-            "Tracking #": tracking_number or "",
-            "House AWB": house_awb or "",
-            "Description": description or "",
-            "Weight (lbs)": float(weight or 0),
-            "Category": meta["label"],
-            "Rate (USD)": float(meta["rate"]),
-        })
+        detail_rows.append(
+            {
+                "Date Received": dt.strftime("%Y-%m-%d") if dt else "",
+                "Tracking #": tracking_number or "",
+                "House AWB": house_awb or "",
+                "Description": description or "",
+                "Weight (lbs)": float(weight or 0),
+                "Category": meta["label"],
+                "Rate (USD)": float(meta["rate"]),
+            }
+        )
 
     summary_rows = []
     for row in brackets.values():
         if row["count"] > 0:
-            summary_rows.append({
-                "Weight Category": row["label"],
-                "Rate (USD)": float(row["rate"]),
-                "# Packages": int(row["count"]),
-                "Category Total (USD)": float(row["total"]),
-            })
+            summary_rows.append(
+                {
+                    "Weight Category": row["label"],
+                    "Rate (USD)": float(row["rate"]),
+                    "# Packages": int(row["count"]),
+                    "Category Total (USD)": float(row["total"]),
+                }
+            )
 
     output = io.BytesIO()
 
@@ -6234,23 +6804,31 @@ def view_packages_finance_invoice_export_excel():
         df_details = pd.DataFrame(detail_rows)
 
         if df_summary.empty:
-            df_summary = pd.DataFrame([{
-                "Weight Category": "No packages found",
-                "Rate (USD)": "",
-                "# Packages": 0,
-                "Category Total (USD)": 0.0,
-            }])
+            df_summary = pd.DataFrame(
+                [
+                    {
+                        "Weight Category": "No packages found",
+                        "Rate (USD)": "",
+                        "# Packages": 0,
+                        "Category Total (USD)": 0.0,
+                    }
+                ]
+            )
 
         if df_details.empty:
-            df_details = pd.DataFrame([{
-                "Date Received": "",
-                "Tracking #": "",
-                "House AWB": "",
-                "Description": "No packages found for selected filters",
-                "Weight (lbs)": "",
-                "Category": "",
-                "Rate (USD)": "",
-            }])
+            df_details = pd.DataFrame(
+                [
+                    {
+                        "Date Received": "",
+                        "Tracking #": "",
+                        "House AWB": "",
+                        "Description": "No packages found for selected filters",
+                        "Weight (lbs)": "",
+                        "Category": "",
+                        "Rate (USD)": "",
+                    }
+                ]
+            )
 
         df_summary.to_excel(writer, index=False, sheet_name="Summary", startrow=3)
         df_details.to_excel(writer, index=False, sheet_name="Packages", startrow=3)
@@ -6261,8 +6839,8 @@ def view_packages_finance_invoice_export_excel():
 
         title_fmt = workbook.add_format({"bold": True, "font_size": 14})
         bold_fmt = workbook.add_format({"bold": True})
-        money_fmt = workbook.add_format({"num_format": '#,##0.00'})
-        weight_fmt = workbook.add_format({"num_format": '#,##0.00'})
+        money_fmt = workbook.add_format({"num_format": "#,##0.00"})
+        weight_fmt = workbook.add_format({"num_format": "#,##0.00"})
 
         period_text = f"Period: {date_from or '...'} to {date_to or '...'}"
         ws_summary.write(0, 0, "Warehouse Charges Summary", title_fmt)
@@ -6292,14 +6870,14 @@ def view_packages_finance_invoice_export_excel():
         output,
         as_attachment=True,
         download_name=filename,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
 @logistics_bp.route(
     "/view-packages/finance-invoice/export-pdf",
     methods=["POST"],
-    endpoint="view_packages_finance_invoice_export_pdf"
+    endpoint="view_packages_finance_invoice_export_pdf",
 )
 @admin_required
 def view_packages_finance_invoice_export_pdf():
@@ -6316,23 +6894,30 @@ def view_packages_finance_invoice_export_pdf():
     status_filter = (payload.get("status") or "").strip()
 
     epc_only = str(payload.get("epc_only") or "").lower() in ("1", "true", "yes", "on")
-    unassigned_only = str(payload.get("unassigned_only") or "").lower() in ("1", "true", "yes", "on")
-    not_notified_only = str(payload.get("not_notified_only") or "").lower() in ("1", "true", "yes", "on")
+    unassigned_only = str(payload.get("unassigned_only") or "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    not_notified_only = str(payload.get("not_notified_only") or "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
     unassigned_id = get_unassigned_user_id()
 
-    q = (
-        db.session.query(
-            Package.id,
-            Package.weight,
-            Package.tracking_number,
-            Package.house_awb,
-            Package.description,
-            Package.date_received,
-            Package.created_at,
-        )
-        .join(User, Package.user_id == User.id)
-    )
+    q = db.session.query(
+        Package.id,
+        Package.weight,
+        Package.tracking_number,
+        Package.house_awb,
+        Package.description,
+        Package.date_received,
+        Package.created_at,
+    ).join(User, Package.user_id == User.id)
 
     q = _apply_pkg_filters(
         q,
@@ -6351,21 +6936,47 @@ def view_packages_finance_invoice_export_pdf():
         not_notified_only=not_notified_only,
     )
 
-    q = q.order_by(func.date(func.coalesce(Package.date_received, Package.created_at)).asc(), Package.id.asc())
+    q = q.order_by(
+        func.date(func.coalesce(Package.date_received, Package.created_at)).asc(),
+        Package.id.asc(),
+    )
     packages = q.all()
 
     brackets = {
         "0_10": {"label": "0 - 10.000 lb", "rate": 1.60, "count": 0, "total": 0.0},
-        "10_25": {"label": "10.001 - 25.000 lb", "rate": 2.15, "count": 0, "total": 0.0},
-        "25_50": {"label": "25.001 - 50.000 lb", "rate": 4.65, "count": 0, "total": 0.0},
-        "50_100": {"label": "50.001 - 100.000 lb", "rate": 7.00, "count": 0, "total": 0.0},
+        "10_25": {
+            "label": "10.001 - 25.000 lb",
+            "rate": 2.15,
+            "count": 0,
+            "total": 0.0,
+        },
+        "25_50": {
+            "label": "25.001 - 50.000 lb",
+            "rate": 4.65,
+            "count": 0,
+            "total": 0.0,
+        },
+        "50_100": {
+            "label": "50.001 - 100.000 lb",
+            "rate": 7.00,
+            "count": 0,
+            "total": 0.0,
+        },
         "100_plus": {"label": ">= 100.001 lb", "rate": 9.00, "count": 0, "total": 0.0},
     }
 
     detail_rows = []
     grand_total = 0.0
 
-    for pid, weight, tracking_number, house_awb, description, date_received, created_at in packages:
+    for (
+        pid,
+        weight,
+        tracking_number,
+        house_awb,
+        description,
+        date_received,
+        created_at,
+    ) in packages:
         meta = _warehouse_rate_row(weight)
         if not meta:
             continue
@@ -6375,31 +6986,39 @@ def view_packages_finance_invoice_export_pdf():
         grand_total += float(meta["rate"])
 
         dt = date_received or created_at
-        detail_rows.append([
-            dt.strftime("%Y-%m-%d") if dt else "",
-            tracking_number or "",
-            house_awb or "",
-            description or "",
-            f"{float(weight or 0):.2f}",
-            meta["label"],
-            f"{float(meta['rate']):.2f}",
-        ])
+        detail_rows.append(
+            [
+                dt.strftime("%Y-%m-%d") if dt else "",
+                tracking_number or "",
+                house_awb or "",
+                description or "",
+                f"{float(weight or 0):.2f}",
+                meta["label"],
+                f"{float(meta['rate']):.2f}",
+            ]
+        )
 
-    summary_rows = [["Weight Category", "Rate (USD)", "# Packages", "Category Total (USD)"]]
+    summary_rows = [
+        ["Weight Category", "Rate (USD)", "# Packages", "Category Total (USD)"]
+    ]
     for row in brackets.values():
         if row["count"] > 0:
-            summary_rows.append([
-                row["label"],
-                f"{float(row['rate']):.2f}",
-                str(int(row["count"])),
-                f"{float(row['total']):.2f}",
-            ])
+            summary_rows.append(
+                [
+                    row["label"],
+                    f"{float(row['rate']):.2f}",
+                    str(int(row["count"])),
+                    f"{float(row['total']):.2f}",
+                ]
+            )
 
     if len(summary_rows) == 1:
         summary_rows.append(["No packages found", "", "0", "0.00"])
 
     if not detail_rows:
-        detail_rows = [["", "", "", "No packages found for selected filters", "", "", ""]]
+        detail_rows = [
+            ["", "", "", "No packages found for selected filters", "", "", ""]
+        ]
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -6412,10 +7031,34 @@ def view_packages_finance_invoice_export_pdf():
     )
 
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="RightSmall", parent=styles["Normal"], alignment=TA_RIGHT, fontSize=9))
-    styles.add(ParagraphStyle(name="Muted", parent=styles["Normal"], textColor=colors.HexColor("#666666"), fontSize=9))
-    styles.add(ParagraphStyle(name="TitlePurple", parent=styles["Title"], textColor=colors.HexColor("#4a148c")))
-    styles.add(ParagraphStyle(name="HeadingPurple", parent=styles["Heading2"], textColor=colors.HexColor("#4a148c"), fontSize=12))
+    styles.add(
+        ParagraphStyle(
+            name="RightSmall", parent=styles["Normal"], alignment=TA_RIGHT, fontSize=9
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="Muted",
+            parent=styles["Normal"],
+            textColor=colors.HexColor("#666666"),
+            fontSize=9,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="TitlePurple",
+            parent=styles["Title"],
+            textColor=colors.HexColor("#4a148c"),
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            name="HeadingPurple",
+            parent=styles["Heading2"],
+            textColor=colors.HexColor("#4a148c"),
+            fontSize=12,
+        )
+    )
 
     elements = []
 
@@ -6427,26 +7070,60 @@ def view_packages_finance_invoice_export_pdf():
         except Exception:
             pass
 
-    elements.append(Paragraph("Foreign A Foot Logistics Limited", styles["TitlePurple"]))
+    elements.append(
+        Paragraph("Foreign A Foot Logistics Limited", styles["TitlePurple"])
+    )
     elements.append(Paragraph("Warehouse Charges Report", styles["HeadingPurple"]))
     elements.append(Spacer(1, 8))
 
     meta_data = [
-        [Paragraph("<b>Period</b>", styles["Normal"]), Paragraph(f"{date_from or '...'} to {date_to or '...'}", styles["Normal"])],
-        [Paragraph("<b>Total Packages</b>", styles["Normal"]), Paragraph(str(len(detail_rows) if detail_rows and detail_rows[0][3] != "No packages found for selected filters" else 0), styles["Normal"])],
-        [Paragraph("<b>Weight Categories Used</b>", styles["Normal"]), Paragraph(str(len(summary_rows) - 1 if len(summary_rows) > 1 else 0), styles["Normal"])],
-        [Paragraph("<b>Grand Total (USD)</b>", styles["Normal"]), Paragraph(f"{grand_total:.2f}", styles["Normal"])],
-        [Paragraph("<b>Approx Grand Total (JMD)</b>", styles["Normal"]), Paragraph(f"{(grand_total * float(USD_TO_JMD or 1)):.2f}", styles["Normal"])],
+        [
+            Paragraph("<b>Period</b>", styles["Normal"]),
+            Paragraph(f"{date_from or '...'} to {date_to or '...'}", styles["Normal"]),
+        ],
+        [
+            Paragraph("<b>Total Packages</b>", styles["Normal"]),
+            Paragraph(
+                str(
+                    len(detail_rows)
+                    if detail_rows
+                    and detail_rows[0][3] != "No packages found for selected filters"
+                    else 0
+                ),
+                styles["Normal"],
+            ),
+        ],
+        [
+            Paragraph("<b>Weight Categories Used</b>", styles["Normal"]),
+            Paragraph(
+                str(len(summary_rows) - 1 if len(summary_rows) > 1 else 0),
+                styles["Normal"],
+            ),
+        ],
+        [
+            Paragraph("<b>Grand Total (USD)</b>", styles["Normal"]),
+            Paragraph(f"{grand_total:.2f}", styles["Normal"]),
+        ],
+        [
+            Paragraph("<b>Approx Grand Total (JMD)</b>", styles["Normal"]),
+            Paragraph(
+                f"{(grand_total * float(USD_TO_JMD or 1)):.2f}", styles["Normal"]
+            ),
+        ],
     ]
 
     meta_table = Table(meta_data, colWidths=[170, 170])
-    meta_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f3e8ff")),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
-        ("PADDING", (0, 0), (-1, -1), 6),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-    ]))
+    meta_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f3e8ff")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
+                ("PADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
     elements.append(meta_table)
     elements.append(Spacer(1, 14))
 
@@ -6454,37 +7131,56 @@ def view_packages_finance_invoice_export_pdf():
     elements.append(Spacer(1, 6))
 
     summary_table = Table(summary_rows, colWidths=[180, 90, 80, 120], repeatRows=1)
-    summary_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4a148c")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("BACKGROUND", (0, 1), (-1, -1), colors.whitesmoke),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
-        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 6),
-    ]))
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4a148c")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.whitesmoke),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
+                ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+                ("PADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
     elements.append(summary_table)
     elements.append(Spacer(1, 14))
 
     elements.append(Paragraph("Package Breakdown", styles["HeadingPurple"]))
     elements.append(Spacer(1, 6))
 
-    detail_header = [["Date", "Tracking #", "House AWB", "Description", "Weight", "Category", "Rate"]]
-    detail_table = Table(detail_header + detail_rows, colWidths=[58, 92, 82, 140, 50, 110, 45], repeatRows=1)
-    detail_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4a148c")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#faf5ff")]),
-        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (4, 1), (6, -1), "RIGHT"),
-        ("PADDING", (0, 0), (-1, -1), 4),
-    ]))
+    detail_header = [
+        ["Date", "Tracking #", "House AWB", "Description", "Weight", "Category", "Rate"]
+    ]
+    detail_table = Table(
+        detail_header + detail_rows,
+        colWidths=[58, 92, 82, 140, 50, 110, 45],
+        repeatRows=1,
+    )
+    detail_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4a148c")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.white, colors.HexColor("#faf5ff")],
+                ),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dddddd")),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (4, 1), (6, -1), "RIGHT"),
+                ("PADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
     elements.append(detail_table)
 
     doc.build(elements)
@@ -6493,11 +7189,9 @@ def view_packages_finance_invoice_export_pdf():
     filename = f"warehouse_charges_{date_from or 'start'}_to_{date_to or 'end'}.pdf"
 
     return send_file(
-        buffer,
-        as_attachment=True,
-        download_name=filename,
-        mimetype="application/pdf"
+        buffer, as_attachment=True, download_name=filename, mimetype="application/pdf"
     )
+
 
 # ================================
 #  HELPER: INVOICE NUMBER
@@ -6544,7 +7238,7 @@ def _generate_invoice_number():
 # ================================
 #  BULK FINALIZE (JSON)
 # ================================
-@logistics_bp.route('/shipmentlog/invoices/finalize-json', methods=['POST'])
+@logistics_bp.route("/shipmentlog/invoices/finalize-json", methods=["POST"])
 @admin_required
 def bulk_invoice_finalize_json():
     """
@@ -6564,9 +7258,20 @@ def bulk_invoice_finalize_json():
     """
     data = request.get_json(silent=True) or {}
     shipment_id = data.get("shipment_id")  # optional
-    selections = data.get('selections') or []
+    selections = data.get("selections") or []
     if not selections:
-        return jsonify({"ok": False, "created": 0, "invoices": [], "skipped": {}, "error": "No selections provided."}), 400
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "created": 0,
+                    "invoices": [],
+                    "skipped": {},
+                    "error": "No selections provided.",
+                }
+            ),
+            400,
+        )
 
     created = 0
     out = []
@@ -6574,7 +7279,7 @@ def bulk_invoice_finalize_json():
     # stats
     skipped_detained = 0
     skipped_invoiced = 0
-    skipped_empty    = 0
+    skipped_empty = 0
 
     # ✅ Toggle this:
     # If True: reuse an existing pending invoice for that user (append packages)
@@ -6591,7 +7296,7 @@ def bulk_invoice_finalize_json():
                 continue
 
             pkg_ids = []
-            for x in (sel.get("package_ids") or []):
+            for x in sel.get("package_ids") or []:
                 try:
                     pkg_ids.append(int(x))
                 except Exception:
@@ -6602,12 +7307,7 @@ def bulk_invoice_finalize_json():
                 continue
 
             # Load packages (and lock to avoid race duplicates)
-            pkgs = (
-                Package.query
-                .filter(Package.id.in_(pkg_ids))
-                .with_for_update()
-                .all()
-            )
+            pkgs = Package.query.filter(Package.id.in_(pkg_ids)).with_for_update().all()
             if not pkgs:
                 continue
 
@@ -6639,8 +7339,9 @@ def bulk_invoice_finalize_json():
             # ✅ Optionally reuse existing pending invoice for that user
             if REUSE_PENDING_INVOICE:
                 inv = (
-                    Invoice.query
-                    .filter(and_(Invoice.user_id == uid, Invoice.status == "pending"))
+                    Invoice.query.filter(
+                        and_(Invoice.user_id == uid, Invoice.status == "pending")
+                    )
                     .order_by(Invoice.id.desc())
                     .first()
                 )
@@ -6685,30 +7386,34 @@ def bulk_invoice_finalize_json():
             inv_total = float(sum(pkg_due(x) for x in inv_pkgs))
 
             inv.grand_total = inv_total
-            inv.amount_due  = inv_total
-            inv.amount      = inv_total
+            inv.amount_due = inv_total
+            inv.amount = inv_total
             inv.description = f"Invoice for {len(inv_pkgs)} package(s)"
 
-            out.append({
-                "invoice_id": inv.id,
-                "invoice_number": inv.invoice_number,
-                "amount": inv_total,
-                "added_packages": [p.id for p in eligible],
-            })
+            out.append(
+                {
+                    "invoice_id": inv.id,
+                    "invoice_number": inv.invoice_number,
+                    "amount": inv_total,
+                    "added_packages": [p.id for p in eligible],
+                }
+            )
 
         db.session.commit()
 
         redirect_url = None
         try:
             if shipment_id:
-                redirect_url = url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id)
+                redirect_url = url_for(
+                    "logistics.logistics_dashboard",
+                    tab="shipmentLog",
+                    shipment_id=shipment_id,
+                )
         except Exception:
             redirect_url = None
 
         if created > 0:
-            parts = [
-                f"✅ {created} invoice{'s' if created != 1 else ''} generated"
-            ]
+            parts = [f"✅ {created} invoice{'s' if created != 1 else ''} generated"]
 
             if skipped_detained > 0:
                 parts.append(f"{skipped_detained} detained skipped")
@@ -6723,26 +7428,28 @@ def bulk_invoice_finalize_json():
         else:
             message = "⚠️ No invoices were generated (nothing eligible)."
 
-
-        return jsonify({
-            "ok": True,
-            "created": created,
-            "invoices": out,
-            "skipped": {
-                "detained": skipped_detained,
-                "already_invoiced": skipped_invoiced,
-                "empty_selection": skipped_empty
-            },
-            "redirect_url": redirect_url,
-            "message": message
-        })
+        return jsonify(
+            {
+                "ok": True,
+                "created": created,
+                "invoices": out,
+                "skipped": {
+                    "detained": skipped_detained,
+                    "already_invoiced": skipped_invoiced,
+                    "empty_selection": skipped_empty,
+                },
+                "redirect_url": redirect_url,
+                "message": message,
+            }
+        )
 
     except Exception as e:
         current_app.logger.exception("Error in bulk_invoice_finalize_json")
         db.session.rollback()
         return jsonify({"ok": False, "error": str(e)}), 500
 
-@logistics_bp.route('/shipmentlog/invoices/purge-json', methods=['POST'])
+
+@logistics_bp.route("/shipmentlog/invoices/purge-json", methods=["POST"])
 @admin_required
 def purge_shipment_invoices_json():
     """
@@ -6766,7 +7473,17 @@ def purge_shipment_invoices_json():
     selected_pkg_ids = data.get("package_ids") or []
 
     if not shipment_id:
-        return jsonify({"ok": False, "purged": 0, "skipped": {}, "message": "Missing shipment_id"}), 400
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "purged": 0,
+                    "skipped": {},
+                    "message": "Missing shipment_id",
+                }
+            ),
+            400,
+        )
 
     # normalize selected ids if provided
     pkg_filter_ids = []
@@ -6790,35 +7507,48 @@ def purge_shipment_invoices_json():
         # 1) get package ids that are currently in this shipment (via association table)
         # IMPORTANT: ensure shipment_packages is imported in this file
         # from app.models import shipment_packages
-        q = (
-            db.session.query(shipment_packages.c.package_id)
-            .filter(shipment_packages.c.shipment_id == shipment_id)
+        q = db.session.query(shipment_packages.c.package_id).filter(
+            shipment_packages.c.shipment_id == shipment_id
         )
 
         shipment_pkg_ids = [int(r[0]) for r in q.all()]
 
         if not shipment_pkg_ids:
-            return jsonify({
-                "ok": True,
-                "purged": 0,
-                "skipped": {"paid_or_partial": 0, "has_payments": 0, "not_found": 0},
-                "detached_packages": 0,
-                "deleted_invoices": 0,
-                "message": "⚠️ No packages found in this shipment."
-            })
+            return jsonify(
+                {
+                    "ok": True,
+                    "purged": 0,
+                    "skipped": {
+                        "paid_or_partial": 0,
+                        "has_payments": 0,
+                        "not_found": 0,
+                    },
+                    "detached_packages": 0,
+                    "deleted_invoices": 0,
+                    "message": "⚠️ No packages found in this shipment.",
+                }
+            )
 
         # 2) if user selected specific packages, limit to those (and still ensure they are in shipment)
         if pkg_filter_ids:
-            shipment_pkg_ids = [pid for pid in shipment_pkg_ids if pid in set(pkg_filter_ids)]
+            shipment_pkg_ids = [
+                pid for pid in shipment_pkg_ids if pid in set(pkg_filter_ids)
+            ]
             if not shipment_pkg_ids:
-                return jsonify({
-                    "ok": True,
-                    "purged": 0,
-                    "skipped": {"paid_or_partial": 0, "has_payments": 0, "not_found": 0},
-                    "detached_packages": 0,
-                    "deleted_invoices": 0,
-                    "message": "⚠️ None of the selected packages belong to this shipment."
-                })
+                return jsonify(
+                    {
+                        "ok": True,
+                        "purged": 0,
+                        "skipped": {
+                            "paid_or_partial": 0,
+                            "has_payments": 0,
+                            "not_found": 0,
+                        },
+                        "detached_packages": 0,
+                        "deleted_invoices": 0,
+                        "message": "⚠️ None of the selected packages belong to this shipment.",
+                    }
+                )
 
         # 3) find invoice_ids attached to those packages
         invoice_ids = (
@@ -6831,14 +7561,20 @@ def purge_shipment_invoices_json():
         invoice_ids = [int(r[0]) for r in invoice_ids if r and r[0]]
 
         if not invoice_ids:
-            return jsonify({
-                "ok": True,
-                "purged": 0,
-                "skipped": {"paid_or_partial": 0, "has_payments": 0, "not_found": 0},
-                "detached_packages": 0,
-                "deleted_invoices": 0,
-                "message": "⚠️ No invoices found for packages in this shipment."
-            })
+            return jsonify(
+                {
+                    "ok": True,
+                    "purged": 0,
+                    "skipped": {
+                        "paid_or_partial": 0,
+                        "has_payments": 0,
+                        "not_found": 0,
+                    },
+                    "detached_packages": 0,
+                    "deleted_invoices": 0,
+                    "message": "⚠️ No invoices found for packages in this shipment.",
+                }
+            )
 
         # 4) purge invoices safely
         for inv_id in invoice_ids:
@@ -6865,8 +7601,7 @@ def purge_shipment_invoices_json():
 
             # Detach ONLY packages in this shipment from this invoice
             affected_pkgs = (
-                Package.query
-                .filter(Package.invoice_id == inv.id)
+                Package.query.filter(Package.invoice_id == inv.id)
                 .filter(Package.id.in_(shipment_pkg_ids))
                 .all()
             )
@@ -6897,32 +7632,44 @@ def purge_shipment_invoices_json():
 
         message = f"✅ Purged {purged} invoice(s). Detached {detached_packages} package(s). Deleted {deleted_invoices} invoice(s)."
         if purged == 0:
-            message = "⚠️ No invoices were purged (all were paid/partial or had payments)."
+            message = (
+                "⚠️ No invoices were purged (all were paid/partial or had payments)."
+            )
 
         redirect_url = None
         try:
-            redirect_url = url_for("logistics.logistics_dashboard", tab="shipmentLog", shipment_id=shipment_id)
+            redirect_url = url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+                shipment_id=shipment_id,
+            )
         except Exception:
             redirect_url = None
 
-        return jsonify({
-            "ok": True,
-            "purged": purged,
-            "detached_packages": detached_packages,
-            "deleted_invoices": deleted_invoices,
-            "skipped": {
-                "paid_or_partial": skipped_paid_or_partial,
-                "has_payments": skipped_has_payments,
-                "not_found": skipped_not_found,
-            },
-            "redirect_url": redirect_url,
-            "message": message
-        })
+        return jsonify(
+            {
+                "ok": True,
+                "purged": purged,
+                "detached_packages": detached_packages,
+                "deleted_invoices": deleted_invoices,
+                "skipped": {
+                    "paid_or_partial": skipped_paid_or_partial,
+                    "has_payments": skipped_has_payments,
+                    "not_found": skipped_not_found,
+                },
+                "redirect_url": redirect_url,
+                "message": message,
+            }
+        )
 
     except Exception as e:
         current_app.logger.exception("Error in purge_shipment_invoices_json")
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(e), "message": "❌ Purge failed."}), 500
+        return (
+            jsonify({"ok": False, "error": str(e), "message": "❌ Purge failed."}),
+            500,
+        )
+
 
 @logistics_bp.route("/packages/<int:pkg_id>/lock-pricing", methods=["POST"])
 @admin_required
@@ -6931,11 +7678,17 @@ def lock_package_pricing(pkg_id):
     p.pricing_locked = True
     if hasattr(p, "pricing_locked_at"):
         p.pricing_locked_at = datetime.now(timezone.utc)
-    if hasattr(p, "pricing_locked_by") and current_user and getattr(current_user, "id", None):
+    if (
+        hasattr(p, "pricing_locked_by")
+        and current_user
+        and getattr(current_user, "id", None)
+    ):
         p.pricing_locked_by = current_user.id
     db.session.commit()
     flash("Pricing locked for this package.", "success")
-    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog"))
+    return redirect(
+        request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog")
+    )
 
 
 # -------------------------------------------
@@ -6952,7 +7705,11 @@ def unlock_package_pricing(pkg_id):
         p.pricing_locked_by = None
     db.session.commit()
     flash("Pricing unlocked. Auto-calculation will apply next time.", "success")
-    return redirect(request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog"))
+    return redirect(
+        request.referrer or url_for("logistics.logistics_dashboard", tab="shipmentLog")
+    )
+
+
 # --------------------------------------------------------------------------------------
 # Misc simple APIs
 # --------------------------------------------------------------------------------------
@@ -7010,23 +7767,24 @@ def delete_package(package_id):
         )
     )
 
-@logistics_bp.route('/api/calculate-charges', methods=['POST'])
+
+@logistics_bp.route("/api/calculate-charges", methods=["POST"])
 @admin_required
 def api_calculate_charges():
     data = request.get_json() or {}
 
-    category = (data.get('category') or 'Other').strip()
+    category = (data.get("category") or "Other").strip()
 
     # weight
     try:
-        weight = float(data.get('weight') or 0)
+        weight = float(data.get("weight") or 0)
     except (TypeError, ValueError):
         weight = 0.0
 
     # usd value
-    raw_usd = data.get('invoice_usd')
+    raw_usd = data.get("invoice_usd")
     if raw_usd is None or raw_usd == "":
-        raw_usd = data.get('value') or data.get('value_usd') or data.get('invoice') or 0
+        raw_usd = data.get("value") or data.get("value_usd") or data.get("invoice") or 0
 
     try:
         invoice_usd = float(raw_usd or 0)
@@ -7047,21 +7805,22 @@ def api_calculate_charges():
         return float(default)
 
     payload = {
-        "duty":          pick("duty", "duty_amount"),
-        "gct":           pick("gct", "gct_amount"),
-        "scf":           pick("scf", "scf_amount"),
-        "envl":          pick("envl", "envl_amount"),
-        "caf":           pick("caf", "caf_amount"),
-        "stamp":         pick("stamp", "stamp_amount"),
-
-        "customs_total": pick("customs_total", "customs", "customs_amount", "customs_total_amount"),
-        "freight":       pick("freight", "freight_fee", "freight_amount"),
-        "handling":      pick("handling", "handling_fee", "storage_fee", "handling_amount"),
+        "duty": pick("duty", "duty_amount"),
+        "gct": pick("gct", "gct_amount"),
+        "scf": pick("scf", "scf_amount"),
+        "envl": pick("envl", "envl_amount"),
+        "caf": pick("caf", "caf_amount"),
+        "stamp": pick("stamp", "stamp_amount"),
+        "customs_total": pick(
+            "customs_total", "customs", "customs_amount", "customs_total_amount"
+        ),
+        "freight": pick("freight", "freight_fee", "freight_amount"),
+        "handling": pick("handling", "handling_fee", "storage_fee", "handling_amount"),
         "other_charges": pick("other_charges", "other", "other_fee", "other_amount"),
-
-        "freight_total": pick("freight_total", "freight_and_fees_total", "service_total"),
-        "grand_total":   pick("grand_total", "total_amount", "total", "amount_due"),
-
+        "freight_total": pick(
+            "freight_total", "freight_and_fees_total", "service_total"
+        ),
+        "grand_total": pick("grand_total", "total_amount", "total", "amount_due"),
         # helpful echo
         "category": category,
         "weight": weight,
@@ -7069,6 +7828,7 @@ def api_calculate_charges():
     }
 
     return jsonify(payload)
+
 
 @logistics_bp.route(
     "/api/package/<int:pkg_id>",
@@ -7113,32 +7873,35 @@ def api_update_package(pkg_id):
     package = db.session.get(Package, pkg_id)
 
     if not package:
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Package not found",
-            }
-        ), 404
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "Package not found",
+                }
+            ),
+            404,
+        )
 
-    if (
-        getattr(package, "pricing_locked", False)
-        and not to_bool(data.get("force"), False)
+    if getattr(package, "pricing_locked", False) and not to_bool(
+        data.get("force"), False
     ):
-        return jsonify(
-            {
-                "ok": False,
-                "error": (
-                    "Pricing is locked for this package. "
-                    "Unlock it or use force."
-                ),
-            }
-        ), 409
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": (
+                        "Pricing is locked for this package. " "Unlock it or use force."
+                    ),
+                }
+            ),
+            409,
+        )
 
     updated = []
     weight_changed = False
     subscription_result = (
-        getattr(package, "subscription_result", None)
-        or "no_subscription"
+        getattr(package, "subscription_result", None) or "no_subscription"
     )
 
     try:
@@ -7150,10 +7913,7 @@ def api_update_package(pkg_id):
             and data["category"] is not None
             and hasattr(package, "category")
         ):
-            package.category = (
-                str(data["category"]).strip()
-                or "Other"
-            )
+            package.category = str(data["category"]).strip() or "Other"
             updated.append("category")
 
         # -------------------------------------------------
@@ -7167,15 +7927,15 @@ def api_update_package(pkg_id):
             new_weight = to_num(data["weight"])
 
             if new_weight is None or new_weight < 0:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": (
-                            "Weight must be a valid "
-                            "non-negative number."
-                        ),
-                    }
-                ), 400
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": ("Weight must be a valid " "non-negative number."),
+                        }
+                    ),
+                    400,
+                )
 
             old_weight = to_num(
                 getattr(package, "weight", 0),
@@ -7191,10 +7951,7 @@ def api_update_package(pkg_id):
         # Declared value
         # Accept either value or declared_value
         # -------------------------------------------------
-        value_was_sent = (
-            "value" in data
-            or "declared_value" in data
-        )
+        value_was_sent = "value" in data or "declared_value" in data
 
         if value_was_sent:
             raw_value = data.get("value")
@@ -7205,15 +7962,17 @@ def api_update_package(pkg_id):
             declared_value = to_num(raw_value)
 
             if declared_value is None or declared_value < 0:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": (
-                            "Declared value must be a valid "
-                            "non-negative number."
-                        ),
-                    }
-                ), 400
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": (
+                                "Declared value must be a valid " "non-negative number."
+                            ),
+                        }
+                    ),
+                    400,
+                )
 
             if hasattr(package, "value"):
                 package.value = declared_value
@@ -7226,34 +7985,29 @@ def api_update_package(pkg_id):
         # -------------------------------------------------
         # Bad-address fields
         # -------------------------------------------------
-        if (
-            "bad_address" in data
-            and hasattr(package, "bad_address")
-        ):
+        if "bad_address" in data and hasattr(package, "bad_address"):
             package.bad_address = to_bool(
                 data.get("bad_address"),
                 False,
             )
             updated.append("bad_address")
 
-        if (
-            "bad_address_fee" in data
-            and hasattr(package, "bad_address_fee")
-        ):
+        if "bad_address_fee" in data and hasattr(package, "bad_address_fee"):
             bad_address_fee = to_num(
                 data.get("bad_address_fee"),
                 0.0,
             )
 
             if bad_address_fee < 0:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": (
-                            "Bad-address fee cannot be negative."
-                        ),
-                    }
-                ), 400
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": ("Bad-address fee cannot be negative."),
+                        }
+                    ),
+                    400,
+                )
 
             package.bad_address_fee = bad_address_fee
             updated.append("bad_address_fee")
@@ -7262,9 +8016,7 @@ def api_update_package(pkg_id):
         # Reconcile subscription usage when weight changes
         # -------------------------------------------------
         if weight_changed:
-            subscription_result = (
-                reconcile_subscription_usage(package)
-            )
+            subscription_result = reconcile_subscription_usage(package)
 
             if subscription_result not in (
                 "subscription_applied",
@@ -7272,10 +8024,7 @@ def api_update_package(pkg_id):
             ):
                 clear_package_subscription(
                     package,
-                    result=(
-                        subscription_result
-                        or "no_subscription"
-                    ),
+                    result=(subscription_result or "no_subscription"),
                 )
 
             updated.append("subscription_reconciled")
@@ -7317,30 +8066,25 @@ def api_update_package(pkg_id):
                 0.0,
             )
 
-            category = (
-                getattr(package, "category", None)
-                or "Other"
-            )
+            category = getattr(package, "category", None) or "Other"
 
             # Manual additional charges are still allowed.
-            if (
-                "other_charges" in data
-                and hasattr(package, "other_charges")
-            ):
+            if "other_charges" in data and hasattr(package, "other_charges"):
                 other_charges = to_num(
                     data.get("other_charges"),
                     0.0,
                 )
 
                 if other_charges < 0:
-                    return jsonify(
-                        {
-                            "ok": False,
-                            "error": (
-                                "Other charges cannot be negative."
-                            ),
-                        }
-                    ), 400
+                    return (
+                        jsonify(
+                            {
+                                "ok": False,
+                                "error": ("Other charges cannot be negative."),
+                            }
+                        ),
+                        400,
+                    )
 
                 package.other_charges = other_charges
                 updated.append("other_charges")
@@ -7360,13 +8104,10 @@ def api_update_package(pkg_id):
 
             # EPC/bad-address fee still applies.
             has_bad_address = bool(
-                getattr(package, "epc", False)
-                or getattr(package, "bad_address", False)
+                getattr(package, "epc", False) or getattr(package, "bad_address", False)
             )
 
-            bad_address_fee = (
-                500.0 if has_bad_address else 0.0
-            )
+            bad_address_fee = 500.0 if has_bad_address else 0.0
 
             if hasattr(package, "bad_address_fee"):
                 package.bad_address_fee = bad_address_fee
@@ -7397,11 +8138,14 @@ def api_update_package(pkg_id):
             # Over US$100: full customs charges apply
             # ---------------------------------------------
             else:
-                breakdown = calculate_charges(
-                    category,
-                    declared_value,
-                    weight,
-                ) or {}
+                breakdown = (
+                    calculate_charges(
+                        category,
+                        declared_value,
+                        weight,
+                    )
+                    or {}
+                )
 
                 customs_fields = {
                     "duty": ("duty", "duty_amount"),
@@ -7418,9 +8162,7 @@ def api_update_package(pkg_id):
                     ),
                 }
 
-                for field, possible_keys in (
-                    customs_fields.items()
-                ):
+                for field, possible_keys in customs_fields.items():
                     if hasattr(package, field):
                         setattr(
                             package,
@@ -7451,11 +8193,7 @@ def api_update_package(pkg_id):
                 0.0,
             )
 
-            final_total = (
-                customs_total
-                + other_charges
-                + bad_address_fee
-            )
+            final_total = customs_total + other_charges + bad_address_fee
 
             if hasattr(package, "grand_total"):
                 package.grand_total = final_total
@@ -7466,10 +8204,7 @@ def api_update_package(pkg_id):
             if hasattr(package, "outstanding"):
                 package.outstanding = final_total
 
-            if (
-                "pricing_locked" in data
-                and hasattr(package, "pricing_locked")
-            ):
+            if "pricing_locked" in data and hasattr(package, "pricing_locked"):
                 package.pricing_locked = to_bool(
                     data.get("pricing_locked"),
                     False,
@@ -7478,24 +8213,25 @@ def api_update_package(pkg_id):
 
             db.session.commit()
 
-            return jsonify(
-                {
-                    "ok": True,
-                    "pkg_id": pkg_id,
-                    "updated": updated,
-                    "subscription_result": (
-                        subscription_result
-                    ),
-                    "subscription_covered": True,
-                    "declared_value": declared_value,
-                    "customs_total": customs_total,
-                    "bad_address_fee": bad_address_fee,
-                    "other_charges": other_charges,
-                    "amount_due": final_total,
-                    "grand_total": final_total,
-                    "message": subscription_message,
-                }
-            ), 200
+            return (
+                jsonify(
+                    {
+                        "ok": True,
+                        "pkg_id": pkg_id,
+                        "updated": updated,
+                        "subscription_result": (subscription_result),
+                        "subscription_covered": True,
+                        "declared_value": declared_value,
+                        "customs_total": customs_total,
+                        "bad_address_fee": bad_address_fee,
+                        "other_charges": other_charges,
+                        "amount_due": final_total,
+                        "grand_total": final_total,
+                        "message": subscription_message,
+                    }
+                ),
+                200,
+            )
 
         # -------------------------------------------------
         # Normal/non-covered package breakdown
@@ -7520,29 +8256,16 @@ def api_update_package(pkg_id):
         }
 
         # Backward-compatible request keys.
-        if (
-            "freight" in data
-            and "freight_fee" not in data
-        ):
+        if "freight" in data and "freight_fee" not in data:
             data["freight_fee"] = data.get("freight")
 
-        if (
-            "handling" in data
-            and "handling_fee" not in data
-        ):
+        if "handling" in data and "handling_fee" not in data:
             data["handling_fee"] = data.get("handling")
 
-        if (
-            "storage_fee" in data
-            and "handling_fee" not in data
-        ):
-            data["handling_fee"] = data.get(
-                "storage_fee"
-            )
+        if "storage_fee" in data and "handling_fee" not in data:
+            data["handling_fee"] = data.get("storage_fee")
 
-        for client_key, column_name in (
-            breakdown_map.items()
-        ):
+        for client_key, column_name in breakdown_map.items():
             if (
                 client_key in data
                 and data[client_key] is not None
@@ -7554,14 +8277,15 @@ def api_update_package(pkg_id):
                 )
 
                 if amount < 0:
-                    return jsonify(
-                        {
-                            "ok": False,
-                            "error": (
-                                f"{client_key} cannot be negative."
-                            ),
-                        }
-                    ), 400
+                    return (
+                        jsonify(
+                            {
+                                "ok": False,
+                                "error": (f"{client_key} cannot be negative."),
+                            }
+                        ),
+                        400,
+                    )
 
                 setattr(
                     package,
@@ -7573,10 +8297,7 @@ def api_update_package(pkg_id):
         # -------------------------------------------------
         # Pricing lock
         # -------------------------------------------------
-        if (
-            "pricing_locked" in data
-            and hasattr(package, "pricing_locked")
-        ):
+        if "pricing_locked" in data and hasattr(package, "pricing_locked"):
             package.pricing_locked = to_bool(
                 data.get("pricing_locked"),
                 False,
@@ -7608,17 +8329,18 @@ def api_update_package(pkg_id):
 
         db.session.commit()
 
-        return jsonify(
-            {
-                "ok": True,
-                "pkg_id": pkg_id,
-                "updated": updated,
-                "subscription_result": (
-                    subscription_result
-                ),
-                "subscription_covered": False,
-            }
-        ), 200
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "pkg_id": pkg_id,
+                    "updated": updated,
+                    "subscription_result": (subscription_result),
+                    "subscription_covered": False,
+                }
+            ),
+            200,
+        )
 
     except Exception as error:
         db.session.rollback()
@@ -7628,31 +8350,34 @@ def api_update_package(pkg_id):
             pkg_id,
         )
 
-        return jsonify(
-            {
-                "ok": False,
-                "error": (
-                    "The package could not be updated."
-                ),
-                "details": str(error),
-            }
-        ), 500
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": ("The package could not be updated."),
+                    "details": str(error),
+                }
+            ),
+            500,
+        )
+
+
 # --------------------------------------------------------------------------------------
 # Invoice status
 # --------------------------------------------------------------------------------------
-@logistics_bp.route('/invoices/<int:invoice_id>/status', methods=['POST'])
+@logistics_bp.route("/invoices/<int:invoice_id>/status", methods=["POST"])
 @admin_required
 def set_invoice_status(invoice_id):
-    new_status = (request.form.get('status') or '').lower()
-    if new_status not in ('paid','unpaid','cancelled'):
+    new_status = (request.form.get("status") or "").lower()
+    if new_status not in ("paid", "unpaid", "cancelled"):
         return jsonify({"ok": False, "error": "Invalid status"}), 400
 
     inv = db.session.get(Invoice, invoice_id)
     if not inv:
         return jsonify({"ok": False, "error": "Invoice not found"}), 404
 
-    if new_status == 'paid':
-        inv.status = 'paid'
+    if new_status == "paid":
+        inv.status = "paid"
         inv.date_paid = datetime.now(timezone.utc)
     else:
         inv.status = new_status
@@ -7667,15 +8392,11 @@ def set_invoice_status(invoice_id):
 def scheduled_pickups():
     today = date.today()
 
-    sp_today_count = (
-        ScheduledPickup.query
-        .filter(
-            ScheduledPickup.pickup_date == today,
-            ScheduledPickup.status.in_(["Scheduled", "Ready"])
-        )
-        .count()
-    )
-    
+    sp_today_count = ScheduledPickup.query.filter(
+        ScheduledPickup.pickup_date == today,
+        ScheduledPickup.status.in_(["Scheduled", "Ready"]),
+    ).count()
+
     status = (request.args.get("status") or "").strip()
     branch = (request.args.get("branch") or "").strip()
 
@@ -7687,17 +8408,16 @@ def scheduled_pickups():
     if branch:
         q = q.filter(ScheduledPickup.branch == branch)
 
-    pickups = (
-        q.order_by(ScheduledPickup.pickup_date.desc(), ScheduledPickup.id.desc())
-        .all()
-    )
+    pickups = q.order_by(
+        ScheduledPickup.pickup_date.desc(), ScheduledPickup.id.desc()
+    ).all()
 
     return render_template(
         "admin/logistics/scheduled_pickups.html",
         pickups=pickups,
         sp_today_count=sp_today_count,
         status=status,
-        branch=branch
+        branch=branch,
     )
 
 
@@ -7706,15 +8426,11 @@ def scheduled_pickups():
 def scheduled_pickup_view(pickup_id):
     pickup = ScheduledPickup.query.get_or_404(pickup_id)
 
-    return render_template(
-        "admin/logistics/scheduled_pickup_view.html",
-        pickup=pickup
-    )
+    return render_template("admin/logistics/scheduled_pickup_view.html", pickup=pickup)
 
 
 @logistics_bp.route(
-    "/scheduled-pickups/<int:pickup_id>/status/<status>",
-    methods=["POST"]
+    "/scheduled-pickups/<int:pickup_id>/status/<status>", methods=["POST"]
 )
 @admin_required()
 def scheduled_pickup_set_status(pickup_id, status):
@@ -7729,12 +8445,7 @@ def scheduled_pickup_set_status(pickup_id, status):
 
     if status not in allowed_statuses:
         flash("Invalid pickup status.", "danger")
-        return redirect(
-            url_for(
-                "logistics.scheduled_pickup_view",
-                pickup_id=pickup.id
-            )
-        )
+        return redirect(url_for("logistics.scheduled_pickup_view", pickup_id=pickup.id))
 
     current_status = (pickup.status or "").strip()
 
@@ -7744,37 +8455,24 @@ def scheduled_pickup_set_status(pickup_id, status):
         flash(
             f"This pickup is already {current_status.lower()} "
             "and cannot be changed.",
-            "warning"
+            "warning",
         )
-        return redirect(
-            url_for(
-                "logistics.scheduled_pickup_view",
-                pickup_id=pickup.id
-            )
-        )
+        return redirect(url_for("logistics.scheduled_pickup_view", pickup_id=pickup.id))
 
     allowed_transitions = {
         "Scheduled": {"Ready", "Cancelled"},
         "Ready": {"Collected", "Cancelled"},
     }
 
-    permitted_statuses = allowed_transitions.get(
-        current_status,
-        set()
-    )
+    permitted_statuses = allowed_transitions.get(current_status, set())
 
     if status not in permitted_statuses:
         flash(
             f"Pickup cannot be changed from "
             f"{current_status or 'Unknown'} to {status}.",
-            "warning"
+            "warning",
         )
-        return redirect(
-            url_for(
-                "logistics.scheduled_pickup_view",
-                pickup_id=pickup.id
-            )
-        )
+        return redirect(url_for("logistics.scheduled_pickup_view", pickup_id=pickup.id))
 
     now_utc = datetime.now(timezone.utc)
     packages = pickup.packages.all()
@@ -7797,9 +8495,7 @@ def scheduled_pickup_set_status(pickup_id, status):
                 pkg.is_locked = True
 
                 if hasattr(pkg, "locked_reason"):
-                    pkg.locked_reason = (
-                        "Store pickup collected"
-                    )
+                    pkg.locked_reason = "Store pickup collected"
 
                 if hasattr(pkg, "locked_at"):
                     pkg.locked_at = now_utc
@@ -7821,9 +8517,7 @@ def scheduled_pickup_set_status(pickup_id, status):
             pickup.completed_at = None
 
             for pkg in packages:
-                package_status = (
-                    pkg.status or ""
-                ).strip().lower()
+                package_status = (pkg.status or "").strip().lower()
 
                 # Do not reverse a package that was already delivered.
                 if package_status != "delivered":
@@ -7835,40 +8529,25 @@ def scheduled_pickup_set_status(pickup_id, status):
         db.session.rollback()
 
         current_app.logger.exception(
-            "Failed to change scheduled pickup %s "
-            "from %s to %s",
+            "Failed to change scheduled pickup %s " "from %s to %s",
             pickup.id,
             current_status,
             status,
         )
 
-        flash(
-            "The pickup status could not be updated.",
-            "danger"
-        )
+        flash("The pickup status could not be updated.", "danger")
 
-        return redirect(
-            url_for(
-                "logistics.scheduled_pickup_view",
-                pickup_id=pickup.id
-            )
-        )
+        return redirect(url_for("logistics.scheduled_pickup_view", pickup_id=pickup.id))
 
-    flash(
-        f"Pickup marked as {status}.",
-        "success"
-    )
+    flash(f"Pickup marked as {status}.", "success")
 
-    return redirect(
-        url_for(
-            "logistics.scheduled_pickup_view",
-            pickup_id=pickup.id
-        )
-    )
+    return redirect(url_for("logistics.scheduled_pickup_view", pickup_id=pickup.id))
+
 
 # --------------------------------------------------------------------------------------
 # Scheduled Deliveries (Admin / Operations)
 # ---------------------------------------------------------------
+
 
 @logistics_bp.route("/scheduled_deliveries", methods=["GET"])
 @admin_required()
@@ -7892,50 +8571,31 @@ def view_scheduled_deliveries():
 
     if start_date:
         try:
-            parsed_start_date = datetime.strptime(
-                start_date,
-                "%Y-%m-%d"
-            ).date()
+            parsed_start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
 
-            q = q.filter(
-                ScheduledDelivery.scheduled_date >= parsed_start_date
-            )
+            q = q.filter(ScheduledDelivery.scheduled_date >= parsed_start_date)
         except ValueError:
             flash("Invalid start date.", "warning")
             start_date = ""
 
     if end_date:
         try:
-            parsed_end_date = datetime.strptime(
-                end_date,
-                "%Y-%m-%d"
-            ).date()
+            parsed_end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
 
-            q = q.filter(
-                ScheduledDelivery.scheduled_date <= parsed_end_date
-            )
+            q = q.filter(ScheduledDelivery.scheduled_date <= parsed_end_date)
         except ValueError:
             flash("Invalid end date.", "warning")
             end_date = ""
 
     if status:
-        q = q.filter(
-            ScheduledDelivery.status == status
-        )
+        q = q.filter(ScheduledDelivery.status == status)
 
     if area_zone:
-        q = q.filter(
-            ScheduledDelivery.area_zone == area_zone
-        )
+        q = q.filter(ScheduledDelivery.area_zone == area_zone)
 
-    deliveries = (
-        q
-        .order_by(
-            ScheduledDelivery.scheduled_date.desc(),
-            ScheduledDelivery.id.desc()
-        )
-        .all()
-    )
+    deliveries = q.order_by(
+        ScheduledDelivery.scheduled_date.desc(), ScheduledDelivery.id.desc()
+    ).all()
 
     # -------------------------------------------------
     # Dashboard summary counts
@@ -7952,62 +8612,44 @@ def view_scheduled_deliveries():
         "Canceled",
     ]
 
-    sd_today_count = (
-        ScheduledDelivery.query
-        .filter(
-            ScheduledDelivery.scheduled_date == today,
-            ~ScheduledDelivery.status.in_(inactive_statuses),
-        )
-        .count()
-    )
+    sd_today_count = ScheduledDelivery.query.filter(
+        ScheduledDelivery.scheduled_date == today,
+        ~ScheduledDelivery.status.in_(inactive_statuses),
+    ).count()
 
-    sd_tomorrow_count = (
-        ScheduledDelivery.query
-        .filter(
-            ScheduledDelivery.scheduled_date == tomorrow,
-            ~ScheduledDelivery.status.in_(inactive_statuses),
-        )
-        .count()
-    )
+    sd_tomorrow_count = ScheduledDelivery.query.filter(
+        ScheduledDelivery.scheduled_date == tomorrow,
+        ~ScheduledDelivery.status.in_(inactive_statuses),
+    ).count()
 
-    sd_pending_total = (
-        ScheduledDelivery.query
-        .filter(
-            ~ScheduledDelivery.status.in_(completed_statuses)
-        )
-        .count()
-    )
+    sd_pending_total = ScheduledDelivery.query.filter(
+        ~ScheduledDelivery.status.in_(completed_statuses)
+    ).count()
 
-    sd_overdue_count = (
-        ScheduledDelivery.query
-        .filter(
-            ScheduledDelivery.scheduled_date < today,
-            ~ScheduledDelivery.status.in_(completed_statuses),
-        )
-        .count()
-    )
+    sd_overdue_count = ScheduledDelivery.query.filter(
+        ScheduledDelivery.scheduled_date < today,
+        ~ScheduledDelivery.status.in_(completed_statuses),
+    ).count()
 
     return render_template(
         "admin/logistics/scheduled_deliveries.html",
         deliveries=deliveries,
-
         # Filters
         start_date=start_date,
         end_date=end_date,
         status=status,
         area_zone=area_zone,
-
         # Jamaica dates used by row highlighting
         today=today,
         tomorrow=tomorrow,
         jamaica_now=jamaica_now,
-
         # Summary cards
         sd_today_count=sd_today_count,
         sd_tomorrow_count=sd_tomorrow_count,
         sd_pending_total=sd_pending_total,
         sd_overdue_count=sd_overdue_count,
     )
+
 
 @logistics_bp.route("/api/scheduled_delivery_alerts", methods=["GET"])
 @admin_required()
@@ -8019,36 +8661,41 @@ def api_scheduled_delivery_alerts():
         pending_filter = ~ScheduledDelivery.status.in_(["Delivered", "Cancelled"])
 
         today_count = ScheduledDelivery.query.filter(
-            ScheduledDelivery.scheduled_date == today,
-            pending_filter
+            ScheduledDelivery.scheduled_date == today, pending_filter
         ).count()
 
         tomorrow_count = ScheduledDelivery.query.filter(
-            ScheduledDelivery.scheduled_date == tomorrow,
-            pending_filter
+            ScheduledDelivery.scheduled_date == tomorrow, pending_filter
         ).count()
 
         overdue_count = ScheduledDelivery.query.filter(
-            ScheduledDelivery.scheduled_date < today,
-            pending_filter
+            ScheduledDelivery.scheduled_date < today, pending_filter
         ).count()
 
         pending_total = ScheduledDelivery.query.filter(pending_filter).count()
 
-        latest = ScheduledDelivery.query.order_by(ScheduledDelivery.created_at.desc()).first()
+        latest = ScheduledDelivery.query.order_by(
+            ScheduledDelivery.created_at.desc()
+        ).first()
 
-        return jsonify({
-            "ok": True,
-            "today": today_count,
-            "tomorrow": tomorrow_count,
-            "overdue": overdue_count,
-            "pending_total": pending_total,
-            "latest_id": latest.id if latest else None,
-            "latest_invoice": latest.invoice_number if latest else None,
-        })
+        return jsonify(
+            {
+                "ok": True,
+                "today": today_count,
+                "tomorrow": tomorrow_count,
+                "overdue": overdue_count,
+                "pending_total": pending_total,
+                "latest_id": latest.id if latest else None,
+                "latest_invoice": latest.invoice_number if latest else None,
+            }
+        )
     except Exception as e:
         current_app.logger.exception(f"scheduled_delivery_alerts failed: {e}")
-        return jsonify({"ok": False, "error": "Failed to load scheduled delivery alerts"}), 500
+        return (
+            jsonify({"ok": False, "error": "Failed to load scheduled delivery alerts"}),
+            500,
+        )
+
 
 @logistics_bp.route("/scheduled_deliveries/pdf")
 @admin_required()
@@ -8062,7 +8709,7 @@ def scheduled_deliveries_pdf():
         Table,
         TableStyle,
         Paragraph,
-        Spacer
+        Spacer,
     )
 
     start_date = request.args.get("start_date")
@@ -8072,12 +8719,9 @@ def scheduled_deliveries_pdf():
     q = ScheduledDelivery.query
 
     q = q.filter(
-        ScheduledDelivery.status.in_([
-            "Scheduled",
-            "Out for Delivery",
-            "Pending",
-            "Delivery Attempted"
-        ])
+        ScheduledDelivery.status.in_(
+            ["Scheduled", "Out for Delivery", "Pending", "Delivery Attempted"]
+        )
     )
 
     if start_date:
@@ -8095,13 +8739,9 @@ def scheduled_deliveries_pdf():
     if status:
         q = q.filter(ScheduledDelivery.status == status)
 
-    deliveries = (
-        q.order_by(
-            ScheduledDelivery.scheduled_date.asc(),
-            ScheduledDelivery.id.asc()
-        )
-        .all()
-    )
+    deliveries = q.order_by(
+        ScheduledDelivery.scheduled_date.asc(), ScheduledDelivery.id.asc()
+    ).all()
 
     buffer = io.BytesIO()
 
@@ -8148,12 +8788,7 @@ def scheduled_deliveries_pdf():
 
     story = []
 
-    story.append(
-        Paragraph(
-            "Scheduled Deliveries Dispatch Manifest",
-            title_style
-        )
-    )
+    story.append(Paragraph("Scheduled Deliveries Dispatch Manifest", title_style))
 
     date_label = "All Dates"
 
@@ -8169,22 +8804,24 @@ def scheduled_deliveries_pdf():
                 f"Delivery Window: 9:00 AM - 5:00 PM | "
                 f"Total Deliveries: {len(deliveries)}"
             ),
-            small_style
+            small_style,
         )
     )
 
     story.append(Spacer(1, 10))
 
-    data = [[
-        Paragraph("Customer / Phone", header_style),
-        Paragraph("Address / Receiver", header_style),
-        Paragraph("Coverage", header_style),
-        Paragraph("Delivery Fee", header_style),
-        Paragraph("Pkg Balance", header_style),
-        Paragraph("Pkgs", header_style),
-        Paragraph("Payment", header_style),
-        Paragraph("Customer Signature", header_style),
-    ]]
+    data = [
+        [
+            Paragraph("Customer / Phone", header_style),
+            Paragraph("Address / Receiver", header_style),
+            Paragraph("Coverage", header_style),
+            Paragraph("Delivery Fee", header_style),
+            Paragraph("Pkg Balance", header_style),
+            Paragraph("Pkgs", header_style),
+            Paragraph("Payment", header_style),
+            Paragraph("Customer Signature", header_style),
+        ]
+    ]
 
     total_delivery_fees = 0.0
     total_package_balances = 0.0
@@ -8196,21 +8833,16 @@ def scheduled_deliveries_pdf():
             else (d.user.email if d.user else "N/A")
         )
 
-        phone = (
-            getattr(d, "mobile_number", None)
-            or (
-                getattr(d.user, "phone", None)
-                or getattr(d.user, "mobile", None)
-                or getattr(d.user, "mobile_number", None)
-                or ""
-                if d.user else ""
-            )
+        phone = getattr(d, "mobile_number", None) or (
+            getattr(d.user, "phone", None)
+            or getattr(d.user, "mobile", None)
+            or getattr(d.user, "mobile_number", None)
+            or ""
+            if d.user
+            else ""
         )
 
-        customer_text = (
-            f"{cust}<br/>"
-            f"Phone: {phone or '—'}"
-        )
+        customer_text = f"{cust}<br/>" f"Phone: {phone or '—'}"
 
         address_parts = [
             d.location or "",
@@ -8219,36 +8851,24 @@ def scheduled_deliveries_pdf():
             f"Receiver Phone: {d.mobile_number or phone or '—'}",
         ]
 
-        address_text = "<br/>".join(
-            x for x in address_parts if x
-        )
+        address_text = "<br/>".join(x for x in address_parts if x)
 
-        assigned_packages = (
-            Package.query
-            .filter(Package.scheduled_delivery_id == d.id)
-            .all()
-        )
+        assigned_packages = Package.query.filter(
+            Package.scheduled_delivery_id == d.id
+        ).all()
 
         pkg_count = len(assigned_packages)
 
-        package_balance = sum(
-            float(p.amount_due or 0)
-            for p in assigned_packages
-        )
+        package_balance = sum(float(p.amount_due or 0) for p in assigned_packages)
 
         delivery_fee_amount = float(d.delivery_fee or 0)
 
         total_delivery_fees += delivery_fee_amount
         total_package_balances += package_balance
 
-        fee_text = (
-            f"{d.fee_currency or 'JMD'} "
-            f"{delivery_fee_amount:,.2f}"
-        )
+        fee_text = f"{d.fee_currency or 'JMD'} " f"{delivery_fee_amount:,.2f}"
 
-        package_balance_text = (
-            f"JMD {package_balance:,.2f}"
-        )
+        package_balance_text = f"JMD {package_balance:,.2f}"
 
         if getattr(d, "is_free_delivery", False):
             coverage = "Core / Free"
@@ -8262,107 +8882,109 @@ def scheduled_deliveries_pdf():
             coverage = getattr(d, "delivery_type", None) or "—"
 
         if getattr(d, "distance_km", None):
-            coverage = (
-                f"{coverage}<br/>"
-                f"{float(d.distance_km):.2f} KM"
-            )
+            coverage = f"{coverage}<br/>" f"{float(d.distance_km):.2f} KM"
 
         payment_method = ""
 
-        data.append([
-            Paragraph(str(customer_text), small_style),
-            Paragraph(address_text or "—", small_style),
-            Paragraph(str(coverage), small_style),
-            Paragraph(str(fee_text), small_style),
-            Paragraph(str(package_balance_text), small_style),
-            Paragraph(str(pkg_count), small_center),
-            Paragraph(str(payment_method), small_style),
-            Paragraph("", small_style),
-        ])
+        data.append(
+            [
+                Paragraph(str(customer_text), small_style),
+                Paragraph(address_text or "—", small_style),
+                Paragraph(str(coverage), small_style),
+                Paragraph(str(fee_text), small_style),
+                Paragraph(str(package_balance_text), small_style),
+                Paragraph(str(pkg_count), small_center),
+                Paragraph(str(payment_method), small_style),
+                Paragraph("", small_style),
+            ]
+        )
 
     table = Table(
         data,
         repeatRows=1,
         colWidths=[
-            110,   # Customer / Phone
-            230,   # Address / Receiver
-            70,    # Coverage
-            65,    # Delivery Fee
-            70,    # Package Balance
-            30,    # Pkgs
-            70,    # Payment
-            105,   # Signature
+            110,  # Customer / Phone
+            230,  # Address / Receiver
+            70,  # Coverage
+            65,  # Delivery Fee
+            70,  # Package Balance
+            30,  # Pkgs
+            70,  # Payment
+            105,  # Signature
         ],
     )
 
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4A148C")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 7),
-        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-
-        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 1), (-1, -1), 7),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.grey),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
-            colors.white,
-            colors.HexColor("#F8F9FA")
-        ]),
-
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
-    ]))
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#4A148C")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, 0), 7),
+                ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 1), (-1, -1), 7),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.grey),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.white, colors.HexColor("#F8F9FA")],
+                ),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+            ]
+        )
+    )
 
     story.append(table)
 
-    expected_total = (
-        total_delivery_fees
-        + total_package_balances
-    )
+    expected_total = total_delivery_fees + total_package_balances
 
     story.append(Spacer(1, 12))
 
     totals_table = Table(
-        [[
-            Paragraph(
-                (
-                    f"<b>Total Delivery Fees:</b> "
-                    f"JMD {total_delivery_fees:,.2f}"
+        [
+            [
+                Paragraph(
+                    (f"<b>Total Delivery Fees:</b> " f"JMD {total_delivery_fees:,.2f}"),
+                    small_style,
                 ),
-                small_style
-            ),
-            Paragraph(
-                (
-                    f"<b>Total Package Balances:</b> "
-                    f"JMD {total_package_balances:,.2f}"
+                Paragraph(
+                    (
+                        f"<b>Total Package Balances:</b> "
+                        f"JMD {total_package_balances:,.2f}"
+                    ),
+                    small_style,
                 ),
-                small_style
-            ),
-            Paragraph(
-                (
-                    f"<b>Expected Route Collection:</b> "
-                    f"JMD {expected_total:,.2f}"
+                Paragraph(
+                    (
+                        f"<b>Expected Route Collection:</b> "
+                        f"JMD {expected_total:,.2f}"
+                    ),
+                    small_style,
                 ),
-                small_style
-            ),
-        ]],
-        colWidths=[180, 220, 220]
+            ]
+        ],
+        colWidths=[180, 220, 220],
     )
 
-    totals_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
-        ("BOX", (0, 0), (-1, -1), 1, colors.lightgrey),
-        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ("LEFTPADDING", (0, 0), (-1, -1), 8),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-    ]))
+    totals_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke),
+                ("BOX", (0, 0), (-1, -1), 1, colors.lightgrey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
 
     story.append(totals_table)
 
@@ -8375,7 +8997,7 @@ def scheduled_deliveries_pdf():
                 "Driver Signature: ____________________________    "
                 "Date: __________________"
             ),
-            small_style
+            small_style,
         )
     )
 
@@ -8390,6 +9012,7 @@ def scheduled_deliveries_pdf():
         mimetype="application/pdf",
     )
 
+
 @logistics_bp.route(
     "/scheduled_deliveries/add",
     methods=["GET", "POST"],
@@ -8398,14 +9021,10 @@ def scheduled_deliveries_pdf():
 def add_scheduled_delivery():
     form = ScheduledDeliveryForm()
 
-    users = (
-        User.query
-        .order_by(
-            User.full_name.asc(),
-            User.id.asc(),
-        )
-        .all()
-    )
+    users = User.query.order_by(
+        User.full_name.asc(),
+        User.id.asc(),
+    ).all()
 
     # Prevent WTForms "Choices cannot be None".
     if hasattr(form, "user_id"):
@@ -8447,15 +9066,9 @@ def add_scheduled_delivery():
             "schedule_date",
         )
 
-        delivery_parish = (
-            submitted_value("delivery_parish")
-            or ""
-        ).strip()
+        delivery_parish = (submitted_value("delivery_parish") or "").strip()
 
-        location = (
-            submitted_value("location")
-            or ""
-        ).strip()
+        location = (submitted_value("location") or "").strip()
 
         direction = (
             submitted_value(
@@ -8473,10 +9086,7 @@ def add_scheduled_delivery():
             or ""
         ).strip()
 
-        person_receiving = (
-            submitted_value("person_receiving")
-            or ""
-        ).strip()
+        person_receiving = (submitted_value("person_receiving") or "").strip()
 
         # ---------------------------------
         # Required fields
@@ -8496,36 +9106,29 @@ def add_scheduled_delivery():
             missing_fields.append("delivery parish")
 
         if not mobile_number:
-            missing_fields.append(
-                "receiver mobile number"
-            )
+            missing_fields.append("receiver mobile number")
 
         if not person_receiving:
-            missing_fields.append(
-                "person receiving"
-            )
+            missing_fields.append("person receiving")
 
         if missing_fields:
-            message = (
-                "Please provide: "
-                + ", ".join(missing_fields)
-                + "."
-            )
+            message = "Please provide: " + ", ".join(missing_fields) + "."
 
             if is_json:
-                return jsonify({
-                    "status": "error",
-                    "success": False,
-                    "message": message,
-                }), 400
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "success": False,
+                            "message": message,
+                        }
+                    ),
+                    400,
+                )
 
             flash(message, "danger")
 
-            return redirect(
-                url_for(
-                    "logistics.add_scheduled_delivery"
-                )
-            )
+            return redirect(url_for("logistics.add_scheduled_delivery"))
 
         # ---------------------------------
         # Validate customer
@@ -8537,19 +9140,20 @@ def add_scheduled_delivery():
             message = "The selected customer is invalid."
 
             if is_json:
-                return jsonify({
-                    "status": "error",
-                    "success": False,
-                    "message": message,
-                }), 400
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "success": False,
+                            "message": message,
+                        }
+                    ),
+                    400,
+                )
 
             flash(message, "danger")
 
-            return redirect(
-                url_for(
-                    "logistics.add_scheduled_delivery"
-                )
-            )
+            return redirect(url_for("logistics.add_scheduled_delivery"))
 
         selected_customer = db.session.get(
             User,
@@ -8560,19 +9164,20 @@ def add_scheduled_delivery():
             message = "The selected customer was not found."
 
             if is_json:
-                return jsonify({
-                    "status": "error",
-                    "success": False,
-                    "message": message,
-                }), 404
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "success": False,
+                            "message": message,
+                        }
+                    ),
+                    404,
+                )
 
             flash(message, "danger")
 
-            return redirect(
-                url_for(
-                    "logistics.add_scheduled_delivery"
-                )
-            )
+            return redirect(url_for("logistics.add_scheduled_delivery"))
 
         # ---------------------------------
         # Validate delivery date
@@ -8587,42 +9192,42 @@ def add_scheduled_delivery():
             message = "The selected delivery date is invalid."
 
             if is_json:
-                return jsonify({
-                    "status": "error",
-                    "success": False,
-                    "message": message,
-                }), 400
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "success": False,
+                            "message": message,
+                        }
+                    ),
+                    400,
+                )
 
             flash(message, "danger")
 
-            return redirect(
-                url_for(
-                    "logistics.add_scheduled_delivery"
-                )
-            )
+            return redirect(url_for("logistics.add_scheduled_delivery"))
 
         try:
             settings = Settings.query.get(1)
 
             if not settings:
-                message = (
-                    "Delivery settings are not configured."
-                )
+                message = "Delivery settings are not configured."
 
                 if is_json:
-                    return jsonify({
-                        "status": "error",
-                        "success": False,
-                        "message": message,
-                    }), 500
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "success": False,
+                                "message": message,
+                            }
+                        ),
+                        500,
+                    )
 
                 flash(message, "danger")
 
-                return redirect(
-                    url_for(
-                        "logistics.add_scheduled_delivery"
-                    )
-                )
+                return redirect(url_for("logistics.add_scheduled_delivery"))
 
             # ---------------------------------
             # Recalculate real distance
@@ -8640,24 +9245,22 @@ def add_scheduled_delivery():
                 )
 
                 if is_json:
-                    return jsonify({
-                        "status": "error",
-                        "success": False,
-                        "message": message,
-                    }), 400
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "success": False,
+                                "message": message,
+                            }
+                        ),
+                        400,
+                    )
 
                 flash(message, "danger")
 
-                return redirect(
-                    url_for(
-                        "logistics.add_scheduled_delivery"
-                    )
-                )
+                return redirect(url_for("logistics.add_scheduled_delivery"))
 
-            distance_km = float(
-                distance_result.get("distance_km")
-                or 0
-            )
+            distance_km = float(distance_result.get("distance_km") or 0)
 
             # ---------------------------------
             # Recalculate coverage and fee
@@ -8677,19 +9280,20 @@ def add_scheduled_delivery():
                 )
 
                 if is_json:
-                    return jsonify({
-                        "status": "error",
-                        "success": False,
-                        "message": message,
-                    }), 400
+                    return (
+                        jsonify(
+                            {
+                                "status": "error",
+                                "success": False,
+                                "message": message,
+                            }
+                        ),
+                        400,
+                    )
 
                 flash(message, "warning")
 
-                return redirect(
-                    url_for(
-                        "logistics.add_scheduled_delivery"
-                    )
-                )
+                return redirect(url_for("logistics.add_scheduled_delivery"))
 
             fee_amount = Decimal(
                 str(
@@ -8701,12 +9305,7 @@ def add_scheduled_delivery():
                 )
             ).quantize(Decimal("0.01"))
 
-            delivery_type = (
-                delivery_details.get(
-                    "delivery_type"
-                )
-                or "paid"
-            )
+            delivery_type = delivery_details.get("delivery_type") or "paid"
 
             if delivery_type == "admin_review":
                 fee_status = "Unpaid"
@@ -8723,24 +9322,19 @@ def add_scheduled_delivery():
             new_delivery = ScheduledDelivery(
                 user_id=selected_customer.id,
                 scheduled_date=scheduled_date,
-
                 scheduled_time_from="09:00",
                 scheduled_time_to="17:00",
                 scheduled_time="09:00 - 17:00",
-
                 location=location,
                 direction=direction,
                 mobile_number=mobile_number,
                 person_receiving=person_receiving,
-
                 area_zone=delivery_details.get(
                     "area_zone",
                     "dynamic",
                 ),
                 delivery_parish=delivery_parish,
-                delivery_branch=delivery_details.get(
-                    "delivery_branch"
-                ),
+                delivery_branch=delivery_details.get("delivery_branch"),
                 distance_km=distance_km,
                 estimated_drive_minutes=None,
                 delivery_type=delivery_type,
@@ -8751,7 +9345,6 @@ def add_scheduled_delivery():
                     )
                 ),
                 delivery_risk_status="safe",
-
                 delivery_fee=fee_amount,
                 fee_currency=DELIVERY_FEE_CURRENCY,
                 fee_status=fee_status,
@@ -8762,107 +9355,74 @@ def add_scheduled_delivery():
             db.session.flush()
 
             # Use Jamaica time for delivery-number year.
-            jamaica_now = to_jamaica(
-                datetime.now(timezone.utc)
-            )
+            jamaica_now = to_jamaica(datetime.now(timezone.utc))
 
             new_delivery.invoice_number = (
-                f"DEL-{jamaica_now.year}-"
-                f"{new_delivery.id:06d}"
+                f"DEL-{jamaica_now.year}-" f"{new_delivery.id:06d}"
             )
 
             db.session.commit()
 
             if is_json:
-                return jsonify({
-                    "status": "success",
-                    "success": True,
-                    "message": (
-                        "Scheduled delivery added "
-                        "successfully."
+                return (
+                    jsonify(
+                        {
+                            "status": "success",
+                            "success": True,
+                            "message": ("Scheduled delivery added " "successfully."),
+                            "delivery_id": new_delivery.id,
+                            "invoice_number": (new_delivery.invoice_number),
+                            "delivery_fee": float(new_delivery.delivery_fee or 0),
+                            "fee_currency": (
+                                new_delivery.fee_currency or DELIVERY_FEE_CURRENCY
+                            ),
+                            "fee_status": (new_delivery.fee_status or fee_status),
+                            "distance_km": float(new_delivery.distance_km or 0),
+                            "duration_text": (distance_result.get("duration_text")),
+                            "area_zone": (new_delivery.area_zone or "dynamic"),
+                            "delivery_type": (new_delivery.delivery_type or ""),
+                            "delivery_branch": (new_delivery.delivery_branch or ""),
+                            "is_free_delivery": bool(new_delivery.is_free_delivery),
+                        }
                     ),
-                    "delivery_id": new_delivery.id,
-                    "invoice_number": (
-                        new_delivery.invoice_number
-                    ),
-                    "delivery_fee": float(
-                        new_delivery.delivery_fee
-                        or 0
-                    ),
-                    "fee_currency": (
-                        new_delivery.fee_currency
-                        or DELIVERY_FEE_CURRENCY
-                    ),
-                    "fee_status": (
-                        new_delivery.fee_status
-                        or fee_status
-                    ),
-                    "distance_km": float(
-                        new_delivery.distance_km
-                        or 0
-                    ),
-                    "duration_text": (
-                        distance_result.get(
-                            "duration_text"
-                        )
-                    ),
-                    "area_zone": (
-                        new_delivery.area_zone
-                        or "dynamic"
-                    ),
-                    "delivery_type": (
-                        new_delivery.delivery_type
-                        or ""
-                    ),
-                    "delivery_branch": (
-                        new_delivery.delivery_branch
-                        or ""
-                    ),
-                    "is_free_delivery": bool(
-                        new_delivery.is_free_delivery
-                    ),
-                }), 201
+                    201,
+                )
 
             flash(
                 "Scheduled delivery added successfully.",
                 "success",
             )
 
-            return redirect(
-                url_for(
-                    "logistics.view_scheduled_deliveries"
-                )
-            )
+            return redirect(url_for("logistics.view_scheduled_deliveries"))
 
         except Exception as error:
             db.session.rollback()
 
             current_app.logger.exception(
-                "Admin scheduled-delivery creation "
-                "failed for customer %s: %s",
+                "Admin scheduled-delivery creation " "failed for customer %s: %s",
                 user_id,
                 error,
             )
 
             message = (
-                "An unexpected error occurred while "
-                "creating the scheduled delivery."
+                "An unexpected error occurred while " "creating the scheduled delivery."
             )
 
             if is_json:
-                return jsonify({
-                    "status": "error",
-                    "success": False,
-                    "message": message,
-                }), 500
+                return (
+                    jsonify(
+                        {
+                            "status": "error",
+                            "success": False,
+                            "message": message,
+                        }
+                    ),
+                    500,
+                )
 
             flash(message, "danger")
 
-            return redirect(
-                url_for(
-                    "logistics.add_scheduled_delivery"
-                )
-            )
+            return redirect(url_for("logistics.add_scheduled_delivery"))
 
     # GET request: always begin without an assumed fee.
     return render_template(
@@ -8873,13 +9433,12 @@ def add_scheduled_delivery():
         fee_currency=DELIVERY_FEE_CURRENCY,
     )
 
+
 @logistics_bp.route("/scheduled_deliveries/<int:delivery_id>")
 @admin_required()
 def scheduled_delivery_view(delivery_id):
 
-    delivery = ScheduledDelivery.query.get_or_404(
-        delivery_id
-    )
+    delivery = ScheduledDelivery.query.get_or_404(delivery_id)
 
     # ---------------------------------------
     # Eligible packages
@@ -8887,25 +9446,15 @@ def scheduled_delivery_view(delivery_id):
     # and not already assigned elsewhere
     # ---------------------------------------
     eligible_packages = (
-        Package.query
-        .filter(
-            Package.user_id == delivery.user_id
-        )
+        Package.query.filter(Package.user_id == delivery.user_id)
         .filter(
             or_(
                 Package.scheduled_delivery_id.is_(None),
-                Package.scheduled_delivery_id == delivery.id
+                Package.scheduled_delivery_id == delivery.id,
             )
         )
-        .filter(
-            Package.status.in_([
-                "Ready for Pick Up",
-                "Out for Delivery"
-            ])
-        )
-        .order_by(
-            Package.id.desc()
-        )
+        .filter(Package.status.in_(["Ready for Pick Up", "Out for Delivery"]))
+        .order_by(Package.id.desc())
         .all()
     )
 
@@ -8913,13 +9462,8 @@ def scheduled_delivery_view(delivery_id):
     # Already assigned packages
     # ---------------------------------------
     assigned_packages = (
-        Package.query
-        .filter(
-            Package.scheduled_delivery_id == delivery.id
-        )
-        .order_by(
-            Package.id.desc()
-        )
+        Package.query.filter(Package.scheduled_delivery_id == delivery.id)
+        .order_by(Package.id.desc())
         .all()
     )
 
@@ -8928,82 +9472,47 @@ def scheduled_delivery_view(delivery_id):
     # ---------------------------------------
     total_packages = len(assigned_packages)
 
-    total_weight = sum(
-        float(p.weight or 0)
-        for p in assigned_packages
-    )
+    total_weight = sum(float(p.weight or 0) for p in assigned_packages)
 
     # ---------------------------------------
     # Delivery status helpers
     # ---------------------------------------
-    delivery_status = (
-        delivery.status or "Scheduled"
-    )
+    delivery_status = delivery.status or "Scheduled"
 
-    is_completed = (
-        delivery_status == "Delivered"
-    )
+    is_completed = delivery_status == "Delivered"
 
-    is_attempted = (
-        delivery_status == "Delivery Attempted"
-    )
+    is_attempted = delivery_status == "Delivery Attempted"
 
-    has_pending_reschedule = (
-        delivery.reschedule_status == "pending"
-    )
+    has_pending_reschedule = delivery.reschedule_status == "pending"
 
     # ---------------------------------------
     # Timeline helper
     # ---------------------------------------
     timeline_steps = {
-        "scheduled": delivery_status in [
-            "Scheduled",
-            "Out for Delivery",
-            "Delivery Attempted",
-            "Delivered"
-        ],
-
-        "out_for_delivery": delivery_status in [
-            "Out for Delivery",
-            "Delivered"
-        ],
-
-        "attempted": delivery_status == (
-            "Delivery Attempted"
-        ),
-
-        "delivered": delivery_status == (
-            "Delivered"
-        )
+        "scheduled": delivery_status
+        in ["Scheduled", "Out for Delivery", "Delivery Attempted", "Delivered"],
+        "out_for_delivery": delivery_status in ["Out for Delivery", "Delivered"],
+        "attempted": delivery_status == ("Delivery Attempted"),
+        "delivered": delivery_status == ("Delivered"),
     }
 
     return render_template(
         "admin/logistics/scheduled_delivery_view.html",
-
         delivery=delivery,
-
         eligible_packages=eligible_packages,
-
         assigned_packages=assigned_packages,
-
         total_packages=total_packages,
-
         total_weight=total_weight,
-
         delivery_status=delivery_status,
-
         is_completed=is_completed,
-
         is_attempted=is_attempted,
-
         has_pending_reschedule=has_pending_reschedule,
-
-        timeline_steps=timeline_steps
+        timeline_steps=timeline_steps,
     )
 
+
 @logistics_bp.route(
-    "/scheduled-deliveries/<int:delivery_id>/approve-reschedule",
-    methods=["POST"]
+    "/scheduled-deliveries/<int:delivery_id>/approve-reschedule", methods=["POST"]
 )
 @admin_required()
 def approve_delivery_reschedule(delivery_id):
@@ -9039,8 +9548,7 @@ def approve_delivery_reschedule(delivery_id):
 
 
 @logistics_bp.route(
-    "/scheduled-deliveries/<int:delivery_id>/deny-reschedule",
-    methods=["POST"]
+    "/scheduled-deliveries/<int:delivery_id>/deny-reschedule", methods=["POST"]
 )
 @admin_required()
 def deny_delivery_reschedule(delivery_id):
@@ -9063,7 +9571,9 @@ def deny_delivery_reschedule(delivery_id):
     )
 
 
-@logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/set-status/<status>", methods=["POST"])
+@logistics_bp.route(
+    "/scheduled_deliveries/<int:delivery_id>/set-status/<status>", methods=["POST"]
+)
 @admin_required()
 def scheduled_delivery_set_status(delivery_id, status):
     from datetime import datetime, timezone
@@ -9073,7 +9583,7 @@ def scheduled_delivery_set_status(delivery_id, status):
         "Out for Delivery",
         "Delivered",
         "Delivery Attempted",
-        "Cancelled"
+        "Cancelled",
     }
 
     if status not in allowed:
@@ -9082,11 +9592,7 @@ def scheduled_delivery_set_status(delivery_id, status):
 
     d = ScheduledDelivery.query.get_or_404(delivery_id)
 
-    linked_pkgs = (
-        Package.query
-        .filter(Package.scheduled_delivery_id == d.id)
-        .all()
-    )
+    linked_pkgs = Package.query.filter(Package.scheduled_delivery_id == d.id).all()
 
     d.status = status
 
@@ -9114,11 +9620,7 @@ def scheduled_delivery_set_status(delivery_id, status):
             ps = (p.status or "").strip().lower()
 
             if ps == "delivered":
-                sync_scheduled_pickups_for_delivered_package(
-                    p,
-                    delivered_at
-                )
-
+                sync_scheduled_pickups_for_delivered_package(p, delivered_at)
 
     elif status == "Delivery Attempted":
         for p in linked_pkgs:
@@ -9134,16 +9636,14 @@ def scheduled_delivery_set_status(delivery_id, status):
 
     db.session.commit()
 
-    flash(
-        f"Delivery {d.invoice_number or f'#{d.id}'} updated to '{status}'",
-        "success"
-    )
+    flash(f"Delivery {d.invoice_number or f'#{d.id}'} updated to '{status}'", "success")
 
-    return redirect(
-        url_for("logistics.scheduled_delivery_view", delivery_id=d.id)
-    )
+    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=d.id))
 
-@logistics_bp.route("/scheduled_deliveries/<int:delivery_id>/assign-packages", methods=["POST"])
+
+@logistics_bp.route(
+    "/scheduled_deliveries/<int:delivery_id>/assign-packages", methods=["POST"]
+)
 @admin_required()
 def scheduled_delivery_assign_packages(delivery_id):
     delivery = ScheduledDelivery.query.get_or_404(delivery_id)
@@ -9151,7 +9651,9 @@ def scheduled_delivery_assign_packages(delivery_id):
     raw_ids = request.form.getlist("package_ids")
     if not raw_ids:
         flash("Please select at least one package to assign.", "warning")
-        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+        return redirect(
+            url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id)
+        )
 
     package_ids = []
     for x in raw_ids:
@@ -9162,18 +9664,21 @@ def scheduled_delivery_assign_packages(delivery_id):
 
     if not package_ids:
         flash("No valid packages selected.", "danger")
-        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+        return redirect(
+            url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id)
+        )
 
     packages = (
-        Package.query
-        .filter(Package.id.in_(package_ids))
+        Package.query.filter(Package.id.in_(package_ids))
         .filter(Package.user_id == delivery.user_id)
         .all()
     )
 
     if not packages:
         flash("No valid packages selected for this customer.", "danger")
-        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+        return redirect(
+            url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id)
+        )
 
     assigned_count = 0
     skipped_count = 0
@@ -9188,14 +9693,22 @@ def scheduled_delivery_assign_packages(delivery_id):
     db.session.commit()
 
     if skipped_count:
-        flash(f"Assigned {assigned_count} package(s). Skipped {skipped_count} already linked elsewhere.", "info")
+        flash(
+            f"Assigned {assigned_count} package(s). Skipped {skipped_count} already linked elsewhere.",
+            "info",
+        )
     else:
         flash(f"Assigned {assigned_count} package(s) to this delivery.", "success")
 
-    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id))
+    return redirect(
+        url_for("logistics.scheduled_delivery_view", delivery_id=delivery.id)
+    )
 
 
-@logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/unassign/<int:package_id>", methods=["POST"])
+@logistics_bp.route(
+    "/scheduled-deliveries/<int:delivery_id>/unassign/<int:package_id>",
+    methods=["POST"],
+)
 @admin_required()
 def scheduled_delivery_unassign_package(delivery_id, package_id):
     d = ScheduledDelivery.query.get_or_404(delivery_id)
@@ -9203,31 +9716,33 @@ def scheduled_delivery_unassign_package(delivery_id, package_id):
     p = Package.query.get_or_404(package_id)
     if p.scheduled_delivery_id != d.id:
         flash("That package is not linked to this delivery.", "warning")
-        return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id))
+        return redirect(
+            url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id)
+        )
 
     p.scheduled_delivery_id = None
     db.session.commit()
     flash("Package unassigned from delivery.", "success")
-    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id))
+    return redirect(
+        url_for("logistics.scheduled_delivery_view", delivery_id=delivery_id)
+    )
 
 
-@logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/mark-paid", methods=["POST"])
+@logistics_bp.route(
+    "/scheduled-deliveries/<int:delivery_id>/mark-paid", methods=["POST"]
+)
 @admin_required()
 def scheduled_delivery_mark_paid(delivery_id):
     from datetime import datetime, timezone
 
     d = ScheduledDelivery.query.get_or_404(delivery_id)
 
-    existing_payment = (
-        Payment.query
-        .filter(
-            Payment.user_id == d.user_id,
-            Payment.scheduled_delivery_id == d.id,
-            Payment.transaction_type == "delivery_payment",
-            Payment.status == "completed",
-        )
-        .first()
-    )
+    existing_payment = Payment.query.filter(
+        Payment.user_id == d.user_id,
+        Payment.scheduled_delivery_id == d.id,
+        Payment.transaction_type == "delivery_payment",
+        Payment.status == "completed",
+    ).first()
 
     d.fee_status = "Paid"
     d.paid_at = datetime.now(timezone.utc)
@@ -9251,17 +9766,14 @@ def scheduled_delivery_mark_paid(delivery_id):
 
     db.session.commit()
 
-    flash(
-        f"Delivery fee marked PAID for {d.invoice_number or f'#{d.id}'}",
-        "success"
-    )
+    flash(f"Delivery fee marked PAID for {d.invoice_number or f'#{d.id}'}", "success")
 
-    return redirect(
-        url_for("logistics.scheduled_delivery_view", delivery_id=d.id)
-    )
+    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=d.id))
 
 
-@logistics_bp.route("/scheduled-deliveries/<int:delivery_id>/mark-unpaid", methods=["POST"])
+@logistics_bp.route(
+    "/scheduled-deliveries/<int:delivery_id>/mark-unpaid", methods=["POST"]
+)
 @admin_required()
 def scheduled_delivery_mark_unpaid(delivery_id):
     from datetime import datetime, timezone
@@ -9272,8 +9784,7 @@ def scheduled_delivery_mark_unpaid(delivery_id):
     d.paid_at = None
 
     existing_payment = (
-        Payment.query
-        .filter(
+        Payment.query.filter(
             Payment.user_id == d.user_id,
             Payment.scheduled_delivery_id == d.id,
             Payment.transaction_type == "delivery_payment",
@@ -9295,221 +9806,785 @@ def scheduled_delivery_mark_unpaid(delivery_id):
 
     db.session.commit()
 
-    flash(
-        f"Delivery fee marked UNPAID for {d.invoice_number or f'#{d.id}'}",
-        "warning"
-    )
+    flash(f"Delivery fee marked UNPAID for {d.invoice_number or f'#{d.id}'}", "warning")
 
-    return redirect(
-        url_for("logistics.scheduled_delivery_view", delivery_id=d.id)
-    )
+    return redirect(url_for("logistics.scheduled_delivery_view", delivery_id=d.id))
 
 
-@logistics_bp.route('/shipmentlog/create-shipment', methods=['GET'])
+@logistics_bp.route("/shipmentlog/create-shipment", methods=["GET"])
 @admin_required
 def prepare_create_shipment():
     flash("Select packages to include in the new shipment.", "info")
-    return redirect(url_for('logistics.logistics_dashboard', tab='view_packages', create_shipment=1))
+    return redirect(
+        url_for("logistics.logistics_dashboard", tab="view_packages", create_shipment=1)
+    )
 
 
 @logistics_bp.route("/shop-for-me", methods=["GET"])
 @admin_required
 def admin_shop_for_me():
-    status = (request.args.get("status") or "all").strip()
+    allowed_statuses = {
+        "all",
+        "requested",
+        "quoted",
+        "quote_expired",
+        "awaiting_payment",
+        "paid",
+        "purchased",
+        "cancelled",
+    }
 
-    query = PurchaseRequest.query.order_by(PurchaseRequest.created_at.desc())
+    status = (request.args.get("status") or "all").strip().lower()
+
+    if status not in allowed_statuses:
+        status = "all"
+
+    query = PurchaseRequest.query
 
     if status != "all":
         query = query.filter(PurchaseRequest.status == status)
 
-    requests_list = query.all()
+    requests_list = query.order_by(
+        PurchaseRequest.created_at.desc(),
+        PurchaseRequest.id.desc(),
+    ).all()
 
     return render_template(
         "admin/logistics/shop_for_me.html",
         requests_list=requests_list,
-        status=status
+        status=status,
+         to_jamaica=to_jamaica,
     )
 
-@logistics_bp.route("/shop-for-me/<int:request_id>", methods=["GET"])
+
+@logistics_bp.route(
+    "/shop-for-me/<int:request_id>",
+    methods=["GET"],
+)
 @admin_required
 def admin_shop_for_me_detail(request_id):
     pr = PurchaseRequest.query.get_or_404(request_id)
 
     return render_template(
         "admin/logistics/shop_for_me_detail.html",
-        pr=pr
+        pr=pr,
+        to_jamaica=to_jamaica,
     )
 
-@logistics_bp.route("/shop-for-me/<int:request_id>/quote", methods=["POST"])
+
+@logistics_bp.route(
+    "/shop-for-me/<int:request_id>/quote",
+    methods=["POST"],
+)
 @admin_required
 def admin_shop_for_me_quote(request_id):
     pr = PurchaseRequest.query.get_or_404(request_id)
 
+    # Paid and purchased requests must never be requoted.
+    if pr.status in ("paid", "purchased"):
+        flash(
+            "A paid or purchased Shop For Me request " "cannot be requoted.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
+
+    allowed_quote_statuses = {
+        "requested",
+        "quoted",
+        "quote_expired",
+    }
+
+    if pr.status not in allowed_quote_statuses:
+        flash(
+            "This Shop For Me request cannot be quoted "
+            f"while its status is "
+            f"{(pr.status or 'unknown').replace('_', ' ').title()}.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
+
     item_total_usd_raw = (request.form.get("item_total_usd") or "").strip()
+
     service_fee_jmd_raw = (request.form.get("service_fee_jmd") or "").strip()
+
     quote_notes = (request.form.get("quote_notes") or "").strip()
 
     try:
         item_total_usd = Decimal(item_total_usd_raw)
-    except Exception:
-        flash("Please enter a valid item total in USD.", "danger")
-        return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+
+        if not item_total_usd.is_finite() or item_total_usd <= 0:
+            raise InvalidOperation
+
+        item_total_usd = item_total_usd.quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
+
+    except (
+        InvalidOperation,
+        TypeError,
+        ValueError,
+    ):
+        flash(
+            "Please enter a valid item total greater " "than zero in USD.",
+            "danger",
+        )
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
 
     settings = Settings.query.first()
-    usd_to_jmd = Decimal(str(settings.usd_to_jmd or 162)) if settings else Decimal("162")
+
+    try:
+        usd_to_jmd = Decimal(
+            str(
+                getattr(
+                    settings,
+                    "usd_to_jmd",
+                    None,
+                )
+                or 162
+            )
+        )
+
+        if not usd_to_jmd.is_finite() or usd_to_jmd <= 0:
+            raise InvalidOperation
+
+    except (
+        InvalidOperation,
+        TypeError,
+        ValueError,
+    ):
+        flash(
+            "The USD to JMD exchange rate is invalid. " "Please update it in Settings.",
+            "danger",
+        )
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
 
     if service_fee_jmd_raw:
         try:
             service_fee_jmd = Decimal(service_fee_jmd_raw)
-        except Exception:
-            flash("Please enter a valid service fee.", "danger")
-            return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
-    else:
-        service_fee_jmd = Decimal(str(calculate_purchase_service_fee(item_total_usd, usd_to_jmd)))
 
-    item_total_jmd = item_total_usd * usd_to_jmd
-    total_due_jmd = item_total_jmd + service_fee_jmd
+            if not service_fee_jmd.is_finite() or service_fee_jmd < 0:
+                raise InvalidOperation
+
+            service_fee_jmd = service_fee_jmd.quantize(
+                Decimal("0.01"),
+                rounding=ROUND_HALF_UP,
+            )
+
+        except (
+            InvalidOperation,
+            TypeError,
+            ValueError,
+        ):
+            flash(
+                "Please enter a valid service fee. "
+                "The service fee cannot be negative.",
+                "danger",
+            )
+            return redirect(
+                url_for(
+                    "logistics.admin_shop_for_me_detail",
+                    request_id=pr.id,
+                )
+            )
+
+    else:
+        calculated_fee = calculate_purchase_service_fee(
+            item_total_usd,
+            usd_to_jmd,
+        )
+
+        service_fee_jmd = Decimal(str(calculated_fee or 0)).quantize(
+            Decimal("0.01"),
+            rounding=ROUND_HALF_UP,
+        )
+
+    item_total_jmd = (item_total_usd * usd_to_jmd).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
+
+    total_due_jmd = (item_total_jmd + service_fee_jmd).quantize(
+        Decimal("0.01"),
+        rounding=ROUND_HALF_UP,
+    )
 
     now_utc = datetime.now(timezone.utc)
     invoice_number = f"SHOP-{pr.request_number}"
 
     inv = pr.invoice
 
-    if not inv:
-        inv = Invoice(
-            user_id=pr.user_id,
-            invoice_number=invoice_number,
-            date_submitted=now_utc,
-            date_issued=now_utc,
-            created_at=now_utc,
-            status="unpaid",            
-            grand_total=total_due_jmd,
-            amount_due=total_due_jmd,
-            description=f"Shop For Me Quote {pr.request_number}",
+    # Protect any invoice that already has a payment.
+    if inv:
+        (
+            _subtotal,
+            _discount_total,
+            payments_total,
+            _total_due,
+        ) = fetch_invoice_totals_pg(inv.id)
+
+        if float(payments_total or 0) > 0.01:
+            flash(
+                "This quote cannot be changed because "
+                "a payment has already been recorded.",
+                "warning",
+            )
+            return redirect(
+                url_for(
+                    "logistics.admin_shop_for_me_detail",
+                    request_id=pr.id,
+                )
+            )
+
+    try:
+        if not inv:
+            inv = Invoice(
+                user_id=pr.user_id,
+                invoice_number=invoice_number,
+                date_submitted=now_utc,
+                date_issued=now_utc,
+                created_at=now_utc,
+                # A quote is not payable until approved.
+                status="draft",
+                grand_total=float(total_due_jmd),
+                amount_due=0.0,
+                description=("Shop For Me Quote " f"{pr.request_number}"),
+            )
+
+            db.session.add(inv)
+            db.session.flush()
+
+            pr.invoice_id = inv.id
+
+        else:
+            inv.date_issued = now_utc
+
+            # Requoting returns an unpaid legacy invoice
+            # to draft until the customer approves it.
+            inv.status = "draft"
+            inv.grand_total = float(total_due_jmd)
+            inv.amount_due = 0.0
+            inv.description = "Shop For Me Quote " f"{pr.request_number}"
+
+        pr.item_price_usd = item_total_usd
+        pr.service_fee_jmd = service_fee_jmd
+
+        pr.quoted_item_price_usd = item_total_usd
+        pr.quoted_service_fee_jmd = service_fee_jmd
+
+        pr.quoted_at = now_utc
+        pr.status = "quoted"
+
+        if quote_notes:
+            existing_notes = (pr.notes or "").strip()
+
+            new_note = "Quote Notes: " f"{quote_notes}"
+
+            pr.notes = f"{existing_notes}\n\n{new_note}" if existing_notes else new_note
+
+        db.session.commit()
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Shop For Me quote failed for " "request %s",
+            pr.id,
         )
-        db.session.add(inv)
-        db.session.flush()
-        pr.invoice_id = inv.id
-    else:
-        inv.date_issued = now_utc
-        inv.status = "unpaid"        
-        inv.grand_total = total_due_jmd
-        inv.amount_due = total_due_jmd
-        inv.description = f"Shop For Me Quote {pr.request_number}"
 
-    pr.item_price_usd = item_total_usd
-    pr.service_fee_jmd = service_fee_jmd
-    pr.quoted_item_price_usd = item_total_usd
-    pr.quoted_service_fee_jmd = service_fee_jmd
-    pr.quoted_at = now_utc
-    pr.status = "quoted"
+        flash(
+            f"The quote could not be saved: {error}",
+            "danger",
+        )
 
-    if quote_notes:
-        existing_notes = pr.notes or ""
-        pr.notes = (existing_notes + "\n\nQuote Notes: " + quote_notes).strip()
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
 
-    db.session.commit()
+    flash(
+        f"Quote saved as {invoice_number}. "
+        "The invoice will become payable after "
+        "the customer approves the quote.",
+        "success",
+    )
 
-    flash(f"Quote saved and invoice {invoice_number} created.", "success")
-    return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+    return redirect(
+        url_for(
+            "logistics.admin_shop_for_me_detail",
+            request_id=pr.id,
+        )
+    )
 
 
-@logistics_bp.route("/shop-for-me/<int:request_id>/mark-paid", methods=["POST"])
+@logistics_bp.route(
+    "/shop-for-me/<int:request_id>/cancel",
+    methods=["POST"],
+)
+@admin_required
+def admin_shop_for_me_cancel(request_id):
+    pr = (
+        PurchaseRequest.query
+        .filter(PurchaseRequest.id == request_id)
+        .with_for_update()
+        .first_or_404()
+    )
+
+    redirect_url = url_for(
+        "logistics.admin_shop_for_me_detail",
+        request_id=pr.id,
+    )
+
+    current_status = (
+        pr.status or "requested"
+    ).strip().lower()
+
+    if current_status == "cancelled":
+        flash(
+            "This Shop For Me request is already cancelled.",
+            "info",
+        )
+        return redirect(redirect_url)
+
+    if current_status in ("paid", "purchased"):
+        flash(
+            "A paid or purchased Shop For Me request cannot "
+            "be cancelled.",
+            "warning",
+        )
+        return redirect(redirect_url)
+
+    cancellable_statuses = {
+        "requested",
+        "quoted",
+        "quote_expired",
+        "awaiting_payment",
+    }
+
+    if current_status not in cancellable_statuses:
+        flash(
+            "This Shop For Me request cannot be cancelled "
+            "in its current status.",
+            "warning",
+        )
+        return redirect(redirect_url)
+
+    inv = pr.invoice
+
+    if inv:
+        existing_payment = (
+            Payment.query
+            .filter(
+                Payment.invoice_id == inv.id,
+                func.lower(
+                    func.coalesce(
+                        Payment.status,
+                        "",
+                    )
+                ).notin_(
+                    [
+                        "cancelled",
+                        "canceled",
+                        "reversed",
+                        "refunded",
+                        "failed",
+                        "void",
+                        "voided",
+                    ]
+                ),
+            )
+            .order_by(Payment.id.desc())
+            .first()
+        )
+
+        if existing_payment:
+            flash(
+                "This request cannot be cancelled because its "
+                "invoice has a payment or pending payment record. "
+                "Reverse or resolve that payment first.",
+                "warning",
+            )
+            return redirect(redirect_url)
+
+    cancellation_reason = (
+        request.form.get("cancellation_reason")
+        or "Cancelled by administrator"
+    ).strip()
+
+    if not cancellation_reason:
+        cancellation_reason = "Cancelled by administrator"
+
+    old_status = current_status
+
+    old_invoice_status = (
+        inv.status
+        if inv
+        else "No invoice"
+    )
+
+    try:
+        pr.status = "cancelled"
+
+        existing_notes = (
+            pr.notes or ""
+        ).strip()
+
+        cancellation_note = (
+            "Admin Cancellation: "
+            f"{cancellation_reason}"
+        )
+
+        if existing_notes:
+            pr.notes = (
+                f"{existing_notes}\n\n"
+                f"{cancellation_note}"
+            )
+        else:
+            pr.notes = cancellation_note
+
+        # A draft or unpaid Shop For Me invoice must no longer
+        # appear as payable after the request is cancelled.
+        if inv:
+            inv.status = "cancelled"
+            inv.amount_due = 0.0
+
+            if hasattr(inv, "date_paid"):
+                inv.date_paid = None
+
+            if hasattr(inv, "description"):
+                current_description = (
+                    inv.description or ""
+                ).strip()
+
+                cancellation_description = (
+                    f"Cancelled Shop For Me request "
+                    f"{pr.request_number}: "
+                    f"{cancellation_reason}"
+                )
+
+                if current_description:
+                    inv.description = (
+                        f"{current_description}\n"
+                        f"{cancellation_description}"
+                    )
+                else:
+                    inv.description = (
+                        cancellation_description
+                    )
+
+        db.session.add(
+            AuditLog(
+                module="Shop For Me",
+                action="Request Cancelled",
+                admin_id=current_user.id,
+                user_id=pr.user_id,
+                entity_type="PurchaseRequest",
+                entity_id=pr.id,
+                reason=cancellation_reason,
+                description=(
+                    f"Shop For Me request "
+                    f"{pr.request_number} was cancelled "
+                    f"by an administrator."
+                ),
+                old_value=(
+                    f"Request status: {old_status}; "
+                    f"Invoice status: {old_invoice_status}"
+                ),
+                new_value=(
+                    "Request status: cancelled; "
+                    "Invoice status: cancelled; "
+                    "Amount due: JMD 0.00"
+                    if inv
+                    else (
+                        "Request status: cancelled; "
+                        "No linked invoice"
+                    )
+                ),
+            )
+        )
+
+        db.session.commit()
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Cancelling Shop For Me request %s failed",
+            pr.id,
+        )
+
+        flash(
+            f"The request could not be cancelled: {error}",
+            "danger",
+        )
+        return redirect(redirect_url)
+
+    flash(
+        f"Shop For Me request {pr.request_number} "
+        "was cancelled.",
+        "success",
+    )
+
+    return redirect(redirect_url)
+
+
+@logistics_bp.route(
+    "/shop-for-me/<int:request_id>/mark-paid",
+    methods=["POST"],
+)
 @admin_required
 def admin_shop_for_me_mark_paid(request_id):
     pr = PurchaseRequest.query.get_or_404(request_id)
 
-    if not pr.invoice_id or not pr.invoice:
-        flash("No invoice is linked to this Shop For Me request.", "warning")
-        return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+    if pr.status not in (
+        "awaiting_payment",
+        "paid",
+    ):
+        flash(
+            "The customer must approve the quote " "before it can be marked as paid.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
 
-    subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(pr.invoice_id)
+    if not pr.invoice_id or not pr.invoice:
+        flash(
+            "No invoice is linked to this " "Shop For Me request.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
+
+    (
+        _subtotal,
+        _discount_total,
+        _payments_total,
+        total_due,
+    ) = fetch_invoice_totals_pg(pr.invoice_id)
 
     inv = pr.invoice
-    inv.amount_due = float(total_due or 0)
+    remaining_balance = max(
+        float(total_due or 0),
+        0.0,
+    )
 
-    if float(total_due or 0) <= 0 or (inv.status or "").lower() == "paid":
+    inv.amount_due = remaining_balance
+
+    if remaining_balance <= 0.01 or (inv.status or "").strip().lower() == "paid":
         pr.status = "paid"
         inv.status = "paid"
         inv.amount_due = 0
+
         if hasattr(inv, "date_paid") and not inv.date_paid:
             inv.date_paid = datetime.now(timezone.utc)
 
         db.session.commit()
-        flash("Shop For Me request marked as paid based on linked invoice.", "success")
-    else:
-        db.session.commit()
+
         flash(
-            f"Invoice is not fully paid yet. Balance due: JMD {float(total_due or 0):,.2f}",
-            "warning"
+            "Shop For Me request marked as paid " "based on the linked invoice.",
+            "success",
         )
 
-    return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+    else:
+        db.session.commit()
 
-@logistics_bp.route("/shop-for-me/<int:request_id>/mark-purchased", methods=["POST"])
+        flash(
+            "Invoice is not fully paid yet. "
+            f"Balance due: JMD "
+            f"{remaining_balance:,.2f}",
+            "warning",
+        )
+
+    return redirect(
+        url_for(
+            "logistics.admin_shop_for_me_detail",
+            request_id=pr.id,
+        )
+    )
+
+
+@logistics_bp.route(
+    "/shop-for-me/<int:request_id>/mark-purchased",
+    methods=["POST"],
+)
 @admin_required
 def admin_shop_for_me_mark_purchased(request_id):
     pr = PurchaseRequest.query.get_or_404(request_id)
 
     if pr.status != "paid":
-        flash("Only paid Shop For Me requests can be marked as purchased.", "warning")
-        return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+        flash(
+            "Only paid Shop For Me requests " "can be marked as purchased.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
 
     order_number = (request.form.get("order_number") or "").strip()
-    merchant_tracking_number = (request.form.get("merchant_tracking_number") or "").strip()
+
+    merchant_tracking_number = normalize_tracking(
+        request.form.get("merchant_tracking_number") or ""
+    ).strip()
 
     if not order_number:
-        flash("Please enter the store order number.", "warning")
-        return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+        flash(
+            "Please enter the store order number.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
 
     if not merchant_tracking_number:
-        flash("Please enter the merchant tracking number.", "warning")
-        return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+        flash(
+            "Please enter the merchant tracking number.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
+
+    # Prevent duplicate pre-alerts.
+    existing_prealert = Prealert.query.filter(
+        func.lower(func.trim(Prealert.tracking_number))
+        == merchant_tracking_number.lower()
+    ).first()
+
+    if existing_prealert:
+        flash(
+            "A pre-alert already exists with this " "merchant tracking number.",
+            "warning",
+        )
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
 
     now_utc = datetime.now(timezone.utc)
     jamaica_date = to_jamaica(now_utc).date()
 
     item_names = []
+
     for item in pr.items:
         label = item.item_name or item.product_url or "Item"
-        qty = item.quantity or 1
-        item_names.append(f"{label} x{qty}")
 
-    contents = f"Shop For Me {pr.request_number}: " + ", ".join(item_names)
-    contents = contents[:255]
+        quantity = max(
+            int(item.quantity or 1),
+            1,
+        )
 
-    pa = Prealert(
-        customer_id=pr.user_id,
-        vendor_name=pr.store_name or "Shop For Me",
-        courier_name="Merchant",
-        tracking_number=merchant_tracking_number,
-        package_contents=contents,
-        purchase_date=jamaica_date,
-        item_value_usd=float(pr.quoted_item_price_usd or 0),
-        created_at=now_utc,
+        item_names.append(f"{label} x{quantity}")
 
-        is_locked=True,
-        locked_at=now_utc,
-        locked_by_admin_id=current_user.id,
-        lock_reason=f"Auto-created from Shop For Me request {pr.request_number}",
-    )
+    if not item_names:
+        fallback_label = pr.item_name or pr.product_url or "Item"
 
-    db.session.add(pa)
-    db.session.flush()
+        item_names.append(f"{fallback_label} " f"x{max(int(pr.quantity or 1), 1)}")
 
-    # If you have a prealert number generator, use that instead.
-    pa.prealert_number = 100000 + pa.id
+    contents = (f"Shop For Me {pr.request_number}: " + ", ".join(item_names))[:255]
 
-    pr.order_number = order_number
-    pr.merchant_tracking_number = merchant_tracking_number
-    pr.purchased_by_admin_id = current_user.id
-    pr.purchased_at = now_utc
-    pr.status = "purchased"
+    try:
+        pa = Prealert(
+            customer_id=pr.user_id,
+            vendor_name=(pr.store_name or "Shop For Me"),
+            courier_name="Merchant",
+            tracking_number=(merchant_tracking_number),
+            package_contents=contents,
+            purchase_date=jamaica_date,
+            item_value_usd=float(pr.quoted_item_price_usd or pr.item_price_usd or 0),
+            created_at=now_utc,
+            is_locked=True,
+            locked_at=now_utc,
+            locked_by_admin_id=(current_user.id),
+            lock_reason=(
+                "Auto-created from Shop For Me " f"request {pr.request_number}"
+            ),
+        )
 
-    db.session.commit()
+        db.session.add(pa)
+        db.session.flush()
+
+        # This produces PA-100001 for database ID 1.
+        pa.prealert_number = 100000 + pa.id
+
+        pr.order_number = order_number
+        pr.merchant_tracking_number = merchant_tracking_number
+        pr.purchased_by_admin_id = current_user.id
+        pr.purchased_at = now_utc
+        pr.status = "purchased"
+
+        db.session.commit()
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Marking Shop For Me request %s " "as purchased failed",
+            pr.id,
+        )
+
+        flash(
+            f"The purchase could not be completed: " f"{error}",
+            "danger",
+        )
+
+        return redirect(
+            url_for(
+                "logistics.admin_shop_for_me_detail",
+                request_id=pr.id,
+            )
+        )
 
     flash(
-        f"Shop For Me request marked as purchased and pre-alert PA-{pa.prealert_number} created.",
-        "success"
+        "Shop For Me request marked as purchased "
+        f"and pre-alert PA-{pa.prealert_number} "
+        "was created.",
+        "success",
     )
-    return redirect(url_for("logistics.admin_shop_for_me_detail", request_id=pr.id))
+
+    return redirect(
+        url_for(
+            "logistics.admin_shop_for_me_detail",
+            request_id=pr.id,
+        )
+    )

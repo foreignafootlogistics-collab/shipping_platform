@@ -32,6 +32,10 @@ import cloudinary.uploader
 
 from app.utils.invoice_totals import fetch_invoice_totals_pg, mark_invoice_packages_delivered
 from app.utils.email_utils import send_email, EMAIL_FROM, EMAIL_ADDRESS
+from app.utils.shop_for_me_utils import (
+    shop_for_me_invoice_is_payable,
+    sync_shop_for_me_payment_status,
+)
 
 
 finance_bp = Blueprint('finance', __name__, url_prefix='/finance')
@@ -1887,139 +1891,356 @@ Bringing the World to You
             ),
         }), 500
 
-@finance_bp.route("/unpaid_invoices/mark_paid_bulk", methods=["POST"])
+@finance_bp.route(
+    "/unpaid_invoices/mark_paid_bulk",
+    methods=["POST"],
+)
 @admin_required(roles=["finance"])
 def bulk_mark_invoices_paid():
-    payment_method = (request.form.get("payment_method") or "Bulk").strip()
+    payment_method = (
+        request.form.get("payment_method")
+        or "Bulk"
+    ).strip()
 
-    raw_ids = request.form.getlist("invoice_ids[]") or request.form.getlist("invoice_ids")
+    raw_ids = (
+        request.form.getlist("invoice_ids[]")
+        or request.form.getlist("invoice_ids")
+    )
+
     invoice_ids = []
 
-    for x in raw_ids:
+    for value in raw_ids:
         try:
-            invoice_ids.append(int(x))
-        except Exception:
-            pass
+            invoice_ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+
+    invoice_ids = list(
+        dict.fromkeys(invoice_ids)
+    )
 
     if not invoice_ids:
-        flash("Select at least one invoice.", "warning")
-        return redirect(url_for("finance.unpaid_invoices"))
+        flash(
+            "Select at least one invoice.",
+            "warning",
+        )
+        return redirect(
+            url_for("finance.unpaid_invoices")
+        )
 
-    now = datetime.now(timezone.utc)
+    now_utc = datetime.now(timezone.utc)
+
     actor_name = (
-        getattr(current_user, "full_name", None)
-        or getattr(current_user, "email", None)
+        getattr(
+            current_user,
+            "full_name",
+            None,
+        )
+        or getattr(
+            current_user,
+            "email",
+            None,
+        )
         or "Finance"
     )
 
     invoices = (
         db.session.query(Invoice)
-        .filter(Invoice.id.in_(invoice_ids))
+        .filter(
+            Invoice.id.in_(invoice_ids)
+        )
         .with_for_update()
         .all()
     )
+
+    if not invoices:
+        flash(
+            "No valid invoices were found.",
+            "warning",
+        )
+        return redirect(
+            url_for("finance.unpaid_invoices")
+        )
+
+    # Do not allow Finance bulk payment to bypass
+    # Shop For Me customer approval.
+    blocked_shop_invoices = [
+        invoice
+        for invoice in invoices
+        if not shop_for_me_invoice_is_payable(
+            invoice
+        )
+    ]
+
+    if blocked_shop_invoices:
+        blocked_numbers = ", ".join(
+            (
+                invoice.invoice_number
+                or f"Invoice #{invoice.id}"
+            )
+            for invoice in blocked_shop_invoices
+        )
+
+        flash(
+            "The following Shop For Me quote(s) "
+            "have not been approved for payment: "
+            f"{blocked_numbers}",
+            "warning",
+        )
+
+        return redirect(
+            url_for("finance.unpaid_invoices")
+        )
 
     changed = 0
     skipped = 0
 
     try:
-        for inv in invoices:
-            subtotal, discount_total, payments_total, total_due = fetch_invoice_totals_pg(inv.id)
-            balance = float(total_due or 0.0)
+        for invoice in invoices:
+            (
+                _subtotal,
+                _discount_total,
+                payments_total,
+                total_due,
+            ) = fetch_invoice_totals_pg(
+                invoice.id
+            )
 
-            old_status = inv.status or "unpaid"
-            old_amount_due = float(inv.amount_due or balance or 0)
-            invoice_number = inv.invoice_number or f"INV{inv.id:05d}"
+            balance = round(
+                max(
+                    float(total_due or 0),
+                    0.0,
+                ),
+                2,
+            )
 
-            if balance <= 0:
-                inv.amount_due = 0.0
-                inv.status = "paid"
+            old_status = (
+                invoice.status
+                or "unpaid"
+            )
 
-                if hasattr(inv, "date_paid"):
-                    inv.date_paid = inv.date_paid or now
+            old_amount_due = float(
+                invoice.amount_due
+                or balance
+                or 0
+            )
 
-                Package.query.filter_by(invoice_id=inv.id).update(
-                    {"amount_due": 0.0, "status": "delivered"},
-                    synchronize_session=False
+            invoice_number = (
+                invoice.invoice_number
+                or f"INV{invoice.id:05d}"
+            )
+
+            # The invoice is already covered by existing
+            # payments. Synchronize it without recording
+            # another payment.
+            if balance <= 0.01:
+                invoice.amount_due = 0.0
+                invoice.status = "paid"
+
+                if hasattr(
+                    invoice,
+                    "date_paid",
+                ):
+                    invoice.date_paid = (
+                        invoice.date_paid
+                        or now_utc
+                    )
+
+                Package.query.filter_by(
+                    invoice_id=invoice.id
+                ).update(
+                    {
+                        "amount_due": 0.0,
+                        "status": "delivered",
+                    },
+                    synchronize_session=False,
                 )
 
-                db.session.add(AuditLog(
-                    module="Finance",
-                    action="Invoice Already Paid / Zero Due",
-                    admin_id=current_user.id,
-                    user_id=inv.user_id,
-                    entity_type="Invoice",
-                    entity_id=inv.id,
-                    reason="Bulk mark paid",
-                    description=f"Invoice {invoice_number} was included in bulk mark paid but had no remaining balance.",
-                    old_value=f"Status: {old_status}; Amount Due: JMD {old_amount_due:,.2f}",
-                    new_value="Status: paid; Amount Due: JMD 0.00",
-                ))
+                sync_shop_for_me_payment_status(
+                    invoice,
+                    total_due=0.0,
+                )
+
+                db.session.add(
+                    AuditLog(
+                        module="Finance",
+                        action=(
+                            "Invoice Already Paid / "
+                            "Zero Due"
+                        ),
+                        admin_id=current_user.id,
+                        user_id=invoice.user_id,
+                        entity_type="Invoice",
+                        entity_id=invoice.id,
+                        reason="Bulk mark paid",
+                        description=(
+                            f"Invoice {invoice_number} "
+                            "was included in bulk mark "
+                            "paid but had no remaining "
+                            "balance."
+                        ),
+                        old_value=(
+                            f"Status: {old_status}; "
+                            f"Amount Due: JMD "
+                            f"{old_amount_due:,.2f}"
+                        ),
+                        new_value=(
+                            "Status: paid; "
+                            "Amount Due: JMD 0.00"
+                        ),
+                    )
+                )
 
                 skipped += 1
                 continue
 
-            p = Payment(
-                invoice_id=inv.id,
-                user_id=inv.user_id,
+            payment = Payment(
+                invoice_id=invoice.id,
+                user_id=invoice.user_id,
                 method=payment_method,
                 amount_jmd=balance,
-                reference=f"BULK-{now.strftime('%Y%m%d%H%M%S')}-{inv.id}",
-                notes=f"Bulk marked paid by {actor_name}",
-                created_at=now,
+                reference=(
+                    f"BULK-"
+                    f"{now_utc.strftime('%Y%m%d%H%M%S')}-"
+                    f"{invoice.id}"
+                ),
+                notes=(
+                    f"Bulk marked paid by "
+                    f"{actor_name}"
+                ),
+                created_at=now_utc,
                 status="completed",
                 transaction_type="invoice_payment",
                 source="finance",
-                authorized_by_admin_id=current_user.id,
+                authorized_by_admin_id=(
+                    current_user.id
+                ),
             )
 
-            db.session.add(p)
+            db.session.add(payment)
             db.session.flush()
 
-            _s, _d, _p, new_due = fetch_invoice_totals_pg(inv.id)
+            (
+                _new_subtotal,
+                _new_discount,
+                new_payments_total,
+                new_due,
+            ) = fetch_invoice_totals_pg(
+                invoice.id
+            )
 
-            inv.amount_due = float(new_due or 0.0)
-
-            if inv.amount_due <= 0:
-                inv.amount_due = 0.0
-                inv.status = "paid"
-
-                if hasattr(inv, "date_paid"):
-                    inv.date_paid = now
-
-                Package.query.filter_by(invoice_id=inv.id).update(
-                    {"amount_due": 0.0, "status": "delivered"},
-                    synchronize_session=False
-                )
-            else:
-                inv.status = "partial"
-
-            db.session.add(AuditLog(
-                module="Finance",
-                action="Bulk Invoice Marked Paid",
-                admin_id=current_user.id,
-                user_id=inv.user_id,
-                entity_type="Invoice",
-                entity_id=inv.id,
-                reason="Bulk mark paid",
-                description=(
-                    f"Invoice {invoice_number} was marked paid through Finance bulk action. "
-                    f"Payment method: {payment_method}. Amount paid: JMD {balance:,.2f}."
+            invoice.amount_due = round(
+                max(
+                    float(new_due or 0),
+                    0.0,
                 ),
-                old_value=f"Status: {old_status}; Amount Due: JMD {old_amount_due:,.2f}",
-                new_value=f"Status: {inv.status}; Amount Due: JMD {float(inv.amount_due or 0):,.2f}",
-            ))
+                2,
+            )
+
+            if invoice.amount_due <= 0.01:
+                invoice.amount_due = 0.0
+                invoice.status = "paid"
+
+                if hasattr(
+                    invoice,
+                    "date_paid",
+                ):
+                    invoice.date_paid = now_utc
+
+                Package.query.filter_by(
+                    invoice_id=invoice.id
+                ).update(
+                    {
+                        "amount_due": 0.0,
+                        "status": "delivered",
+                    },
+                    synchronize_session=False,
+                )
+
+            elif float(
+                new_payments_total or 0
+            ) > 0:
+                invoice.status = "partial"
+
+                if hasattr(
+                    invoice,
+                    "date_paid",
+                ):
+                    invoice.date_paid = None
+
+            else:
+                invoice.status = "unpaid"
+
+                if hasattr(
+                    invoice,
+                    "date_paid",
+                ):
+                    invoice.date_paid = None
+
+            sync_shop_for_me_payment_status(
+                invoice,
+                total_due=invoice.amount_due,
+            )
+
+            db.session.add(
+                AuditLog(
+                    module="Finance",
+                    action=(
+                        "Bulk Invoice Marked Paid"
+                    ),
+                    admin_id=current_user.id,
+                    user_id=invoice.user_id,
+                    entity_type="Invoice",
+                    entity_id=invoice.id,
+                    reason="Bulk mark paid",
+                    description=(
+                        f"Invoice {invoice_number} "
+                        "was marked paid through the "
+                        "Finance bulk action. "
+                        f"Payment method: "
+                        f"{payment_method}. "
+                        f"Amount paid: JMD "
+                        f"{balance:,.2f}."
+                    ),
+                    old_value=(
+                        f"Status: {old_status}; "
+                        f"Amount Due: JMD "
+                        f"{old_amount_due:,.2f}"
+                    ),
+                    new_value=(
+                        f"Status: {invoice.status}; "
+                        f"Amount Due: JMD "
+                        f"{float(invoice.amount_due or 0):,.2f}"
+                    ),
+                )
+            )
 
             changed += 1
 
         db.session.commit()
-        flash(f"Bulk update complete. Paid: {changed}, Already paid/zero due: {skipped}", "success")
 
-    except Exception as e:
+        flash(
+            "Bulk update complete. "
+            f"Paid: {changed}, "
+            f"Already paid/zero due: {skipped}.",
+            "success",
+        )
+
+    except Exception as error:
         db.session.rollback()
-        flash(f"Bulk mark paid failed: {e}", "danger")
 
-    return redirect(url_for("finance.unpaid_invoices"))
+        current_app.logger.exception(
+            "Finance bulk mark-paid failed"
+        )
+
+        flash(
+            f"Bulk mark paid failed: {error}",
+            "danger",
+        )
+
+    return redirect(
+        url_for("finance.unpaid_invoices")
+    )
 
 
 # ---------------------- MONTHLY EXPENSES ---------------------- #

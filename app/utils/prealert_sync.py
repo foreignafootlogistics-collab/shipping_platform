@@ -3,6 +3,9 @@ import re
 
 from app.extensions import db
 from app.models import Prealert, PackageAttachment
+from app.utils.shop_for_me_utils import (
+    link_shop_for_me_package,
+)
 
 
 # ==========================================================
@@ -61,6 +64,8 @@ def upsert_prealert_from_package(pkg) -> Prealert | None:
 
     _maybe_set(pa, "linked_package_id", getattr(pkg, "id", None))
     _maybe_set(pa, "linked_at", datetime.now(timezone.utc))
+
+    link_shop_for_me_package(pkg)
 
     return pa
 

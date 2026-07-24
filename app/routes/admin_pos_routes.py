@@ -15,7 +15,10 @@ from app.utils.invoice_totals import fetch_invoice_totals_pg
 from app.utils.scheduled_pickups import (
     sync_scheduled_pickups_for_delivered_package,
 )
-
+from app.utils.shop_for_me_utils import (
+    shop_for_me_invoice_is_payable,
+    sync_shop_for_me_payment_status,
+)
 from app.utils.email_utils import send_email, EMAIL_FROM, EMAIL_ADDRESS
 
 admin_pos_bp = Blueprint("admin_pos", __name__, url_prefix="/admin/pos")
@@ -597,6 +600,19 @@ def checkout():
                     "error": f"Invoice {invoice_id} not found."
                 }), 400
 
+            if not shop_for_me_invoice_is_payable(invoice):
+                db.session.rollback()
+
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        "This package is attached to an "
+                        "unapproved Shop For Me invoice. "
+                        "Approve or regenerate the quote before "
+                        "processing it through POS."
+                    ),
+                }), 400
+
             group_total = Decimal("0.00")
 
             for p in pkg_list:
@@ -731,6 +747,11 @@ def checkout():
                         f"JMD {remaining_due:,.2f}."
                     )
                 ).strip()
+
+            sync_shop_for_me_payment_status(
+                invoice,
+                total_due=invoice.amount_due,
+            )
 
             checkout_invoice_ids.append(invoice.id)
 
@@ -947,9 +968,26 @@ def pending_payments():
         ).quantize(Decimal("0.01"))
 
         # Automatically close stale pending placeholders.
-        if live_balance <= Decimal("0.00"):
+        if live_balance <= Decimal("0.01"):
             pending_payment.amount_jmd = 0.00
             pending_payment.status = "settled"
+
+            invoice.amount_due = 0.00
+            invoice.status = "paid"
+
+            if (
+                hasattr(invoice, "date_paid")
+                and not invoice.date_paid
+            ):
+                invoice.date_paid = datetime.now(
+                    timezone.utc
+                )
+
+            sync_shop_for_me_payment_status(
+                invoice,
+                total_due=0.0,
+            )
+
             stale_records_changed = True
             continue
 
@@ -1106,6 +1144,17 @@ def collect_pending_payment(payment_id):
         .first_or_404()
     )
 
+    if not shop_for_me_invoice_is_payable(invoice):
+        flash(
+            "This Shop For Me quote has not been "
+            "approved for payment.",
+            "warning",
+        )
+
+        return redirect(
+            url_for("admin_pos.pending_payments")
+        )
+
     try:
         amount = Decimal(
             str(request.form.get("amount") or 0)
@@ -1162,7 +1211,7 @@ def collect_pending_payment(payment_id):
         str(max(float(total_due or 0), 0.0))
     ).quantize(Decimal("0.01"))
 
-    if live_balance <= Decimal("0.00"):
+    if live_balance <= Decimal("0.01"):
         pending_payment.amount_jmd = 0.00
         pending_payment.status = "settled"
 
@@ -1173,6 +1222,11 @@ def collect_pending_payment(payment_id):
             invoice.date_paid = datetime.now(
                 timezone.utc
             )
+
+        sync_shop_for_me_payment_status(
+            invoice,
+            total_due=0.0,
+        )
 
         db.session.commit()
 
@@ -1267,7 +1321,7 @@ def collect_pending_payment(payment_id):
         flags=re.IGNORECASE,
     ).strip()
 
-    if remaining_balance <= Decimal("0.00"):
+    if remaining_balance <= Decimal("0.01"):
         pending_payment.amount_jmd = 0.00
         pending_payment.status = "settled"
 
@@ -1297,6 +1351,11 @@ def collect_pending_payment(payment_id):
             f"Outstanding balance: "
             f"JMD {remaining_balance:,.2f}."
         ).strip()
+
+    sync_shop_for_me_payment_status(
+        invoice,
+        total_due=invoice.amount_due,
+    )
 
     db.session.add(AuditLog(
         module="POS",
@@ -1329,7 +1388,7 @@ def collect_pending_payment(payment_id):
 
     db.session.commit()
 
-    if remaining_balance <= Decimal("0.00"):
+    if remaining_balance <= Decimal("0.01"):
         flash(
             (
                 f"Payment of JMD {amount:,.2f} recorded. "

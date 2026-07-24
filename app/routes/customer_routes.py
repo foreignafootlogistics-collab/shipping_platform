@@ -326,8 +326,28 @@ def customer_dashboard():
 
     for inv in customer_invoices:
 
+        invoice_status = (
+            getattr(inv, "status", None)
+            or "unpaid"
+        ).strip().lower()
+
+        if invoice_status in {
+            "draft",
+            "quoted",
+            "cancelled",
+            "canceled",
+            "paid",
+            "void",
+            "voided",
+        }:
+            continue
+
         inv_total = _num(
-            getattr(inv, "grand_total", getattr(inv, "subtotal", 0))
+            getattr(
+                inv,
+                "grand_total",
+                getattr(inv, "subtotal", 0),
+            )
         )
 
         payments_list = [
@@ -1302,6 +1322,13 @@ def transactions_all():
         stored_invoice_status = (
             getattr(inv, "status", "") or ""
         ).strip().lower()
+
+        if stored_invoice_status in {
+            "draft",
+            "quoted",
+            "cancelled",
+        }:
+            continue
 
         if (
             stored_invoice_status == "paid"
@@ -2416,7 +2443,8 @@ def purchase_requests():
 
     return render_template(
         "customer/purchase_requests.html",
-        requests_list=requests_list
+        requests_list=requests_list,
+        to_jamaica=to_jamaica,
     )
 
 
@@ -2430,65 +2458,432 @@ def purchase_request_detail(request_id):
 
     return render_template(
         "customer/purchase_request_detail.html",
-        pr=pr
+        pr=pr,
+        to_jamaica=to_jamaica,
     )
 
-@customer_bp.route("/purchase-requests/<int:request_id>/approve", methods=["POST"])
+@customer_bp.route(
+    "/purchase-requests/<int:request_id>/approve",
+    methods=["POST"],
+)
 @login_required
 def approve_purchase_request_quote(request_id):
-    pr = PurchaseRequest.query.filter_by(
-        id=request_id,
-        user_id=current_user.id
-    ).first_or_404()
+    pr = (
+        PurchaseRequest.query
+        .filter_by(
+            id=request_id,
+            user_id=current_user.id,
+        )
+        .first_or_404()
+    )
+
+    redirect_url = url_for(
+        "customer.purchase_request_detail",
+        request_id=pr.id,
+    )
 
     if pr.status != "quoted":
-        flash("Only quoted requests can be approved.", "warning")
-        return redirect(url_for("customer.purchase_request_detail", request_id=pr.id))
+        flash(
+            "Only quoted requests can be approved.",
+            "warning",
+        )
+        return redirect(redirect_url)
 
-    if not pr.quoted_at:
-        pr.status = "quote_expired"
-        db.session.commit()
+    # The invoice should have been created as a draft
+    # when the administrator saved the quote.
+    if not pr.invoice_id or not pr.invoice:
+        flash(
+            "The invoice for this quote could not be found. "
+            "Please contact FAFL.",
+            "danger",
+        )
+        return redirect(redirect_url)
+
+    now_utc = datetime.now(timezone.utc)
+
+    quote_is_expired = (
+        not pr.quoted_at
+        or (
+            to_jamaica(pr.quoted_at).date()
+            != to_jamaica(now_utc).date()
+        )
+    )
+
+    if quote_is_expired:
+        try:
+            pr.status = "quote_expired"
+
+            invoice_status = (
+                pr.invoice.status or ""
+            ).strip().lower()
+
+            # Draft quotes and legacy unpaid quote invoices
+            # must no longer appear as open charges.
+            if invoice_status in (
+                "draft",
+                "quoted",
+                "unpaid",
+                "pending",
+            ):
+                pr.invoice.status = "cancelled"
+                pr.invoice.amount_due = 0
+
+            db.session.commit()
+
+        except Exception:
+            db.session.rollback()
+
+            current_app.logger.exception(
+                "Expiring Shop For Me quote %s failed",
+                pr.id,
+            )
+
+            flash(
+                "The expired quote could not be updated. "
+                "Please try again.",
+                "danger",
+            )
+            return redirect(redirect_url)
 
         flash(
-            "This quote has expired. Please wait for FAFL to send an updated quote.",
-            "warning"
+            "This quote has expired. Please wait for "
+            "FAFL to send an updated quote.",
+            "warning",
         )
-        return redirect(url_for("customer.purchase_request_detail", request_id=pr.id))
+        return redirect(redirect_url)
 
-    if to_jamaica(pr.quoted_at).date() != to_jamaica(datetime.utcnow()).date():
-        pr.status = "quote_expired"
+    invoice_status = (
+        pr.invoice.status or ""
+    ).strip().lower()
+
+    if invoice_status == "paid":
+        flash(
+            "This Shop For Me invoice is already paid.",
+            "info",
+        )
+        return redirect(redirect_url)
+
+    if invoice_status not in (
+        "draft",
+        "quoted",
+        "unpaid",
+        "pending",
+        "cancelled",
+    ):
+        flash(
+            "This invoice cannot currently be activated "
+            "for payment. Please contact FAFL.",
+            "warning",
+        )
+        return redirect(redirect_url)
+
+    total_due = float(
+        pr.invoice.grand_total or 0
+    )
+
+    if total_due <= 0:
+        flash(
+            "The quote total is invalid. Please wait for "
+            "FAFL to issue an updated quote.",
+            "danger",
+        )
+        return redirect(redirect_url)
+
+    try:
+        pr.status = "awaiting_payment"
+
+        # The invoice only becomes payable after approval.
+        pr.invoice.status = "unpaid"
+        pr.invoice.amount_due = total_due
+
+        if hasattr(pr.invoice, "date_issued"):
+            pr.invoice.date_issued = now_utc
+
         db.session.commit()
 
-        flash(
-            "This quote has expired. Please wait for FAFL to send an updated quote.",
-            "warning"
+    except Exception:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Approving Shop For Me quote %s failed",
+            pr.id,
         )
-        return redirect(url_for("customer.purchase_request_detail", request_id=pr.id))
 
-    pr.status = "awaiting_payment"
-    db.session.commit()
+        flash(
+            "The quote could not be approved. "
+            "Please try again.",
+            "danger",
+        )
+        return redirect(redirect_url)
 
-    flash("Quote approved. Please make payment so FAFL can purchase your item.", "success")
-    return redirect(url_for("customer.purchase_request_detail", request_id=pr.id))
+    flash(
+        "Quote approved. Please make payment so "
+        "FAFL can purchase your item.",
+        "success",
+    )
+
+    return redirect(redirect_url)
 
 
-@customer_bp.route("/purchase-requests/<int:request_id>/decline", methods=["POST"])
+@customer_bp.route(
+    "/purchase-requests/<int:request_id>/decline",
+    methods=["POST"],
+)
 @login_required
 def decline_purchase_request_quote(request_id):
-    pr = PurchaseRequest.query.filter_by(
-        id=request_id,
-        user_id=current_user.id
-    ).first_or_404()
+    pr = (
+        PurchaseRequest.query
+        .filter_by(
+            id=request_id,
+            user_id=current_user.id,
+        )
+        .first_or_404()
+    )
+
+    detail_url = url_for(
+        "customer.purchase_request_detail",
+        request_id=pr.id,
+    )
 
     if pr.status != "quoted":
-        flash("Only quoted requests can be declined.", "warning")
-        return redirect(url_for("customer.purchase_request_detail", request_id=pr.id))
+        flash(
+            "Only quoted requests can be declined.",
+            "warning",
+        )
+        return redirect(detail_url)
 
-    pr.status = "cancelled"
-    db.session.commit()
+    try:
+        pr.status = "cancelled"
 
-    flash("Quote declined. Your Shop For Me request has been cancelled.", "info")
-    return redirect(url_for("customer.purchase_requests"))
+        if pr.invoice:
+            invoice_status = (
+                pr.invoice.status or ""
+            ).strip().lower()
+
+            # Cancel both new draft quotes and legacy
+            # unpaid quote invoices.
+            if invoice_status in (
+                "draft",
+                "quoted",
+                "unpaid",
+                "pending",
+            ):
+                pr.invoice.status = "cancelled"
+                pr.invoice.amount_due = 0
+
+        db.session.commit()
+
+    except Exception:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Declining Shop For Me quote %s failed",
+            pr.id,
+        )
+
+        flash(
+            "The quote could not be declined. "
+            "Please try again.",
+            "danger",
+        )
+        return redirect(detail_url)
+
+    flash(
+        "Quote declined. Your Shop For Me request "
+        "has been cancelled.",
+        "info",
+    )
+
+    return redirect(
+        url_for("customer.purchase_requests")
+    )
+
+
+@customer_bp.route(
+    "/purchase-requests/<int:request_id>/cancel",
+    methods=["POST"],
+)
+@login_required
+def cancel_purchase_request(request_id):
+    pr = (
+        PurchaseRequest.query
+        .filter(
+            PurchaseRequest.id == request_id,
+            PurchaseRequest.user_id == current_user.id,
+        )
+        .with_for_update()
+        .first_or_404()
+    )
+
+    redirect_url = url_for(
+        "customer.purchase_request_detail",
+        request_id=pr.id,
+    )
+
+    current_status = (
+        pr.status or "requested"
+    ).strip().lower()
+
+    if current_status == "cancelled":
+        flash(
+            "This Shop For Me request is already cancelled.",
+            "info",
+        )
+        return redirect(redirect_url)
+
+    if current_status in ("paid", "purchased"):
+        flash(
+            "A paid or purchased request cannot be cancelled. "
+            "Please contact FAFL for assistance.",
+            "warning",
+        )
+        return redirect(redirect_url)
+
+    cancellable_statuses = {
+        "requested",
+        "quoted",
+        "quote_expired",
+        "awaiting_payment",
+    }
+
+    if current_status not in cancellable_statuses:
+        flash(
+            "This request cannot be cancelled in its "
+            "current status.",
+            "warning",
+        )
+        return redirect(redirect_url)
+
+    inv = pr.invoice
+
+    if inv:
+        invoice_status = (
+            inv.status or ""
+        ).strip().lower()
+
+        if invoice_status == "paid":
+            flash(
+                "This request cannot be cancelled because "
+                "its invoice is already paid.",
+                "warning",
+            )
+            return redirect(redirect_url)
+
+        existing_payment = (
+            Payment.query
+            .filter(
+                Payment.invoice_id == inv.id,
+                func.lower(
+                    func.coalesce(
+                        Payment.status,
+                        "",
+                    )
+                ).in_(
+                    [
+                        "pending",
+                        "processing",
+                        "completed",
+                        "settled",
+                    ]
+                ),
+            )
+            .order_by(Payment.id.desc())
+            .first()
+        )
+
+        if existing_payment:
+            flash(
+                "This request has a payment or pending payment. "
+                "Please contact FAFL to cancel it.",
+                "warning",
+            )
+            return redirect(redirect_url)
+
+    cancellation_reason = (
+        request.form.get("cancellation_reason")
+        or "Cancelled by customer"
+    ).strip()
+
+    if not cancellation_reason:
+        cancellation_reason = "Cancelled by customer"
+
+    try:
+        pr.status = "cancelled"
+
+        existing_notes = (
+            pr.notes or ""
+        ).strip()
+
+        cancellation_note = (
+            "Customer Cancellation: "
+            f"{cancellation_reason}"
+        )
+
+        if existing_notes:
+            pr.notes = (
+                f"{existing_notes}\n\n"
+                f"{cancellation_note}"
+            )
+        else:
+            pr.notes = cancellation_note
+
+        # Keep the invoice for history, but ensure it cannot
+        # appear as an open amount or accept payment.
+        if inv:
+            inv.status = "cancelled"
+            inv.amount_due = 0.0
+
+            if hasattr(inv, "date_paid"):
+                inv.date_paid = None
+
+            current_description = (
+                getattr(inv, "description", "") or ""
+            ).strip()
+
+            cancellation_description = (
+                f"Cancelled Shop For Me request "
+                f"{pr.request_number}: "
+                f"{cancellation_reason}"
+            )
+
+            if hasattr(inv, "description"):
+                if current_description:
+                    inv.description = (
+                        f"{current_description}\n"
+                        f"{cancellation_description}"
+                    )
+                else:
+                    inv.description = (
+                        cancellation_description
+                    )
+
+        db.session.commit()
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Customer cancellation of Shop For Me "
+            "request %s failed",
+            pr.id,
+        )
+
+        flash(
+            "The request could not be cancelled. "
+            "Please try again or contact FAFL.",
+            "danger",
+        )
+        return redirect(redirect_url)
+
+    flash(
+        f"Shop For Me request {pr.request_number} "
+        "was cancelled.",
+        "success",
+    )
+
+    return redirect(
+        url_for("customer.purchase_requests")
+    )
 
 # -----------------------------
 # Messaging
@@ -3215,6 +3610,46 @@ def mark_notification_read(nid):
     db.session.commit()
     flash("Notification marked as read.", "success")
     return redirect(url_for("customer.view_notifications"))
+
+@customer_bp.app_context_processor
+def inject_customer_shop_for_me_badge():
+    shop_for_me_customer_action_count = 0
+
+    try:
+        if current_user.is_authenticated:
+            shop_for_me_customer_action_count = (
+                db.session.scalar(
+                    sa.select(func.count())
+                    .select_from(PurchaseRequest)
+                    .where(
+                        PurchaseRequest.user_id
+                        == current_user.id,
+                        PurchaseRequest.status.in_(
+                            [
+                                "quoted",
+                                "awaiting_payment",
+                            ]
+                        ),
+                    )
+                )
+                or 0
+            )
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.warning(
+            "Customer Shop For Me badge failed: %s",
+            error,
+        )
+
+        shop_for_me_customer_action_count = 0
+
+    return {
+        "shop_for_me_customer_action_count": int(
+            shop_for_me_customer_action_count
+        )
+    }
 
 
 @customer_bp.app_context_processor
@@ -5775,10 +6210,29 @@ def api_customer_transactions():
                 reverse=True
             )[0]
 
-        owed = max(inv_total - paid_sum, 0.0)
+        owed = max(
+            inv_total - paid_sum,
+            0.0,
+        )
 
-        if owed <= 0 and inv_total > 0:
+        stored_invoice_status = (
+            getattr(inv, "status", "")
+            or ""
+        ).strip().lower()
+
+        if stored_invoice_status in {
+            "draft",
+            "quoted",
+            "cancelled",
+        }:
+            continue
+
+        if (
+            stored_invoice_status == "paid"
+            or owed <= 0.01
+        ):
             inv_status = "paid"
+
         elif paid_sum > 0:
             inv_status = "partial"
         else:

@@ -1,459 +1,1386 @@
 {% extends "layout_admin.html" %}
 
+{% block title %}
+Shop For Me {{ pr.request_number }}
+{% endblock %}
+
 {% block content %}
+{% set request_status = (pr.status or "requested")|lower %}
+{% set item_count = pr.items|length if pr.items else 1 %}
+
 <div class="container-fluid py-4">
 
-    <!-- Header -->
-    <div class="card border-0 shadow-sm mb-4" style="border-radius:16px; overflow:hidden;">
-        <div class="card-body text-white p-4" style="background:#4a148c;">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-                <div>
-                    <h3 class="mb-1">
-                        <i class="fas fa-cart-plus me-2" style="color:#FACC15;"></i>
-                        {{ pr.request_number }}
-                    </h3>
-                    <p class="mb-0">Shop For Me Request Details</p>
-                </div>
+    <!-- UNIFIED HEADER -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 text-white shadow-sm mb-4 px-4 py-3"
+        style="background:#4a148c;border-radius:12px;">
+        <div class="d-flex align-items-center gap-3">
+            <div class="d-flex justify-content-center align-items-center" style="
+          width:44px;
+          height:44px;
+          border-radius:10px;
+          background:rgba(255,255,255,.14);
+        ">
+                <i class="fas fa-cart-plus fs-5"></i>
+            </div>
 
-                <a href="{{ url_for('logistics.admin_shop_for_me') }}" class="btn fw-semibold"
-                    style="background:#FACC15;color:#2b1600;border:none;">
-                    Back to Queue
-                </a>
+            <div>
+                <h3 class="fw-bold mb-1">
+                    {{ pr.request_number }}
+                </h3>
+
+                <p class="mb-0 small" style="opacity:.9;">
+                    Shop For Me request details
+                </p>
             </div>
         </div>
+
+        <a href="{{ url_for('logistics.admin_shop_for_me') }}" class="btn fw-semibold"
+            style="background:#FACC15;color:#2b1600;border:none;">
+            <i class="fas fa-arrow-left me-1"></i>
+            Back to Requests
+        </a>
     </div>
 
-    <div class="row g-3">
+    <div class="row g-4">
 
         <!-- LEFT COLUMN -->
-        <div class="col-lg-4">
+        <div class="col-xl-4 col-lg-5">
 
-            <!-- Customer -->
-            <div class="card shadow-sm border-0" style="border-radius:16px;">
-                <div class="card-body">
-                    <h5 class="fw-bold mb-3" style="color:#4a148c;">
+            <!-- CUSTOMER CARD -->
+            <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3">
                         Customer
                     </h5>
 
-                    <p class="mb-1">
-                        <strong>Name:</strong>
-                        {{ pr.user.full_name if pr.user else "-" }}
-                    </p>
+                    <div class="mb-3">
+                        <div class="small text-muted">
+                            Name
+                        </div>
 
-                    <p class="mb-1">
-                        <strong>Email:</strong>
-                        {{ pr.user.email if pr.user else "-" }}
-                    </p>
+                        <div class="fw-semibold">
+                            {% if pr.user %}
+                            {{ pr.user.full_name or "Customer" }}
+                            {% else %}
+                            —
+                            {% endif %}
+                        </div>
+                    </div>
 
-                    <p class="mb-1">
-                        <strong>FAFL #:</strong>
-                        {{ pr.customer_fafl_number or "-" }}
-                    </p>
+                    <div class="mb-3">
+                        <div class="small text-muted">
+                            Email
+                        </div>
 
-                    <p class="mb-1">
-                        <strong>Store:</strong>
-                        {{ pr.store_name or "-" }}
-                    </p>
+                        <div>
+                            {% if pr.user and pr.user.email %}
+                            <a href="mailto:{{ pr.user.email }}" class="text-decoration-none" style="color:#4a148c;">
+                                {{ pr.user.email }}
+                            </a>
+                            {% else %}
+                            —
+                            {% endif %}
+                        </div>
+                    </div>
 
-                    <p class="mb-1">
-                        <strong>Status:</strong>
+                    <div class="mb-3">
+                        <div class="small text-muted">
+                            FAFL Number
+                        </div>
 
-                        <span class="badge text-dark" style="background:#FACC15;">
-                            {{ pr.status.replace("_", " ") }}
+                        <div class="fw-semibold">
+                            {{ pr.customer_fafl_number or "—" }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="small text-muted">
+                            Store
+                        </div>
+
+                        <div class="fw-semibold">
+                            {{ pr.store_name or "—" }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="small text-muted mb-1">
+                            Status
+                        </div>
+
+                        {% if request_status == "requested" %}
+                        <span class="badge bg-secondary">
+                            Requested
                         </span>
-                    </p>
 
-                    <p class="mb-0">
-                        <strong>Submitted:</strong>
+                        {% elif request_status == "quoted" %}
+                        <span class="badge" style="background:#6f42c1;">
+                            Quoted
+                        </span>
+
+                        {% elif request_status == "awaiting_payment" %}
+                        <span class="badge bg-warning text-dark">
+                            Awaiting Payment
+                        </span>
+
+                        {% elif request_status == "paid" %}
+                        <span class="badge bg-success">
+                            Paid
+                        </span>
+
+                        {% elif request_status == "purchased" %}
+                        <span class="badge" style="background:#4a148c;">
+                            Purchased
+                        </span>
+
+                        {% elif request_status == "quote_expired" %}
+                        <span class="badge bg-danger">
+                            Quote Expired
+                        </span>
+
+                        {% elif request_status == "cancelled" %}
+                        <span class="badge bg-danger">
+                            Cancelled
+                        </span>
+
+                        {% else %}
+                        <span class="badge bg-secondary text-capitalize">
+                            {{ request_status|replace("_", " ") }}
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    <div>
+                        <div class="small text-muted">
+                            Submitted
+                        </div>
 
                         {% if pr.created_at %}
-                        {{ pr.created_at.strftime("%Y-%m-%d") }}
+                        {% set submitted_jamaica = to_jamaica(pr.created_at) %}
+
+                        <div class="fw-semibold">
+                            {{ submitted_jamaica.strftime("%b %d, %Y") }}
+                        </div>
+
+                        <div class="small text-muted">
+                            {{ submitted_jamaica.strftime("%I:%M %p") }}
+                        </div>
                         {% else %}
-                        -
+                        <div>—</div>
                         {% endif %}
-                    </p>
+                    </div>
                 </div>
             </div>
 
-            <!-- Actions -->
-            <div class="card shadow-sm border-0 mt-3" style="border-radius:16px;">
-                <div class="card-body">
-
-                    <h5 class="fw-bold mb-3" style="color:#4a148c;">
+            <!-- ACTIONS CARD -->
+            <div class="card border-0 shadow-sm" style="border-radius:14px;">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3">
                         Actions
                     </h5>
 
                     <div class="d-grid gap-2">
 
+                        {% if request_status in [
+                        "requested",
+                        "quoted",
+                        "quote_expired"
+                        ] %}
                         <button type="button" class="btn text-white" style="background:#4a148c;" data-bs-toggle="modal"
                             data-bs-target="#quoteModal">
                             <i class="fas fa-file-invoice-dollar me-1"></i>
-                            Send Quote
-                        </button>
 
-
-                        <button type="button" class="btn" style="background:#FACC15;color:#2b1600;"
-                            data-bs-toggle="modal" data-bs-target="#purchasedModal" {% if pr.status !='paid'
-                            %}disabled{% endif %}>
-                            <i class="fas fa-shopping-cart me-1"></i>
-                            Mark Purchased
-                        </button>
-
-                        {% if pr.invoice_id %}
-                        <button type="button" class="btn btn-outline-primary w-100"
-                            onclick="openInvoiceModal({{ pr.invoice_id }})">
-
-                            <i class="fas fa-file-invoice me-1"></i>
-                            Invoice & Payments
+                            {% if request_status == "quoted" %}
+                            Update Quote
+                            {% elif request_status == "quote_expired" %}
+                            Create New Quote
+                            {% else %}
+                            Prepare Quote
+                            {% endif %}
                         </button>
                         {% endif %}
 
-                        <a href="#" class="btn btn-outline-danger">
+                        {% if pr.invoice_id %}
+                        <button type="button" class="btn btn-outline-primary"
+                            onclick="openShopInvoiceModal({{ pr.invoice_id }})">
+                            <i class="fas fa-file-invoice me-1"></i>
+
+                            {% if request_status == "quoted" %}
+                            View Draft Invoice
+                            {% else %}
+                            Invoice & Payments
+                            {% endif %}
+                        </button>
+                        {% endif %}
+
+                        {% if request_status == "paid" %}
+                        <button type="button" class="btn" style="background:#FACC15;color:#2b1600;"
+                            data-bs-toggle="modal" data-bs-target="#purchasedModal">
+                            <i class="fas fa-shopping-cart me-1"></i>
+                            Mark Purchased
+                        </button>
+                        {% endif %}
+
+                        {% if request_status in [
+                        "requested",
+                        "quoted",
+                        "quote_expired",
+                        "awaiting_payment"
+                        ] %}
+                        <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal"
+                            data-bs-target="#cancelRequestModal">
                             <i class="fas fa-times-circle me-1"></i>
                             Cancel Request
-                        </a>
+                        </button>
+                        {% endif %}
+
+                        {% if request_status == "awaiting_payment" %}
+                        <div class="alert alert-warning small mb-0">
+                            The customer approved this quote. Payment must be
+                            completed before the item can be marked as purchased.
+                        </div>
+                        {% elif request_status == "quoted" %}
+                        <div class="alert alert-info small mb-0">
+                            This quote is awaiting the customer’s approval.
+                            Its invoice cannot accept payment yet.
+                        </div>
+                        {% elif request_status == "purchased" %}
+                        <div class="alert alert-success small mb-0">
+                            This request has been purchased and its locked
+                            pre-alert has been created.
+                        </div>
+                        {% elif request_status == "cancelled" %}
+                        <div class="alert alert-danger small mb-0">
+                            This request was cancelled. No payment or purchase
+                            action is available.
+                        </div>
+                        {% endif %}
 
                     </div>
-
                 </div>
             </div>
 
         </div>
 
         <!-- RIGHT COLUMN -->
-        <div class="col-lg-8">
+        <div class="col-xl-8 col-lg-7">
 
-            <!-- Request Summary -->
-            <div class="card shadow-sm border-0 mb-3" style="border-radius:16px;">
-                <div class="card-body">
-
-                    <h5 class="fw-bold mb-3" style="color:#4a148c;">
+            <!-- ORDER SUMMARY -->
+            <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3">
                         Request Summary
                     </h5>
 
-                    <div class="row text-center">
-
+                    <div class="row g-3">
                         <div class="col-md-4">
-                            <div class="border rounded p-3">
-                                <h6 class="text-muted mb-1">Store</h6>
-                                <strong>{{ pr.store_name or "-" }}</strong>
+                            <div class="border rounded p-3 h-100">
+                                <div class="small text-muted mb-1">
+                                    Store
+                                </div>
+
+                                <div class="fw-bold">
+                                    {{ pr.store_name or "—" }}
+                                </div>
                             </div>
                         </div>
 
                         <div class="col-md-4">
-                            <div class="border rounded p-3">
-                                <h6 class="text-muted mb-1">Items</h6>
-                                <strong>{{ pr.items|length if pr.items else 1 }}</strong>
+                            <div class="border rounded p-3 h-100">
+                                <div class="small text-muted mb-1">
+                                    Order
+                                </div>
+
+                                <div class="fw-bold">
+                                    {{ item_count }}
+                                    item{% if item_count != 1 %}s{% endif %}
+                                </div>
+
+                                <div class="small text-muted">
+                                    {{ pr.quantity or 1 }}
+                                    unit{% if (pr.quantity or 1) != 1 %}s{% endif %}
+                                </div>
                             </div>
                         </div>
 
                         <div class="col-md-4">
-                            <div class="border rounded p-3">
-                                <h6 class="text-muted mb-1">Total Qty</h6>
-                                <strong>{{ pr.quantity or 1 }}</strong>
+                            <div class="border rounded p-3 h-100">
+                                <div class="small text-muted mb-1">
+                                    Invoice
+                                </div>
+
+                                {% if pr.invoice %}
+                                <div class="fw-bold">
+                                    {{ pr.invoice.invoice_number or ("Invoice #" ~ pr.invoice.id) }}
+                                </div>
+
+                                <div class="small text-muted text-capitalize">
+                                    {{ (pr.invoice.status or "draft")|replace("_", " ") }}
+                                </div>
+                                {% else %}
+                                <div class="fw-bold">
+                                    Not created
+                                </div>
+
+                                <div class="small text-muted">
+                                    Created when a quote is prepared
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
-
                     </div>
-
                 </div>
             </div>
 
-            {% if pr.status in ["quoted", "awaiting_payment", "paid", "purchased"] %}
-            <div class="card shadow-sm border-0 mb-3" style="border-radius:16px;">
-                <div class="card-body">
-                    <h5 class="fw-bold mb-3" style="color:#4a148c;">Quote</h5>
+            <!-- QUOTE -->
+            {% if request_status in [
+            "quoted",
+            "awaiting_payment",
+            "paid",
+            "purchased",
+            "quote_expired"
+            ] %}
+            <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <h5 class="fw-bold mb-0">
+                            Quote
+                        </h5>
 
-                    <p class="mb-1">
-                        <strong>Item Total USD:</strong>
-                        US${{ "%.2f"|format(pr.quoted_item_price_usd or 0) }}
-                    </p>
-
-                    <p class="mb-1">
-                        <strong>Service Fee JMD:</strong>
-                        J${{ "%.2f"|format(pr.quoted_service_fee_jmd or 0) }}
-                    </p>
-
-                    <p class="mb-0">
-                        <strong>Quoted On:</strong>
-                        {% if pr.quoted_at %}
-                        {{ pr.quoted_at.strftime("%Y-%m-%d") }}
-                        {% else %}
-                        -
+                        {% if request_status == "quote_expired" %}
+                        <span class="badge bg-danger">
+                            Expired
+                        </span>
+                        {% elif request_status == "quoted" %}
+                        <span class="badge" style="background:#6f42c1;">
+                            Awaiting Approval
+                        </span>
+                        {% elif request_status == "awaiting_payment" %}
+                        <span class="badge bg-warning text-dark">
+                            Approved
+                        </span>
+                        {% elif request_status in ["paid", "purchased"] %}
+                        <span class="badge bg-success">
+                            Paid
+                        </span>
                         {% endif %}
-                    </p>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 h-100">
+                                <div class="small text-muted mb-1">
+                                    Item Total
+                                </div>
+
+                                <div class="fw-bold">
+                                    US${{
+                                    "%.2f"|format(
+                                    pr.quoted_item_price_usd or 0
+                                    )
+                                    }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 h-100">
+                                <div class="small text-muted mb-1">
+                                    Service Fee
+                                </div>
+
+                                <div class="fw-bold">
+                                    JMD {{
+                                    "{:,.2f}".format(
+                                    pr.quoted_service_fee_jmd or 0
+                                    )
+                                    }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 h-100">
+                                <div class="small text-muted mb-1">
+                                    Quoted
+                                </div>
+
+                                {% if pr.quoted_at %}
+                                {% set quoted_jamaica = to_jamaica(pr.quoted_at) %}
+
+                                <div class="fw-bold">
+                                    {{ quoted_jamaica.strftime("%b %d, %Y") }}
+                                </div>
+
+                                <div class="small text-muted">
+                                    {{ quoted_jamaica.strftime("%I:%M %p") }}
+                                </div>
+                                {% else %}
+                                <div class="fw-bold">—</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if pr.invoice %}
+                    <div class="border-top mt-3 pt-3">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="small text-muted">
+                                    Invoice Total
+                                </div>
+
+                                <div class="fw-bold">
+                                    JMD {{
+                                    "{:,.2f}".format(
+                                    pr.invoice.grand_total or 0
+                                    )
+                                    }}
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="small text-muted">
+                                    Balance Due
+                                </div>
+
+                                <div class="fw-bold">
+                                    JMD {{
+                                    "{:,.2f}".format(
+                                    pr.invoice.amount_due or 0
+                                    )
+                                    }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}
 
-            <!-- Requested Items -->
-            <div class="card shadow-sm border-0" style="border-radius:16px;">
-                <div class="card-body">
+            <!-- PURCHASE DETAILS -->
+            {% if request_status == "purchased" %}
+            <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3">
+                        Purchase Details
+                    </h5>
 
-                    <h5 class="fw-bold mb-3" style="color:#4a148c;">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 h-100">
+                                <div class="small text-muted mb-1">
+                                    Store Order Number
+                                </div>
+
+                                <div class="fw-bold">
+                                    {{ pr.order_number or "—" }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 h-100">
+                                <div class="small text-muted mb-1">
+                                    Merchant Tracking
+                                </div>
+
+                                <div class="fw-bold text-break">
+                                    {{ pr.merchant_tracking_number or "—" }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 h-100">
+                                <div class="small text-muted mb-1">
+                                    Purchased
+                                </div>
+
+                                {% if pr.purchased_at %}
+                                {% set purchased_jamaica = to_jamaica(pr.purchased_at) %}
+
+                                <div class="fw-bold">
+                                    {{ purchased_jamaica.strftime("%b %d, %Y") }}
+                                </div>
+
+                                <div class="small text-muted">
+                                    {{ purchased_jamaica.strftime("%I:%M %p") }}
+                                </div>
+                                {% else %}
+                                <div class="fw-bold">—</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if pr.purchased_by %}
+                    <div class="small text-muted mt-3">
+                        Purchased by
+                        <strong>
+                            {{ pr.purchased_by.full_name or pr.purchased_by.email }}
+                        </strong>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- REQUESTED ITEMS -->
+            <div class="card border-0 shadow-sm mb-4" style="border-radius:14px;">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3">
                         Requested Items
                     </h5>
 
                     {% if pr.items %}
-
                     {% for item in pr.items %}
-                    <div class="border rounded-3 p-3 mb-3" style="border-color:#e5d8f5 !important;">
-
-                        <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
-
+                    <div class="border rounded p-3 mb-3" style="border-color:#e5d8f5 !important;">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                             <h6 class="fw-bold mb-0" style="color:#4a148c;">
                                 Item {{ loop.index }}
                             </h6>
 
                             <span class="badge bg-success">
-                                Qty {{ item.quantity or 1 }}
+                                Quantity {{ item.quantity or 1 }}
                             </span>
-
                         </div>
 
-                        <p class="mb-1">
-                            <strong>Item:</strong>
-                            {{ item.item_name or "-" }}
-                        </p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="small text-muted">
+                                    Item
+                                </div>
 
-                        <p class="mb-1">
-                            <strong>Size:</strong>
-                            {{ item.size or "-" }}
-                        </p>
+                                <div class="fw-semibold">
+                                    {{ item.item_name or "—" }}
+                                </div>
+                            </div>
 
-                        <p class="mb-1">
-                            <strong>Color:</strong>
-                            {{ item.color or "-" }}
-                        </p>
+                            <div class="col-md-3">
+                                <div class="small text-muted">
+                                    Size
+                                </div>
 
-                        <p class="mb-1">
-                            <strong>Notes:</strong>
-                            {{ item.notes or "-" }}
-                        </p>
+                                <div class="fw-semibold">
+                                    {{ item.size or "—" }}
+                                </div>
+                            </div>
 
-                        <p class="mb-0">
-                            <strong>Link:</strong>
+                            <div class="col-md-3">
+                                <div class="small text-muted">
+                                    Color
+                                </div>
 
-                            <a href="{{ item.product_url }}" target="_blank" style="color:#4a148c;">
-                                Open Product
-                            </a>
-                        </p>
+                                <div class="fw-semibold">
+                                    {{ item.color or "—" }}
+                                </div>
+                            </div>
 
+                            <div class="col-12">
+                                <div class="small text-muted">
+                                    Notes
+                                </div>
+
+                                <div style="white-space:pre-wrap;">
+                                    {{ item.notes or "—" }}
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <a href="{{ item.product_url }}" target="_blank" rel="noopener noreferrer"
+                                    class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-external-link-alt me-1"></i>
+                                    Open Product
+                                </a>
+                            </div>
+                        </div>
                     </div>
                     {% endfor %}
-
                     {% else %}
-
-                    <p class="text-muted mb-0">
-                        No item details found.
-                    </p>
-
+                    <div class="text-muted">
+                        No item details were found.
+                    </div>
                     {% endif %}
-
                 </div>
             </div>
 
-            <!-- Attachments -->
-            <div class="card shadow-sm border-0 mt-3" style="border-radius:16px;">
-                <div class="card-body">
-
-                    <h5 class="fw-bold mb-3" style="color:#4a148c;">
-                        Screenshots / Attachments
+            <!-- ATTACHMENTS -->
+            <div class="card border-0 shadow-sm" style="border-radius:14px;">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3">
+                        Screenshots and Attachments
                     </h5>
 
                     {% if pr.attachments %}
-
                     <div class="row g-3">
+                        {% for attachment in pr.attachments %}
+                        <div class="col-xl-4 col-md-6">
+                            <div class="border rounded p-2 h-100">
+                                <div class="small fw-semibold text-truncate mb-2"
+                                    title="{{ attachment.original_name or 'Attachment' }}">
+                                    {{ attachment.original_name or "Attachment" }}
+                                </div>
 
-                        {% for a in pr.attachments %}
-
-                        <div class="col-md-4">
-
-                            <div class="border rounded-3 p-2 h-100">
-
-                                <p class="small mb-2 text-truncate">
-                                    {{ a.original_name or "Attachment" }}
-                                </p>
-
-                                <a href="{{ a.file_url }}" target="_blank">
-
-                                    <img src="{{ a.file_url }}" class="img-fluid rounded border mb-2"
-                                        style="max-height:200px;width:100%;object-fit:cover;">
-
+                                <a href="{{ attachment.file_url }}" target="_blank" rel="noopener noreferrer">
+                                    <img src="{{ attachment.file_url }}"
+                                        alt="{{ attachment.original_name or 'Attachment' }}"
+                                        class="img-fluid rounded border mb-2" style="
+                          height:180px;
+                          width:100%;
+                          object-fit:cover;
+                        ">
                                 </a>
 
-                                <a href="{{ a.file_url }}" target="_blank" class="btn btn-sm w-100 text-white"
-                                    style="background:#4a148c;">
-                                    View Full Size
+                                <a href="{{ attachment.file_url }}" target="_blank" rel="noopener noreferrer"
+                                    class="btn btn-sm w-100 text-white" style="background:#4a148c;">
+                                    View Attachment
                                 </a>
-
                             </div>
-
                         </div>
-
                         {% endfor %}
-
                     </div>
-
                     {% else %}
-
-                    <p class="text-muted mb-0">
-                        No screenshots uploaded.
-                    </p>
-
+                    <div class="text-muted">
+                        No screenshots were uploaded.
+                    </div>
                     {% endif %}
-
                 </div>
             </div>
 
         </div>
-
     </div>
-
 </div>
+
+<!-- QUOTE MODAL -->
+{% if request_status in [
+"requested",
+"quoted",
+"quote_expired"
+] %}
 <div class="modal fade" id="quoteModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <form method="POST" action="{{ url_for('logistics.admin_shop_for_me_quote', request_id=pr.id) }}">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="POST" action="{{ url_for(
+        'logistics.admin_shop_for_me_quote',
+        request_id=pr.id
+      ) }}" class="modal-content">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-            <div class="modal-content">
-                <div class="modal-header" style="background:#4a148c;color:#fff;">
-                    <h5 class="modal-title">Send Quote - {{ pr.request_number }}</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            <div class="modal-header text-white" style="background:#4a148c;">
+                <h5 class="modal-title">
+                    {% if request_status == "quoted" %}
+                    Update Quote
+                    {% elif request_status == "quote_expired" %}
+                    Create New Quote
+                    {% else %}
+                    Prepare Quote
+                    {% endif %}
+                    — {{ pr.request_number }}
+                </h5>
+
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Item Total (USD)
+                    </label>
+
+                    <input type="number" step="0.01" min="0.01" name="item_total_usd" class="form-control"
+                        value="{% if pr.quoted_item_price_usd is not none %}{{ '%.2f'|format(pr.quoted_item_price_usd) }}{% endif %}"
+                        required>
                 </div>
 
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Item Total USD</label>
-                        <input type="number" step="0.01" min="0" name="item_total_usd" class="form-control" required>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Service Fee (JMD)
+                    </label>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Service Fee JMD</label>
-                        <input type="number" step="0.01" min="0" name="service_fee_jmd" class="form-control"
-                            placeholder="Leave blank to auto-calculate">
-                        <div class="form-text">
-                            Uses FAFL Shop For Me fee structure if left blank.
-                        </div>
-                    </div>
+                    <input type="number" step="0.01" min="0" name="service_fee_jmd" class="form-control"
+                        value="{% if pr.quoted_service_fee_jmd is not none %}{{ '%.2f'|format(pr.quoted_service_fee_jmd) }}{% endif %}"
+                        placeholder="Leave blank to calculate automatically">
 
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Quote Notes</label>
-                        <textarea name="quote_notes" rows="3" class="form-control"
-                            placeholder="Optional notes for this quote"></textarea>
+                    <div class="form-text">
+                        Leave this blank to apply the configured FAFL
+                        Shop For Me service fee automatically.
                     </div>
                 </div>
 
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                        Cancel
-                    </button>
-                    <button type="submit" class="btn text-white" style="background:#4a148c;">
-                        Save Quote
-                    </button>
+                <div class="mb-0">
+                    <label class="form-label fw-semibold">
+                        Quote Notes
+                    </label>
+
+                    <textarea name="quote_notes" rows="3" class="form-control"
+                        placeholder="Optional notes for the customer"></textarea>
                 </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Close
+                </button>
+
+                <button type="submit" class="btn text-white" style="background:#4a148c;"
+                    onclick="this.disabled=true;this.form.submit();">
+                    Save Quote
+                </button>
             </div>
         </form>
     </div>
 </div>
+{% endif %}
 
+<!-- MARK PURCHASED MODAL -->
+{% if request_status == "paid" %}
 <div class="modal fade" id="purchasedModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-        <form method="POST" action="{{ url_for('logistics.admin_shop_for_me_mark_purchased', request_id=pr.id) }}">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="POST" action="{{ url_for(
+        'logistics.admin_shop_for_me_mark_purchased',
+        request_id=pr.id
+      ) }}" class="modal-content">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-            <div class="modal-content">
-                <div class="modal-header" style="background:#4a148c;color:#fff;">
-                    <h5 class="modal-title">Mark Purchased - {{ pr.request_number }}</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            <div class="modal-header text-white" style="background:#4a148c;">
+                <h5 class="modal-title">
+                    Mark Purchased — {{ pr.request_number }}
+                </h5>
+
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Store Order Number
+                    </label>
+
+                    <input type="text" name="order_number" class="form-control" autocomplete="off" required>
                 </div>
 
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Store Order Number</label>
-                        <input type="text" name="order_number" class="form-control" required>
-                    </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">
+                        Merchant Tracking Number
+                    </label>
 
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold">Merchant Tracking Number</label>
-                        <input type="text" name="merchant_tracking_number" class="form-control" required>
-                        <div class="form-text">
-                            This tracking number will be used to auto-create the customer pre-alert.
-                        </div>
-                    </div>
+                    <input type="text" name="merchant_tracking_number" class="form-control" autocomplete="off" required>
 
-                    <div class="alert mb-0" style="background:#fff8db;color:#664d03;border:1px solid #FACC15;">
-                        This will create a locked pre-alert for the customer and move this request to Purchased.
+                    <div class="form-text">
+                        This tracking number will create the customer’s locked
+                        pre-alert and later match the arriving package.
                     </div>
                 </div>
 
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                        Cancel
-                    </button>
-                    <button type="submit" class="btn text-white" style="background:#4a148c;">
-                        Confirm Purchased
-                    </button>
+                <div class="alert mb-0" style="
+            background:#fff8db;
+            color:#664d03;
+            border:1px solid #FACC15;
+          ">
+                    Confirm that the order and tracking numbers are correct.
+                    They will be used for package matching.
                 </div>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Close
+                </button>
+
+                <button type="submit" class="btn text-white" style="background:#4a148c;"
+                    onclick="this.disabled=true;this.form.submit();">
+                    Confirm Purchased
+                </button>
             </div>
         </form>
     </div>
 </div>
-<!-- Invoice Modal -->
-<div class="modal fade" id="invoiceModal" tabindex="-1">
+{% endif %}
 
+<!-- CANCEL REQUEST MODAL -->
+{% if request_status in [
+"requested",
+"quoted",
+"quote_expired",
+"awaiting_payment"
+] %}
+<div class="modal fade" id="cancelRequestModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="POST" action="{{ url_for(
+        'logistics.admin_shop_for_me_cancel',
+        request_id=pr.id
+      ) }}" class="modal-content">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    Cancel {{ pr.request_number }}
+                </h5>
+
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    Cancelling this request will also cancel its unpaid
+                    or draft invoice and set the invoice balance to zero.
+                </div>
+
+                <label for="shopCancellationReason" class="form-label fw-semibold">
+                    Reason for cancellation
+                </label>
+
+                <textarea id="shopCancellationReason" name="cancellation_reason" class="form-control" rows="3"
+                    maxlength="500" placeholder="Enter the reason for cancelling this request" required></textarea>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    Keep Request
+                </button>
+
+                <button type="submit" class="btn btn-danger" onclick="
+            if (!confirm('Cancel this Shop For Me request?')) {
+              return false;
+            }
+
+            this.disabled = true;
+            this.form.submit();
+          ">
+                    Confirm Cancellation
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- INVOICE MODAL -->
+{% if pr.invoice_id %}
+<div class="modal fade" id="invoiceModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
-
         <div class="modal-content">
-
             <div class="modal-header">
-
                 <h5 class="modal-title">
                     Invoice
                 </h5>
 
-                <button class="btn-close" data-bs-dismiss="modal">
-                </button>
-
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
             <div class="modal-body" id="invoiceModalBody">
-
                 <div class="text-center py-5">
-
-                    <div class="spinner-border text-primary"></div>
-
+                    <div class="spinner-border" style="color:#4a148c;"></div>
                 </div>
-
             </div>
-
         </div>
-
     </div>
-
 </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+
 <script>
+    function initShopInvoiceControls(rootElement) {
+        const root = rootElement || document;
 
-    function openInvoiceModal(invoiceId) {
+        const payOverlay = root.querySelector("#inlinePayOverlay");
+        const discountOverlay = root.querySelector(
+            "#inlineDiscountOverlay"
+        );
+        const breakdownOverlay = root.querySelector(
+            "#inlineBreakdownOverlay"
+        );
 
-        const modal = new bootstrap.Modal(
-            document.getElementById("invoiceModal")
+        const showOverlay = function (element) {
+            if (element) {
+                element.classList.remove("d-none");
+            }
+        };
+
+        const hideOverlay = function (element) {
+            if (element) {
+                element.classList.add("d-none");
+            }
+        };
+
+        [
+            payOverlay,
+            discountOverlay,
+            breakdownOverlay
+        ].forEach(function (element) {
+            if (element) {
+                element.classList.add("d-none");
+            }
+        });
+
+        // --------------------------------
+        // Open Add Payment
+        // --------------------------------
+        root.querySelectorAll(".js-open-pay").forEach(function (button) {
+            button.onclick = function (event) {
+                event.preventDefault();
+
+                if (!payOverlay) {
+                    return;
+                }
+
+                showOverlay(payOverlay);
+                setupPaymentLogic();
+            };
+        });
+
+        // --------------------------------
+        // Open Discount
+        // --------------------------------
+        root.querySelectorAll(
+            ".js-open-discount"
+        ).forEach(function (button) {
+            button.onclick = function (event) {
+                event.preventDefault();
+
+                if (!discountOverlay) {
+                    return;
+                }
+
+                showOverlay(discountOverlay);
+                setupDiscountLogic();
+            };
+        });
+
+        // --------------------------------
+        // Close invoice overlays
+        // --------------------------------
+        root.querySelectorAll(
+            ".fa-inline-close"
+        ).forEach(function (button) {
+            button.onclick = function () {
+                const type = this.getAttribute("data-close");
+
+                if (type === "pay") {
+                    hideOverlay(payOverlay);
+                }
+
+                if (type === "discount") {
+                    hideOverlay(discountOverlay);
+                }
+
+                if (type === "bd") {
+                    hideOverlay(breakdownOverlay);
+                }
+            };
+        });
+
+        // --------------------------------
+        // Payment keypad and fields
+        // --------------------------------
+        function setupPaymentLogic() {
+            if (!payOverlay) {
+                return;
+            }
+
+            const display = payOverlay.querySelector(
+                "#payDisplayInline"
+            );
+
+            const hidden = payOverlay.querySelector(
+                "#payAmountInputInline"
+            );
+
+            if (!display || !hidden) {
+                return;
+            }
+
+            let current = (
+                hidden.value &&
+                hidden.value !== "0"
+            )
+                ? String(hidden.value)
+                : "0";
+
+            function updateDisplay() {
+                let amount = parseFloat(current || "0");
+
+                if (Number.isNaN(amount)) {
+                    amount = 0;
+                }
+
+                hidden.value = amount.toFixed(2);
+
+                display.textContent = (
+                    "JMD " +
+                    amount.toLocaleString(
+                        undefined,
+                        {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                        }
+                    )
+                );
+            }
+
+            function pushKey(key) {
+                if (key === ".") {
+                    if (current.includes(".")) {
+                        return;
+                    }
+
+                    current += ".";
+
+                } else if (key === "00") {
+                    if (current === "0") {
+                        return;
+                    }
+
+                    current += "00";
+
+                } else {
+                    if (current === "0") {
+                        current = key;
+                    } else {
+                        current += key;
+                    }
+                }
+
+                updateDisplay();
+            }
+
+            payOverlay.querySelectorAll(
+                ".payment-key-btn"
+            ).forEach(function (button) {
+                button.onclick = function () {
+                    pushKey(
+                        this.getAttribute("data-key")
+                    );
+                };
+            });
+
+            payOverlay.querySelectorAll(
+                ".payment-quick-btn[data-quick]"
+            ).forEach(function (button) {
+                button.onclick = function () {
+                    current = String(
+                        this.getAttribute("data-quick") || "0"
+                    );
+
+                    updateDisplay();
+                };
+            });
+
+            const clearButton = payOverlay.querySelector(
+                "#payClearBtnInline"
+            );
+
+            if (clearButton) {
+                clearButton.onclick = function () {
+                    current = "0";
+                    updateDisplay();
+                };
+            }
+
+            // Payment method
+            const methodInput = payOverlay.querySelector(
+                "#payMethodInputInline"
+            );
+
+            const methodList = payOverlay.querySelector(
+                "#paymentMethodListInline"
+            );
+
+            if (methodInput && methodList) {
+                methodList.querySelectorAll(
+                    ".payment-method-btn"
+                ).forEach(function (button) {
+                    button.onclick = function () {
+                        methodList.querySelectorAll(
+                            ".payment-method-btn"
+                        ).forEach(function (otherButton) {
+                            otherButton.classList.remove("active");
+                        });
+
+                        this.classList.add("active");
+
+                        methodInput.value = (
+                            this.getAttribute("data-method") ||
+                            "Cash"
+                        );
+                    };
+                });
+            }
+
+            // Authorised by
+            const authSelect = payOverlay.querySelector(
+                "#authBySelectInline"
+            );
+
+            const authInput = payOverlay.querySelector(
+                "#authByInputInline"
+            );
+
+            const authHidden = payOverlay.querySelector(
+                "#authByHiddenInline"
+            );
+
+            if (authSelect && authHidden) {
+                if (authSelect.value !== "__other__") {
+                    authHidden.value = authSelect.value;
+                }
+
+                authSelect.onchange = function () {
+                    if (this.value === "__other__") {
+                        if (authInput) {
+                            authInput.classList.remove("d-none");
+                            authInput.value = "";
+                            authInput.focus();
+                        }
+
+                        authHidden.value = "";
+
+                    } else {
+                        if (authInput) {
+                            authInput.classList.add("d-none");
+                        }
+
+                        authHidden.value = this.value;
+                    }
+                };
+
+                if (authInput) {
+                    authInput.oninput = function () {
+                        if (authSelect.value === "__other__") {
+                            authHidden.value = this.value;
+                        }
+                    };
+                }
+            }
+
+            updateDisplay();
+        }
+
+        // --------------------------------
+        // Discount fields
+        // --------------------------------
+        function setupDiscountLogic() {
+            if (!discountOverlay) {
+                return;
+            }
+
+            const form = discountOverlay.querySelector(
+                "#inlineDiscountForm"
+            );
+
+            if (!form) {
+                return;
+            }
+
+            const balance = (
+                parseFloat(
+                    form.getAttribute("data-balance") || "0"
+                ) || 0
+            );
+
+            const tabs = discountOverlay.querySelector(
+                "#discountTabsInline"
+            );
+
+            const percentPane = discountOverlay.querySelector(
+                "#discountPercentPaneInline"
+            );
+
+            const amountPane = discountOverlay.querySelector(
+                "#discountAmountPaneInline"
+            );
+
+            const percentInput = discountOverlay.querySelector(
+                "#discountPercentInputInline"
+            );
+
+            const percentLabel = discountOverlay.querySelector(
+                "#discountPercentAmountInline"
+            );
+
+            const amountInput = discountOverlay.querySelector(
+                "#discountAmountInputInline"
+            );
+
+            const hiddenAmount = discountOverlay.querySelector(
+                "#discountHiddenAmountInline"
+            );
+
+            let mode = (
+                tabs
+                    ?.querySelector(".discount-tab.active")
+                    ?.getAttribute("data-mode") ||
+                "percent"
+            );
+
+            function formatJMD(value) {
+                const number = parseFloat(value || "0") || 0;
+
+                return (
+                    "JMD " +
+                    number.toLocaleString(
+                        undefined,
+                        {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                        }
+                    )
+                );
+            }
+
+            function recalculateDiscount() {
+                if (!hiddenAmount) {
+                    return;
+                }
+
+                if (mode === "percent") {
+                    const percentage = (
+                        parseFloat(
+                            percentInput?.value || "0"
+                        ) || 0
+                    );
+
+                    const discount = Math.max(
+                        0,
+                        balance * percentage / 100
+                    );
+
+                    hiddenAmount.value = discount.toFixed(2);
+
+                    if (percentLabel) {
+                        percentLabel.textContent = formatJMD(
+                            discount
+                        );
+                    }
+
+                } else {
+                    const discount = (
+                        parseFloat(
+                            amountInput?.value || "0"
+                        ) || 0
+                    );
+
+                    hiddenAmount.value = discount.toFixed(2);
+                }
+            }
+
+            if (tabs) {
+                tabs.querySelectorAll(
+                    ".discount-tab"
+                ).forEach(function (button) {
+                    button.onclick = function () {
+                        tabs.querySelectorAll(
+                            ".discount-tab"
+                        ).forEach(function (otherButton) {
+                            otherButton.classList.remove("active");
+                        });
+
+                        this.classList.add("active");
+
+                        mode = (
+                            this.getAttribute("data-mode") ||
+                            "percent"
+                        );
+
+                        if (percentPane && amountPane) {
+                            if (mode === "percent") {
+                                percentPane.classList.remove("d-none");
+                                amountPane.classList.add("d-none");
+                            } else {
+                                percentPane.classList.add("d-none");
+                                amountPane.classList.remove("d-none");
+                            }
+                        }
+
+                        recalculateDiscount();
+                    };
+                });
+            }
+
+            if (percentInput) {
+                percentInput.oninput = recalculateDiscount;
+            }
+
+            if (amountInput) {
+                amountInput.oninput = recalculateDiscount;
+            }
+
+            recalculateDiscount();
+        }
+    }
+
+    function openShopInvoiceModal(invoiceId) {
+        const modalElement = document.getElementById(
+            "invoiceModal"
+        );
+
+        const modalBody = document.getElementById(
+            "invoiceModalBody"
+        );
+
+        if (!modalElement || !modalBody) {
+            return;
+        }
+
+        modalBody.innerHTML = `
+      <div class="text-center py-5">
+        <div
+          class="spinner-border"
+          style="color:#4a148c;"
+        ></div>
+      </div>
+    `;
+
+        const modal = bootstrap.Modal.getOrCreateInstance(
+            modalElement
         );
 
         modal.show();
 
-        document.getElementById("invoiceModalBody").innerHTML =
-            '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+        const invoiceUrlTemplate = {{ url_for(
+            "admin.view_invoice",
+            invoice_id = 0
+        ) | tojson
+    }};
 
-        fetch("/admin/invoices/" + invoiceId + "/inline")
-            .then(r => r.text())
-            .then(html => {
+    const invoiceUrl = (
+        invoiceUrlTemplate.replace(/0$/, String(invoiceId))
+        + "?inline=1"
+    );
 
-                document.getElementById("invoiceModalBody").innerHTML = html;
+    fetch(invoiceUrl, {
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    })
+        .then(function (response) {
+            if (!response.ok) {
+                throw new Error(
+                    "The invoice could not be loaded."
+                );
+            }
 
-            });
+            return response.text();
+        })
+        .then(function (html) {
+            modalBody.innerHTML = html;
 
+            initShopInvoiceControls(modalElement);
+        })
+        .catch(function (error) {
+            modalBody.innerHTML = `
+          <div class="alert alert-danger mb-0">
+            ${error.message}
+          </div>
+        `;
+        });
     }
-
 </script>
 {% endblock %}

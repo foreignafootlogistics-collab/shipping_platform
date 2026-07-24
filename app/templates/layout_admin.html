@@ -228,6 +228,12 @@
 
                       <i class="fas fa-cart-plus me-2"></i>
                       Shop For Me
+
+                      {% if shop_for_me_action_count|default(0) > 0 %}
+                      <span class="badge bg-danger ms-2">
+                        {{ shop_for_me_action_count }}
+                      </span>
+                      {% endif %}
                     </a>
                   </li>
 
@@ -568,6 +574,21 @@
               {% if accounts_badge > 0 %}
               <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
                 {{ accounts_badge }}
+              </span>
+              {% endif %}
+            </a>
+            <!-- Shop For Me -->
+            <a href="{{ url_for('logistics.admin_shop_for_me') }}" class="position-relative text-dark"
+              title="Shop For Me Requests" aria-label="Shop For Me Requests">
+              <i class="fas fa-cart-plus fa-lg"></i>
+
+              {% if shop_for_me_action_count|default(0) > 0 %}
+              <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                {{ shop_for_me_action_count }}
+
+                <span class="visually-hidden">
+                  Shop For Me requests requiring action
+                </span>
               </span>
               {% endif %}
             </a>

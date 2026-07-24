@@ -2094,137 +2094,156 @@ MOBILE RESPONSIVE
   // ==========================================
 
   async function loadCollectionsSummary() {
+    const toolbar =
+      document.getElementById("collectionsToolbar");
 
-    const unpaidCheckbox = document.getElementById("unpaidOnlyChk");
-    const toolbar = document.getElementById("collectionsToolbar");
+    if (!toolbar) {
+      return;
+    }
 
-    if (!unpaidCheckbox || !toolbar) return;
+    /*
+     * The page now uses Customers Owing buttons instead of the
+     * old unpaidOnlyChk checkbox.
+     */
+    const unpaidOnly =
+      "{{ '1' if unpaid_only else '0' }}" === "1";
 
-    if (!unpaidCheckbox.checked) {
-
+    if (!unpaidOnly) {
       toolbar.style.display = "none";
       return;
-
     }
 
     try {
-
       const params = new URLSearchParams();
 
       const searchInput =
         document.querySelector('input[name="search"]');
 
-      if (searchInput && searchInput.value.trim() !== "") {
-
-        params.set("search", searchInput.value.trim());
-
+      if (
+        searchInput &&
+        searchInput.value.trim() !== ""
+      ) {
+        params.set(
+          "search",
+          searchInput.value.trim()
+        );
       }
 
       const endpoint =
         "/finance/unpaid-users-summary" +
-        (params.toString() ? "?" + params.toString() : "");
+        (
+          params.toString()
+            ? "?" + params.toString()
+            : ""
+        );
 
       const response = await fetch(endpoint, {
-
+        credentials: "same-origin",
         headers: {
           "X-Requested-With": "XMLHttpRequest"
         }
-
       });
 
-      if (!response.ok) {
+      let data = {};
 
-        throw new Error("Unable to load collections summary.");
-
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        throw new Error(
+          `The server returned error ${response.status}.`
+        );
       }
 
-      const data = await response.json();
-
-      if (!data.success) {
-
-        throw new Error(data.error);
-
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error ||
+          "Unable to load collections summary."
+        );
       }
 
       const formattedTotal = Number(
         data.grand_total || 0
       ).toLocaleString("en-JM", {
-
         minimumFractionDigits: 2,
         maximumFractionDigits: 2
-
       });
 
-      // ==========================
-      // Toolbar
-      // ==========================
+      // Summary toolbar
+      const customerCount =
+        document.getElementById(
+          "collectionCustomers"
+        );
 
-      document.getElementById("collectionCustomers").textContent =
-        data.customer_count || 0;
+      const invoiceCount =
+        document.getElementById(
+          "collectionInvoices"
+        );
 
-      document.getElementById("collectionInvoices").textContent =
-        data.invoice_count || 0;
+      const outstandingTotal =
+        document.getElementById(
+          "collectionTotal"
+        );
 
-      document.getElementById("collectionTotal").textContent =
-        "J$" + formattedTotal;
-
-      // ==========================
-      // Reminder Modal
-      // ==========================
-
-      const modalCustomer =
-        document.getElementById("modalCustomerCount");
-
-      if (modalCustomer) {
-
-        modalCustomer.textContent =
-          data.customers_with_email || 0;
-
+      if (customerCount) {
+        customerCount.textContent =
+          data.customer_count || 0;
       }
+
+      if (invoiceCount) {
+        invoiceCount.textContent =
+          data.invoice_count || 0;
+      }
+
+      if (outstandingTotal) {
+        outstandingTotal.textContent =
+          "J$" + formattedTotal;
+      }
+
+      // Reminder modal summary
+      const modalCustomer =
+        document.getElementById(
+          "modalCustomerCount"
+        );
 
       const modalInvoice =
-        document.getElementById("modalInvoiceCount");
-
-      if (modalInvoice) {
-
-        modalInvoice.textContent =
-          data.invoice_count || 0;
-
-      }
+        document.getElementById(
+          "modalInvoiceCount"
+        );
 
       const modalOutstanding =
-        document.getElementById("modalOutstandingTotal");
+        document.getElementById(
+          "modalOutstandingTotal"
+        );
+
+      if (modalCustomer) {
+        modalCustomer.textContent =
+          data.customers_with_email || 0;
+      }
+
+      if (modalInvoice) {
+        modalInvoice.textContent =
+          data.invoice_count || 0;
+      }
 
       if (modalOutstanding) {
-
         modalOutstanding.textContent =
           "J$" + formattedTotal;
-
       }
 
       toolbar.style.display = "flex";
 
-    }
-
-    catch (err) {
-
-      console.error(err);
+    } catch (error) {
+      console.error(
+        "Collections summary error:",
+        error
+      );
 
       toolbar.style.display = "none";
-
     }
-
   }
 
-  // ==========================================
-  // Events
-  // ==========================================
-
+  // Load the summary after the page has rendered.
   loadCollectionsSummary();
-
-  document
-    .getElementById("unpaidOnlyChk")
-    ?.addEventListener("change", loadCollectionsSummary);
 
 
   // ==========================================

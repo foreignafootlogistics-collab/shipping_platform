@@ -4239,19 +4239,44 @@ def schedule_pickup_cancel(pickup_id):
 # -----------------------------
 # Scheduled Delivery
 # -----------------------------
-@customer_bp.route('/schedule-delivery', methods=['GET'])
+@customer_bp.route(
+    "/schedule-delivery",
+    methods=["GET"],
+)
 @login_required
 def schedule_delivery_overview():
-    deliveries = (ScheduledDelivery.query
-                  .filter_by(user_id=current_user.id)
-                  .order_by(ScheduledDelivery.id.desc())
-                  .all())
+    deliveries = (
+        ScheduledDelivery.query
+        .filter_by(user_id=current_user.id)
+        .order_by(
+            ScheduledDelivery.id.desc()
+        )
+        .all()
+    )
+
+    # Only unassigned packages currently ready for pickup
+    # may be added to a new scheduled delivery.
+    eligible_packages = (
+        Package.query
+        .filter(
+            Package.user_id == current_user.id,
+            func.lower(
+                func.trim(Package.status)
+            ) == "ready for pick up",
+            Package.scheduled_delivery_id.is_(None),
+        )
+        .order_by(
+            Package.id.desc()
+        )
+        .all()
+    )
 
     return render_template(
-        'customer/schedule_delivery_overview.html',
+        "customer/schedule_delivery_overview.html",
         deliveries=deliveries,
+        eligible_packages=eligible_packages,
         delivery_fee=DELIVERY_FEE_AMOUNT,
-        fee_currency=DELIVERY_FEE_CURRENCY
+        fee_currency=DELIVERY_FEE_CURRENCY,
     )
 
 @customer_bp.route("/schedule-delivery/<int:delivery_id>")
@@ -4281,6 +4306,37 @@ def schedule_delivery_detail(delivery_id):
 @login_required
 def schedule_delivery_add():
     data = request.get_json(silent=True) or {}
+
+    # -----------------------------------
+    # Selected package IDs
+    # -----------------------------------
+    raw_package_ids = (
+        data.get("package_ids")
+        or []
+    )
+
+    if not isinstance(
+        raw_package_ids,
+        (list, tuple, set),
+    ):
+        raw_package_ids = [raw_package_ids]
+
+    package_ids = []
+
+    for raw_package_id in raw_package_ids:
+        try:
+            package_id = int(raw_package_id)
+
+            if package_id > 0:
+                package_ids.append(package_id)
+
+        except (TypeError, ValueError):
+            continue
+
+    # Remove duplicates while preserving order.
+    package_ids = list(
+        dict.fromkeys(package_ids)
+    )
 
     schedule_date_raw = (
         data.get("schedule_date")
@@ -4317,17 +4373,24 @@ def schedule_delivery_add():
 
     current_app.logger.info(
         "[schedule_delivery_add] "
-        "user_id=%s keys=%s date=%s parish=%s",
+        "user_id=%s keys=%s date=%s "
+        "parish=%s package_ids=%s",
         current_user.id,
         list(data.keys()),
         schedule_date_raw,
         delivery_parish,
+        package_ids,
     )
 
     # -----------------------------------
     # Required fields
     # -----------------------------------
     missing_fields = []
+
+    if not package_ids:
+        missing_fields.append(
+            "at least one Ready for Pick Up package"
+        )
 
     if not schedule_date_raw:
         missing_fields.append("delivery date")
@@ -4339,7 +4402,9 @@ def schedule_delivery_add():
         missing_fields.append("delivery parish")
 
     if not mobile_number:
-        missing_fields.append("receiver mobile number")
+        missing_fields.append(
+            "receiver mobile number"
+        )
 
     if not person_receiving:
         missing_fields.append("person receiving")
@@ -4368,6 +4433,7 @@ def schedule_delivery_add():
                 schedule_date_raw,
                 date_format,
             ).date()
+
             break
 
         except (TypeError, ValueError):
@@ -4381,6 +4447,34 @@ def schedule_delivery_add():
             ),
         }), 400
 
+    # -----------------------------------
+    # Jamaica booking cutoff
+    # -----------------------------------
+    # Booking closes at 8:00 PM Jamaica
+    # time on the day before delivery.
+    jamaica_now = to_jamaica(
+        datetime.now(timezone.utc)
+    ).replace(tzinfo=None)
+
+    booking_deadline = (
+        datetime.combine(
+            delivery_date - timedelta(days=1),
+            datetime.min.time(),
+        )
+        + timedelta(hours=20)
+    )
+
+    if jamaica_now > booking_deadline:
+        return jsonify({
+            "success": False,
+            "message": (
+                "Booking for this delivery date is "
+                "closed. Deliveries must be scheduled "
+                "by 8:00 PM Jamaica time on the "
+                "previous day."
+            ),
+        }), 400
+
     try:
         settings = Settings.query.get(1)
 
@@ -4388,12 +4482,51 @@ def schedule_delivery_add():
             return jsonify({
                 "success": False,
                 "message": (
-                    "Delivery settings are not configured."
+                    "Delivery settings are not "
+                    "configured."
                 ),
             }), 500
 
         # -----------------------------------
-        # Recalculate distance on the server
+        # Validate and lock selected packages
+        # -----------------------------------
+        selected_packages = (
+            Package.query
+            .filter(
+                Package.id.in_(package_ids),
+                Package.user_id
+                == current_user.id,
+                func.lower(
+                    func.trim(Package.status)
+                )
+                == "ready for pick up",
+                Package.scheduled_delivery_id.is_(
+                    None
+                ),
+            )
+            .with_for_update()
+            .order_by(
+                Package.id.asc()
+            )
+            .all()
+        )
+
+        if (
+            len(selected_packages)
+            != len(package_ids)
+        ):
+            return jsonify({
+                "success": False,
+                "message": (
+                    "One or more selected packages "
+                    "are no longer eligible. Only "
+                    "unassigned packages marked Ready "
+                    "for Pick Up can be scheduled."
+                ),
+            }), 400
+
+        # -----------------------------------
+        # Recalculate distance on server
         # -----------------------------------
         distance_result = calculate_real_distance(
             parish=delivery_parish,
@@ -4429,9 +4562,10 @@ def schedule_delivery_add():
             return jsonify({
                 "success": False,
                 "message": (
-                    "This address exceeds the maximum delivery "
-                    f"distance of "
-                    f"{delivery_details.get('max_distance', 0)} KM."
+                    "This address exceeds the "
+                    "maximum delivery distance of "
+                    f"{delivery_details.get('max_distance', 0)} "
+                    "KM."
                 ),
             }), 400
 
@@ -4443,17 +4577,32 @@ def schedule_delivery_add():
                 )
                 or 0
             )
-        ).quantize(Decimal("0.01"))
+        ).quantize(
+            Decimal("0.01")
+        )
 
         delivery_type = (
-            delivery_details.get("delivery_type")
+            delivery_details.get(
+                "delivery_type"
+            )
             or "paid"
+        )
+
+        is_free_delivery = bool(
+            delivery_details.get(
+                "is_free_delivery",
+                False,
+            )
         )
 
         if delivery_type == "admin_review":
             fee_status = "Unpaid"
 
-        elif fee_amount <= Decimal("0.00"):
+        elif (
+            is_free_delivery
+            or fee_amount <= Decimal("0.00")
+        ):
+            # Free delivery requires no payment.
             fee_status = "Waived"
 
         else:
@@ -4475,23 +4624,22 @@ def schedule_delivery_add():
             mobile_number=mobile_number,
             person_receiving=person_receiving,
 
-            # Use server-calculated values.
             area_zone=delivery_details.get(
                 "area_zone",
                 "dynamic",
             ),
+
             delivery_parish=delivery_parish,
-            delivery_branch=delivery_details.get(
-                "delivery_branch"
-            ),
-            distance_km=distance_km,
-            delivery_type=delivery_type,
-            is_free_delivery=bool(
+
+            delivery_branch=(
                 delivery_details.get(
-                    "is_free_delivery",
-                    False,
+                    "delivery_branch"
                 )
             ),
+
+            distance_km=distance_km,
+            delivery_type=delivery_type,
+            is_free_delivery=is_free_delivery,
             delivery_risk_status="safe",
 
             delivery_fee=fee_amount,
@@ -4503,13 +4651,24 @@ def schedule_delivery_add():
         db.session.add(new_delivery)
         db.session.flush()
 
-        # Use Jamaica time for the year in the delivery number.
-        jamaica_now = to_jamaica(
+        # -----------------------------------
+        # Link selected packages
+        # -----------------------------------
+        for package in selected_packages:
+            package.scheduled_delivery_id = (
+                new_delivery.id
+            )
+
+        # -----------------------------------
+        # Generate delivery invoice number
+        # using Jamaica calendar year
+        # -----------------------------------
+        jamaica_created_at = to_jamaica(
             datetime.now(timezone.utc)
         )
 
         new_delivery.invoice_number = (
-            f"DEL-{jamaica_now.year}-"
+            f"DEL-{jamaica_created_at.year}-"
             f"{new_delivery.id:06d}"
         )
 
@@ -4522,79 +4681,136 @@ def schedule_delivery_add():
             ),
             "delivery": {
                 "id": new_delivery.id,
+
                 "invoice_number": (
                     new_delivery.invoice_number
                 ),
+
                 "scheduled_date": (
                     new_delivery
                     .scheduled_date
                     .isoformat()
                 ),
+
                 "scheduled_time": (
                     new_delivery.scheduled_time
                     or ""
                 ),
+
                 "scheduled_time_from": (
-                    new_delivery.scheduled_time_from
+                    new_delivery
+                    .scheduled_time_from
                     or ""
                 ),
+
                 "scheduled_time_to": (
-                    new_delivery.scheduled_time_to
+                    new_delivery
+                    .scheduled_time_to
                     or ""
                 ),
+
                 "location": (
                     new_delivery.location
+                    or ""
                 ),
+
                 "direction": (
                     new_delivery.direction
                     or ""
                 ),
+
                 "area_zone": (
                     new_delivery.area_zone
                     or "dynamic"
                 ),
+
                 "delivery_parish": (
                     new_delivery.delivery_parish
+                    or ""
                 ),
+
                 "delivery_branch": (
                     new_delivery.delivery_branch
                     or ""
                 ),
+
                 "distance_km": float(
                     new_delivery.distance_km
                     or 0
                 ),
+
                 "delivery_type": (
                     new_delivery.delivery_type
                     or ""
                 ),
+
                 "is_free_delivery": bool(
                     new_delivery.is_free_delivery
                 ),
+
                 "person_receiving": (
                     new_delivery.person_receiving
                     or ""
                 ),
+
                 "mobile_number": (
                     new_delivery.mobile_number
                     or ""
                 ),
+
                 "delivery_fee": float(
                     new_delivery.delivery_fee
                     or 0
                 ),
+
                 "fee_currency": (
                     new_delivery.fee_currency
                     or DELIVERY_FEE_CURRENCY
                 ),
+
                 "fee_status": (
                     new_delivery.fee_status
                     or fee_status
                 ),
+
                 "status": (
                     new_delivery.status
                     or "Scheduled"
                 ),
+
+                "package_ids": [
+                    package.id
+                    for package
+                    in selected_packages
+                ],
+
+                "packages": [
+                    {
+                        "id": package.id,
+
+                        "house_awb": (
+                            package.house_awb
+                            or ""
+                        ),
+
+                        "tracking_number": (
+                            package.tracking_number
+                            or ""
+                        ),
+
+                        "description": (
+                            package.description
+                            or ""
+                        ),
+
+                        "amount_due": float(
+                            package.amount_due
+                            or 0
+                        ),
+                    }
+                    for package
+                    in selected_packages
+                ],
             },
         }), 200
 
@@ -4611,8 +4827,8 @@ def schedule_delivery_add():
         return jsonify({
             "success": False,
             "message": (
-                "An unexpected error occurred while "
-                "scheduling the delivery."
+                "An unexpected error occurred "
+                "while scheduling the delivery."
             ),
         }), 500
 
@@ -6531,7 +6747,32 @@ def api_customer_create_delivery():
     if not d:
         return jsonify({
             "success": False,
-            "message": f"Invalid date format: {schedule_date}"
+            "message": (
+                f"Invalid date format: {schedule_date}"
+            ),
+        }), 400
+
+    jamaica_now = to_jamaica(
+        datetime.now(timezone.utc)
+    ).replace(tzinfo=None)
+
+    booking_deadline = (
+        datetime.combine(
+            d - timedelta(days=1),
+            datetime.min.time(),
+        )
+        + timedelta(hours=20)
+    )
+
+    if jamaica_now > booking_deadline:
+        return jsonify({
+            "success": False,
+            "message": (
+                "Booking for this delivery date is "
+                "closed. Deliveries must be scheduled "
+                "by 8:00 PM Jamaica time on the "
+                "previous day."
+            ),
         }), 400
 
     def _parse_time_to_24h_str(s: str):
@@ -6589,16 +6830,29 @@ def api_customer_create_delivery():
         .filter(
             Package.id.in_(package_ids),
             Package.user_id == user.id,
-            Package.status == "Ready for Pick Up"
+            func.lower(
+                func.trim(Package.status)
+            ) == "ready for pick up",
+            Package.scheduled_delivery_id.is_(
+                None
+            ),
         )
-        .order_by(Package.id.asc())
+        .with_for_update()
+        .order_by(
+            Package.id.asc()
+        )
         .all()
     )
 
     if len(selected_packages) != len(package_ids):
         return jsonify({
             "success": False,
-            "message": "One or more selected packages are invalid or not eligible for delivery. Only packages marked Ready for Pick Up can be selected."
+            "message": (
+                "One or more selected packages are "
+                "invalid or no longer eligible. Only "
+                "unassigned packages marked Ready for "
+                "Pick Up can be selected."
+            ),
         }), 400
 
     # -----------------------------
@@ -6671,22 +6925,22 @@ def api_customer_create_delivery():
         )
 
         db.session.add(new_delivery)
-        db.session.commit()
+        db.session.flush()
 
-        year = datetime.utcnow().year
-        new_delivery.invoice_number = f"DEL-{year}-{new_delivery.id:06d}"
+        jamaica_created_at = to_jamaica(
+            datetime.now(timezone.utc)
+        )
 
-        # ----------------------------------------------------
-        # Best-effort package linking
-        # Works if ScheduledDelivery has a `packages` relationship
-        # ----------------------------------------------------
-        if hasattr(new_delivery, "packages"):
-            try:
-                new_delivery.packages = selected_packages
-            except Exception:
-                current_app.logger.warning(
-                    "[api_customer_create_delivery] Could not assign packages relationship on ScheduledDelivery."
-                )
+        new_delivery.invoice_number = (
+            f"DEL-{jamaica_created_at.year}-"
+            f"{new_delivery.id:06d}"
+        )
+
+        # Link packages through the actual foreign key.
+        for package in selected_packages:
+            package.scheduled_delivery_id = (
+                new_delivery.id
+            )
 
         db.session.commit()
 
@@ -6730,31 +6984,58 @@ def api_customer_create_delivery():
         }), 500
 
 
-@customer_bp.route("/api/deliveries/eligible-packages", methods=["GET"])
+@customer_bp.route(
+    "/api/deliveries/eligible-packages",
+    methods=["GET"],
+)
 def api_delivery_eligible_packages():
     user = get_api_user()
 
     if not user:
-        return jsonify({"error": "Unauthorized"}), 401
+        return jsonify({
+            "error": "Unauthorized",
+        }), 401
 
-    pkgs = (
+    packages = (
         Package.query
-        .filter_by(user_id=user.id, status="Ready for Pick Up")
-        .order_by(Package.id.desc())
+        .filter(
+            Package.user_id == user.id,
+            func.lower(
+                func.trim(Package.status)
+            ) == "ready for pick up",
+            Package.scheduled_delivery_id.is_(
+                None
+            ),
+        )
+        .order_by(
+            Package.id.desc()
+        )
         .all()
     )
 
     return jsonify({
         "packages": [
             {
-                "id": p.id,
-                "house_awb": p.house_awb or "",
-                "description": p.description or "",
-                "tracking_number": p.tracking_number or "",
-                "amount_due": float(p.amount_due or 0),
+                "id": package.id,
+                "house_awb": (
+                    package.house_awb
+                    or ""
+                ),
+                "description": (
+                    package.description
+                    or ""
+                ),
+                "tracking_number": (
+                    package.tracking_number
+                    or ""
+                ),
+                "amount_due": float(
+                    package.amount_due
+                    or 0
+                ),
             }
-            for p in pkgs
-        ]
+            for package in packages
+        ],
     })
 
 @customer_bp.route("/api/login", methods=["POST"])

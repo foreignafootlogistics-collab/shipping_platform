@@ -13,28 +13,75 @@
   }
 
   .sd-header {
-    background: #4a148c;
-    color: #fff;
-    padding: 16px 18px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 20px;
+    width: 100%;
+    padding: 18px 20px;
+    color: #fff;
+    background: #4a148c;
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(74, 20, 140, .14);
   }
 
-  .sd-header h4 {
-    margin: 0;
-    font-weight: 700;
-    letter-spacing: .2px;
+  .sd-header-heading {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  .sd-header-icon {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    font-size: 1.5rem;
+    color: #fff;
+    background: rgba(255, 255, 255, .14);
+    border-radius: 10px;
+  }
+
+  .sd-header h2 {
+    margin: 0;
+    color: #fff;
+    font-size: 1.75rem;
+    font-weight: 800;
+    line-height: 1.15;
   }
 
   .sd-header .sub {
-    opacity: .9;
-    font-size: .9rem;
-    margin-top: 2px;
+    margin: 4px 0 0;
+    color: rgba(255, 255, 255, .72);
+    font-size: .92rem;
+    line-height: 1.4;
+  }
+
+  .sd-header-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  @media (max-width: 768px) {
+    .sd-header {
+      align-items: stretch;
+      flex-direction: column;
+      padding: 16px;
+    }
+
+    .sd-header-actions {
+      width: 100%;
+    }
+
+    .sd-header-actions .btn {
+      flex: 1 1 auto;
+    }
   }
 
   .sd-filters {
@@ -212,38 +259,44 @@
 
 <div class="container-fluid mt-4 px-4">
 
-  <div class="sd-card">
-
-    <div class="sd-header">
+  <div class="sd-header mb-4">
+    <div class="sd-header-heading">
+      <div class="sd-header-icon">
+        <i class="bi bi-truck"></i>
+      </div>
 
       <div>
-        <h4>
-          🚚
-          All Scheduled Deliveries
-        </h4>
+        <h2>Scheduled Deliveries</h2>
 
-        <div class="sub">
-          Manage delivery requests and export reports.
-        </div>
-      </div>
-
-      <div class="d-flex gap-2">
-
-        <a class="btn btn-success btn-soft" href="{{ url_for('logistics.add_scheduled_delivery') }}">
-          + Add Delivery
-        </a>
-
-        <a class="btn btn-light btn-soft" href="{{ url_for('logistics.view_scheduled_deliveries') }}">
-          Reset
-        </a>
-
-        <a href="{{ url_for('logistics.scheduled_deliveries_pdf', start_date=start_date, end_date=end_date) }}"
-          class="btn btn-dark btn-soft">
-          Download PDF
-        </a>
-
+        <p class="sub">
+          Manage delivery requests, assigned packages, and reports.
+        </p>
       </div>
     </div>
+
+    <div class="sd-header-actions">
+      <a class="btn btn-success btn-soft" href="{{ url_for('logistics.add_scheduled_delivery') }}">
+        <i class="bi bi-plus-circle me-1"></i>
+        Add Delivery
+      </a>
+
+      <a class="btn btn-light btn-soft" href="{{ url_for('logistics.view_scheduled_deliveries') }}">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>
+        Reset
+      </a>
+
+      <a href="{{ url_for(
+          'logistics.scheduled_deliveries_pdf',
+          start_date=start_date,
+          end_date=end_date
+        ) }}" class="btn btn-dark btn-soft">
+        <i class="bi bi-file-earmark-pdf me-1"></i>
+        Download PDF
+      </a>
+    </div>
+  </div>
+
+  <div class="sd-card">
 
     <!-- SUMMARY -->
     <div class="px-3 pt-3">
@@ -557,23 +610,45 @@
               </td>
 
               <td>
+                {% set fee_amount = (d.delivery_fee or 0)|float %}
+                {% set normalized_fee_status = fee_status|lower %}
 
-                {% if fee_status|lower == "paid" %}
-
-                <span class="fee-badge fee-paid">
-                  <span class="dot"></span>
-                  Paid
-                </span>
-
-                {% else %}
+                {% if d_status in ["Cancelled", "Canceled"] %}
 
                 <span class="fee-badge fee-unpaid">
                   <span class="dot"></span>
-                  Unpaid
+                  Cancelled
                 </span>
 
-                {% endif %}
+                {% elif
+                d.is_free_delivery
+                or fee_amount <= 0 or normalized_fee_status=="waived" %} <span class="fee-badge fee-paid">
+                  <span class="dot"></span>
+                  Free — No Payment Required
+                  </span>
 
+                  {% elif normalized_fee_status == "paid" %}
+
+                  <span class="fee-badge fee-paid">
+                    <span class="dot"></span>
+                    Paid
+                  </span>
+
+                  {% elif normalized_fee_status == "refunded" %}
+
+                  <span class="fee-badge fee-paid">
+                    <span class="dot"></span>
+                    Refunded
+                  </span>
+
+                  {% else %}
+
+                  <span class="fee-badge fee-unpaid">
+                    <span class="dot"></span>
+                    Unpaid
+                  </span>
+
+                  {% endif %}
               </td>
 
               </tr>
@@ -600,7 +675,17 @@
 
     $('#allScheduledDeliveriesTable').DataTable({
       order: [[0, 'desc']],
-      pageLength: 25
+      pageLength: 25,
+      dom: 'rtip',
+      language: {
+        info: 'Showing _START_ to _END_ of _TOTAL_ deliveries',
+        infoEmpty: 'No scheduled deliveries found',
+        emptyTable: 'No scheduled deliveries found',
+        paginate: {
+          previous: 'Previous',
+          next: 'Next'
+        }
+      }
     });
 
   });

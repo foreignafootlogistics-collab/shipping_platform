@@ -3257,6 +3257,32 @@
 
                 <div class="row g-3">
 
+                  <div class="col-12">
+                    <div class="border rounded-3 p-3">
+                      <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+                        <div>
+                          <label class="form-label fw-bold mb-1">
+                            Packages for Delivery
+                          </label>
+
+                          <div class="small text-muted">
+                            Select at least one unassigned package marked Ready for Pick Up.
+                          </div>
+                        </div>
+
+                        <span id="modalDeliveryPackageCount" class="badge bg-secondary">
+                          0 selected
+                        </span>
+                      </div>
+
+                      <div id="modalDeliveryPackages" class="row g-2">
+                        <div class="col-12 text-muted small">
+                          Loading eligible packages...
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div class="col-md-3">
                     <label class="form-label">Date</label>
                     <input type="date" class="form-control" id="modalDeliveryDate" name="date" required>
@@ -3352,7 +3378,7 @@
                   Cancel
                 </button>
 
-                <button type="submit" class="btn btn-success" id="modalSaveScheduleDelivery">
+                <button type="submit" class="btn btn-success" id="modalSaveScheduleDelivery" disabled>
                   Schedule Delivery
                 </button>
               </div>
@@ -4544,287 +4570,534 @@
         let estimateInProgress = false;
         let formSubmitting = false;
 
-        function showMessage(text, type = "danger") {
-          if (!messageElement) return;
+        let packagesLoading = false;
 
-          messageElement.textContent = text || "";
+        const packagesContainer = document.getElementById(
+          "modalDeliveryPackages"
+        );
 
-          messageElement.className =
-            `alert alert-${type} mt-3`;
+        const packageCountElement = document.getElementById(
+          "modalDeliveryPackageCount"
+        );
 
-          messageElement.style.display =
-            text ? "block" : "none";
+        const eligiblePackagesUrlTemplate = {{ url_for(
+          "logistics.scheduled_delivery_eligible_packages",
+          user_id = 0
+        ) | tojson
+      }};
+
+      function selectedPackageIds() {
+        if (!packagesContainer) {
+          return [];
         }
 
-        function setFeePreview(amount) {
-          if (!feePreview) return;
+        return Array.from(
+          packagesContainer.querySelectorAll(
+            ".modal-delivery-package-checkbox:checked"
+          )
+        )
+          .map(checkbox => Number(checkbox.value))
+          .filter(packageId => Number.isInteger(packageId));
+      }
 
-          feePreview.value =
-            `JMD ${Number(amount || 0).toFixed(2)}`;
+      function hasEligiblePackageCheckboxes() {
+        return Boolean(
+          packagesContainer?.querySelector(
+            ".modal-delivery-package-checkbox"
+          )
+        );
+      }
+
+      function updatePackageSelectionState() {
+        const selectedIds = selectedPackageIds();
+
+        if (packageCountElement) {
+          packageCountElement.textContent =
+            `${selectedIds.length} selected`;
+
+          packageCountElement.className =
+            selectedIds.length
+              ? "badge bg-success"
+              : "badge bg-secondary";
         }
 
-        function getCoverageLabel(data) {
-          const zone = String(
-            data.area_zone || ""
-          ).toLowerCase();
+        if (
+          saveButton &&
+          !estimateInProgress &&
+          !formSubmitting &&
+          !packagesLoading
+        ) {
+          saveButton.disabled = (
+            !hasEligiblePackageCheckboxes() ||
+            selectedIds.length === 0
+          );
+        }
+      }
 
-          if (zone === "kgn_core") {
-            return "Kingston Core";
-          }
+      function createPackageText(packageData) {
+        const parts = [];
 
-          if (zone === "kgn_outside") {
-            return "Kingston Outside";
-          }
-
-          if (zone === "pm_core") {
-            return "Portmore Core";
-          }
-
-          if (zone === "pm_outside") {
-            return "Portmore Outside";
-          }
-
-          if (data.delivery_type === "admin_review") {
-            return "Manual Review Area";
-          }
-
-          if (data.is_free_delivery) {
-            return "Core Delivery Zone";
-          }
-
-          return "Extended Delivery Zone";
+        if (packageData.house_awb) {
+          parts.push(packageData.house_awb);
         }
 
-        function setCoverageStyle(data) {
-          if (!coverageText) return;
-
-          const zone = String(
-            data.area_zone || ""
-          ).toLowerCase();
-
-          if (data.delivery_type === "admin_review") {
-            coverageText.className =
-              "badge bg-danger";
-
-          } else if (zone === "kgn_core") {
-            coverageText.className =
-              "badge bg-dark";
-
-          } else if (zone === "kgn_outside") {
-            coverageText.className =
-              "badge bg-secondary";
-
-          } else if (zone === "pm_core") {
-            coverageText.className =
-              "badge bg-primary";
-
-          } else if (zone === "pm_outside") {
-            coverageText.className =
-              "badge bg-info text-dark";
-
-          } else if (data.is_free_delivery) {
-            coverageText.className =
-              "badge bg-success";
-
-          } else {
-            coverageText.className =
-              "badge bg-primary";
-          }
+        if (packageData.tracking_number) {
+          parts.push(packageData.tracking_number);
         }
 
-        function isAddressDetailedEnough(address) {
-          const normalizedAddress = (
-            address || ""
-          ).trim().toLowerCase();
+        if (packageData.description) {
+          parts.push(packageData.description);
+        }
 
-          if (normalizedAddress.length < 12) {
-            return false;
-          }
+        return parts.length
+          ? parts.join(" — ")
+          : `Package #${packageData.id}`;
+      }
 
-          const hasNumber = /\d/.test(
-            normalizedAddress
+      async function loadEligibleDeliveryPackages() {
+        const userId = Number(
+          (userIdEl?.value || "").trim()
+        );
+
+        if (!packagesContainer || !Number.isInteger(userId)) {
+          return;
+        }
+
+        packagesLoading = true;
+
+        if (saveButton) {
+          saveButton.disabled = true;
+        }
+
+        packagesContainer.replaceChildren();
+
+        const loadingMessage = document.createElement("div");
+        loadingMessage.className = "col-12 text-muted small";
+        loadingMessage.textContent = "Loading eligible packages...";
+
+        packagesContainer.appendChild(loadingMessage);
+
+        if (packageCountElement) {
+          packageCountElement.textContent = "0 selected";
+          packageCountElement.className = "badge bg-secondary";
+        }
+
+        try {
+          const endpoint = eligiblePackagesUrlTemplate.replace(
+            /0$/,
+            String(userId)
           );
 
-          const roadWords = [
-            "road",
-            "rd",
-            "street",
-            "st",
-            "avenue",
-            "ave",
-            "drive",
-            "dr",
-            "lane",
-            "ln",
-            "close",
-            "circle",
-            "terrace",
-            "way",
-            "boulevard",
-            "blvd",
-            "heights",
-            "scheme",
-            "estate",
-            "village",
-            "lot",
-            "apt",
-            "apartment",
-            "unit",
-            "district",
-            "main road"
-          ];
-
-          const hasRoadWord = roadWords.some(
-            word => normalizedAddress.includes(word)
-          );
-
-          return hasNumber || hasRoadWord;
-        }
-
-        function validateAddressSoft() {
-          const address = (
-            addressEl?.value || ""
-          ).trim();
-
-          if (!address) {
-            if (addressWarning) {
-              addressWarning.style.display = "none";
+          const response = await fetch(endpoint, {
+            headers: {
+              "X-Requested-With": "XMLHttpRequest"
             }
+          });
 
-            return false;
+          const data = await response
+            .json()
+            .catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(
+              data.message ||
+              data.error ||
+              "Eligible packages could not be loaded."
+            );
           }
 
-          const valid = isAddressDetailedEnough(
-            address
-          );
+          const packages = Array.isArray(data.packages)
+            ? data.packages
+            : [];
 
-          if (addressWarning) {
-            addressWarning.style.display =
-              valid ? "none" : "block";
-          }
+          packagesContainer.replaceChildren();
 
-          return valid;
-        }
+          if (!packages.length) {
+            const emptyMessage = document.createElement("div");
 
-        function resetEstimate() {
-          setFeePreview(0);
+            emptyMessage.className =
+              "col-12 alert alert-warning mb-0";
 
-          if (estimateBox) {
-            estimateBox.style.display = "none";
-          }
+            emptyMessage.textContent =
+              "This customer has no unassigned packages marked Ready for Pick Up. A delivery cannot be scheduled.";
 
-          if (coverageText) {
-            coverageText.textContent =
-              "Enter address to calculate.";
-
-            coverageText.className =
-              "badge bg-secondary";
-          }
-        }
-
-        async function calculateModalEstimate() {
-          const scheduleDate = (
-            dateEl?.value || ""
-          ).trim();
-
-          const address = (
-            addressEl?.value || ""
-          ).trim();
-
-          const parish = (
-            parishEl?.value || ""
-          ).trim();
-
-          validateAddressSoft();
-
-          if (!scheduleDate || !address || !parish) {
-            resetEstimate();
+            packagesContainer.appendChild(emptyMessage);
             return;
           }
 
-          const csrfToken = (
-            form.querySelector(
-              'input[name="csrf_token"]'
-            )?.value || ""
-          ).trim();
+          packages.forEach(packageData => {
+            const column = document.createElement("div");
+            column.className = "col-md-6";
 
-          estimateInProgress = true;
+            const wrapper = document.createElement("div");
 
-          if (saveButton) {
-            saveButton.disabled = true;
+            wrapper.className =
+              "form-check border rounded-3 p-3 h-100";
 
-            saveButton.innerHTML =
-              '<span class="spinner-border ' +
-              'spinner-border-sm me-2"></span>' +
-              'Calculating...';
-          }
+            const checkbox = document.createElement("input");
 
-          if (estimateBox) {
-            estimateBox.style.display = "block";
-          }
+            checkbox.type = "checkbox";
+            checkbox.name = "package_ids";
+            checkbox.value = String(packageData.id);
 
-          if (estimateText) {
-            estimateText.textContent =
-              "Calculating delivery estimate...";
-          }
+            checkbox.id =
+              `modalDeliveryPackage${packageData.id}`;
 
-          try {
-            const response = await fetch(
-              "{{ url_for('customer.schedule_delivery_estimate') }}",
-              {
-                method: "POST",
+            checkbox.className =
+              "form-check-input modal-delivery-package-checkbox";
 
-                headers: {
-                  "Content-Type": "application/json",
-                  "X-CSRFToken": csrfToken
-                },
+            const label = document.createElement("label");
 
-                body: JSON.stringify({
-                  schedule_date: scheduleDate,
-                  location: address,
-                  delivery_parish: parish
-                })
-              }
+            label.className =
+              "form-check-label ms-1 w-100";
+
+            label.htmlFor = checkbox.id;
+
+            const title = document.createElement("span");
+
+            title.className =
+              "d-block fw-semibold";
+
+            title.textContent =
+              createPackageText(packageData);
+
+            const balance = document.createElement("span");
+
+            balance.className =
+              "d-block text-muted small mt-1";
+
+            balance.textContent =
+              `Amount due: JMD ${Number(
+                packageData.amount_due || 0
+              ).toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}`;
+
+            label.appendChild(title);
+            label.appendChild(balance);
+
+            checkbox.addEventListener(
+              "change",
+              updatePackageSelectionState
             );
 
-            const data = await response
-              .json()
-              .catch(() => ({}));
+            wrapper.appendChild(checkbox);
+            wrapper.appendChild(label);
+            column.appendChild(wrapper);
+            packagesContainer.appendChild(column);
+          });
 
-            if (!response.ok || !data.success) {
-              setFeePreview(0);
+        } catch (error) {
+          packagesContainer.replaceChildren();
 
-              if (estimateText) {
-                estimateText.textContent =
-                  data.message ||
-                  "Could not calculate delivery estimate.";
-              }
+          const errorMessage = document.createElement("div");
 
-              if (coverageText) {
-                coverageText.textContent =
-                  "Could not calculate coverage.";
+          errorMessage.className =
+            "col-12 alert alert-danger mb-0";
 
-                coverageText.className =
-                  "badge bg-danger";
-              }
+          errorMessage.textContent =
+            error.message ||
+            "Eligible packages could not be loaded.";
 
-              return;
+          packagesContainer.appendChild(errorMessage);
+
+        } finally {
+          packagesLoading = false;
+          updatePackageSelectionState();
+        }
+      }
+
+      const deliveryModalElement = document.getElementById(
+        "adminDeliveryModal"
+      );
+
+      deliveryModalElement?.addEventListener(
+        "show.bs.modal",
+        loadEligibleDeliveryPackages
+      );
+
+      function showMessage(text, type = "danger") {
+        if (!messageElement) return;
+
+        messageElement.textContent = text || "";
+
+        messageElement.className =
+          `alert alert-${type} mt-3`;
+
+        messageElement.style.display =
+          text ? "block" : "none";
+      }
+
+      function setFeePreview(amount) {
+        if (!feePreview) return;
+
+        feePreview.value =
+          `JMD ${Number(amount || 0).toFixed(2)}`;
+      }
+
+      function getCoverageLabel(data) {
+        const zone = String(
+          data.area_zone || ""
+        ).toLowerCase();
+
+        if (zone === "kgn_core") {
+          return "Kingston Core";
+        }
+
+        if (zone === "kgn_outside") {
+          return "Kingston Outside";
+        }
+
+        if (zone === "pm_core") {
+          return "Portmore Core";
+        }
+
+        if (zone === "pm_outside") {
+          return "Portmore Outside";
+        }
+
+        if (data.delivery_type === "admin_review") {
+          return "Manual Review Area";
+        }
+
+        if (data.is_free_delivery) {
+          return "Core Delivery Zone";
+        }
+
+        return "Extended Delivery Zone";
+      }
+
+      function setCoverageStyle(data) {
+        if (!coverageText) return;
+
+        const zone = String(
+          data.area_zone || ""
+        ).toLowerCase();
+
+        if (data.delivery_type === "admin_review") {
+          coverageText.className =
+            "badge bg-danger";
+
+        } else if (zone === "kgn_core") {
+          coverageText.className =
+            "badge bg-dark";
+
+        } else if (zone === "kgn_outside") {
+          coverageText.className =
+            "badge bg-secondary";
+
+        } else if (zone === "pm_core") {
+          coverageText.className =
+            "badge bg-primary";
+
+        } else if (zone === "pm_outside") {
+          coverageText.className =
+            "badge bg-info text-dark";
+
+        } else if (data.is_free_delivery) {
+          coverageText.className =
+            "badge bg-success";
+
+        } else {
+          coverageText.className =
+            "badge bg-primary";
+        }
+      }
+
+      function isAddressDetailedEnough(address) {
+        const normalizedAddress = (
+          address || ""
+        ).trim().toLowerCase();
+
+        if (normalizedAddress.length < 12) {
+          return false;
+        }
+
+        const hasNumber = /\d/.test(
+          normalizedAddress
+        );
+
+        const roadWords = [
+          "road",
+          "rd",
+          "street",
+          "st",
+          "avenue",
+          "ave",
+          "drive",
+          "dr",
+          "lane",
+          "ln",
+          "close",
+          "circle",
+          "terrace",
+          "way",
+          "boulevard",
+          "blvd",
+          "heights",
+          "scheme",
+          "estate",
+          "village",
+          "lot",
+          "apt",
+          "apartment",
+          "unit",
+          "district",
+          "main road"
+        ];
+
+        const hasRoadWord = roadWords.some(
+          word => normalizedAddress.includes(word)
+        );
+
+        return hasNumber || hasRoadWord;
+      }
+
+      function validateAddressSoft() {
+        const address = (
+          addressEl?.value || ""
+        ).trim();
+
+        if (!address) {
+          if (addressWarning) {
+            addressWarning.style.display = "none";
+          }
+
+          return false;
+        }
+
+        const valid = isAddressDetailedEnough(
+          address
+        );
+
+        if (addressWarning) {
+          addressWarning.style.display =
+            valid ? "none" : "block";
+        }
+
+        return valid;
+      }
+
+      function resetEstimate() {
+        setFeePreview(0);
+
+        if (estimateBox) {
+          estimateBox.style.display = "none";
+        }
+
+        if (coverageText) {
+          coverageText.textContent =
+            "Enter address to calculate.";
+
+          coverageText.className =
+            "badge bg-secondary";
+        }
+      }
+
+      async function calculateModalEstimate() {
+        const scheduleDate = (
+          dateEl?.value || ""
+        ).trim();
+
+        const address = (
+          addressEl?.value || ""
+        ).trim();
+
+        const parish = (
+          parishEl?.value || ""
+        ).trim();
+
+        validateAddressSoft();
+
+        if (!scheduleDate || !address || !parish) {
+          resetEstimate();
+          return;
+        }
+
+        const csrfToken = (
+          form.querySelector(
+            'input[name="csrf_token"]'
+          )?.value || ""
+        ).trim();
+
+        estimateInProgress = true;
+
+        if (saveButton) {
+          saveButton.disabled = true;
+
+          saveButton.innerHTML =
+            '<span class="spinner-border ' +
+            'spinner-border-sm me-2"></span>' +
+            'Calculating...';
+        }
+
+        if (estimateBox) {
+          estimateBox.style.display = "block";
+        }
+
+        if (estimateText) {
+          estimateText.textContent =
+            "Calculating delivery estimate...";
+        }
+
+        try {
+          const response = await fetch(
+            "{{ url_for('customer.schedule_delivery_estimate') }}",
+            {
+              method: "POST",
+
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+              },
+
+              body: JSON.stringify({
+                schedule_date: scheduleDate,
+                location: address,
+                delivery_parish: parish
+              })
             }
+          );
 
-            const coverageLabel =
-              getCoverageLabel(data);
+          const data = await response
+            .json()
+            .catch(() => ({}));
 
-            setFeePreview(data.delivery_fee);
+          if (!response.ok || !data.success) {
+            setFeePreview(0);
+
+            if (estimateText) {
+              estimateText.textContent =
+                data.message ||
+                "Could not calculate delivery estimate.";
+            }
 
             if (coverageText) {
               coverageText.textContent =
-                coverageLabel;
+                "Could not calculate coverage.";
 
-              setCoverageStyle(data);
+              coverageText.className =
+                "badge bg-danger";
             }
 
-            if (estimateText) {
-              estimateText.innerHTML = `
+            return;
+          }
+
+          const coverageLabel =
+            getCoverageLabel(data);
+
+          setFeePreview(data.delivery_fee);
+
+          if (coverageText) {
+            coverageText.textContent =
+              coverageLabel;
+
+            setCoverageStyle(data);
+          }
+
+          if (estimateText) {
+            estimateText.innerHTML = `
           Distance:
           <strong>
             ${data.distance_km || "—"} KM
@@ -4843,11 +5116,11 @@
           Delivery type:
           <strong>
             ${data.delivery_type === "admin_review"
-                  ? "Manual review"
-                  : data.is_free_delivery
-                    ? "Free delivery"
-                    : "Paid delivery"
-                }
+                ? "Manual review"
+                : data.is_free_delivery
+                  ? "Free delivery"
+                  : "Paid delivery"
+              }
           </strong><br>
 
           Coverage zone:
@@ -4856,272 +5129,285 @@
           </strong><br>
 
           ${data.delivery_type === "admin_review"
-                  ? `
+                ? `
                 <div class="mt-2 text-danger fw-semibold">
                   Delivery requires manual review.
                   Final pricing requires admin confirmation.
                 </div>
               `
-                  : `
+                : `
                 Delivery fee:
                 <strong>
                   JMD ${Number(
-                    data.delivery_fee || 0
-                  ).toFixed(2)
-                  }
+                  data.delivery_fee || 0
+                ).toFixed(2)
+                }
                 </strong>
               `
-                }
+              }
         `;
-            }
+          }
 
-          } catch (error) {
-            console.error(
-              "Delivery estimate error:",
-              error
+        } catch (error) {
+          console.error(
+            "Delivery estimate error:",
+            error
+          );
+
+          setFeePreview(0);
+
+          if (estimateText) {
+            estimateText.textContent =
+              "Network error while calculating estimate.";
+          }
+
+          if (coverageText) {
+            coverageText.textContent =
+              "Could not calculate coverage.";
+
+            coverageText.className =
+              "badge bg-danger";
+          }
+
+        } finally {
+          estimateInProgress = false;
+
+          if (saveButton && !formSubmitting) {
+            saveButton.innerHTML =
+              '<i class="bi bi-truck me-1"></i>' +
+              'Schedule Delivery';
+
+            updatePackageSelectionState();
+          }
+        }
+      }
+
+      dateEl?.addEventListener(
+        "change",
+        calculateModalEstimate
+      );
+
+      parishEl?.addEventListener(
+        "change",
+        calculateModalEstimate
+      );
+
+      addressEl?.addEventListener(
+        "blur",
+        calculateModalEstimate
+      );
+
+      addressEl?.addEventListener(
+        "input",
+        validateAddressSoft
+      );
+
+      form.addEventListener(
+        "submit",
+        async event => {
+          event.preventDefault();
+          showMessage("");
+
+          if (estimateInProgress) {
+            showMessage(
+              "Please wait for the delivery estimate " +
+              "to finish."
             );
 
-            setFeePreview(0);
+            return;
+          }
 
-            if (estimateText) {
-              estimateText.textContent =
-                "Network error while calculating estimate.";
+          const packageIds = selectedPackageIds();
+
+          if (!packageIds.length) {
+            showMessage(
+              "Please select at least one unassigned package marked Ready for Pick Up."
+            );
+
+            packagesContainer?.querySelector(
+              ".modal-delivery-package-checkbox"
+            )?.focus();
+
+            return;
+          }
+
+          const userId = (
+            userIdEl?.value || ""
+          ).trim();
+
+          const scheduleDate = (
+            dateEl?.value || ""
+          ).trim();
+
+          const address = (
+            addressEl?.value || ""
+          ).trim();
+
+          const parish = (
+            parishEl?.value || ""
+          ).trim();
+
+          const directions = (
+            directionsEl?.value || ""
+          ).trim();
+
+          const mobile = (
+            mobileEl?.value || ""
+          ).trim();
+
+          const personReceiving = (
+            receivingEl?.value || ""
+          ).trim();
+
+          if (!userId) {
+            showMessage(
+              "The selected customer could not be identified."
+            );
+
+            return;
+          }
+
+          if (!scheduleDate) {
+            showMessage(
+              "Please select a delivery date."
+            );
+
+            return;
+          }
+
+          if (!address) {
+            showMessage(
+              "Please enter the delivery address."
+            );
+
+            return;
+          }
+
+          if (!isAddressDetailedEnough(address)) {
+            showMessage(
+              "Please enter a more accurate address, " +
+              "including the street or road name and " +
+              "house or lot number if available."
+            );
+
+            return;
+          }
+
+          if (!parish) {
+            showMessage(
+              "Please select a delivery parish."
+            );
+
+            return;
+          }
+
+          if (!mobile) {
+            showMessage(
+              "Please enter the receiver's mobile number."
+            );
+
+            return;
+          }
+
+          if (!personReceiving) {
+            showMessage(
+              "Please enter the person receiving the delivery."
+            );
+
+            return;
+          }
+
+          const csrfToken = (
+            form.querySelector(
+              'input[name="csrf_token"]'
+            )?.value || ""
+          ).trim();
+
+          formSubmitting = true;
+
+          if (saveButton) {
+            saveButton.disabled = true;
+
+            saveButton.innerHTML =
+              '<span class="spinner-border ' +
+              'spinner-border-sm me-2"></span>' +
+              'Scheduling...';
+          }
+
+          try {
+            const response = await fetch(
+              form.action,
+              {
+                method: "POST",
+
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Requested-With": "XMLHttpRequest",
+                  "X-CSRFToken": csrfToken
+                },
+
+                body: JSON.stringify({
+                  user_id: userId,
+                  package_ids: packageIds,
+                  date: scheduleDate,
+                  location: address,
+                  delivery_parish: parish,
+                  direction: directions,
+                  mobile_number: mobile,
+                  person_receiving: personReceiving
+                })
+              }
+            );
+
+            const data = await response
+              .json()
+              .catch(() => ({}));
+
+            if (!response.ok || !data.success) {
+              throw new Error(
+                data.message ||
+                "The delivery could not be scheduled."
+              );
             }
 
-            if (coverageText) {
-              coverageText.textContent =
-                "Could not calculate coverage.";
+            showMessage(
+              "Delivery scheduled successfully.",
+              "success"
+            );
 
-              coverageText.className =
-                "badge bg-danger";
-            }
+            window.setTimeout(() => {
+              const currentUrl = new URL(
+                window.location.href
+              );
 
-          } finally {
-            estimateInProgress = false;
+              currentUrl.searchParams.set(
+                "tab",
+                "schedule"
+              );
 
-            if (saveButton && !formSubmitting) {
-              saveButton.disabled = false;
+              window.location.href =
+                currentUrl.toString();
+            }, 500);
 
+          } catch (error) {
+            formSubmitting = false;
+
+            showMessage(
+              error.message ||
+              "The delivery could not be scheduled."
+            );
+
+            if (saveButton) {
               saveButton.innerHTML =
                 '<i class="bi bi-truck me-1"></i>' +
                 'Schedule Delivery';
+
+              updatePackageSelectionState();
             }
           }
         }
-
-        dateEl?.addEventListener(
-          "change",
-          calculateModalEstimate
-        );
-
-        parishEl?.addEventListener(
-          "change",
-          calculateModalEstimate
-        );
-
-        addressEl?.addEventListener(
-          "blur",
-          calculateModalEstimate
-        );
-
-        addressEl?.addEventListener(
-          "input",
-          validateAddressSoft
-        );
-
-        form.addEventListener(
-          "submit",
-          async event => {
-            event.preventDefault();
-            showMessage("");
-
-            if (estimateInProgress) {
-              showMessage(
-                "Please wait for the delivery estimate " +
-                "to finish."
-              );
-
-              return;
-            }
-
-            const userId = (
-              userIdEl?.value || ""
-            ).trim();
-
-            const scheduleDate = (
-              dateEl?.value || ""
-            ).trim();
-
-            const address = (
-              addressEl?.value || ""
-            ).trim();
-
-            const parish = (
-              parishEl?.value || ""
-            ).trim();
-
-            const directions = (
-              directionsEl?.value || ""
-            ).trim();
-
-            const mobile = (
-              mobileEl?.value || ""
-            ).trim();
-
-            const personReceiving = (
-              receivingEl?.value || ""
-            ).trim();
-
-            if (!userId) {
-              showMessage(
-                "The selected customer could not be identified."
-              );
-
-              return;
-            }
-
-            if (!scheduleDate) {
-              showMessage(
-                "Please select a delivery date."
-              );
-
-              return;
-            }
-
-            if (!address) {
-              showMessage(
-                "Please enter the delivery address."
-              );
-
-              return;
-            }
-
-            if (!isAddressDetailedEnough(address)) {
-              showMessage(
-                "Please enter a more accurate address, " +
-                "including the street or road name and " +
-                "house or lot number if available."
-              );
-
-              return;
-            }
-
-            if (!parish) {
-              showMessage(
-                "Please select a delivery parish."
-              );
-
-              return;
-            }
-
-            if (!mobile) {
-              showMessage(
-                "Please enter the receiver's mobile number."
-              );
-
-              return;
-            }
-
-            if (!personReceiving) {
-              showMessage(
-                "Please enter the person receiving the delivery."
-              );
-
-              return;
-            }
-
-            const csrfToken = (
-              form.querySelector(
-                'input[name="csrf_token"]'
-              )?.value || ""
-            ).trim();
-
-            formSubmitting = true;
-
-            if (saveButton) {
-              saveButton.disabled = true;
-
-              saveButton.innerHTML =
-                '<span class="spinner-border ' +
-                'spinner-border-sm me-2"></span>' +
-                'Scheduling...';
-            }
-
-            try {
-              const response = await fetch(
-                form.action,
-                {
-                  method: "POST",
-
-                  headers: {
-                    "Content-Type": "application/json",
-                    "X-Requested-With": "XMLHttpRequest",
-                    "X-CSRFToken": csrfToken
-                  },
-
-                  body: JSON.stringify({
-                    user_id: userId,
-                    date: scheduleDate,
-                    location: address,
-                    delivery_parish: parish,
-                    direction: directions,
-                    mobile_number: mobile,
-                    person_receiving: personReceiving
-                  })
-                }
-              );
-
-              const data = await response
-                .json()
-                .catch(() => ({}));
-
-              if (!response.ok || !data.success) {
-                throw new Error(
-                  data.message ||
-                  "The delivery could not be scheduled."
-                );
-              }
-
-              showMessage(
-                "Delivery scheduled successfully.",
-                "success"
-              );
-
-              window.setTimeout(() => {
-                const currentUrl = new URL(
-                  window.location.href
-                );
-
-                currentUrl.searchParams.set(
-                  "tab",
-                  "schedule"
-                );
-
-                window.location.href =
-                  currentUrl.toString();
-              }, 500);
-
-            } catch (error) {
-              formSubmitting = false;
-
-              showMessage(
-                error.message ||
-                "The delivery could not be scheduled."
-              );
-
-              if (saveButton) {
-                saveButton.disabled = false;
-
-                saveButton.innerHTML =
-                  '<i class="bi bi-truck me-1"></i>' +
-                  'Schedule Delivery';
-              }
-            }
-          }
-        );
+      );
       });
-
-
 
       /* ================================
          Bulk delete behaviour

@@ -185,9 +185,67 @@
     <input type="hidden" id="csrf_token" value="{{ csrf_token() }}">
 
     <div class="alert alert-info small" style="border-radius:14px;">
-      Please enter a complete delivery address including street/road name, house or lot number if available, community,
-      parish, and Jamaica.
-      Also provide the receiver’s name and mobile number.
+      Please select the packages to be delivered and enter a
+      complete delivery address, including the street or road
+      name, house or lot number if available, community, parish,
+      and Jamaica. Also provide the receiver’s name and mobile
+      number.
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label fw-semibold">
+        Packages for Delivery
+      </label>
+
+      {% if eligible_packages %}
+      <div class="border rounded p-3 bg-light">
+        {% for package in eligible_packages %}
+        <label class="d-flex align-items-start gap-3 border rounded
+                 bg-white p-3 mb-2" for="deliveryPackage{{ package.id }}" style="cursor:pointer;">
+          <input type="checkbox" class="form-check-input mt-1 delivery-package-checkbox"
+            id="deliveryPackage{{ package.id }}" value="{{ package.id }}">
+
+          <span class="flex-grow-1">
+            <span class="fw-semibold d-block">
+              {{ package.house_awb or "Package #" ~ package.id }}
+            </span>
+
+            <span class="small text-muted d-block">
+              Tracking:
+              {{ package.tracking_number or "Not available" }}
+            </span>
+
+            <span class="small text-muted d-block">
+              {{ package.description or "Package" }}
+            </span>
+
+            <span class="small fw-semibold d-block mt-1">
+              Amount due:
+              JMD {{ "%.2f"|format(package.amount_due or 0) }}
+            </span>
+          </span>
+
+          <span class="badge bg-success">
+            Ready for Pick Up
+          </span>
+        </label>
+        {% endfor %}
+      </div>
+
+      <div class="form-text">
+        Select at least one package. Only packages marked
+        Ready for Pick Up and not assigned to another delivery
+        are shown.
+      </div>
+
+      {% else %}
+      <div class="alert alert-warning mb-0">
+        You do not currently have any eligible packages available
+        for delivery. A package must be marked
+        <strong>Ready for Pick Up</strong> before a delivery can
+        be scheduled.
+      </div>
+      {% endif %}
     </div>
 
     <div class="row g-3">
@@ -298,7 +356,10 @@
     </div>
 
     <div class="d-flex gap-2">
-      <button type="button" class="btn btn-success" id="saveScheduleDelivery">Save</button>
+      <button type="button" class="btn btn-success" id="saveScheduleDelivery" {% if not eligible_packages %}disabled{%
+        endif %}>
+        Save
+      </button>
       <button type="button" class="btn btn-danger" id="cancelScheduleDelivery">Cancel</button>
     </div>
 
@@ -488,16 +549,20 @@
               Cancelled — not payable
             </div>
 
+            {% elif
+              delivery.is_free_delivery
+              or (delivery.delivery_fee or 0)|float <= 0
+              or fee_status|lower == "waived"
+            %}
+
+            <div class="small text-success">
+              Free — No Payment Required
+            </div>
+
             {% elif fee_status|lower == "paid" %}
 
             <div class="small text-success">
               Paid
-            </div>
-
-            {% elif fee_status|lower == "waived" %}
-
-            <div class="small text-success">
-              Free Delivery
             </div>
 
             {% elif fee_status|lower == "refunded" %}
@@ -1068,7 +1133,29 @@
           document.getElementById("csrf_token")?.value || ""
         ).trim();
 
+        const package_ids = Array.from(
+          document.querySelectorAll(
+            ".delivery-package-checkbox:checked"
+          )
+        ).map(function (checkbox) {
+          return Number(checkbox.value);
+        }).filter(function (packageId) {
+          return Number.isInteger(packageId) && packageId > 0;
+        });
+
         showMsg("");
+
+        if (!package_ids.length) {
+          showMsg(
+            "Please select at least one package for delivery."
+          );
+
+          document.querySelector(
+            ".delivery-package-checkbox"
+          )?.focus();
+
+          return;
+        }
 
         if (!schedule_date) {
           showMsg("Please select a delivery date.");
@@ -1147,7 +1234,8 @@
                 delivery_parish,
                 direction,
                 mobile_number,
-                person_receiving
+                person_receiving,
+                package_ids
               })
             }
           );

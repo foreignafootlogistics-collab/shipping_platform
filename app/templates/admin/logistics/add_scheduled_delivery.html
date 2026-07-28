@@ -54,7 +54,7 @@
     <div class="row g-3">
       <div class="col-md-5">
         <label class="form-label">Customer</label>
-        <select name="user_id" class="form-select" required>
+        <select name="user_id" id="adminDeliveryCustomer" class="form-select" required>
           <option value="">-- Select Customer --</option>
           {% for user in users %}
           <option value="{{ user.id }}">
@@ -62,6 +62,24 @@
           </option>
           {% endfor %}
         </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label fw-semibold">
+          Packages for Delivery
+        </label>
+
+        <div id="adminDeliveryPackages" class="border rounded p-3 bg-light">
+          <div class="text-muted">
+            Select a customer to view their eligible
+            Ready for Pick Up packages.
+          </div>
+        </div>
+
+        <div class="form-text">
+          At least one unassigned package marked
+          Ready for Pick Up must be selected.
+        </div>
       </div>
 
       <div class="col-md-3">
@@ -423,7 +441,9 @@
         estimateInProgress = false;
 
         if (saveBtn) {
-          saveBtn.disabled = false;
+          saveBtn.disabled = (
+            !hasEligibleDeliveryPackages()
+          );
 
           saveBtn.innerHTML =
             '<i class="bi bi-check-circle me-1"></i>' +
@@ -432,66 +452,296 @@
       }
     }
 
-    dateEl?.addEventListener("change", calculateDeliveryEstimate);
-    parishEl?.addEventListener("change", calculateDeliveryEstimate);
-    addrEl?.addEventListener("blur", calculateDeliveryEstimate);
-    addrEl?.addEventListener("input", validateAddressSoft);
+    const customerEl = document.getElementById(
+      "adminDeliveryCustomer"
+    );
 
-    saveBtn?.closest("form")?.addEventListener("submit", (e) => {
-      showMsg("");
+    const packagesBox = document.getElementById(
+      "adminDeliveryPackages"
+    );
 
-      if (estimateInProgress) {
-        e.preventDefault();
+    const eligiblePackagesUrl = {{ url_for(
+      "logistics.scheduled_delivery_eligible_packages",
+      user_id = 0
+    ) | tojson
+  }};
 
-        showMsg(
-          "Please wait for the delivery estimate to finish."
+  function escapeDeliveryText(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function hasEligibleDeliveryPackages() {
+    return Boolean(
+      document.querySelector(
+        ".admin-delivery-package-checkbox"
+      )
+    );
+  }
+
+  function updateDeliverySaveButton() {
+    if (!saveBtn) return;
+
+    saveBtn.disabled = (
+      estimateInProgress
+      || !hasEligibleDeliveryPackages()
+    );
+  }
+
+  async function loadEligibleDeliveryPackages() {
+    const userId = Number(
+      customerEl?.value || 0
+    );
+
+    if (!packagesBox) return;
+
+    if (!userId) {
+      packagesBox.innerHTML = `
+          <div class="text-muted">
+            Select a customer to view their eligible
+            Ready for Pick Up packages.
+          </div>
+        `;
+
+      updateDeliverySaveButton();
+      return;
+    }
+
+    packagesBox.innerHTML = `
+        <div class="text-center py-3">
+          <span
+            class="spinner-border spinner-border-sm me-2"
+          ></span>
+          Loading eligible packages...
+        </div>
+      `;
+
+    if (saveBtn) {
+      saveBtn.disabled = true;
+    }
+
+    try {
+      const url = eligiblePackagesUrl.replace(
+        /0$/,
+        String(userId)
+      );
+
+      const response = await fetch(
+        url,
+        {
+          headers: {
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        }
+      );
+
+      const data = await response.json().catch(
+        () => ({})
+      );
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message ||
+          "Eligible packages could not be loaded."
         );
+      }
 
+      const packages = Array.isArray(
+        data.packages
+      )
+        ? data.packages
+        : [];
+
+      if (!packages.length) {
+        packagesBox.innerHTML = `
+            <div class="alert alert-warning mb-0">
+              This customer has no unassigned packages
+              marked Ready for Pick Up. A delivery cannot
+              be scheduled.
+            </div>
+          `;
+
+        updateDeliverySaveButton();
         return;
       }
 
-      const scheduleDate = (dateEl?.value || "").trim();
-      const address = (addrEl?.value || "").trim();
-      const parish = (parishEl?.value || "").trim();
-      const mobile = (document.getElementById("deliveryMobile")?.value || "").trim();
-      const person = (document.getElementById("deliveryPerson")?.value || "").trim();
+      packagesBox.innerHTML = packages.map(
+        function (packageData) {
+          const packageId = Number(
+            packageData.id
+          );
 
-      if (!scheduleDate) {
-        e.preventDefault();
-        showMsg("Please select a delivery date.");
-        return;
-      }
+          const houseAwb = escapeDeliveryText(
+            packageData.house_awb ||
+            `Package #${packageId}`
+          );
 
-      if (!address) {
-        e.preventDefault();
-        showMsg("Please enter the delivery address.");
-        return;
-      }
+          const tracking = escapeDeliveryText(
+            packageData.tracking_number ||
+            "Not available"
+          );
 
-      if (!isAddressDetailedEnough(address)) {
-        e.preventDefault();
-        showMsg("Please enter a more accurate address, including street/road name and house or lot number if available.");
-        return;
-      }
+          const description = escapeDeliveryText(
+            packageData.description ||
+            "Package"
+          );
 
-      if (!parish) {
-        e.preventDefault();
-        showMsg("Please select a delivery parish.");
-        return;
-      }
+          const amountDue = Number(
+            packageData.amount_due || 0
+          ).toLocaleString(
+            undefined,
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            }
+          );
 
-      if (!mobile) {
-        e.preventDefault();
-        showMsg("Please enter the receiver's mobile number.");
-        return;
-      }
+          return `
+              <label
+                class="d-flex align-items-start gap-3
+                       border rounded bg-white p-3 mb-2"
+                for="adminDeliveryPackage${packageId}"
+                style="cursor:pointer;"
+              >
+                <input
+                  type="checkbox"
+                  class="form-check-input mt-1
+                         admin-delivery-package-checkbox"
+                  id="adminDeliveryPackage${packageId}"
+                  name="package_ids"
+                  value="${packageId}"
+                >
 
-      if (!person) {
-        e.preventDefault();
-        showMsg("Please enter the person receiving the package.");
-        return;
-      }
-    });
+                <span class="flex-grow-1">
+                  <span class="fw-semibold d-block">
+                    ${houseAwb}
+                  </span>
+
+                  <span class="small text-muted d-block">
+                    Tracking: ${tracking}
+                  </span>
+
+                  <span class="small text-muted d-block">
+                    ${description}
+                  </span>
+
+                  <span class="small fw-semibold d-block mt-1">
+                    Amount due: JMD ${amountDue}
+                  </span>
+                </span>
+
+                <span class="badge bg-success">
+                  Ready for Pick Up
+                </span>
+              </label>
+            `;
+        }
+      ).join("");
+
+      updateDeliverySaveButton();
+
+    } catch (error) {
+      packagesBox.innerHTML = `
+          <div class="alert alert-danger mb-0">
+            ${escapeDeliveryText(error.message)}
+          </div>
+        `;
+
+      updateDeliverySaveButton();
+    }
+  }
+
+  customerEl?.addEventListener(
+    "change",
+    loadEligibleDeliveryPackages
+  );
+
+  updateDeliverySaveButton();
+
+  dateEl?.addEventListener("change", calculateDeliveryEstimate);
+  parishEl?.addEventListener("change", calculateDeliveryEstimate);
+  addrEl?.addEventListener("blur", calculateDeliveryEstimate);
+  addrEl?.addEventListener("input", validateAddressSoft);
+
+  saveBtn?.closest("form")?.addEventListener("submit", (e) => {
+    showMsg("");
+
+    const selectedPackages = Array.from(
+      document.querySelectorAll(
+        ".admin-delivery-package-checkbox:checked"
+      )
+    );
+
+    if (!selectedPackages.length) {
+      e.preventDefault();
+
+      showMsg(
+        "Please select at least one Ready for Pick Up package."
+      );
+
+      document.querySelector(
+        ".admin-delivery-package-checkbox"
+      )?.focus();
+
+      return;
+    }
+
+    if (estimateInProgress) {
+      e.preventDefault();
+
+      showMsg(
+        "Please wait for the delivery estimate to finish."
+      );
+
+      return;
+    }
+
+    const scheduleDate = (dateEl?.value || "").trim();
+    const address = (addrEl?.value || "").trim();
+    const parish = (parishEl?.value || "").trim();
+    const mobile = (document.getElementById("deliveryMobile")?.value || "").trim();
+    const person = (document.getElementById("deliveryPerson")?.value || "").trim();
+
+    if (!scheduleDate) {
+      e.preventDefault();
+      showMsg("Please select a delivery date.");
+      return;
+    }
+
+    if (!address) {
+      e.preventDefault();
+      showMsg("Please enter the delivery address.");
+      return;
+    }
+
+    if (!isAddressDetailedEnough(address)) {
+      e.preventDefault();
+      showMsg("Please enter a more accurate address, including street/road name and house or lot number if available.");
+      return;
+    }
+
+    if (!parish) {
+      e.preventDefault();
+      showMsg("Please select a delivery parish.");
+      return;
+    }
+
+    if (!mobile) {
+      e.preventDefault();
+      showMsg("Please enter the receiver's mobile number.");
+      return;
+    }
+
+    if (!person) {
+      e.preventDefault();
+      showMsg("Please enter the person receiving the package.");
+      return;
+    }
+  });
   });
 </script>
 {% endblock %}

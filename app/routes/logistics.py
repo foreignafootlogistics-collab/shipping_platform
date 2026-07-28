@@ -9012,6 +9012,76 @@ def scheduled_deliveries_pdf():
         mimetype="application/pdf",
     )
 
+@logistics_bp.route(
+    "/scheduled-deliveries/"
+    "eligible-packages/<int:user_id>",
+    methods=["GET"],
+)
+@admin_required
+def scheduled_delivery_eligible_packages(
+    user_id,
+):
+    user = db.session.get(
+        User,
+        user_id,
+    )
+
+    if not user:
+        return jsonify({
+            "success": False,
+            "message": (
+                "The selected customer was not found."
+            ),
+            "packages": [],
+        }), 404
+
+    packages = (
+        Package.query
+        .filter(
+            Package.user_id == user.id,
+            func.lower(
+                func.trim(Package.status)
+            ) == "ready for pick up",
+            Package.scheduled_delivery_id.is_(
+                None
+            ),
+        )
+        .order_by(
+            Package.id.desc()
+        )
+        .all()
+    )
+
+    return jsonify({
+        "success": True,
+        "packages": [
+            {
+                "id": package.id,
+                "house_awb": (
+                    package.house_awb
+                    or f"Package #{package.id}"
+                ),
+                "tracking_number": (
+                    package.tracking_number
+                    or ""
+                ),
+                "description": (
+                    package.description
+                    or "Package"
+                ),
+                "amount_due": float(
+                    package.amount_due
+                    or 0
+                ),
+                "status": (
+                    package.status
+                    or ""
+                ),
+            }
+            for package in packages
+        ],
+    }), 200
+
 
 @logistics_bp.route(
     "/scheduled_deliveries/add",
@@ -9040,8 +9110,47 @@ def add_scheduled_delivery():
         ]
 
     if request.method == "POST":
-        is_json = request.is_json
-        data = request.get_json(silent=True) or {}
+        # Selected packages may arrive as a JSON list
+        # or repeated HTML form fields.
+        if is_json:
+            raw_package_ids = (
+                data.get("package_ids")
+                or []
+            )
+        else:
+            raw_package_ids = (
+                request.form.getlist(
+                    "package_ids"
+                )
+            )
+
+        if not isinstance(
+            raw_package_ids,
+            (list, tuple, set),
+        ):
+            raw_package_ids = [
+                raw_package_ids
+            ]
+
+        package_ids = []
+
+        for raw_package_id in raw_package_ids:
+            try:
+                package_id = int(
+                    raw_package_id
+                )
+
+                if package_id > 0:
+                    package_ids.append(
+                        package_id
+                    )
+
+            except (TypeError, ValueError):
+                continue
+
+        package_ids = list(
+            dict.fromkeys(package_ids)
+        )
 
         def submitted_value(*field_names):
             """
@@ -9092,6 +9201,11 @@ def add_scheduled_delivery():
         # Required fields
         # ---------------------------------
         missing_fields = []
+
+        if not package_ids:
+            missing_fields.append(
+                "at least one Ready for Pick Up package"
+            )
 
         if not user_id_raw:
             missing_fields.append("customer")
@@ -9178,6 +9292,59 @@ def add_scheduled_delivery():
             flash(message, "danger")
 
             return redirect(url_for("logistics.add_scheduled_delivery"))
+
+        # ---------------------------------
+        # Validate selected packages
+        # ---------------------------------
+        selected_packages = (
+            Package.query
+            .filter(
+                Package.id.in_(package_ids),
+                Package.user_id
+                == selected_customer.id,
+                func.lower(
+                    func.trim(Package.status)
+                )
+                == "ready for pick up",
+                Package.scheduled_delivery_id.is_(
+                    None
+                ),
+            )
+            .with_for_update()
+            .order_by(
+                Package.id.asc()
+            )
+            .all()
+        )
+
+        if (
+            len(selected_packages)
+            != len(package_ids)
+        ):
+            message = (
+                "One or more selected packages are "
+                "invalid or no longer eligible. Only "
+                "unassigned packages marked Ready for "
+                "Pick Up can be scheduled."
+            )
+
+            if is_json:
+                return (
+                    jsonify({
+                        "status": "error",
+                        "success": False,
+                        "message": message,
+                    }),
+                    400,
+                )
+
+            flash(message, "danger")
+
+            return redirect(
+                url_for(
+                    "logistics.add_scheduled_delivery"
+                )
+            )
 
         # ---------------------------------
         # Validate delivery date
@@ -9305,12 +9472,27 @@ def add_scheduled_delivery():
                 )
             ).quantize(Decimal("0.01"))
 
-            delivery_type = delivery_details.get("delivery_type") or "paid"
+            delivery_type = (
+                delivery_details.get(
+                    "delivery_type"
+                )
+                or "paid"
+            )
+
+            is_free_delivery = bool(
+                delivery_details.get(
+                    "is_free_delivery",
+                    False,
+                )
+            )
 
             if delivery_type == "admin_review":
                 fee_status = "Unpaid"
 
-            elif fee_amount <= Decimal("0.00"):
+            elif (
+                is_free_delivery
+                or fee_amount <= Decimal("0.00")
+            ):
                 fee_status = "Waived"
 
             else:
@@ -9338,12 +9520,7 @@ def add_scheduled_delivery():
                 distance_km=distance_km,
                 estimated_drive_minutes=None,
                 delivery_type=delivery_type,
-                is_free_delivery=bool(
-                    delivery_details.get(
-                        "is_free_delivery",
-                        False,
-                    )
-                ),
+                is_free_delivery=is_free_delivery,
                 delivery_risk_status="safe",
                 delivery_fee=fee_amount,
                 fee_currency=DELIVERY_FEE_CURRENCY,
@@ -9353,6 +9530,11 @@ def add_scheduled_delivery():
 
             db.session.add(new_delivery)
             db.session.flush()
+
+            for package in selected_packages:
+                package.scheduled_delivery_id = (
+                    new_delivery.id
+                )
 
             # Use Jamaica time for delivery-number year.
             jamaica_now = to_jamaica(datetime.now(timezone.utc))

@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from app.utils.time import to_jamaica
 from decimal import Decimal
 
-from flask import Blueprint, render_template, request, jsonify, url_for, redirect, flash
+from flask import Blueprint, render_template, request, jsonify, url_for, redirect, flash, current_app
 from sqlalchemy import or_, func
 
 from app.extensions import db
@@ -12,6 +12,7 @@ from flask_login import current_user
 from app.models import User, Package, Invoice, Payment, POSCloseout, AuditLog, ScheduledPickup
 from app.routes.admin_auth_routes import admin_required
 from app.utils.invoice_totals import fetch_invoice_totals_pg
+from app.utils.wallet import debit_wallet_for_payment
 from app.utils.scheduled_pickups import (
     sync_scheduled_pickups_for_delivered_package,
 )
@@ -456,7 +457,7 @@ def scan_deliver():
     package.delivery_scanned_at = now_utc
     package.delivery_scanned_by_id = current_user.id
 
-    _sync_scheduled_pickups_for_delivered_package(
+    sync_scheduled_pickups_for_delivered_package(
         package,
         now_utc
     )
@@ -490,6 +491,8 @@ def checkout():
     payment_method = (data.get("payment_method") or "").strip().lower()
     notes = (data.get("notes") or "").strip()
 
+    raw_payment_amount = data.get("payment_amount")
+
     discount_type = (data.get("discount_type") or "none").strip().lower()
 
     try:
@@ -509,7 +512,7 @@ def checkout():
     if not package_ids:
         return jsonify({"ok": False, "error": "Select at least one package."}), 400
 
-    if payment_method not in {"cash", "card", "transfer", "transfer_pending"}:
+    if payment_method not in {"cash", "card", "transfer", "wallet", "transfer_pending"}:
         return jsonify({"ok": False, "error": "Invalid payment method."}), 400
 
     is_pending_transfer = payment_method == "transfer_pending"
@@ -533,7 +536,6 @@ def checkout():
         return jsonify({"ok": False, "error": "No valid packages found."}), 400
 
     invalid = []
-    subtotal = Decimal("0.00")
 
     for p in packages:
         if p.status != "Ready for Pick Up":
@@ -544,10 +546,42 @@ def checkout():
             invalid.append(f"Package {p.id} is already locked.")
             continue
 
-        subtotal += _package_charge_amount(p)
-
     if invalid:
         return jsonify({"ok": False, "error": " ".join(invalid)}), 400
+
+    # Use live invoice balances for already-invoiced packages.
+    # This keeps checkout aligned with the amount shown on the POS
+    # screen after earlier partial payments.
+    subtotal = Decimal("0.00")
+
+    selected_invoice_ids = {
+        p.invoice_id
+        for p in packages
+        if p.invoice_id
+    }
+
+    for invoice_id in selected_invoice_ids:
+        (
+            _invoice_subtotal,
+            _invoice_discount,
+            _invoice_payments,
+            invoice_total_due,
+        ) = fetch_invoice_totals_pg(invoice_id)
+
+        subtotal += Decimal(
+            str(
+                max(
+                    float(invoice_total_due or 0),
+                    0.0,
+                )
+            )
+        ).quantize(Decimal("0.01"))
+
+    for p in packages:
+        if not p.invoice_id:
+            subtotal += _package_charge_amount(
+                p
+            ).quantize(Decimal("0.01"))
 
     discount = Decimal("0.00")
 
@@ -560,6 +594,77 @@ def checkout():
         discount = subtotal
 
     final_total = subtotal - discount
+
+    if final_total < Decimal("0.00"):
+        final_total = Decimal("0.00")
+
+    final_total = final_total.quantize(
+        Decimal("0.01")
+    )
+
+    if is_pending_transfer:
+        requested_payment = Decimal("0.00")
+    else:
+        try:
+            if raw_payment_amount in (None, ""):
+                requested_payment = final_total
+            else:
+                requested_payment = Decimal(
+                    str(raw_payment_amount)
+                ).quantize(Decimal("0.01"))
+        except Exception:
+            requested_payment = Decimal("0.00")
+
+        if requested_payment <= Decimal("0.00"):
+            return jsonify({
+                "ok": False,
+                "error": (
+                    "Payment amount must be greater "
+                    "than zero."
+                ),
+            }), 400
+
+        if requested_payment > final_total:
+            return jsonify({
+                "ok": False,
+                "error": (
+                    "Payment cannot exceed the total "
+                    f"due of JMD {final_total:,.2f}."
+                ),
+            }), 400
+
+        # A partial checkout may only target one invoice group.
+        # This prevents other selected packages from being released
+        # without any part of the payment being allocated to them.
+        selected_invoice_ids = {
+            p.invoice_id
+            for p in packages
+            if p.invoice_id
+        }
+
+        payment_group_count = (
+            len(selected_invoice_ids)
+            + (
+                1
+                if any(
+                    not p.invoice_id
+                    for p in packages
+                )
+                else 0
+            )
+        )
+
+        if (
+            requested_payment < final_total
+            and payment_group_count > 1
+        ):
+            return jsonify({
+                "ok": False,
+                "error": (
+                    "For a partial payment, select packages "
+                    "from one invoice only."
+                ),
+            }), 400
 
     discount_note = ""
     if discount > 0:
@@ -587,6 +692,7 @@ def checkout():
 
         collected_total = Decimal("0.00")
         pending_total = Decimal("0.00")
+        payment_remaining = requested_payment
 
         total_before_discount = subtotal if subtotal > 0 else Decimal("1.00")
 
@@ -672,6 +778,17 @@ def checkout():
 
             # Collect only the actual outstanding balance.
             elif not is_pending_transfer:
+                amount_to_collect = min(
+                    remaining_due,
+                    payment_remaining,
+                ).quantize(Decimal("0.01"))
+
+                if amount_to_collect <= Decimal("0.00"):
+                    raise ValueError(
+                        "No payment amount remains to apply "
+                        f"to invoice {invoice.invoice_number}."
+                    )
+
                 payment_notes = notes or "POS payment"
 
                 if discount_note:
@@ -681,7 +798,7 @@ def checkout():
                     user_id=user.id,
                     invoice_id=invoice.id,
                     method=payment_method.title(),
-                    amount_jmd=float(remaining_due),
+                    amount_jmd=float(amount_to_collect),
                     transaction_type="invoice_payment",
                     status="completed",
                     notes=payment_notes,
@@ -692,8 +809,18 @@ def checkout():
 
                 db.session.add(payment)
                 db.session.flush()
+                debit_wallet_for_payment(
+                    payment,
+                    invoice=invoice,
+                    admin_id=current_user.id,
+                )
+
                 created_payment_ids.append(payment.id)
-                collected_total += remaining_due
+                collected_total += amount_to_collect
+                payment_remaining = (
+                    payment_remaining
+                    - amount_to_collect
+                ).quantize(Decimal("0.01"))
 
                 if discount_note:
                     invoice.description = (
@@ -701,9 +828,30 @@ def checkout():
                         f"\n{discount_note}"
                     ).strip()
 
-                invoice.amount_due = 0.00
-                invoice.status = "paid"
-                invoice.date_paid = now_utc
+                new_remaining_due = (
+                    remaining_due
+                    - amount_to_collect
+                ).quantize(Decimal("0.01"))
+
+                if new_remaining_due <= Decimal("0.01"):
+                    invoice.amount_due = 0.00
+                    invoice.status = "paid"
+                    invoice.date_paid = now_utc
+                else:
+                    invoice.amount_due = float(
+                        new_remaining_due
+                    )
+                    invoice.status = "partial"
+                    invoice.date_paid = None
+
+                    invoice.description = (
+                        (invoice.description or "")
+                        + (
+                            "\nPOS partial payment recorded. "
+                            f"Outstanding balance: "
+                            f"JMD {new_remaining_due:,.2f}."
+                        )
+                    ).strip()
 
             # Transfer has not yet been confirmed.
             else:
@@ -762,7 +910,7 @@ def checkout():
                 p.delivery_scanned_at = now_utc
                 p.delivery_scanned_by_id = current_user.id
 
-                _sync_scheduled_pickups_for_delivered_package(
+                sync_scheduled_pickups_for_delivered_package(
                     p,
                     now_utc
                 )
@@ -788,6 +936,30 @@ def checkout():
             if new_final_total < Decimal("0.00"):
                 new_final_total = Decimal("0.00")
 
+            new_final_total = new_final_total.quantize(
+                Decimal("0.01")
+            )
+
+            if is_pending_transfer:
+                new_payment_amount = Decimal("0.00")
+                new_remaining_due = new_final_total
+            else:
+                new_payment_amount = min(
+                    new_final_total,
+                    payment_remaining,
+                ).quantize(Decimal("0.01"))
+
+                if new_payment_amount <= Decimal("0.00"):
+                    raise ValueError(
+                        "No payment amount remains for the "
+                        "new POS invoice."
+                    )
+
+                new_remaining_due = (
+                    new_final_total
+                    - new_payment_amount
+                ).quantize(Decimal("0.01"))
+
             invoice_description = notes or f"POS checkout for {len(uninvoiced_packages)} package(s)"
             if discount_note:
                 invoice_description = f"{invoice_description}\n{discount_note}"
@@ -801,7 +973,11 @@ def checkout():
                 description=invoice_description,
                 total_weight=float(new_weight),
                 amount=float(new_final_total),
-                amount_due=float(new_final_total) if is_pending_transfer else 0.0,
+                amount_due=(
+                    float(new_remaining_due)
+                    if new_remaining_due > Decimal("0.01")
+                    else 0.0
+                ),
                 grand_total=float(new_final_total),
 
                 subtotal_before_discount=new_total,
@@ -810,9 +986,26 @@ def checkout():
                 discount_total=new_discount,
 
                 date_issued=now_utc,
-                date_paid=None if is_pending_transfer else now_utc,
+                date_paid=(
+                    now_utc
+                    if (
+                        not is_pending_transfer
+                        and new_remaining_due
+                        <= Decimal("0.01")
+                    )
+                    else None
+                ),
                 created_at=now_utc,
-                status="unpaid" if is_pending_transfer else "paid"
+                status=(
+                    "unpaid"
+                    if is_pending_transfer
+                    else (
+                        "paid"
+                        if new_remaining_due
+                        <= Decimal("0.01")
+                        else "partial"
+                    )
+                )
             )
 
             db.session.add(pos_invoice)
@@ -832,7 +1025,7 @@ def checkout():
                     user_id=user.id,
                     invoice_id=pos_invoice.id,
                     method=payment_method.title(),
-                    amount_jmd=float(new_final_total),
+                    amount_jmd=float(new_payment_amount),
                     transaction_type="invoice_payment",
                     status="completed",
                     notes=payment_notes,
@@ -844,8 +1037,18 @@ def checkout():
                 db.session.add(pos_payment)
                 db.session.flush()
 
+                debit_wallet_for_payment(
+                    pos_payment,
+                    invoice=pos_invoice,
+                    admin_id=current_user.id,
+                )
+
                 created_payment_ids.append(pos_payment.id)
-                collected_total += new_final_total
+                collected_total += new_payment_amount
+                payment_remaining = (
+                    payment_remaining
+                    - new_payment_amount
+                ).quantize(Decimal("0.01"))
 
             else:
                 pending_payment = (
@@ -873,18 +1076,40 @@ def checkout():
                 p.delivery_scanned_at = now_utc
                 p.delivery_scanned_by_id = current_user.id
 
-                _sync_scheduled_pickups_for_delivered_package(
+                sync_scheduled_pickups_for_delivered_package(
                     p,
                     now_utc
                 )
 
+        if (
+            not is_pending_transfer
+            and payment_remaining > Decimal("0.01")
+        ):
+            raise ValueError(
+                "The full entered payment could not be "
+                "allocated to the selected invoice."
+            )
+
         db.session.commit()
 
-        message = (
-            "Package(s) released. Transfer is pending and balance remains outstanding."
-            if is_pending_transfer
-            else "Checkout completed successfully."
-        )
+        if is_pending_transfer:
+            message = (
+                "Package(s) released. Transfer is pending "
+                "and balance remains outstanding."
+            )
+        elif collected_total < final_total:
+            remaining_after_payment = (
+                final_total - collected_total
+            ).quantize(Decimal("0.01"))
+
+            message = (
+                f"Partial payment of JMD "
+                f"{collected_total:,.2f} recorded. "
+                f"Balance remaining: JMD "
+                f"{remaining_after_payment:,.2f}."
+            )
+        else:
+            message = "Checkout completed successfully."
 
         display_total = (
             pending_total
@@ -913,14 +1138,39 @@ def checkout():
             "amount_pending": str(
                 pending_total.quantize(Decimal("0.01"))
             ),
+            "balance_remaining": str(
+                (
+                    final_total
+                    - collected_total
+                    if not is_pending_transfer
+                    else final_total
+                ).quantize(Decimal("0.01"))
+            ),
+            "partial_payment": bool(
+                not is_pending_transfer
+                and collected_total < final_total
+            ),
             "payment_pending": is_pending_transfer,
         })
 
-    except Exception as e:
+    except ValueError as error:
         db.session.rollback()
+
         return jsonify({
             "ok": False,
-            "error": f"Checkout failed: {str(e)}"
+            "error": str(error),
+        }), 400
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "POS checkout failed"
+        )
+
+        return jsonify({
+            "ok": False,
+            "error": "Checkout could not be completed.",
         }), 500
 
 @admin_pos_bp.route(
@@ -1178,11 +1428,12 @@ def collect_pending_payment(payment_id):
         "cash": "Cash",
         "card": "Card",
         "transfer": "Transfer",
+        "wallet": "Wallet",
     }
 
     if method not in allowed_methods:
         flash(
-            "Select Cash, Card or Transfer.",
+            "Select Cash, Card, Transfer or Wallet.",
             "danger",
         )
 
@@ -1269,6 +1520,44 @@ def collect_pending_payment(payment_id):
             f"{payment_notes}\n{notes}"
         )
 
+    if method == "wallet":
+        wallet_user = (
+            User.query
+            .filter(User.id == invoice.user_id)
+            .with_for_update()
+            .first()
+        )
+
+        available_balance = Decimal(
+            str(
+                getattr(
+                    wallet_user,
+                    "wallet_balance",
+                    0,
+                )
+                or 0
+            )
+        ).quantize(Decimal("0.01"))
+
+        if available_balance < amount:
+            db.session.rollback()
+
+            flash(
+                (
+                    "Insufficient wallet balance. "
+                    f"Available: JMD "
+                    f"{available_balance:,.2f}. "
+                    f"Required: JMD {amount:,.2f}."
+                ),
+                "danger",
+            )
+
+            return redirect(
+                url_for(
+                    "admin_pos.pending_payments"
+                )
+            )
+
     completed_payment = Payment(
         user_id=invoice.user_id,
         invoice_id=invoice.id,
@@ -1285,6 +1574,12 @@ def collect_pending_payment(payment_id):
 
     db.session.add(completed_payment)
     db.session.flush()
+
+    debit_wallet_for_payment(
+        completed_payment,
+        invoice=invoice,
+        admin_id=current_user.id,
+    )
 
     remaining_balance = (
         live_balance - amount
@@ -1526,6 +1821,7 @@ def daily_sales():
         "cash": Decimal("0.00"),
         "card": Decimal("0.00"),
         "transfer": Decimal("0.00"),
+        "wallet": Decimal("0.00"),
         "gross_total": Decimal("0.00"),
         "discount": Decimal("0.00"),
         "total": Decimal("0.00"),
@@ -1555,6 +1851,13 @@ def daily_sales():
             summary["card"] += amount
         elif method in {"transfer", "bank", "bank transfer"}:
             summary["transfer"] += amount
+        elif method in {
+            "wallet",
+            "e-wallet",
+            "ewallet",
+            "wallet payment",
+        }:
+            summary["wallet"] += amount
 
         summary["gross_total"] += invoice_gross
         summary["discount"] += invoice_discount
@@ -1587,6 +1890,7 @@ def daily_sales():
         closeout.expected_cash = summary["cash"]
         closeout.expected_card = summary["card"]
         closeout.expected_transfer = summary["transfer"]
+        closeout.expected_wallet = summary["wallet"]
         closeout.expected_discount = summary["discount"]
         closeout.expected_total = summary["total"]
 
@@ -1613,6 +1917,7 @@ def daily_sales():
                 f"Cash Difference: JMD {float(cash_difference):,.2f}. "
                 f"Card: JMD {float(summary['card']):,.2f}. "
                 f"Transfer: JMD {float(summary['transfer']):,.2f}. "
+                f"Wallet: JMD {float(summary['wallet']):,.2f}. "
                 f"Discount: JMD {float(summary['discount']):,.2f}. "
                 f"Total: JMD {float(summary['total']):,.2f}."
             ),

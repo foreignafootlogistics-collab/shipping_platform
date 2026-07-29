@@ -593,6 +593,14 @@ else 0 %}
 
                 <i class="bi bi-check2"></i>
               </button>
+              <button type="button" class="payment-method-btn" data-method="Wallet">
+                <span>
+                  <i class="bi bi-wallet2"></i>
+                  Wallet
+                </span>
+
+                <i class="bi bi-check2"></i>
+              </button>
             </div>
             <input type="hidden" name="method" id="payMethodInputInline" value="Cash">
           </div>
@@ -620,7 +628,7 @@ else 0 %}
                 value="{{ authorized_signers[0] if authorized_signers else 'Admin' }}">
             </div>
             <small class="text-muted">
-              Current balance:
+              Invoice balance:
               JMD {{ "%.2f"|format(invoice.preview_total_due or 0) }}
             </small>
           </div>

@@ -34,7 +34,11 @@ from app.forms import (
 )
 
 from app.utils import email_utils
-from app.utils.wallet import update_wallet, update_wallet_balance
+from app.utils.wallet import (
+    update_wallet,
+    update_wallet_balance,
+    debit_wallet_for_payment,
+)
 from app.utils.invoice_utils import generate_invoice
 from app.utils.rates import get_rate_for_weight
 from app.utils.invoice_pdf import generate_invoice_pdf
@@ -2785,6 +2789,12 @@ def mark_invoice_paid():
         db.session.add(payment)
         db.session.flush()
 
+        debit_wallet_for_payment(
+            payment,
+            invoice=inv,
+            admin_id=current_user.id,
+        )
+
         # Recalculate after saving the new payment.
         subtotal, discount_total, payments_total, total_due = (
             fetch_invoice_totals_pg(inv.id)
@@ -3262,6 +3272,13 @@ def bulk_invoice_payment():
             )
 
             db.session.add(payment)
+            db.session.flush()
+
+            debit_wallet_for_payment(
+                payment,
+                invoice=inv,
+                admin_id=current_user.id,
+            )
 
             created.append(
                 (
@@ -4923,6 +4940,12 @@ def add_payment(invoice_id):
         db.session.add(payment)
         db.session.flush()
 
+        debit_wallet_for_payment(
+            payment,
+            invoice=inv,
+            admin_id=current_user.id,
+        )
+
         (
             subtotal,
             discount_total,
@@ -6290,33 +6313,107 @@ def invoice_receipt(invoice_id):
                      download_name=f"receipt_{inv.invoice_number or invoice_id}.pdf",
                      mimetype="application/pdf")
 
-@admin_bp.route('/wallet/<int:user_id>/edit', methods=['GET', 'POST'])
+@admin_bp.route(
+    "/wallet/<int:user_id>/edit",
+    methods=["GET", "POST"],
+)
 @admin_required
 def edit_wallet(user_id):
     user = User.query.get_or_404(user_id)
+
     wallet = user.wallet
+
     if not wallet:
-        wallet = Wallet(user_id=user.id, ewallet_balance=0, bucks_balance=0)
+        wallet = Wallet(
+            user_id=user.id,
+            ewallet_balance=float(
+                user.wallet_balance or 0
+            ),
+            bucks_balance=0,
+        )
+
         db.session.add(wallet)
         db.session.commit()
 
     form = WalletUpdateForm(obj=wallet)
+
     if form.validate_on_submit():
-        old_balance = wallet.ewallet_balance
-        new_balance = form.ewallet_balance.data
-        wallet.ewallet_balance = new_balance
+        old_balance = round(
+            float(user.wallet_balance or 0),
+            2,
+        )
 
-        diff = (new_balance or 0) - (old_balance or 0)
-        if diff != 0:
-            db.session.add(WalletTransaction(
-                user_id=user.id, amount=diff,
-                description=form.description.data or f"Manual wallet update by admin: {diff:+.2f}",
-                type='adjustment'
-            ))
-        db.session.commit()
-        return jsonify({'success': True, 'new_balance': wallet.ewallet_balance})
+        new_balance = round(
+            float(form.ewallet_balance.data or 0),
+            2,
+        )
 
-    return render_template('admin/edit_wallet_form.html', form=form, user=user)
+        if new_balance < 0:
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Wallet balance cannot be negative."
+                ),
+            }), 400
+
+        difference = round(
+            new_balance - old_balance,
+            2,
+        )
+
+        try:
+            # Keep both wallet fields synchronized.
+            user.wallet_balance = new_balance
+            wallet.ewallet_balance = new_balance
+
+            if difference != 0:
+                db.session.add(
+                    WalletTransaction(
+                        user_id=user.id,
+                        amount=difference,
+                        description=(
+                            form.description.data
+                            or (
+                                "Manual wallet adjustment by "
+                                f"{current_user.full_name or current_user.email}: "
+                                f"{difference:+.2f}"
+                            )
+                        ),
+                        type="adjustment",
+                        action="manual_adjustment",
+                        reason="admin_wallet_update",
+                        admin_id=current_user.id,
+                        created_at=datetime.utcnow(),
+                    )
+                )
+
+            db.session.commit()
+
+        except Exception as error:
+            db.session.rollback()
+
+            current_app.logger.exception(
+                "Wallet update failed for user %s",
+                user.id,
+            )
+
+            return jsonify({
+                "success": False,
+                "error": (
+                    f"Wallet could not be updated: {error}"
+                ),
+            }), 500
+
+        return jsonify({
+            "success": True,
+            "new_balance": new_balance,
+        })
+
+    return render_template(
+        "admin/edit_wallet_form.html",
+        form=form,
+        user=user,
+    )
 
 
 @admin_bp.route('/wallet/update', methods=['GET','POST'])

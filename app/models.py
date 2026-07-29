@@ -1697,6 +1697,7 @@ class POSCloseout(db.Model):
     expected_cash = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     expected_card = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     expected_transfer = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    expected_wallet = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     expected_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     expected_discount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
 

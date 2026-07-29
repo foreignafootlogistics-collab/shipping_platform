@@ -51,7 +51,7 @@ from app.utils.email_utils import (
 
 # Models (these exist in your file)
 from app.models import (
-    User, Invoice, Payment, Package, Prealert, AuthorizedPickup, 
+    User, Wallet, Invoice, Payment, Package, Prealert, AuthorizedPickup, 
     Message as DBMessage,  # ✅ alias it like customer_routes.py
     Settings, PackageAttachment, ScheduledDelivery, 
     Claim, ClaimAuditLog, WalletTransaction, AuditLog
@@ -2475,8 +2475,22 @@ def update_wallet(id):
     except ValueError:
         amount = 0
 
-    if wallet_action not in ("credit", "debit", "invoice_payment"):
-        flash("Please select whether this is an add funds, deduct funds, or invoice/package payment transaction.", "danger")
+    if wallet_action == "invoice_payment":
+        flash(
+            (
+                "Record Wallet payments from the invoice payment "
+                "screen or POS. The wallet will be deducted "
+                "automatically."
+            ),
+            "warning",
+        )
+        return redirect(_back_to_view_user_url(id))
+
+    if wallet_action not in {"credit", "debit"}:
+        flash(
+            "Select Add Funds or Deduct Funds.",
+            "danger",
+        )
         return redirect(_back_to_view_user_url(id))
 
     if amount <= 0:
@@ -2489,15 +2503,11 @@ def update_wallet(id):
 
     if not description:
         flash("Please enter a wallet description.", "danger")
-        return redirect(_back_to_view_user_url(id))
-
-    if wallet_action == "invoice_payment" and not invoice_number:
-        flash("Invoice number is required when wallet funds are used to pay for a package/invoice.", "danger")
-        return redirect(_back_to_view_user_url(id))
+        return redirect(_back_to_view_user_url(id))    
 
     signed_amount = amount
 
-    if wallet_action in ("debit", "invoice_payment"):
+    if wallet_action == "debit":
         signed_amount = -amount
 
     new_balance = float(user.wallet_balance or 0) + signed_amount
@@ -2507,6 +2517,23 @@ def update_wallet(id):
         return redirect(_back_to_view_user_url(id))
 
     user.wallet_balance = new_balance
+
+    wallet = (
+        Wallet.query
+        .filter(Wallet.user_id == user.id)
+        .with_for_update()
+        .first()
+    )
+
+    if not wallet:
+        wallet = Wallet(
+            user_id=user.id,
+            ewallet_balance=new_balance,
+            bucks_balance=0,
+        )
+        db.session.add(wallet)
+    else:
+        wallet.ewallet_balance = new_balance
 
     txn_description = description
     if invoice_number:

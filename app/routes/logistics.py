@@ -3134,6 +3134,12 @@ def bulk_update_shipment_sort_code(shipment_id):
         or ""
     )
 
+    code = str(code).strip().upper()
+
+    reset_to_customer_default = (
+        code == "CUSTOMER_DEFAULT"
+    )
+
     if not package_ids:
         return jsonify({
             "success": False,
@@ -3141,7 +3147,8 @@ def bulk_update_shipment_sort_code(shipment_id):
         }), 400
 
     try:
-        code = normalize_sort_code(code)
+        if not reset_to_customer_default:
+            code = normalize_sort_code(code)
 
         packages = (
             Package.query
@@ -3169,14 +3176,29 @@ def bulk_update_shipment_sort_code(shipment_id):
             }), 400
 
         for package in packages:
-            set_package_sort_code(
-                package,
-                code,
-                source="manual",
-                admin_id=current_user.id,
-                lock=True,
-                force=True,
-            )
+            if reset_to_customer_default:
+                # Remove the accidental manual lock.
+                package.sort_code_locked = False
+                package.sort_code = "UNASSIGNED"
+                package.sort_code_source = "system"
+                package.sort_code_updated_at = None
+                package.sort_code_updated_by_id = None
+
+                # Apply this package owner's saved default.
+                apply_customer_default_to_package(
+                    package,
+                    admin_id=current_user.id,
+                )
+
+            else:
+                set_package_sort_code(
+                    package,
+                    code,
+                    source="manual",
+                    admin_id=current_user.id,
+                    lock=True,
+                    force=True,
+                )
 
         db.session.commit()
 
@@ -3207,8 +3229,19 @@ def bulk_update_shipment_sort_code(shipment_id):
     return jsonify({
         "success": True,
         "updated_count": len(packages),
-        "sort_code": code,
-        "sort_code_label": sort_code_label(code),
+        "sort_code": (
+            "CUSTOMER_DEFAULT"
+            if reset_to_customer_default
+            else code
+        ),
+        "sort_code_label": (
+            "Customer Default"
+            if reset_to_customer_default
+            else sort_code_label(code)
+        ),
+        "reset_to_customer_default": (
+            reset_to_customer_default
+        ),
     })
 
 

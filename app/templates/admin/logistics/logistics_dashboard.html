@@ -1377,6 +1377,18 @@
                   </li>
 
                   <li>
+                    <button type="button" class="dropdown-item fw-semibold text-primary js-bulk-sort-option"
+                      data-sort-code="CUSTOMER_DEFAULT">
+                      <i class="bi bi-arrow-counterclockwise me-1"></i>
+                      Reset to Customer Default
+                    </button>
+                  </li>
+
+                  <li>
+                    <hr class="dropdown-divider">
+                  </li>
+
+                  <li>
                     <button type="button" class="dropdown-item js-bulk-sort-option" data-sort-code="THN">
                       THN
                     </button>
@@ -2620,9 +2632,19 @@ Not emailed yet"></i>
       return;
     }
 
+    const confirmationMessage =
+      sortCode === "CUSTOMER_DEFAULT"
+        ? (
+          `Unlock and reset ${uniquePackageIds.length} ` +
+          `selected package(s) to their customers' default codes?`
+        )
+        : (
+          `Assign ${sortCode} to ` +
+          `${uniquePackageIds.length} selected package(s)?`
+        );
+
     const confirmed = confirm(
-      `Assign ${sortCode} to ` +
-      `${uniquePackageIds.length} selected package(s)?`
+      confirmationMessage
     );
 
     if (!confirmed) return;
@@ -2671,10 +2693,17 @@ Not emailed yet"></i>
         );
       }
 
-      alert(
-        `${data.updated_count || uniquePackageIds.length} ` +
-        `package(s) assigned to ${data.sort_code || sortCode}.`
-      );
+      if (data.reset_to_customer_default) {
+        alert(
+          `${data.updated_count || uniquePackageIds.length} ` +
+          `package(s) unlocked and restored to customer defaults.`
+        );
+      } else {
+        alert(
+          `${data.updated_count || uniquePackageIds.length} ` +
+          `package(s) assigned to ${data.sort_code || sortCode}.`
+        );
+      }
 
       if (
         typeof saveShipmentDTState === "function"

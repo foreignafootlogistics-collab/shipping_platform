@@ -616,12 +616,23 @@ def login():
     form = LoginForm()
 
     if form.validate_on_submit():
-        email = (form.email.data or "").strip()
+        email = (
+            form.email.data or ""
+        ).strip().lower()
+
         password_plain = form.password.data or ""
         password_bytes = password_plain.encode("utf-8")
 
-        # Fetch user via SQLAlchemy
-        user = User.query.filter_by(email=email).first()
+        user = (
+            User.query
+            .filter(
+                db.func.lower(
+                    db.func.trim(User.email)
+                )
+                == email
+            )
+            .first()
+        )
 
         if user and user.password:
             stored_password = user.password
@@ -677,13 +688,26 @@ def logout():
 @auth_bp.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
-        email = (request.form.get("email") or "").strip()
+        email = (
+            request.form.get("email") or ""
+        ).strip().lower()
+
         if not email:
             flash("Please enter your email address.", "danger")
             return redirect(url_for("auth.forgot_password"))
 
 
-        user = User.query.filter_by(email=email).first()
+        user = (
+            User.query
+            .filter(
+                db.func.lower(
+                    db.func.trim(User.email)
+                )
+                == email
+            )
+            .first()
+        )
+
         if not user:
             flash("If that email exists, we sent a password reset link.", "success")
             return redirect(url_for("auth.login"))
@@ -692,14 +716,23 @@ def forgot_password():
 
         # Generate secure token (10 min expiry)
         serializer = URLSafeTimedSerializer(current_app.secret_key)
-        token = serializer.dumps(email, salt="reset-password-salt")
+        canonical_email = (
+            user.email or email
+        ).strip().lower()
+
+        token = serializer.dumps(
+            canonical_email,
+            salt="reset-password-salt",
+        )
 
         reset_link = url_for("auth.reset_password", token=token, _external=True)
 
         # Send password reset email
         try:
             email_utils.send_password_reset_email(
-                to_email=email, full_name=full_name, reset_link=reset_link
+                to_email=user.email,
+                full_name=full_name,
+                reset_link=reset_link,
             )
         except Exception as e:
             print(f"Error sending password reset email: {e}")
@@ -725,7 +758,18 @@ def reset_password(token):
         flash("Reset link is invalid or has expired.", "danger")
         return redirect(url_for("auth.forgot_password"))
 
-    user = User.query.filter_by(email=email).first()
+    email = str(email or "").strip().lower()
+
+    user = (
+            User.query
+            .filter(
+                db.func.lower(
+                    db.func.trim(User.email)
+                )
+                == email
+            )
+            .first()
+        )
     if not user:
         flash("No account found for this reset link.", "danger")
         return redirect(url_for("auth.forgot_password"))

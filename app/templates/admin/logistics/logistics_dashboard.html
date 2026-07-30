@@ -1250,6 +1250,23 @@
                         </select>
                       </div>
 
+                      <div class="col-md-3">
+                        <label class="form-label small mb-1">
+                          Sorting Code
+                        </label>
+
+                        <select id="sortCodeFilter" class="form-select form-select-sm">
+                          <option value="">All Destinations</option>
+                          <option value="THN">THN — NHT</option>
+                          <option value="PRE">PRE — Port Ridge Estate</option>
+                          <option value="UE">UE — Union Estates</option>
+                          <option value="GPB">GPB — Gregory Park Branch</option>
+                          <option value="RTD">RTD — Round Town Delivery</option>
+                          <option value="STH">STH — Spanish Town Hospital</option>
+                          <option value="UNASSIGNED">UNASSIGNED — Needs Review</option>
+                        </select>
+                      </div>
+
                       <div class="col-md-4">
                         <label class="form-label small mb-1">Weight Range (lbs)</label>
                         <div class="d-flex gap-2 align-items-center">
@@ -1281,9 +1298,13 @@
                           </button>
                         </div>
 
-                        <button type="button" id="btnDeleteSelectedPkgs" class="btn btn-outline-danger btn-sm">
-                          <i class="bi bi-trash"></i> Delete Selected Package(s)
-                        </button>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+
+                          <button type="button" id="btnDeleteSelectedPkgs" class="btn btn-outline-danger btn-sm">
+                            <i class="bi bi-trash"></i>
+                            Delete Selected
+                          </button>
+                        </div>
                       </div>
 
                     </div>
@@ -1340,6 +1361,71 @@
               </div>
             </div>
 
+            <div id="shipmentSortControl" class="d-none">
+              <div class="dropdown">
+                <button class="btn btn-outline-purple btn-sm dropdown-toggle" type="button" id="sortSelectedDropdown"
+                  data-bs-toggle="dropdown" aria-expanded="false">
+                  <i class="bi bi-signpost-split me-1"></i>
+                  Sort Selected
+                </button>
+
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="sortSelectedDropdown">
+                  <li>
+                    <h6 class="dropdown-header">
+                      Assign sorting code
+                    </h6>
+                  </li>
+
+                  <li>
+                    <button type="button" class="dropdown-item js-bulk-sort-option" data-sort-code="THN">
+                      THN
+                    </button>
+                  </li>
+
+                  <li>
+                    <button type="button" class="dropdown-item js-bulk-sort-option" data-sort-code="PRE">
+                      PRE
+                    </button>
+                  </li>
+
+                  <li>
+                    <button type="button" class="dropdown-item js-bulk-sort-option" data-sort-code="UE">
+                      UE
+                    </button>
+                  </li>
+
+                  <li>
+                    <button type="button" class="dropdown-item js-bulk-sort-option" data-sort-code="GPB">
+                      GPB
+                    </button>
+                  </li>
+
+                  <li>
+                    <button type="button" class="dropdown-item js-bulk-sort-option" data-sort-code="RTD">
+                      RTD
+                    </button>
+                  </li>
+
+                  <li>
+                    <button type="button" class="dropdown-item js-bulk-sort-option" data-sort-code="STH">
+                      STH
+                    </button>
+                  </li>
+
+                  <li>
+                    <hr class="dropdown-divider">
+                  </li>
+
+                  <li>
+                    <button type="button" class="dropdown-item text-warning js-bulk-sort-option"
+                      data-sort-code="UNASSIGNED">
+                      UNASSIGNED
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
             {% if shipment_packages %}
             <div class="table-responsive shadow-sm">
               <table id="shipmentTable"
@@ -1364,6 +1450,7 @@
                 <tbody class="small">
                   {% for pkg in shipment_packages %}
                   <tr class="{% if pkg.get('received_scan_status') == 'scanned' %}table-success{% endif %}"
+                    data-package-id="{{ pkg.id }}" data-sort-code="{{ pkg.sort_code or 'UNASSIGNED' }}"
                     data-subscription-applied="{{ 'true' if pkg.subscription_applied else 'false' }}"
                     data-subscription-result="{{ pkg.subscription_result or '' }}"
                     data-scan-status="{{ pkg.get('received_scan_status', 'not_scanned') }}">
@@ -1390,8 +1477,39 @@
                     </td>
 
                     <td>
-                      <strong>{{ pkg.full_name }}</strong><br>
-                      <small class="text-muted">{{ pkg.registration_number }}</small>
+                      <strong>
+                        <a href="{{ url_for(
+      'accounts_profiles.view_user',
+      id=pkg.user_id
+    ) }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none text-purple"
+                          title="View {{ pkg.full_name }}'s account">
+                          {{ pkg.full_name }}
+                          <i class="bi bi-box-arrow-up-right ms-1 small"></i>
+                        </a>
+                      </strong><br>
+
+                      <small class="text-muted">
+                        {{ pkg.registration_number }}
+                      </small>
+
+                      {% set package_sort_code = pkg.sort_code or 'UNASSIGNED' %}
+
+                      <div class="mt-1">
+                        {% if package_sort_code == 'UNASSIGNED' %}
+                        <span class="badge bg-warning text-dark" title="Sorting destination needs review">
+                          UNASSIGNED
+                        </span>
+                        {% else %}
+                        <span class="badge" style="background-color:#4a148c;"
+                          title="{{ pkg.sort_code_label or package_sort_code }}">
+                          {{ package_sort_code }}
+                        </span>
+                        {% endif %}
+
+                        {% if pkg.sort_code_locked %}
+                        <i class="bi bi-lock-fill text-muted ms-1" title="Sorting code manually assigned"></i>
+                        {% endif %}
+                      </div>
                     </td>
 
                     <td>
@@ -2427,28 +2545,166 @@ Not emailed yet"></i>
   }
 
   /* ============================================================
-     ✅ URLS from Flask (prevents prefix bugs)
-     ============================================================ */
-  window.PKG_API_URL = "{{ url_for('logistics.api_get_package', pkg_id=0) }}";           // .../0
-  window.CALC_API_URL = "{{ url_for('logistics.shipment_calc_charges') }}";              // calc endpoint (if you use it)
-  window.SAVE_CHARGES_URL = "{{ url_for('logistics.api_save_package_charges', pkg_id=0) }}"; // .../0
-  window.UPDATE_PKG_URL = "{{ url_for('logistics.api_update_package', pkg_id=0) }}";        // .../0
+   ✅ URLS from Flask (prevents prefix bugs)
+   ============================================================ */
+  window.PKG_API_URL = "{{ url_for('logistics.api_get_package', pkg_id=0) }}";
+  window.CALC_API_URL = "{{ url_for('logistics.shipment_calc_charges') }}";
+  window.SAVE_CHARGES_URL = "{{ url_for('logistics.api_save_package_charges', pkg_id=0) }}";
+  window.UPDATE_PKG_URL = "{{ url_for('logistics.api_update_package', pkg_id=0) }}";
   window.INVOICE_PREVIEW_URL = "{{ url_for('logistics.bulk_invoice_preview') }}";
   window.INVOICE_FINALIZE_URL = "{{ url_for('logistics.bulk_invoice_finalize_json') }}";
 
   window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}";
 
   window.CURRENT_SHIPMENT_ID = {{ selected_shipment.id if selected_shipment else 0 }};
-  window.SHIPMENT_SCAN_URL = "{{ url_for('logistics.scan_package_in_shipment', shipment_id=(selected_shipment.id if selected_shipment else 0)) }}";
+
+  window.SHIPMENT_SCAN_URL = "{{ url_for(
+  'logistics.scan_package_in_shipment',
+    shipment_id = (selected_shipment.id if selected_shipment else 0)
+) }}";
+
+  window.BULK_SORT_CODE_URL = "{{ url_for(
+  'logistics.bulk_update_shipment_sort_code',
+    shipment_id = (selected_shipment.id if selected_shipment else 0)
+) }}";
+
   window.BAD_ADDRESS_FEE_DEFAULT = {{ (settings.bad_address_fee_jmd or 500)| float }};
+
+  /* ============================================================
+   BULK PACKAGE SORTING CODE
+   ============================================================ */
+  document.addEventListener("click", async function (event) {
+    const option = event.target.closest(
+      ".js-bulk-sort-option"
+    );
+
+    if (!option) return;
+
+    event.preventDefault();
+
+    const sortCode = String(
+      option.dataset.sortCode || ""
+    ).trim().toUpperCase();
+
+    const packageIds = [];
+
+    if (
+      window.dt &&
+      window.jQuery &&
+      $.fn.DataTable &&
+      $.fn.DataTable.isDataTable("#shipmentTable")
+    ) {
+      $(window.dt.rows().nodes())
+        .find(".package-checkbox:checked")
+        .each(function () {
+          packageIds.push(String(this.value));
+        });
+    } else {
+      document
+        .querySelectorAll(
+          "#shipmentTable .package-checkbox:checked"
+        )
+        .forEach(function (checkbox) {
+          packageIds.push(String(checkbox.value));
+        });
+    }
+
+    const uniquePackageIds = [
+      ...new Set(packageIds)
+    ];
+
+    if (!uniquePackageIds.length) {
+      alert(
+        "Please select at least one package first."
+      );
+      return;
+    }
+
+    const confirmed = confirm(
+      `Assign ${sortCode} to ` +
+      `${uniquePackageIds.length} selected package(s)?`
+    );
+
+    if (!confirmed) return;
+
+    option.disabled = true;
+
+    try {
+      const response = await fetch(
+        window.BULK_SORT_CODE_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": "{{ csrf_token() }}",
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify({
+            package_ids: uniquePackageIds,
+            sort_code: sortCode
+          })
+        }
+      );
+
+      const responseText = await response.text();
+
+      let data = {};
+
+      try {
+        data = responseText
+          ? JSON.parse(responseText)
+          : {};
+      } catch (parseError) {
+        throw new Error(
+          `The server returned an invalid response ` +
+          `(HTTP ${response.status}).`
+        );
+      }
+
+      if (
+        !response.ok ||
+        data.success === false
+      ) {
+        throw new Error(
+          data.error ||
+          "The sorting codes could not be updated."
+        );
+      }
+
+      alert(
+        `${data.updated_count || uniquePackageIds.length} ` +
+        `package(s) assigned to ${data.sort_code || sortCode}.`
+      );
+
+      if (
+        typeof saveShipmentDTState === "function"
+      ) {
+        saveShipmentDTState();
+      }
+
+      window.location.reload();
+
+    } catch (error) {
+      console.error(error);
+
+      alert(
+        error.message ||
+        "The sorting codes could not be updated."
+      );
+
+      option.disabled = false;
+    }
+  });
+
 
   function attachUrl(id) {
     const sid = String(id || '').trim();
-    // replace "/0/" with "/<id>/" (only the first match)
-    return window.ATTACH_UPLOAD_URL.replace('/0/', `/${sid}/`);
+
+    return window.ATTACH_UPLOAD_URL.replace(
+      '/0/',
+      `/${sid}/`
+    );
   }
-
-
 
   function apiUrl(base, id) {
     // base ends with "/0"
@@ -2520,6 +2776,11 @@ Not emailed yet"></i>
     const scanStatus =
       (document.getElementById('scanStatusFilter')?.value || '').trim();
 
+    const sortCode =
+      (document.getElementById('sortCodeFilter')?.value || '')
+        .trim()
+        .toUpperCase();
+
     return {
       name,
       tracking,
@@ -2528,7 +2789,8 @@ Not emailed yet"></i>
       wMin,
       wMax,
       subscriptionOnly,
-      scanStatus
+      scanStatus,
+      sortCode
     };
   }
 
@@ -2582,6 +2844,9 @@ Not emailed yet"></i>
         || subscriptionResult === "subscription_exhausted";
       const scanStatus =
         rowNode.dataset.scanStatus || 'not_scanned';
+      const sortCode = String(
+        rowNode.dataset.sortCode || "UNASSIGNED"
+      ).toUpperCase();
 
       if (f.name && !userText.includes(f.name)) return false;
       if (f.reg && !userText.includes(f.reg)) return false;
@@ -2591,8 +2856,19 @@ Not emailed yet"></i>
       if (f.wMax != null && w > f.wMax) return false;
       if (f.subscriptionOnly && !isSubPackage) return false;
 
-      if (f.scanStatus && scanStatus !== f.scanStatus)
+      if (
+        f.scanStatus &&
+        scanStatus !== f.scanStatus
+      ) {
         return false;
+      }
+
+      if (
+        f.sortCode &&
+        sortCode !== f.sortCode
+      ) {
+        return false;
+      }
 
       return true;
     });
@@ -2620,6 +2896,30 @@ Not emailed yet"></i>
     sel.value = String(current);
   }
 
+  function mountShipmentSortControl() {
+    const control = document.getElementById(
+      "shipmentSortControl"
+    );
+
+    const topbar = document.querySelector(
+      "#shipmentTable_wrapper .shipment-topbar"
+    );
+
+    if (!control || !topbar) return;
+
+    control.classList.remove("d-none");
+
+    topbar.classList.add(
+      "d-flex",
+      "justify-content-between",
+      "align-items-center",
+      "gap-2",
+      "flex-wrap"
+    );
+
+    topbar.appendChild(control);
+  }
+
   function initShipmentTable() {
     if (dtInitialized) return;
     if (!hasDataTables()) {
@@ -2633,8 +2933,12 @@ Not emailed yet"></i>
     // If already initialized, just bind dropdown
     if ($.fn.DataTable.isDataTable('#shipmentTable')) {
       dt = $table.DataTable();
+      window.dt = dt;
+
       bindShipmentLengthSelect();
       syncShipmentLengthSelect();
+      mountShipmentSortControl();
+
       dtInitialized = true;
       return;
     }
@@ -2669,6 +2973,7 @@ Not emailed yet"></i>
 
     bindShipmentLengthSelect();
     syncShipmentLengthSelect();
+    mountShipmentSortControl();
 
     // ✅ keep your checkbox logic working after paging
     dt.on('draw', function () {
@@ -2711,6 +3016,10 @@ Not emailed yet"></i>
         const houseText = parseCellText(tr.querySelector('td:nth-child(5)'));
         const w = parseWeightFromRow(tr);
 
+        const sortCode = String(
+          tr.dataset.sortCode || "UNASSIGNED"
+        ).toUpperCase();
+
         let ok = true;
         if (f.name && !userText.includes(f.name)) ok = false;
         if (f.reg && !userText.includes(f.reg)) ok = false;
@@ -2718,6 +3027,7 @@ Not emailed yet"></i>
         if (f.house_awb && !houseText.includes(f.house_awb)) ok = false;
         if (f.wMin != null && w < f.wMin) ok = false;
         if (f.wMax != null && w > f.wMax) ok = false;
+        if (f.sortCode && sortCode !== f.sortCode) ok = false;
 
         tr.style.display = ok ? '' : 'none';
       });
@@ -2731,11 +3041,20 @@ Not emailed yet"></i>
         'fltReg',
         'fltWMin',
         'fltWMax',
-        'scanStatusFilter'
+        'scanStatusFilter',
+        'sortCodeFilter'
       ].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });
+
+      const subscriptionCheckbox = document.getElementById(
+        "fltSubscriptionOnly"
+      );
+
+      if (subscriptionCheckbox) {
+        subscriptionCheckbox.checked = false;
+      }
 
       if (dt) { dt.draw(); return; }
       const tbody = document.querySelector('#shipmentTable tbody');
@@ -2748,6 +3067,9 @@ Not emailed yet"></i>
     document
       .getElementById('scanStatusFilter')
       ?.addEventListener('change', doApply);
+    document
+      .getElementById('sortCodeFilter')
+      ?.addEventListener('change', doApply);
 
     [
       'fltName',
@@ -2756,7 +3078,8 @@ Not emailed yet"></i>
       'fltReg',
       'fltWMin',
       'fltWMax',
-      'scanStatusFilter'
+      'scanStatusFilter',
+      'sortCodeFilter'
     ].forEach(id => {
       document.getElementById(id)?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); doApply(); }
@@ -4650,6 +4973,36 @@ Not emailed yet"></i>
     }
   }
 
+  function announceSortDestination(code, label) {
+    if (!("speechSynthesis" in window)) return;
+
+    window.speechSynthesis.cancel();
+
+    const normalizedCode = String(code || "UNASSIGNED").toUpperCase();
+
+    const spokenCodes = {
+      THN: "T H N",
+      PRE: "P R E",
+      UE: "U E",
+      GPB: "G P B",
+      RTD: "R T D",
+      STH: "S T H"
+    };
+
+    const spokenCode = spokenCodes[normalizedCode] || "Unassigned";
+
+    const message = normalizedCode === "UNASSIGNED"
+      ? "Unassigned. Place package in the review area."
+      : `${spokenCode}. ${label || "Sorting destination"}.`;
+
+    const speech = new SpeechSynthesisUtterance(message);
+    speech.rate = 0.9;
+    speech.pitch = 1;
+    speech.volume = 1;
+
+    window.speechSynthesis.speak(speech);
+  }
+
   function playScanSound(type) {
     try {
       const ctx = scanAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -4774,10 +5127,34 @@ Not emailed yet"></i>
 
         playScanSound("success");
 
+        announceSortDestination(
+          data.sort_code || "UNASSIGNED",
+          data.sort_code_label || "Needs Review"
+        );
+
         showScanResult(
           "scanned",
-          `✅ ${data.message || "Package scanned successfully."}: ${data.tracking_number || scanValue}`
+          `
+      <div>
+        <strong>
+          ✅ ${data.message || "Package scanned successfully."}
+        </strong>
+      </div>
+
+      <div class="small mt-1">
+        ${data.tracking_number || scanValue}
+      </div>
+
+      <div class="mt-2 fs-5">
+        Sort to:
+        <span class="badge bg-dark">
+          ${data.sort_code || "UNASSIGNED"}
+        </span>
+        <strong>${data.sort_code_label || "Needs Review"}</strong>
+      </div>
+    `
         );
+
         updateScanCounters(data);
 
 
@@ -4785,9 +5162,30 @@ Not emailed yet"></i>
 
         playScanSound("warning");
 
+        announceSortDestination(
+          data.sort_code || "UNASSIGNED",
+          data.sort_code_label || "Needs Review"
+        );
+
         showScanResult(
           "already_scanned",
-          `⚠️ Already scanned: ${data.tracking_number || scanValue}`
+          `
+      <div>
+        <strong>
+          ⚠️ Already scanned: ${data.tracking_number || scanValue}
+        </strong>
+      </div>
+
+      <div class="mt-2 fs-5">
+        Sort to:
+        <span class="badge bg-warning text-dark">
+          ${data.sort_code || "UNASSIGNED"}
+        </span>
+        <strong>
+          ${data.sort_code_label || "Needs Review"}
+        </strong>
+      </div>
+    `
         );
 
       } else if (data.status === "not_found") {

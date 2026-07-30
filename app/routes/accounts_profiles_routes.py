@@ -48,6 +48,11 @@ from app.utils.claims_uploads import (
 from app.utils.email_utils import (
     send_claim_submitted_email,
 )
+from app.utils.sorting_codes import (
+    SORT_CODE_LABELS,
+    normalize_sort_code,
+    set_package_sort_code,
+)
 
 # Models (these exist in your file)
 from app.models import (
@@ -1516,6 +1521,14 @@ def view_user(id):
             "address": user.address or "",
             "mobile": user.mobile or "",
             "trn": user.trn,
+            "default_sort_code": (
+                getattr(
+                    user,
+                    "default_sort_code",
+                    "UNASSIGNED",
+                )
+                or "UNASSIGNED"
+            ),
             "wallet_balance": wallet_balance,
             "referral_code": referral_code,
             "is_active": bool(getattr(user, "is_active", True)),
@@ -2331,41 +2344,96 @@ def create_claim_for_user(id):
 @admin_required
 def manage_account(id: int):
     user = db.session.get(User, id)
+
     if not user:
         flash("User not found.", "danger")
-        return redirect(url_for('accounts_profiles.manage_users'))
+        return redirect(
+            url_for("accounts_profiles.manage_users")
+        )
 
-    # --------- pull form values (trim) ----------
-    full_name = (request.form.get('full_name') or '').strip()
-    email     = (request.form.get('email') or '').strip().lower()
-    mobile    = (request.form.get('mobile') or '').strip()
-    address   = (request.form.get('address') or '').strip()
-    referral  = (request.form.get('referral_code') or '').strip()
-    trn       = (request.form.get('trn') or '').strip()
+    # -------------------------------------------------
+    # Read form values
+    # -------------------------------------------------
+    full_name = (
+        request.form.get("full_name") or ""
+    ).strip()
 
-    # UI checkbox/radio -> store into DB field
-    # (default enabled if missing)
-    is_enabled_val = bool(int(request.form.get('is_active', 1)))
+    email = (
+        request.form.get("email") or ""
+    ).strip().lower()
 
-    # --------- basic validation ----------
+    mobile = (
+        request.form.get("mobile") or ""
+    ).strip()
+
+    address = (
+        request.form.get("address") or ""
+    ).strip()
+
+    referral = (
+        request.form.get("referral_code") or ""
+    ).strip()
+
+    trn = (
+        request.form.get("trn") or ""
+    ).strip()
+
+    default_sort_code = (
+        request.form.get("default_sort_code")
+        or "UNASSIGNED"
+    ).strip().upper()
+
+    valid_sort_codes = {
+        "THN",
+        "PRE",
+        "UE",
+        "GPB",
+        "RTD",
+        "STH",
+        "UNASSIGNED",
+    }
+
+    if default_sort_code not in valid_sort_codes:
+        flash(
+            "Invalid customer sorting code.",
+            "danger",
+        )
+        return redirect(_back_to_view_user_url(id))
+
+    try:
+        is_enabled_val = bool(
+            int(request.form.get("is_active", 1))
+        )
+    except (TypeError, ValueError):
+        is_enabled_val = True
+
+    # -------------------------------------------------
+    # Basic validation
+    # -------------------------------------------------
     if not email:
         flash("Email is required.", "danger")
         return redirect(_back_to_view_user_url(id))
 
-    # --------- email uniqueness check ----------
-    current_email = (user.email or '').strip().lower()
+    current_email = (
+        user.email or ""
+    ).strip().lower()
 
     if email != current_email:
         existing = db.session.execute(
             select(User.id).where(
                 User.email == email,
-                User.id != user.id
+                User.id != user.id,
             )
         ).scalar_one_or_none()
 
         if existing:
-            flash("That email is already in use by another account.", "danger")
-            return redirect(_back_to_view_user_url(id))
+            flash(
+                "That email is already in use by another account.",
+                "danger",
+            )
+            return redirect(
+                _back_to_view_user_url(id)
+            )
 
     # -------------------------------------------------
     # Capture old values for audit logging
@@ -2376,10 +2444,24 @@ def manage_account(id: int):
     old_address = user.address or ""
     old_referral = user.referral_code or ""
     old_trn = user.trn or ""
-    old_status = "Enabled" if user.is_enabled else "Disabled"
+
+    old_sort_code = (
+        getattr(
+            user,
+            "default_sort_code",
+            "UNASSIGNED",
+        )
+        or "UNASSIGNED"
+    ).strip().upper()
+
+    old_status = (
+        "Enabled"
+        if user.is_enabled
+        else "Disabled"
+    )
 
     # -------------------------------------------------
-    # Apply updates
+    # Apply changes
     # -------------------------------------------------
     user.full_name = full_name
     user.email = email
@@ -2387,9 +2469,14 @@ def manage_account(id: int):
     user.address = address
     user.referral_code = referral or None
     user.trn = trn or None
+    user.default_sort_code = default_sort_code
     user.is_enabled = is_enabled_val
 
-    new_status = "Enabled" if user.is_enabled else "Disabled"
+    new_status = (
+        "Enabled"
+        if user.is_enabled
+        else "Disabled"
+    )
 
     # -------------------------------------------------
     # Build audit description
@@ -2398,17 +2485,20 @@ def manage_account(id: int):
 
     if old_full_name != (user.full_name or ""):
         changes.append(
-            f"Name: {old_full_name} → {user.full_name or ''}"
+            f"Name: {old_full_name} → "
+            f"{user.full_name or ''}"
         )
 
     if old_email != (user.email or ""):
         changes.append(
-            f"Email: {old_email} → {user.email or ''}"
+            f"Email: {old_email} → "
+            f"{user.email or ''}"
         )
 
     if old_mobile != (user.mobile or ""):
         changes.append(
-            f"Mobile: {old_mobile} → {user.mobile or ''}"
+            f"Mobile: {old_mobile} → "
+            f"{user.mobile or ''}"
         )
 
     if old_address != (user.address or ""):
@@ -2416,19 +2506,81 @@ def manage_account(id: int):
 
     if old_referral != (user.referral_code or ""):
         changes.append(
-            f"Referral Code: {old_referral or 'None'} → {user.referral_code or 'None'}"
+            f"Referral Code: "
+            f"{old_referral or 'None'} → "
+            f"{user.referral_code or 'None'}"
         )
 
     if old_trn != (user.trn or ""):
-       changes.append("TRN updated")
+        changes.append("TRN updated")
+
+    updated_package_count = 0
+
+    if old_sort_code != user.default_sort_code:
+        changes.append(
+            f"Default Sorting Code: "
+            f"{old_sort_code} → "
+            f"{user.default_sort_code}"
+        )
+
+        eligible_packages = (
+            Package.query
+            .filter(
+                Package.user_id == user.id,
+                Package.sort_code_locked.is_(False),
+                or_(
+                    Package.sort_code_source.in_(
+                        [
+                            "system",
+                            "customer_default",
+                        ]
+                    ),
+                    Package.sort_code.is_(None),
+                    Package.sort_code == "",
+                    Package.sort_code == "UNASSIGNED",
+                ),
+                func.lower(
+                    func.trim(
+                        func.coalesce(
+                            Package.status,
+                            "",
+                        )
+                    )
+                ).notin_(
+                    [
+                        "delivered",
+                        "cancelled",
+                        "collected",
+                    ]
+                ),
+            )
+            .all()
+        )
+
+        for package in eligible_packages:
+            set_package_sort_code(
+                package,
+                user.default_sort_code,
+                source="customer_default",
+                admin_id=current_user.id,
+                lock=False,
+                force=True,
+            )
+
+            updated_package_count += 1
+
+        changes.append(
+            f"{updated_package_count} active package(s) synchronized"
+        )
 
     if old_status != new_status:
         changes.append(
-            f"Status: {old_status} → {new_status}"
+            f"Status: {old_status} → "
+            f"{new_status}"
         )
 
     # -------------------------------------------------
-    # Create audit log if anything changed
+    # Add audit log
     # -------------------------------------------------
     if changes:
         create_audit_log(
@@ -2440,19 +2592,43 @@ def manage_account(id: int):
             entity_id=user.id,
             reason="Account profile update",
             description="; ".join(changes),
-            old_value=old_status,
-            new_value=new_status,
+            old_value=old_sort_code,
+            new_value=user.default_sort_code,
         )
 
+    # -------------------------------------------------
+    # Save changes
+    # -------------------------------------------------
     try:
-        _safe_commit()
-        flash("Account updated successfully.", "success")
+        db.session.commit()
+
+        flash(
+            f"Account updated successfully. "
+            f"Sorting code: {user.default_sort_code}."
+            f"{updated_package_count} active package(s) updated.",
+            "success",
+        )
 
     except IntegrityError:
         db.session.rollback()
+
         flash(
-            "Could not save changes: referral code or email already exists.",
-            "danger"
+            "Could not save changes because the email "
+            "or referral code is already in use.",
+            "danger",
+        )
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Manage Account update failed for user %s",
+            user.id,
+        )
+
+        flash(
+            f"Could not update the account: {error}",
+            "danger",
         )
 
     return redirect(_back_to_view_user_url(id))

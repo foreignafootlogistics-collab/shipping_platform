@@ -196,6 +196,40 @@
             </div>
 
             <div class="mb-2">
+              <strong>Default Sorting Code:</strong>
+
+              {% set customer_sort_code = user.default_sort_code or 'UNASSIGNED' %}
+
+              {% if customer_sort_code == 'UNASSIGNED' %}
+              <span class="badge bg-warning text-dark">
+                UNASSIGNED
+              </span>
+              <div class="small text-muted mt-1">
+                Needs sorting review
+              </div>
+              {% else %}
+              <span class="badge" style="background-color:#4a148c;">
+                {{ customer_sort_code }}
+              </span>
+              <div class="small text-muted mt-1">
+                {% if customer_sort_code == 'THN' %}
+                NHT
+                {% elif customer_sort_code == 'PRE' %}
+                Port Ridge Estate
+                {% elif customer_sort_code == 'UE' %}
+                Union Estates
+                {% elif customer_sort_code == 'GPB' %}
+                Gregory Park Branch
+                {% elif customer_sort_code == 'RTD' %}
+                Round Town Delivery
+                {% elif customer_sort_code == 'STH' %}
+                Spanish Town Hospital
+                {% endif %}
+              </div>
+              {% endif %}
+            </div>
+
+            <div class="mb-2">
               <strong>Status:</strong>
               <span class="badge {{ user.activity_badge }}">
                 {{ user.activity_status }}
@@ -2456,6 +2490,48 @@
                   <div class="col-md-6">
                     <label class="form-label">TRN</label>
                     <input type="text" name="trn" class="form-control" value="{{ user.trn or '' }}">
+                  </div>
+
+                  <div class="col-md-6">
+                    <label for="defaultSortCode" class="form-label">
+                      Default Sorting Code
+                    </label>
+
+                    <select name="default_sort_code" id="defaultSortCode" class="form-select" required>
+                      {% set selected_sort_code = user.default_sort_code or 'UNASSIGNED' %}
+
+                      <option value="UNASSIGNED" {% if selected_sort_code=='UNASSIGNED' %}selected{% endif %}>
+                        UNASSIGNED — Needs Review
+                      </option>
+
+                      <option value="THN" {% if selected_sort_code=='THN' %}selected{% endif %}>
+                        THN — NHT
+                      </option>
+
+                      <option value="PRE" {% if selected_sort_code=='PRE' %}selected{% endif %}>
+                        PRE — Port Ridge Estate
+                      </option>
+
+                      <option value="UE" {% if selected_sort_code=='UE' %}selected{% endif %}>
+                        UE — Union Estates
+                      </option>
+
+                      <option value="GPB" {% if selected_sort_code=='GPB' %}selected{% endif %}>
+                        GPB — Gregory Park Branch
+                      </option>
+
+                      <option value="RTD" {% if selected_sort_code=='RTD' %}selected{% endif %}>
+                        RTD — Round Town Delivery
+                      </option>
+
+                      <option value="STH" {% if selected_sort_code=='STH' %}selected{% endif %}>
+                        STH — Spanish Town Hospital
+                      </option>
+                    </select>
+
+                    <div class="form-text">
+                      Unassigned packages will inherit this code when scanned.
+                    </div>
                   </div>
                 </div>
 

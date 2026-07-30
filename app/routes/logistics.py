@@ -106,6 +106,14 @@ from app.utils.invoice_totals import fetch_invoice_totals_pg
 from app.utils.scheduled_pickups import (
     sync_scheduled_pickups_for_delivered_package,
 )
+from app.utils.sorting_codes import (
+    SORT_CODE_LABELS,
+    VALID_SORT_CODES,
+    apply_customer_default_to_package,
+    normalize_sort_code,
+    set_package_sort_code,
+    sort_code_label,
+)
 
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.services.pricing import apply_breakdown_to_package
@@ -1928,6 +1936,15 @@ def scan_package_in_shipment(shipment_id):
                     "package_id": package.id,
                     "tracking_number": package.tracking_number,
                     "house_awb": package.house_awb,
+                    "sort_code": package.sort_code,
+                    "sort_code_label": sort_code_label(
+                        package.sort_code
+                    ),
+                    "sort_code_locked": bool(
+                        package.sort_code_locked
+                    ),
+
+                    
                 }
             ),
             200,
@@ -1961,6 +1978,29 @@ def scan_package_in_shipment(shipment_id):
                 }
             ),
             400,
+        )
+
+    current_sort_code = normalize_sort_code(
+        getattr(
+            package,
+            "sort_code",
+            "UNASSIGNED",
+        )
+    )
+
+    if (
+        current_sort_code == "UNASSIGNED"
+        and not bool(
+            getattr(
+                package,
+                "sort_code_locked",
+                False,
+            )
+        )
+    ):
+        apply_customer_default_to_package(
+            package,
+            admin_id=current_user.id,
         )
 
     package.received_scan_status = "scanned"
@@ -2006,6 +2046,13 @@ def scan_package_in_shipment(shipment_id):
                 "package_id": package.id,
                 "tracking_number": package.tracking_number,
                 "house_awb": package.house_awb,
+                "sort_code": package.sort_code or "UNASSIGNED",
+                "sort_code_label": sort_code_label(
+                    package.sort_code
+                ),
+                "sort_code_locked": bool(
+                    package.sort_code_locked
+                ),
                 "total_count": total_count,
                 "scanned_count": scanned_count,
                 "missing_count": max(total_count - scanned_count, 0),
@@ -2518,6 +2565,37 @@ def logistics_dashboard():
                     "received_scanned_by_id": getattr(
                         p, "received_scanned_by_id", None
                     ),
+                    "sort_code": normalize_sort_code(
+                        getattr(
+                            p,
+                            "sort_code",
+                            "UNASSIGNED",
+                        )
+                    ),
+                    "sort_code_label": sort_code_label(
+                        getattr(
+                            p,
+                            "sort_code",
+                            "UNASSIGNED",
+                      )
+                    ),
+                    "sort_code_source": getattr(
+                        p,
+                        "sort_code_source",
+                        "system",
+                    ),
+                    "sort_code_locked": bool(
+                        getattr(
+                            p,
+                            "sort_code_locked",
+                            False,
+                        )
+                    ),
+                    "sort_code_updated_at": getattr(
+                        p,
+                        "sort_code_updated_at",
+                        None,
+                    ),
                     "description": p.description,
                     "weight": p.weight,
                     "status": p.status,
@@ -2739,6 +2817,37 @@ def logistics_dashboard():
                 ),
                 "delivery_scanned_at": getattr(p, "delivery_scanned_at", None),
                 "delivery_scanned_by_id": getattr(p, "delivery_scanned_by_id", None),
+                "sort_code": normalize_sort_code(
+                    getattr(
+                        p,
+                        "sort_code",
+                        "UNASSIGNED",
+                    )
+                ),
+                "sort_code_label": sort_code_label(
+                    getattr(
+                        p,
+                        "sort_code",
+                        "UNASSIGNED",
+                    )
+                ),
+                "sort_code_source": getattr(
+                    p,
+                    "sort_code_source",
+                    "system",
+                ),
+                "sort_code_locked": bool(
+                    getattr(
+                        p,
+                        "sort_code_locked",
+                        False,
+                    )
+                    ),
+                "sort_code_updated_at": getattr(
+                    p,
+                    "sort_code_updated_at",
+                    None,
+                ), 
                 "subscription_applied": bool(getattr(p, "subscription_applied", False)),
                 "subscription_result": getattr(p, "subscription_result", None),
                 "subscription_covered": bool(
@@ -2906,7 +3015,201 @@ def logistics_dashboard():
         USD_TO_JMD=USD_TO_JMD,
         prealerts=prealerts_data,
         prealert_customers=prealert_customers,
+        sort_code_labels=SORT_CODE_LABELS,
+        sort_codes=[
+            "THN",
+            "PRE",
+            "UE",
+            "GPB",
+            "RTD",
+            "STH",
+            "UNASSIGNED",
+        ],
     )
+
+@logistics_bp.route(
+    "/packages/<int:package_id>/sort-code",
+    methods=["POST"],
+)
+@admin_required
+def update_package_sort_code(package_id):
+    package = (
+        Package.query
+        .filter(Package.id == package_id)
+        .with_for_update(of=Package)
+        .first_or_404()
+    )
+
+    code = (
+        request.form.get("sort_code")
+        or (
+            request.get_json(silent=True)
+            or {}
+        ).get("sort_code")
+        or ""
+    )
+
+    try:
+        code = normalize_sort_code(code)
+
+        set_package_sort_code(
+            package,
+            code,
+            source="manual",
+            admin_id=current_user.id,
+            lock=True,
+            force=True,
+        )
+
+        db.session.commit()
+
+    except ValueError as error:
+        db.session.rollback()
+
+        return jsonify({
+            "success": False,
+            "error": str(error),
+        }), 400
+
+    except Exception:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Updating sorting code failed for package %s",
+            package.id,
+        )
+
+        return jsonify({
+            "success": False,
+            "error": (
+                "The sorting code could not be updated."
+            ),
+        }), 500
+
+    return jsonify({
+        "success": True,
+        "package_id": package.id,
+        "sort_code": package.sort_code,
+        "sort_code_label": sort_code_label(
+            package.sort_code
+        ),
+        "sort_code_locked": bool(
+            package.sort_code_locked
+        ),
+    })
+
+
+@logistics_bp.route(
+    "/shipmentlog/<int:shipment_id>/sort-code/bulk",
+    methods=["POST"],
+)
+@admin_required
+def bulk_update_shipment_sort_code(shipment_id):
+    shipment = ShipmentLog.query.get_or_404(
+        shipment_id
+    )
+
+    blocked = _abort_if_archived(shipment)
+
+    if blocked:
+        return blocked
+
+    payload = request.get_json(silent=True) or {}
+
+    raw_ids = (
+        request.form.getlist("package_ids")
+        or payload.get("package_ids")
+        or []
+    )
+
+    package_ids = sorted({
+        int(value)
+        for value in raw_ids
+        if str(value).isdigit()
+    })
+
+    code = (
+        request.form.get("sort_code")
+        or payload.get("sort_code")
+        or ""
+    )
+
+    if not package_ids:
+        return jsonify({
+            "success": False,
+            "error": "Select at least one package.",
+        }), 400
+
+    try:
+        code = normalize_sort_code(code)
+
+        packages = (
+            Package.query
+            .join(
+                shipment_packages,
+                shipment_packages.c.package_id
+                == Package.id,
+            )
+            .filter(
+                shipment_packages.c.shipment_id
+                == shipment.id,
+                Package.id.in_(package_ids),
+            )
+            .with_for_update(of=Package)
+            .all()
+        )
+
+        if not packages:
+            return jsonify({
+                "success": False,
+                "error": (
+                    "No selected packages were found "
+                    "in this shipment."
+                ),
+            }), 400
+
+        for package in packages:
+            set_package_sort_code(
+                package,
+                code,
+                source="manual",
+                admin_id=current_user.id,
+                lock=True,
+                force=True,
+            )
+
+        db.session.commit()
+
+    except ValueError as error:
+        db.session.rollback()
+
+        return jsonify({
+            "success": False,
+            "error": str(error),
+        }), 400
+
+    except Exception:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Bulk sorting-code update failed for "
+            "shipment %s",
+            shipment.id,
+        )
+
+        return jsonify({
+            "success": False,
+            "error": (
+                "The sorting codes could not be updated."
+            ),
+        }), 500
+
+    return jsonify({
+        "success": True,
+        "updated_count": len(packages),
+        "sort_code": code,
+        "sort_code_label": sort_code_label(code),
+    })
 
 
 @logistics_bp.get("/api/user-lookup")
@@ -7307,7 +7610,7 @@ def bulk_invoice_finalize_json():
                 continue
 
             # Load packages (and lock to avoid race duplicates)
-            pkgs = Package.query.filter(Package.id.in_(pkg_ids)).with_for_update().all()
+            pkgs = Package.query.filter(Package.id.in_(pkg_ids)).with_for_update(of=Package).all()
             if not pkgs:
                 continue
 
@@ -9310,7 +9613,7 @@ def add_scheduled_delivery():
                     None
                 ),
             )
-            .with_for_update()
+            .with_for_update(of=Package)
             .order_by(
                 Package.id.asc()
             )

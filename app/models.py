@@ -48,6 +48,13 @@ class User(db.Model, UserMixin):
     date_registered = db.Column(db.String)
     address = db.Column(db.String)
     wallet_balance = db.Column(db.Float, default=0.0)
+    default_sort_code = db.Column(
+        db.String(20),
+        nullable=False,
+        default="UNASSIGNED",
+        server_default="UNASSIGNED",
+        index=True,
+    )
     employee_code = db.Column(db.String(20), unique=True, index=True)
 
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -512,6 +519,52 @@ class Package(db.Model):
 
     # Customer/user
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), index=True)
+    # Current authoritative sorting destination.
+    sort_code = db.Column(
+        db.String(20),
+        nullable=False,
+        default="UNASSIGNED",
+        server_default="UNASSIGNED",
+        index=True,
+    )
+
+    # How the current sorting code was assigned:
+    # customer_default | scheduled_pickup |
+    # scheduled_delivery | manual | system
+    sort_code_source = db.Column(
+        db.String(30),
+        nullable=False,
+        default="system",
+        server_default="system",
+        index=True,
+    )
+
+    # Prevent automatic processes from replacing a manual decision.
+    sort_code_locked = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
+    sort_code_updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True,
+    )
+
+    sort_code_updated_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+
+    sort_code_updated_by = db.relationship(
+        "User",
+        foreign_keys=[sort_code_updated_by_id],
+        lazy="joined",
+    )
+
     external_company = db.Column(db.Boolean, default=False)
 
     # Dates

@@ -909,6 +909,194 @@
     <small>&copy; {{ current_year }} Foreign A Foot Logistics. All rights reserved.</small>
   </footer>
 
+  <script>
+    document.addEventListener(
+    "click",
+    function (event) {
+      const openButton = event.target.closest(
+        ".js-open-payment-reversal"
+      );
+
+      if (openButton) {
+        event.preventDefault();
+
+        const targetId = (
+          openButton.dataset.reversalTarget || ""
+        );
+
+        const overlay = document.getElementById(
+          targetId
+        );
+
+        if (overlay) {
+          overlay.classList.remove("d-none");
+
+          document.body.style.overflow = "hidden";
+
+          window.setTimeout(() => {
+            overlay.querySelector(
+              'select[name="package_collected"]'
+            )?.focus();
+          }, 50);
+        }
+
+        return;
+      }
+
+      const closeButton = event.target.closest(
+        ".js-close-payment-reversal"
+      );
+
+      if (closeButton) {
+        event.preventDefault();
+
+        const overlay = closeButton.closest(
+          ".payment-reversal-overlay"
+        );
+
+        if (overlay) {
+          overlay.classList.add("d-none");
+        }
+
+        document.body.style.overflow = "";
+
+        return;
+      }
+
+      const overlay = event.target.closest(
+        ".payment-reversal-overlay"
+      );
+
+      if (
+        overlay
+        && event.target === overlay
+      ) {
+        overlay.classList.add("d-none");
+        document.body.style.overflow = "";
+      }
+    }
+  );
+
+  document.addEventListener(
+    "keydown",
+    function (event) {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      const openOverlay = document.querySelector(
+        ".payment-reversal-overlay:not(.d-none)"
+      );
+
+      if (openOverlay) {
+        openOverlay.classList.add("d-none");
+        document.body.style.overflow = "";
+      }
+    }
+  );
+
+  document.addEventListener(
+    "submit",
+    async function (event) {
+      const form = event.target.closest(
+        ".js-reverse-invoice-payment"
+      );
+
+      if (!form) {
+        return;
+      }
+
+      event.preventDefault();
+
+      const paymentId = (
+        form.dataset.paymentId || ""
+      );
+
+      const paymentAmount = (
+        form.dataset.paymentAmount || "0.00"
+      );
+
+      const confirmed = window.confirm(
+        "Reverse payment #" +
+        paymentId +
+        " for JMD " +
+        paymentAmount +
+        "? This correction will be recorded in the audit log."
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      const submitButton = form.querySelector(
+        'button[type="submit"]'
+      );
+
+      const originalButtonHtml = submitButton
+        ? submitButton.innerHTML
+        : "";
+
+      if (submitButton) {
+        submitButton.disabled = true;
+
+        submitButton.innerHTML =
+          '<span class="spinner-border ' +
+          'spinner-border-sm me-2"></span>' +
+          "Reversing...";
+      }
+
+      try {
+        const response = await fetch(
+          form.action,
+          {
+            method: "POST",
+
+            headers: {
+              "X-Requested-With": "XMLHttpRequest"
+            },
+
+            body: new FormData(form)
+          }
+        );
+
+        const data = await response
+          .json()
+          .catch(() => ({}));
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.error ||
+            "The payment could not be reversed."
+          );
+        }
+
+        window.alert(
+          data.message ||
+          "Payment reversed successfully."
+        );
+
+        /*
+         * Reload the underlying Manage User or Packages page.
+         * This closes the invoice modal naturally and displays
+         * the corrected invoice balance and status.
+         */
+        window.location.reload();
+
+      } catch (error) {
+        window.alert(
+          error.message ||
+          "The payment could not be reversed."
+        );
+
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.innerHTML = originalButtonHtml;
+        }
+      }
+    }
+  );
+  </script>
+
 </body>
 
 </html>

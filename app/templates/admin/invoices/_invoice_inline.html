@@ -283,6 +283,102 @@ else 0 %}
     padding: .2rem .65rem;
     font-size: .8rem;
   }
+
+  /* =========================================
+   PAYMENT REVERSAL OVERLAY
+   ========================================= */
+
+  .payment-reversal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1095;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 23, 42, 0.68);
+    overflow-y: auto;
+  }
+
+  .payment-reversal-overlay.d-none {
+    display: none !important;
+  }
+
+  .payment-reversal-dialog {
+    width: 100%;
+    max-width: 560px;
+    margin: auto;
+    overflow: hidden;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow:
+      0 24px 60px rgba(15, 23, 42, 0.28);
+  }
+
+  .payment-reversal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 20px 22px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .payment-reversal-header h5 {
+    color: #4a148c;
+  }
+
+  .payment-reversal-close {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    color: #6b7280;
+    font-size: 1.75rem;
+    line-height: 1;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+  }
+
+  .payment-reversal-close:hover {
+    color: #dc3545;
+    background: #fff1f2;
+  }
+
+  .payment-reversal-body {
+    padding: 22px;
+  }
+
+  .payment-reversal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 22px;
+    background: #f8f9fa;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  @media (max-width: 575.98px) {
+    .payment-reversal-overlay {
+      padding: 10px;
+    }
+
+    .payment-reversal-header,
+    .payment-reversal-body,
+    .payment-reversal-footer {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+
+    .payment-reversal-footer {
+      flex-direction: column-reverse;
+    }
+
+    .payment-reversal-footer .btn {
+      width: 100%;
+    }
+  }
 </style>
 
 <div class="inline-panel">
@@ -513,6 +609,200 @@ else 0 %}
     </div>
   </div>
 </div>
+
+{% if invoice.payments %}
+<div class="panel p-3 mt-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h6 class="fw-bold mb-1">
+        <i class="bi bi-credit-card me-1"></i>
+        Payment History
+      </h6>
+
+      <div class="small text-muted">
+        Reversed payments remain visible for auditing.
+      </div>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Date</th>
+          <th>Payment #</th>
+          <th>Method</th>
+          <th>Reference</th>
+          <th>Status</th>
+          <th class="text-end">Amount</th>
+          <th class="text-end">Correction</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for payment in invoice.payments %}
+        <tr>
+          <td class="text-nowrap">
+            {% if payment.created_at %}
+            {{ payment.created_at.strftime("%Y-%m-%d %I:%M %p") }}
+            {% else %}
+            —
+            {% endif %}
+          </td>
+
+          <td>#{{ payment.id }}</td>
+
+          <td>{{ payment.method or "Unknown" }}</td>
+
+          <td>
+            {{ payment.reference or "—" }}
+          </td>
+
+          <td>
+            {% if payment.status in ["completed", "settled"] %}
+            <span class="badge bg-success">
+              {{ payment.status|title }}
+            </span>
+
+            {% elif payment.status == "reversed" %}
+            <span class="badge bg-danger">
+              Reversed
+            </span>
+
+            {% elif payment.status == "pending" %}
+            <span class="badge bg-warning text-dark">
+              Pending
+            </span>
+
+            {% else %}
+            <span class="badge bg-secondary">
+              {{ payment.status.replace("_", " ")|title }}
+            </span>
+            {% endif %}
+          </td>
+
+          <td class="text-end fw-semibold text-nowrap">
+            JMD {{ "{:,.2f}".format(payment.amount or 0) }}
+          </td>
+
+          <td class="text-end">
+            {% if payment.can_reverse %}
+            <button type="button" class="btn btn-sm btn-outline-danger js-open-payment-reversal"
+              data-reversal-target="paymentReversalOverlay{{ payment.id }}">
+              <i class="bi bi-arrow-counterclockwise me-1"></i>
+              Reverse
+            </button>
+
+            <div id="paymentReversalOverlay{{ payment.id }}" class="payment-reversal-overlay d-none" role="dialog"
+              aria-modal="true" aria-labelledby="paymentReversalTitle{{ payment.id }}">
+
+              <div class="payment-reversal-dialog">
+                <div class="payment-reversal-header">
+                  <div>
+                    <h5 id="paymentReversalTitle{{ payment.id }}" class="mb-1 fw-bold">
+                      Reverse Payment #{{ payment.id }}
+                    </h5>
+
+                    <div class="small text-muted">
+                      {{ payment.method or "Unknown" }}
+                      · JMD {{ "{:,.2f}".format(payment.amount or 0) }}
+                    </div>
+                  </div>
+
+                  <button type="button" class="payment-reversal-close js-close-payment-reversal" aria-label="Close">
+                    &times;
+                  </button>
+                </div>
+
+                <form method="POST" class="js-reverse-invoice-payment" action="{{ url_for(
+        'admin.reverse_invoice_payment',
+        payment_id=payment.id
+      ) }}" data-payment-id="{{ payment.id }}" data-payment-amount="{{ '%.2f'|format(payment.amount or 0) }}">
+
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                  <div class="payment-reversal-body">
+                    <div class="alert alert-warning small mb-3">
+                      <div class="fw-bold mb-1">
+                        Important correction
+                      </div>
+
+                      This does not delete the original payment.
+                      Its status will change to
+                      <strong>Reversed</strong>, the invoice will be
+                      recalculated, and the correction will be recorded
+                      in the audit log.
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label fw-semibold">
+                        Was the package physically collected?
+                      </label>
+
+                      <select name="package_collected" class="form-select" required>
+                        <option value="">
+                          Select an answer
+                        </option>
+
+                        <option value="no">
+                          No — return it to Ready for Pick Up
+                        </option>
+
+                        <option value="yes">
+                          Yes — keep it Delivered
+                        </option>
+                      </select>
+
+                      <div class="form-text">
+                        Select “No” only when the customer did not
+                        receive or collect the package.
+                      </div>
+                    </div>
+
+                    <div class="mb-0">
+                      <label class="form-label fw-semibold">
+                        Reversal reason
+                      </label>
+
+                      <textarea name="reason" class="form-control" rows="4" minlength="5" maxlength="255"
+                        placeholder="Explain why this payment is being reversed..." required></textarea>
+
+                      <div class="form-text">
+                        This reason will be saved in the payment record
+                        and audit log.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="payment-reversal-footer">
+                    <button type="button" class="btn btn-outline-secondary js-close-payment-reversal">
+                      Cancel
+                    </button>
+
+                    <button type="submit" class="btn btn-danger">
+                      <i class="bi bi-arrow-counterclockwise me-1"></i>
+                      Confirm Reversal
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            {% elif payment.reversal_block_reason %}
+            <span class="text-muted small" title="{{ payment.reversal_block_reason }}">
+              Not available
+            </span>
+            {% else %}
+            —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 
 {# ========= INLINE OVERLAYS ========= #}
 

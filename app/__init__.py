@@ -1,6 +1,7 @@
 # app/__init__.py
 import os
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 
 from flask import Flask, render_template, redirect, url_for, jsonify, current_app
 from flask_mail import Mail
@@ -231,7 +232,11 @@ def create_app():
                 sd_pending_total=0
             )
 
-        today = date.today()
+        jamaica_now = datetime.now(
+            ZoneInfo("America/Jamaica")
+        )
+
+        today = jamaica_now.date()
         tomorrow = today + timedelta(days=1)
 
         # pending = NOT delivered/cancelled
@@ -274,7 +279,9 @@ def create_app():
                 "sp_today_count": 0
             }
 
-        today = date.today()
+        today = datetime.now(
+            ZoneInfo("America/Jamaica")
+        ).date()
 
         try:
             sp_today_count = (

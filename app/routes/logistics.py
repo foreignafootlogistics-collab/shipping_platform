@@ -10,6 +10,7 @@ import random
 import bcrypt
 import mimetypes
 from datetime import datetime, timedelta, timezone, date
+from zoneinfo import ZoneInfo
 from decimal import (
     Decimal,
     InvalidOperation,
@@ -8991,7 +8992,11 @@ def view_scheduled_deliveries():
 @admin_required()
 def api_scheduled_delivery_alerts():
     try:
-        today = date.today()
+        jamaica_now = datetime.now(
+            ZoneInfo("America/Jamaica")
+        )
+
+        today = jamaica_now.date()
         tomorrow = today + timedelta(days=1)
 
         pending_filter = ~ScheduledDelivery.status.in_(["Delivered", "Cancelled"])

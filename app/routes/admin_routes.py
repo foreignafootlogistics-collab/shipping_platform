@@ -62,14 +62,12 @@ from app.utils.shop_for_me_utils import (
     shop_for_me_invoice_is_payable,
     sync_shop_for_me_payment_status,
 )
-
-
 import sqlalchemy as sa
 from sqlalchemy import func, extract, asc
 from app.extensions import db
 from app.models import (
     User, Wallet, Message, MessageAttachment, ScheduledDelivery,
-    WalletTransaction, Package, Invoice, Notification, Payment, PurchaseRequest, 
+    WalletTransaction, Package, Invoice, Notification, Payment, PurchaseRequest, ScheduledPickup,
     RateBracket, Discount, shipment_packages, Prealert, ShipmentLog, AuditLog
 )
 from app.routes.admin_auth_routes import admin_required
@@ -4029,6 +4027,162 @@ def view_invoice(invoice_id):
         or datetime.utcnow()
     )
 
+    # -------------------------------------------------
+    # Payment history
+    # -------------------------------------------------
+    payment_rows = (
+        Payment.query
+        .filter(
+            Payment.invoice_id == invoice.id
+        )
+        .order_by(
+            Payment.created_at.desc(),
+            Payment.id.desc(),
+        )
+        .all()
+    )
+
+    payments = []
+
+    blocked_methods = {
+        "wallet",
+        "refund",
+        "subscription payment",
+        "subscription refund",
+        "complimentary",
+    }
+
+    blocked_transaction_types = {
+        "wallet",
+        "wallet_payment",
+        "wallet_credit",
+        "wallet_debit",
+        "subscription_payment",
+        "subscription_refund",
+        "refund",
+        "claim_payment",
+        "delivery_payment",
+    }
+
+    for payment in payment_rows:
+        payment_status = (
+            payment.status or ""
+        ).strip().lower()
+
+        payment_method = (
+            getattr(payment, "method", None)
+            or ""
+        ).strip()
+
+        transaction_type = (
+            getattr(
+                payment,
+                "transaction_type",
+                None,
+            )
+            or ""
+        ).strip().lower()
+
+        can_reverse = (
+            payment_status in {
+                "completed",
+                "settled",
+            }
+            and payment_method.lower()
+            not in blocked_methods
+            and transaction_type
+            not in blocked_transaction_types
+            and not getattr(
+                payment,
+                "scheduled_delivery_id",
+                None,
+            )
+            and not getattr(
+                payment,
+                "claim_id",
+                None,
+            )
+        )
+
+        reversal_block_reason = ""
+
+        if payment_status not in {
+            "completed",
+            "settled",
+        }:
+            reversal_block_reason = (
+                "Only completed payments can be reversed."
+            )
+
+        elif payment_method.lower() in blocked_methods:
+            reversal_block_reason = (
+                f"{payment_method} payments require a "
+                "specialized accounting reversal."
+            )
+
+        elif (
+            transaction_type
+            in blocked_transaction_types
+            or getattr(
+                payment,
+                "scheduled_delivery_id",
+                None,
+            )
+            or getattr(
+                payment,
+                "claim_id",
+                None,
+            )
+        ):
+            reversal_block_reason = (
+                "This payment is linked to another accounting "
+                "process and cannot be reversed here."
+            )
+
+        payments.append({
+            "id": payment.id,
+            "amount": float(
+                getattr(
+                    payment,
+                    "amount_jmd",
+                    0,
+                )
+                or 0
+            ),
+            "method": payment_method or "Unknown",
+            "reference": (
+                getattr(
+                    payment,
+                    "reference",
+                    None,
+                )
+                or ""
+            ),
+            "source": (
+                getattr(
+                    payment,
+                    "source",
+                    None,
+                )
+                or ""
+            ),
+            "transaction_type": (
+                transaction_type
+            ),
+            "status": payment_status,
+            "created_at": (
+                getattr(
+                    payment,
+                    "created_at",
+                    None,
+                )
+            ),
+            "can_reverse": can_reverse,
+            "reversal_block_reason": (
+                reversal_block_reason
+            ),
+        })
+
     invoice_dict = {
         "id": invoice.id,
         "status": invoice_status,
@@ -4096,6 +4250,8 @@ def view_invoice(invoice_id):
         ),
 
         "packages": packages,
+
+        "payments": payments,
 
         "preview_subtotal": float(
             preview_subtotal
@@ -4673,6 +4829,580 @@ def delete_invoice(invoice_id):
 
     flash(message, "success")
     return back()
+
+@admin_bp.route(
+    "/invoice/payment/<int:payment_id>/reverse",
+    methods=["POST"],
+)
+@admin_required
+def reverse_invoice_payment(payment_id):
+    is_ajax = (
+        request.headers.get("X-Requested-With")
+        == "XMLHttpRequest"
+    )
+
+    reason = (
+        request.form.get("reason")
+        or ""
+    ).strip()
+
+    package_collected = (
+        request.form.get("package_collected")
+        or ""
+    ).strip().lower()
+
+    def error_response(
+        message,
+        status_code=400,
+        invoice_id=None,
+    ):
+        if is_ajax:
+            return jsonify({
+                "success": False,
+                "error": message,
+            }), status_code
+
+        flash(message, "danger")
+
+        if invoice_id:
+            return redirect(
+                url_for(
+                    "admin.view_invoice",
+                    invoice_id=invoice_id,
+                )
+            )
+
+        return redirect(
+            request.referrer
+            or url_for("admin.dashboard")
+        )
+
+    if len(reason) < 5:
+        return error_response(
+            "Please enter a clear reversal reason "
+            "of at least 5 characters."
+        )
+
+    if package_collected not in {
+        "yes",
+        "no",
+    }:
+        return error_response(
+            "Please confirm whether the customer "
+            "physically collected the package."
+        )
+
+    try:
+        # Payment has an eagerly loaded optional admin
+        # relationship. Lock only the payments table to
+        # avoid PostgreSQL's outer-join FOR UPDATE error.
+        payment = (
+            Payment.query
+            .filter(
+                Payment.id == payment_id
+            )
+            .with_for_update(
+                of=Payment
+            )
+            .first()
+        )
+
+        if not payment:
+            return error_response(
+                "The selected payment was not found.",
+                404,
+            )
+
+        invoice_id = payment.invoice_id
+
+        if not invoice_id:
+            return error_response(
+                "This payment is not attached to an invoice.",
+                invoice_id=invoice_id,
+            )
+
+        invoice = (
+            Invoice.query
+            .filter(
+                Invoice.id == invoice_id
+            )
+            .with_for_update(
+                of=Invoice
+            )
+            .first()
+        )
+
+        if not invoice:
+            return error_response(
+                "The invoice attached to this payment "
+                "was not found.",
+                404,
+            )
+
+        payment_status = (
+            payment.status or ""
+        ).strip().lower()
+
+        # Idempotency protection.
+        if payment_status == "reversed":
+            return error_response(
+                "This payment has already been reversed.",
+                invoice_id=invoice.id,
+            )
+
+        if payment_status not in {
+            "completed",
+            "settled",
+        }:
+            return error_response(
+                "Only completed or settled payments "
+                "can be reversed.",
+                invoice_id=invoice.id,
+            )
+
+        payment_method = (
+            getattr(
+                payment,
+                "method",
+                None,
+            )
+            or ""
+        ).strip()
+
+        transaction_type = (
+            getattr(
+                payment,
+                "transaction_type",
+                None,
+            )
+            or ""
+        ).strip().lower()
+
+        blocked_methods = {
+            "wallet",
+            "refund",
+            "subscription payment",
+            "subscription refund",
+            "complimentary",
+        }
+
+        blocked_transaction_types = {
+            "wallet",
+            "wallet_payment",
+            "wallet_credit",
+            "wallet_debit",
+            "subscription_payment",
+            "subscription_refund",
+            "refund",
+            "claim_payment",
+            "delivery_payment",
+        }
+
+        if payment_method.lower() in blocked_methods:
+            return error_response(
+                f"{payment_method} payments require a "
+                "specialized accounting reversal and cannot "
+                "be reversed from the invoice screen.",
+                invoice_id=invoice.id,
+            )
+
+        if (
+            transaction_type
+            in blocked_transaction_types
+            or getattr(
+                payment,
+                "scheduled_delivery_id",
+                None,
+            )
+            or getattr(
+                payment,
+                "claim_id",
+                None,
+            )
+        ):
+            return error_response(
+                "This payment is linked to another accounting "
+                "process and cannot be reversed from the "
+                "invoice screen.",
+                invoice_id=invoice.id,
+            )
+
+        invoice_number = (
+            invoice.invoice_number
+            or f"Invoice #{invoice.id}"
+        )
+
+        payment_amount = round(
+            float(
+                getattr(
+                    payment,
+                    "amount_jmd",
+                    0,
+                )
+                or 0
+            ),
+            2,
+        )
+
+        old_payment_status = (
+            payment.status or ""
+        )
+
+        old_invoice_status = (
+            invoice.status or "unpaid"
+        )
+
+        old_invoice_due = float(
+            invoice.amount_due or 0
+        )
+
+        old_invoice_date_paid = getattr(
+            invoice,
+            "date_paid",
+            None,
+        )
+
+        package_rows = (
+            Package.query
+            .filter(
+                Package.invoice_id == invoice.id
+            )
+            .with_for_update(
+                of=Package
+            )
+            .order_by(
+                Package.id.asc()
+            )
+            .all()
+        )
+
+        old_package_values = [
+            (
+                f"{package.house_awb or package.id}: "
+                f"status={package.status}; "
+                f"locked={bool(package.is_locked)}; "
+                f"amount_due="
+                f"{float(package.amount_due or 0):,.2f}"
+            )
+            for package in package_rows
+        ]
+
+        # -------------------------------------------------
+        # Reverse—not delete—the payment
+        # -------------------------------------------------
+        payment.status = "reversed"
+
+        existing_notes = (
+            getattr(
+                payment,
+                "notes",
+                None,
+            )
+            or ""
+        ).strip()
+
+        reversal_note = (
+            f"Reversed by admin "
+            f"{current_user.id}. "
+            f"Reason: {reason}"
+        )
+
+        payment.notes = (
+            f"{existing_notes} | {reversal_note}"
+            if existing_notes
+            else reversal_note
+        )[:255]
+
+        db.session.flush()
+
+        # -------------------------------------------------
+        # Recalculate the invoice after reversal
+        # -------------------------------------------------
+        (
+            subtotal,
+            discount_total,
+            payments_total,
+            total_due,
+        ) = fetch_invoice_totals_pg(
+            invoice.id
+        )
+
+        new_due = round(
+            max(
+                float(total_due or 0),
+                0.0,
+            ),
+            2,
+        )
+
+        remaining_payments = round(
+            max(
+                float(payments_total or 0),
+                0.0,
+            ),
+            2,
+        )
+
+        invoice.amount_due = new_due
+
+        if new_due <= 0.01:
+            invoice.amount_due = 0.0
+            invoice.status = "paid"
+
+            if hasattr(invoice, "date_paid"):
+                invoice.date_paid = (
+                    old_invoice_date_paid
+                    or datetime.now(timezone.utc)
+                )
+
+        elif remaining_payments > 0.01:
+            invoice.status = "partial"
+
+            if hasattr(invoice, "date_paid"):
+                invoice.date_paid = None
+
+        else:
+            invoice.status = "unpaid"
+
+            if hasattr(invoice, "date_paid"):
+                invoice.date_paid = None
+
+        # -------------------------------------------------
+        # Correct linked Shop For Me request
+        # -------------------------------------------------
+        shop_request = (
+            PurchaseRequest.query
+            .filter_by(
+                invoice_id=invoice.id
+            )
+            .first()
+        )
+
+        if (
+            shop_request
+            and new_due > 0.01
+            and (
+                shop_request.status or ""
+            ).strip().lower() == "paid"
+        ):
+            shop_request.status = "awaiting_payment"
+
+        # Purchased requests remain purchased because
+        # the merchant purchase cannot be undone merely
+        # by reversing the customer's payment record.
+
+        reopened_pickup_ids = []
+        changed_package_ids = []
+
+        # -------------------------------------------------
+        # If goods were not collected, restore availability
+        # -------------------------------------------------
+        if (
+            package_collected == "no"
+            and new_due > 0.01
+        ):
+            for package in package_rows:
+                package.status = "Ready for Pick Up"
+                package.is_locked = False
+                package.locked_reason = None
+                package.locked_at = None
+
+                # Keep the package's pricing lock intact.
+                # pricing_locked protects its calculated
+                # charges and is different from collection
+                # locking.
+
+                if hasattr(
+                    package,
+                    "delivery_scan_status",
+                ):
+                    package.delivery_scan_status = None
+
+                if hasattr(
+                    package,
+                    "delivery_scanned_at",
+                ):
+                    package.delivery_scanned_at = None
+
+                if hasattr(
+                    package,
+                    "delivery_scanned_by_id",
+                ):
+                    package.delivery_scanned_by_id = None
+
+                changed_package_ids.append(
+                    package.id
+                )
+
+                # Reopen any pickup that was automatically
+                # marked Collected when this package was
+                # incorrectly marked delivered.
+                try:
+                    collected_pickups = (
+                        package.scheduled_pickups
+                        .filter(
+                            func.lower(
+                                func.coalesce(
+                                    ScheduledPickup.status,
+                                    "",
+                                )
+                            )
+                            == "collected"
+                        )
+                        .all()
+                    )
+
+                except Exception:
+                    collected_pickups = []
+
+                for pickup in collected_pickups:
+                    linked_packages = (
+                        pickup.packages.all()
+                    )
+
+                    all_still_delivered = (
+                        bool(linked_packages)
+                        and all(
+                            (
+                                linked_package.status
+                                or ""
+                            ).strip().lower()
+                            == "delivered"
+                            for linked_package
+                            in linked_packages
+                        )
+                    )
+
+                    if not all_still_delivered:
+                        pickup.status = "Ready"
+                        pickup.completed_at = None
+
+                        if (
+                            pickup.id
+                            not in reopened_pickup_ids
+                        ):
+                            reopened_pickup_ids.append(
+                                pickup.id
+                            )
+
+        # If the package was physically collected,
+        # leave its Delivered status and lock intact.
+        # The reopened invoice will show the debt owed.
+
+        db.session.flush()
+
+        new_package_values = [
+            (
+                f"{package.house_awb or package.id}: "
+                f"status={package.status}; "
+                f"locked={bool(package.is_locked)}; "
+                f"amount_due="
+                f"{float(package.amount_due or 0):,.2f}"
+            )
+            for package in package_rows
+        ]
+
+        audit_log = AuditLog(
+            module="Finance",
+            action="Invoice Payment Reversed",
+            admin_id=current_user.id,
+            user_id=invoice.user_id,
+            entity_type="Payment",
+            entity_id=payment.id,
+            reason=reason,
+            description=(
+                f"Payment #{payment.id} for JMD "
+                f"{payment_amount:,.2f} was reversed "
+                f"on {invoice_number}. "
+                f"Method: {payment_method or 'Unknown'}. "
+                f"Customer physically collected package: "
+                f"{'Yes' if package_collected == 'yes' else 'No'}. "
+                f"Invoice changed from "
+                f"{old_invoice_status} to "
+                f"{invoice.status}."
+            ),
+            old_value=(
+                f"Payment Status: {old_payment_status}; "
+                f"Invoice Status: {old_invoice_status}; "
+                f"Invoice Amount Due: "
+                f"JMD {old_invoice_due:,.2f}; "
+                f"Packages: "
+                f"{' | '.join(old_package_values) or 'None'}"
+            ),
+            new_value=(
+                f"Payment Status: {payment.status}; "
+                f"Invoice Status: {invoice.status}; "
+                f"Invoice Amount Due: "
+                f"JMD {float(invoice.amount_due or 0):,.2f}; "
+                f"Remaining Completed Payments: "
+                f"JMD {remaining_payments:,.2f}; "
+                f"Packages: "
+                f"{' | '.join(new_package_values) or 'None'}; "
+                f"Reopened Pickup IDs: "
+                f"{reopened_pickup_ids or 'None'}"
+            ),
+        )
+
+        db.session.add(audit_log)
+        db.session.commit()
+
+        if is_ajax:
+            return jsonify({
+                "success": True,
+                "message": (
+                    "Payment reversed successfully."
+                ),
+                "payment_id": payment.id,
+                "payment_status": payment.status,
+                "invoice_id": invoice.id,
+                "invoice_status": invoice.status,
+                "amount_due": float(
+                    invoice.amount_due or 0
+                ),
+                "changed_package_ids": (
+                    changed_package_ids
+                ),
+                "reopened_pickup_ids": (
+                    reopened_pickup_ids
+                ),
+                "audit_log_id": audit_log.id,
+            })
+
+        flash(
+            (
+                f"Payment #{payment.id} for JMD "
+                f"{payment_amount:,.2f} was reversed. "
+                f"The invoice balance is now JMD "
+                f"{float(invoice.amount_due or 0):,.2f}."
+            ),
+            "success",
+        )
+
+        return redirect(
+            url_for(
+                "admin.view_invoice",
+                invoice_id=invoice.id,
+            )
+        )
+
+    except Exception as error:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Invoice payment reversal failed for "
+            "payment %s: %s",
+            payment_id,
+            error,
+        )
+
+        return error_response(
+            "The payment could not be reversed. "
+            "No changes were saved.",
+            500,
+            invoice_id=locals().get(
+                "invoice_id"
+            ),
+        )
 
 @admin_bp.route(
     "/invoice/add-payment/<int:invoice_id>",

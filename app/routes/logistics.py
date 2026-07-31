@@ -9427,6 +9427,14 @@ def scheduled_delivery_eligible_packages(
 def add_scheduled_delivery():
     form = ScheduledDeliveryForm()
 
+    is_json = bool(request.is_json)
+
+    data = (
+        request.get_json(silent=True) or {}
+        if is_json
+        else {}
+    )
+
     users = User.query.order_by(
         User.full_name.asc(),
         User.id.asc(),

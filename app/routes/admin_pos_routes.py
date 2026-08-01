@@ -527,7 +527,7 @@ def checkout():
             Package.user_id == user.id,
             Package.id.in_(package_ids)
         )
-        .with_for_update()
+        .with_for_update(of=Package)
         .order_by(Package.created_at.asc())
         .all()
     )

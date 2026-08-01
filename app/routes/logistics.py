@@ -2337,6 +2337,12 @@ def logistics_dashboard():
                 db.session.add(p)
                 db.session.flush()  # ✅ get p.id now
 
+                if not assigned_unassigned:
+                    apply_customer_default_to_package(
+                        p,
+                        admin_id=current_user.id,
+                    )
+
                 try:
                     result = apply_subscription_usage(p)
 
@@ -3475,6 +3481,11 @@ def create_single_package_from_view():
 
     db.session.add(p)
     db.session.flush()
+
+    apply_customer_default_to_package(
+        p,
+        admin_id=current_user.id,
+    )
 
     try:
         result = apply_subscription_usage(p)

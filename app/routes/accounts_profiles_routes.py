@@ -1654,6 +1654,13 @@ def create_single_package_for_user(id):
     try:
         db.session.flush()  # ✅ gives pkg.id without committing yet
 
+        from app.utils.sorting_codes import apply_customer_default_to_package
+
+        apply_customer_default_to_package(
+            pkg,
+            admin_id=current_user.id,
+        )
+
         from app.utils.prealert_sync import sync_prealert_invoice_to_package
         sync_prealert_invoice_to_package(pkg)  # attaches invoice (if found)
         from app.utils.subscription_utils import apply_subscription_usage

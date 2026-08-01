@@ -3024,6 +3024,7 @@ def logistics_dashboard():
             "GPB",
             "RTD",
             "STH",
+            "KED",
             "UNASSIGNED",
         ],
     )

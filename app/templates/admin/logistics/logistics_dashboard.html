@@ -1263,6 +1263,7 @@
                           <option value="GPB">GPB — Gregory Park Branch</option>
                           <option value="RTD">RTD — Round Town Delivery</option>
                           <option value="STH">STH — Spanish Town Hospital</option>
+                          <option value="KED">KED — Knutsford Express Delivery</option>
                           <option value="UNASSIGNED">UNASSIGNED — Needs Review</option>
                         </select>
                       </div>
@@ -1421,6 +1422,12 @@
                   <li>
                     <button type="button" class="dropdown-item js-bulk-sort-option" data-sort-code="STH">
                       STH
+                    </button>
+                  </li>
+
+                  <li>
+                    <button type="button" class="dropdown-item js-bulk-sort-option" data-sort-code="KED">
+                      KED
                     </button>
                   </li>
 
@@ -5015,7 +5022,8 @@ Not emailed yet"></i>
       UE: "U E",
       GPB: "G P B",
       RTD: "R T D",
-      STH: "S T H"
+      STH: "S T H",
+      KED: "K E D"
     };
 
     const spokenCode = spokenCodes[normalizedCode] || "Unassigned";

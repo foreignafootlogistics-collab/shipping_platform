@@ -2390,6 +2390,7 @@ def manage_account(id: int):
         "GPB",
         "RTD",
         "STH",
+        "KED",
         "UNASSIGNED",
     }
 

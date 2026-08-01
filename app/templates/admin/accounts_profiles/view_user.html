@@ -224,6 +224,8 @@
                 Round Town Delivery
                 {% elif customer_sort_code == 'STH' %}
                 Spanish Town Hospital
+                {% elif customer_sort_code == 'KED' %}
+                Knutsford Express Delivery
                 {% endif %}
               </div>
               {% endif %}
@@ -2526,6 +2528,10 @@
 
                       <option value="STH" {% if selected_sort_code=='STH' %}selected{% endif %}>
                         STH — Spanish Town Hospital
+                      </option>
+
+                      <option value="KED" {% if selected_sort_code=='KED' %}selected{% endif %}>
+                        KED — Knutsford Express Delivery
                       </option>
                     </select>
 

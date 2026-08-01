@@ -10,6 +10,7 @@ SORT_CODE_LABELS = {
     "GPB": "Gregory Park Branch",
     "RTD": "Round Town Delivery",
     "STH": "Spanish Town Hospital",
+    "KED": "Knutsford Express Delivery",
     "UNASSIGNED": "Unassigned",
 }
 

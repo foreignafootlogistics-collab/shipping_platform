@@ -6218,30 +6218,81 @@ def api_customer_prealerts():
         .all()
     )
 
-    return jsonify({
-        "prealerts": [
+    rows = []
+
+    for prealert in prealerts:
+        attachments = [
             {
-                "id": p.id,
-                "prealert_number": p.prealert_number,
-                "vendor_name": p.vendor_name or "",
-                "courier_name": p.courier_name or "",
-                "tracking_number": p.tracking_number or "",
-                "purchase_date": (
-                    p.purchase_date.strftime("%Y-%m-%d")
-                    if getattr(p, "purchase_date", None)
-                    else ""
+                "id": attachment.id,
+                "file_url": attachment.file_url or "",
+                "original_name": (
+                    attachment.original_name
+                    or "Attachment"
                 ),
-                "package_contents": p.package_contents or "",
-                "item_value_usd": float(getattr(p, "item_value_usd", 0) or 0),
-                "created_at": (
-                    p.created_at.strftime("%Y-%m-%d")
-                    if getattr(p, "created_at", None)
-                    else ""
-                ),
+                "is_pdf": (
+                    attachment.original_name
+                    or ""
+                ).lower().endswith(".pdf"),
             }
-            for p in prealerts
+            for attachment in (
+                getattr(prealert, "attachments", [])
+                or []
+            )
         ]
-    })
+
+        # Compatibility with older pre-alerts that stored only
+        # the original single invoice fields.
+        if (
+            not attachments
+            and prealert.invoice_filename
+        ):
+            attachments.append({
+                "id": 0,
+                "file_url": prealert.invoice_filename or "",
+                "original_name": (
+                    prealert.invoice_original_name
+                    or "Invoice attachment"
+                ),
+                "is_pdf": (
+                    prealert.invoice_original_name
+                    or ""
+                ).lower().endswith(".pdf"),
+            })
+
+        rows.append({
+            "id": prealert.id,
+            "prealert_number": prealert.prealert_number,
+            "vendor_name": prealert.vendor_name or "",
+            "courier_name": prealert.courier_name or "",
+            "tracking_number": (
+                prealert.tracking_number
+                or ""
+            ),
+            "purchase_date": (
+                prealert.purchase_date.strftime("%Y-%m-%d")
+                if prealert.purchase_date
+                else ""
+            ),
+            "package_contents": (
+                prealert.package_contents
+                or ""
+            ),
+            "item_value_usd": float(
+                prealert.item_value_usd
+                or 0
+            ),
+            "created_at": (
+                prealert.created_at.strftime("%Y-%m-%d")
+                if prealert.created_at
+                else ""
+            ),
+            "attachment_count": len(attachments),
+            "attachments": attachments,
+        })
+
+    return jsonify({
+        "prealerts": rows
+    }), 200
 
 @customer_bp.route("/api/prealerts", methods=["POST"])
 @csrf.exempt

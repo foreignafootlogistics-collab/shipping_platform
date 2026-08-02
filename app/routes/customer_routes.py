@@ -6244,6 +6244,7 @@ def api_customer_prealerts():
     })
 
 @customer_bp.route("/api/prealerts", methods=["POST"])
+@csrf.exempt
 def api_customer_prealerts_create():
     user = get_api_user()
 

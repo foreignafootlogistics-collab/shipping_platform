@@ -1029,7 +1029,11 @@
           payment_method: selectedMethod,
           payment_amount: isPendingTransfer ? 0 : enteredPayment,
           payment_reference: (paymentReference?.value || "").trim(),
-          tenders,
+
+          tenders: isSplitPayment
+            ? tenders
+            : undefined,
+
           discount_type: discountType.value,
           discount_amount: discountAmount.value,
           notes: checkoutNotes.value

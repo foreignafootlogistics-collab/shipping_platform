@@ -640,10 +640,7 @@ def checkout():
     if is_pending_transfer:
         requested_payment = Decimal("0.00")
 
-    elif (
-        payment_method == "split"
-        or isinstance(raw_tenders, list)
-    ):
+    elif payment_method == "split":
         if (
             not isinstance(raw_tenders, list)
             or len(raw_tenders) < 2

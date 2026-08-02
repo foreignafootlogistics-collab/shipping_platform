@@ -488,10 +488,26 @@ def checkout():
 
     user_id = data.get("user_id")
     package_ids = data.get("package_ids") or []
-    payment_method = (data.get("payment_method") or "").strip().lower()
-    notes = (data.get("notes") or "").strip()
+    payment_method = (
+        data.get("payment_method")
+        or ""
+    ).strip().lower()
 
-    raw_payment_amount = data.get("payment_amount")
+    raw_tenders = data.get("tenders")
+
+    notes = (
+        data.get("notes")
+        or ""
+    ).strip()
+
+    raw_payment_amount = data.get(
+        "payment_amount"
+    )
+
+    payment_reference = (
+        data.get("payment_reference")
+        or ""
+    ).strip()
 
     discount_type = (data.get("discount_type") or "none").strip().lower()
 
@@ -512,7 +528,14 @@ def checkout():
     if not package_ids:
         return jsonify({"ok": False, "error": "Select at least one package."}), 400
 
-    if payment_method not in {"cash", "card", "transfer", "wallet", "transfer_pending"}:
+    if payment_method not in {
+        "cash",
+        "card",
+        "transfer",
+        "wallet",
+        "transfer_pending",
+        "split",
+    }:
         return jsonify({"ok": False, "error": "Invalid payment method."}), 400
 
     is_pending_transfer = payment_method == "transfer_pending"
@@ -602,8 +625,119 @@ def checkout():
         Decimal("0.01")
     )
 
+    # ---------------------------------------------
+    # Validate single or split payment tenders
+    # ---------------------------------------------
+    tenders = []
+
+    allowed_tender_methods = {
+        "cash",
+        "card",
+        "transfer",
+        "wallet",
+    }
+
     if is_pending_transfer:
         requested_payment = Decimal("0.00")
+
+    elif (
+        payment_method == "split"
+        or isinstance(raw_tenders, list)
+    ):
+        if (
+            not isinstance(raw_tenders, list)
+            or len(raw_tenders) < 2
+        ):
+            return jsonify({
+                "ok": False,
+                "error": (
+                    "Split payment requires at least "
+                    "two payment methods."
+                ),
+            }), 400
+
+        for index, raw_tender in enumerate(
+            raw_tenders,
+            start=1,
+        ):
+            if not isinstance(raw_tender, dict):
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        f"Payment entry {index} is invalid."
+                    ),
+                }), 400
+
+            tender_method = (
+                raw_tender.get("method")
+                or ""
+            ).strip().lower()
+
+            if tender_method not in allowed_tender_methods:
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        f"Payment entry {index} has an "
+                        "invalid method."
+                    ),
+                }), 400
+
+            try:
+                tender_amount = Decimal(
+                    str(
+                        raw_tender.get("amount")
+                        or 0
+                    )
+                ).quantize(Decimal("0.01"))
+
+            except Exception:
+                tender_amount = Decimal("0.00")
+
+            if tender_amount <= Decimal("0.00"):
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        f"Payment entry {index} must be "
+                        "greater than zero."
+                    ),
+                }), 400
+
+            tender_reference = (
+                raw_tender.get("reference")
+                or ""
+            ).strip()
+
+            if (
+                tender_method in {
+                    "card",
+                    "transfer",
+                }
+                and not tender_reference
+            ):
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        f"A reference is required for "
+                        f"payment entry {index} "
+                        f"({tender_method.title()})."
+                    ),
+                }), 400
+
+            tenders.append({
+                "method": tender_method,
+                "amount": tender_amount,
+                "remaining": tender_amount,
+                "reference": tender_reference,
+            })
+
+        requested_payment = sum(
+            (
+                tender["amount"]
+                for tender in tenders
+            ),
+            Decimal("0.00"),
+        ).quantize(Decimal("0.01"))
+
     else:
         try:
             if raw_payment_amount in (None, ""):
@@ -612,9 +746,35 @@ def checkout():
                 requested_payment = Decimal(
                     str(raw_payment_amount)
                 ).quantize(Decimal("0.01"))
+
         except Exception:
             requested_payment = Decimal("0.00")
 
+        if requested_payment > Decimal("0.00"):
+            if (
+                payment_method
+                in {
+                    "card",
+                    "transfer",
+                }
+                and not payment_reference
+            ):
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        "A payment reference is required "
+                        f"for {payment_method.title()}."
+                    ),
+                }), 400
+
+            tenders.append({
+                "method": payment_method,
+                "amount": requested_payment,
+                "remaining": requested_payment,
+                "reference": payment_reference,
+            })
+
+    if not is_pending_transfer:
         if requested_payment <= Decimal("0.00"):
             return jsonify({
                 "ok": False,
@@ -628,18 +788,16 @@ def checkout():
             return jsonify({
                 "ok": False,
                 "error": (
-                    "Payment cannot exceed the total "
-                    f"due of JMD {final_total:,.2f}."
+                    "Combined payment cannot exceed "
+                    f"the total due of "
+                    f"JMD {final_total:,.2f}."
                 ),
             }), 400
 
-        # A partial checkout may only target one invoice group.
-        # This prevents other selected packages from being released
-        # without any part of the payment being allocated to them.
         selected_invoice_ids = {
-            p.invoice_id
-            for p in packages
-            if p.invoice_id
+            package.invoice_id
+            for package in packages
+            if package.invoice_id
         }
 
         payment_group_count = (
@@ -647,8 +805,8 @@ def checkout():
             + (
                 1
                 if any(
-                    not p.invoice_id
-                    for p in packages
+                    not package.invoice_id
+                    for package in packages
                 )
                 else 0
             )
@@ -661,8 +819,8 @@ def checkout():
             return jsonify({
                 "ok": False,
                 "error": (
-                    "For a partial payment, select packages "
-                    "from one invoice only."
+                    "For a partial payment, select "
+                    "packages from one invoice only."
                 ),
             }), 400
 
@@ -694,7 +852,162 @@ def checkout():
         pending_total = Decimal("0.00")
         payment_remaining = requested_payment
 
-        total_before_discount = subtotal if subtotal > 0 else Decimal("1.00")
+        total_before_discount = (
+            subtotal
+            if subtotal > 0
+            else Decimal("1.00")
+        )
+
+        tender_position = 0
+        tender_summary = []
+
+        method_labels = {
+            "cash": "Cash",
+            "card": "Card",
+            "transfer": "Bank Transfer",
+            "wallet": "Wallet",
+        }
+
+        def allocate_tenders_to_invoice(
+            invoice,
+            allocation_amount,
+            payment_notes,
+        ):
+            """
+            Allocate one or more POS tenders to an invoice.
+
+            Every tender creates a separate Payment row.
+            This function does not commit.
+            """
+            nonlocal tender_position
+            nonlocal payment_remaining
+            nonlocal collected_total
+
+            amount_left = Decimal(
+                str(allocation_amount)
+            ).quantize(Decimal("0.01"))
+
+            allocated_total = Decimal("0.00")
+
+            while (
+                amount_left > Decimal("0.00")
+                and tender_position < len(tenders)
+            ):
+                tender = tenders[
+                    tender_position
+                ]
+
+                tender_remaining = Decimal(
+                    str(tender["remaining"])
+                ).quantize(Decimal("0.01"))
+
+                if tender_remaining <= Decimal("0.00"):
+                    tender_position += 1
+                    continue
+
+                applied_amount = min(
+                    amount_left,
+                    tender_remaining,
+                ).quantize(Decimal("0.01"))
+
+                method_name = method_labels[
+                    tender["method"]
+                ]
+
+                tender_notes = (
+                    payment_notes
+                    or "POS payment"
+                )
+
+                if len(tenders) > 1:
+                    tender_notes = (
+                        f"{tender_notes}\n"
+                        f"Split tender: {method_name} "
+                        f"JMD {applied_amount:,.2f}"
+                    )
+
+                payment = Payment(
+                    user_id=user.id,
+                    invoice_id=invoice.id,
+                    method=method_name,
+                    amount_jmd=float(
+                        applied_amount
+                    ),
+                    reference=(
+                        tender["reference"]
+                        or None
+                    ),
+                    transaction_type=(
+                        "invoice_payment"
+                    ),
+                    status="completed",
+                    notes=tender_notes,
+                    source="pos",
+                    authorized_by_admin_id=(
+                        current_user.id
+                    ),
+                    created_at=now_utc,
+                )
+
+                db.session.add(payment)
+                db.session.flush()
+
+                # Wallet is deducted only for the wallet
+                # portion of the split payment.
+                debit_wallet_for_payment(
+                    payment,
+                    invoice=invoice,
+                    admin_id=current_user.id,
+                )
+
+                created_payment_ids.append(
+                    payment.id
+                )
+
+                tender["remaining"] = (
+                    tender_remaining
+                    - applied_amount
+                ).quantize(Decimal("0.01"))
+
+                amount_left = (
+                    amount_left
+                    - applied_amount
+                ).quantize(Decimal("0.01"))
+
+                payment_remaining = (
+                    payment_remaining
+                    - applied_amount
+                ).quantize(Decimal("0.01"))
+
+                collected_total += applied_amount
+                allocated_total += applied_amount
+
+                tender_summary.append({
+                    "payment_id": payment.id,
+                    "invoice_id": invoice.id,
+                    "method": method_name,
+                    "amount": str(
+                        applied_amount
+                    ),
+                    "reference": (
+                        tender["reference"]
+                        or ""
+                    ),
+                })
+
+                if (
+                    tender["remaining"]
+                    <= Decimal("0.00")
+                ):
+                    tender_position += 1
+
+            if amount_left > Decimal("0.01"):
+                raise ValueError(
+                    "The entered payment methods "
+                    "could not be fully allocated."
+                )
+
+            return allocated_total
 
         for invoice_id, pkg_list in existing_invoice_groups.items():
             invoice = Invoice.query.get(invoice_id)
@@ -789,38 +1102,25 @@ def checkout():
                         f"to invoice {invoice.invoice_number}."
                     )
 
-                payment_notes = notes or "POS payment"
+                payment_notes = (
+                    notes or "POS payment"
+                )
 
                 if discount_note:
-                    payment_notes = f"{payment_notes}\n{discount_note}"
+                    payment_notes = (
+                        f"{payment_notes}\n"
+                        f"{discount_note}"
+                    )
 
-                payment = Payment(
-                    user_id=user.id,
-                    invoice_id=invoice.id,
-                    method=payment_method.title(),
-                    amount_jmd=float(amount_to_collect),
-                    transaction_type="invoice_payment",
-                    status="completed",
-                    notes=payment_notes,
-                    source="pos",
-                    authorized_by_admin_id=current_user.id,
-                    created_at=now_utc,
+                amount_to_collect = (
+                    allocate_tenders_to_invoice(
+                        invoice=invoice,
+                        allocation_amount=(
+                            amount_to_collect
+                        ),
+                        payment_notes=payment_notes,
+                    )
                 )
-
-                db.session.add(payment)
-                db.session.flush()
-                debit_wallet_for_payment(
-                    payment,
-                    invoice=invoice,
-                    admin_id=current_user.id,
-                )
-
-                created_payment_ids.append(payment.id)
-                collected_total += amount_to_collect
-                payment_remaining = (
-                    payment_remaining
-                    - amount_to_collect
-                ).quantize(Decimal("0.01"))
 
                 if discount_note:
                     invoice.description = (
@@ -1014,41 +1314,25 @@ def checkout():
             checkout_invoice_ids.append(pos_invoice.id)
 
             if not is_pending_transfer:
-                payment_notes = notes or "POS payment"
+                payment_notes = (
+                    notes or "POS payment"
+                )
 
                 if discount_note:
                     payment_notes = (
-                        f"{payment_notes}\n{discount_note}"
+                        f"{payment_notes}\n"
+                        f"{discount_note}"
                     )
 
-                pos_payment = Payment(
-                    user_id=user.id,
-                    invoice_id=pos_invoice.id,
-                    method=payment_method.title(),
-                    amount_jmd=float(new_payment_amount),
-                    transaction_type="invoice_payment",
-                    status="completed",
-                    notes=payment_notes,
-                    source="pos",
-                    authorized_by_admin_id=current_user.id,
-                    created_at=now_utc,
+                new_payment_amount = (
+                    allocate_tenders_to_invoice(
+                        invoice=pos_invoice,
+                        allocation_amount=(
+                            new_payment_amount
+                        ),
+                        payment_notes=payment_notes,
+                    )
                 )
-
-                db.session.add(pos_payment)
-                db.session.flush()
-
-                debit_wallet_for_payment(
-                    pos_payment,
-                    invoice=pos_invoice,
-                    admin_id=current_user.id,
-                )
-
-                created_payment_ids.append(pos_payment.id)
-                collected_total += new_payment_amount
-                payment_remaining = (
-                    payment_remaining
-                    - new_payment_amount
-                ).quantize(Decimal("0.01"))
 
             else:
                 pending_payment = (
@@ -1122,6 +1406,7 @@ def checkout():
             "message": message,
             "invoice_ids": checkout_invoice_ids,
             "payment_ids": created_payment_ids,
+            "tenders": tender_summary,
             "pending_payment_ids": pending_payment_ids,
             "subtotal": str(
                 subtotal.quantize(Decimal("0.01"))

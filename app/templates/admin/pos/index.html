@@ -118,15 +118,54 @@
               <option value="card">Card</option>
               <option value="transfer">Transfer - Confirmed</option>
               <option value="wallet">Wallet</option>
+              <option value="split">Split Payment</option>
               <option value="transfer_pending">Transfer Pending / Pay Later</option>
             </select>
           </div>
 
-          <div class="mb-3">
-            <label for="paymentAmount" class="form-label">Payment Amount (JMD)</label>
-            <input type="number" id="paymentAmount" class="form-control" value="0.00" min="0.01" step="0.01">
-            <div class="form-text">
-              Enter less than the total for a partial payment.
+          <div id="singlePaymentFields">
+            <div class="mb-3">
+              <label for="paymentAmount" class="form-label">Payment Amount (JMD)</label>
+              <input type="number" id="paymentAmount" class="form-control" value="0.00" min="0.01" step="0.01">
+              <div class="form-text">
+                Enter less than the total for a partial payment.
+              </div>
+            </div>
+
+            <div id="singleReferenceWrap" class="mb-3 d-none">
+              <label for="paymentReference" class="form-label">Payment Reference</label>
+              <input type="text" id="paymentReference" class="form-control" maxlength="100"
+                placeholder="Card or bank reference">
+              <div class="form-text">
+                Required for Card and confirmed Transfer.
+              </div>
+            </div>
+          </div>
+
+          <div id="splitPaymentPanel" class="d-none mb-3">
+            <div class="border rounded p-3" style="background:#faf7fd;">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                  <div class="fw-semibold" style="color:#4a148c;">Split Payment</div>
+                  <div class="small text-muted">Add each payment method separately.</div>
+                </div>
+                <button type="button" id="addSplitTenderBtn" class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-plus-lg"></i>
+                </button>
+              </div>
+
+              <div id="splitTenderRows"></div>
+
+              <div class="border-top pt-2 mt-2">
+                <div class="d-flex justify-content-between small">
+                  <span>Split Total</span>
+                  <strong id="splitTenderTotal">$0.00</strong>
+                </div>
+                <div class="d-flex justify-content-between small mt-1">
+                  <span>Still Required</span>
+                  <strong id="splitTenderRemaining" class="text-danger">$0.00</strong>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -229,9 +268,18 @@
   const discountType = document.getElementById("discountType");
   const discountAmount = document.getElementById("discountAmount");
   const paymentAmount = document.getElementById("paymentAmount");
+  const paymentReference = document.getElementById("paymentReference");
+  const singlePaymentFields = document.getElementById("singlePaymentFields");
+  const singleReferenceWrap = document.getElementById("singleReferenceWrap");
+  const splitPaymentPanel = document.getElementById("splitPaymentPanel");
+  const splitTenderRows = document.getElementById("splitTenderRows");
+  const addSplitTenderBtn = document.getElementById("addSplitTenderBtn");
+  const splitTenderTotal = document.getElementById("splitTenderTotal");
+  const splitTenderRemaining = document.getElementById("splitTenderRemaining");
   const paymentDisplay = document.getElementById("paymentDisplay");
   const remainingDisplay = document.getElementById("remainingDisplay");
   let calculatedCheckoutTotal = 0;
+  let splitTenderCounter = 0;
 
   const subtotalAmount = document.getElementById("subtotalAmount");
   const discountDisplay = document.getElementById("discountDisplay");
@@ -296,38 +344,139 @@
     return [...document.querySelectorAll(".pkg-check:checked")].map(cb => Number(cb.value));
   }
 
+  function getSplitTenders() {
+    return [...splitTenderRows.querySelectorAll(".split-tender-row")].map(row => {
+      const method = row.querySelector(".split-tender-method")?.value || "";
+      const amount = parseFloat(row.querySelector(".split-tender-amount")?.value || 0);
+      const reference = (row.querySelector(".split-tender-reference")?.value || "").trim();
+
+      return {
+        method,
+        amount: Number.isFinite(amount) ? amount : 0,
+        reference
+      };
+    });
+  }
+
+  function updateSplitReference(row) {
+    if (!row) return;
+
+    const method = row.querySelector(".split-tender-method")?.value || "";
+    const referenceWrap = row.querySelector(".split-tender-reference-wrap");
+    const referenceInput = row.querySelector(".split-tender-reference");
+    const requiresReference = ["card", "transfer"].includes(method);
+
+    referenceWrap?.classList.toggle("d-none", !requiresReference);
+
+    if (referenceInput && !requiresReference) {
+      referenceInput.value = "";
+    }
+  }
+
+  function addSplitTender(method = "cash", amount = "") {
+    splitTenderCounter += 1;
+
+    const row = document.createElement("div");
+    row.className = "split-tender-row border rounded p-2 mb-2 bg-white";
+    row.dataset.tenderId = String(splitTenderCounter);
+
+    row.innerHTML = `
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="small fw-semibold">Payment ${splitTenderCounter}</span>
+        <button type="button" class="btn btn-sm btn-link text-danger p-0 remove-split-tender"
+          title="Remove payment">
+          <i class="bi bi-x-circle"></i>
+        </button>
+      </div>
+      <div class="mb-2">
+        <select class="form-select form-select-sm split-tender-method">
+          <option value="cash">Cash</option>
+          <option value="card">Card</option>
+          <option value="transfer">Bank Transfer</option>
+          <option value="wallet">Wallet</option>
+        </select>
+      </div>
+      <div class="mb-2">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">JMD</span>
+          <input type="number" class="form-control split-tender-amount" min="0.01" step="0.01"
+            value="${amount}" placeholder="0.00">
+        </div>
+      </div>
+      <div class="split-tender-reference-wrap d-none">
+        <input type="text" class="form-control form-control-sm split-tender-reference" maxlength="100"
+          placeholder="Card or bank reference">
+      </div>
+    `;
+
+    splitTenderRows.appendChild(row);
+
+    const methodSelect = row.querySelector(".split-tender-method");
+    if (methodSelect) methodSelect.value = method;
+
+    updateSplitReference(row);
+    updatePaymentBreakdown();
+  }
+
+  function ensureDefaultSplitTenders() {
+    if (splitTenderRows.querySelectorAll(".split-tender-row").length) return;
+    addSplitTender("cash");
+    addSplitTender("card");
+  }
+
+  function updatePaymentModeUI() {
+    const method = paymentMethod.value;
+    const isSplit = method === "split";
+    const isPending = method === "transfer_pending";
+
+    singlePaymentFields.classList.toggle("d-none", isSplit || isPending);
+    splitPaymentPanel.classList.toggle("d-none", !isSplit);
+
+    const needsReference = ["card", "transfer"].includes(method);
+    singleReferenceWrap.classList.toggle("d-none", !needsReference || isSplit || isPending);
+
+    if (!needsReference && paymentReference) paymentReference.value = "";
+    if (isSplit) ensureDefaultSplitTenders();
+    if (isPending) paymentAmount.value = "0.00";
+
+    updatePaymentBreakdown();
+  }
+
   function updatePaymentBreakdown() {
-    const isPendingTransfer =
-      paymentMethod.value === "transfer_pending";
+    const method = paymentMethod.value;
+    const isPendingTransfer = method === "transfer_pending";
 
     if (isPendingTransfer) {
       paymentAmount.disabled = true;
-      paymentAmount.value = "0.00";
       paymentDisplay.textContent = formatMoney(0);
-      remainingDisplay.textContent =
-        formatMoney(calculatedCheckoutTotal);
+      remainingDisplay.textContent = formatMoney(calculatedCheckoutTotal);
+      splitTenderTotal.textContent = formatMoney(0);
+      splitTenderRemaining.textContent = formatMoney(calculatedCheckoutTotal);
       return;
     }
 
     paymentAmount.disabled = false;
+    let enteredAmount = 0;
 
-    let enteredAmount =
-      parseFloat(paymentAmount.value || 0);
+    if (method === "split") {
+      enteredAmount = getSplitTenders().reduce(
+        (total, tender) => total + Number(tender.amount || 0),
+        0
+      );
 
-    if (isNaN(enteredAmount) || enteredAmount < 0) {
-      enteredAmount = 0;
+      splitTenderTotal.textContent = formatMoney(enteredAmount);
+      splitTenderRemaining.textContent = formatMoney(
+        Math.max(calculatedCheckoutTotal - enteredAmount, 0)
+      );
+    } else {
+      enteredAmount = parseFloat(paymentAmount.value || 0);
+      if (isNaN(enteredAmount) || enteredAmount < 0) enteredAmount = 0;
     }
 
-    paymentDisplay.textContent =
-      formatMoney(enteredAmount);
-
-    const remaining = Math.max(
-      calculatedCheckoutTotal - enteredAmount,
-      0
+    paymentDisplay.textContent = formatMoney(enteredAmount);
+    remainingDisplay.textContent = formatMoney(
+      Math.max(calculatedCheckoutTotal - enteredAmount, 0)
     );
-
-    remainingDisplay.textContent =
-      formatMoney(remaining);
   }
 
   function updateSummary() {
@@ -367,7 +516,7 @@
 
     if (
       paymentAmount.dataset.manual !== "true"
-      && paymentMethod.value !== "transfer_pending"
+      && !["transfer_pending", "split"].includes(paymentMethod.value)
     ) {
       paymentAmount.value = finalTotal.toFixed(2);
     }
@@ -614,18 +763,13 @@
   discountType.addEventListener("change", updateSummary);
   discountAmount.addEventListener("input", updateSummary);
 
-  paymentAmount.addEventListener("input", function () {
-    paymentAmount.dataset.manual = "true";
-    updatePaymentBreakdown();
-  });
-
   paymentMethod.addEventListener("change", function () {
-    if (paymentMethod.value === "transfer_pending") {
+    if (["transfer_pending", "split"].includes(paymentMethod.value)) {
       paymentAmount.dataset.manual = "false";
     }
 
     if (
-      paymentMethod.value !== "transfer_pending"
+      !["transfer_pending", "split"].includes(paymentMethod.value)
       && parseFloat(paymentAmount.value || 0) <= 0
     ) {
       paymentAmount.value =
@@ -633,8 +777,55 @@
       paymentAmount.dataset.manual = "false";
     }
 
+    updatePaymentModeUI();
+    updateSummary();
+  });
+
+  paymentAmount.addEventListener("input", function () {
+    paymentAmount.dataset.manual = "true";
     updatePaymentBreakdown();
   });
+
+  addSplitTenderBtn?.addEventListener("click", function () {
+    addSplitTender("cash");
+  });
+
+  splitTenderRows?.addEventListener("input", function (event) {
+    if (event.target.closest(".split-tender-amount")) {
+      updatePaymentBreakdown();
+    }
+  });
+
+  splitTenderRows?.addEventListener("change", function (event) {
+    const row = event.target.closest(".split-tender-row");
+
+    if (event.target.closest(".split-tender-method")) {
+      updateSplitReference(row);
+    }
+
+    updatePaymentBreakdown();
+  });
+
+  splitTenderRows?.addEventListener("click", function (event) {
+    const removeButton = event.target.closest(".remove-split-tender");
+    if (!removeButton) return;
+
+    const rows = splitTenderRows.querySelectorAll(".split-tender-row");
+
+    if (rows.length <= 2) {
+      checkoutMessage.innerHTML = `
+        <div class="alert alert-warning">
+          Split payment requires at least two payment methods.
+        </div>
+      `;
+      return;
+    }
+
+    removeButton.closest(".split-tender-row")?.remove();
+    updatePaymentBreakdown();
+  });
+
+  updatePaymentModeUI();
 
   if (barcodeScanInput) {
     barcodeScanInput.addEventListener("keydown", async function (e) {
@@ -734,12 +925,64 @@
     const package_ids = getSelectedPackageIds();
     if (!package_ids.length) return;
 
-    const isPendingTransfer =
-      paymentMethod.value === "transfer_pending";
+    const selectedMethod = paymentMethod.value;
+    const isPendingTransfer = selectedMethod === "transfer_pending";
+    const isSplitPayment = selectedMethod === "split";
+    const tenders = isSplitPayment ? getSplitTenders() : [];
 
-    const enteredPayment = parseFloat(
-      paymentAmount.value || 0
-    );
+    let enteredPayment = parseFloat(paymentAmount.value || 0);
+    if (!Number.isFinite(enteredPayment)) enteredPayment = 0;
+
+    if (isSplitPayment) {
+      if (tenders.length < 2) {
+        checkoutMessage.innerHTML = `
+          <div class="alert alert-danger">
+            Split payment requires at least two payment methods.
+          </div>
+        `;
+        return;
+      }
+
+      const invalidTender = tenders.find(
+        tender => !tender.method || !tender.amount || tender.amount <= 0
+      );
+
+      if (invalidTender) {
+        checkoutMessage.innerHTML = `
+          <div class="alert alert-danger">
+            Every split-payment row must have a method and an amount greater than zero.
+          </div>
+        `;
+        return;
+      }
+
+      const missingReference = tenders.find(
+        tender => ["card", "transfer"].includes(tender.method) && !tender.reference
+      );
+
+      if (missingReference) {
+        checkoutMessage.innerHTML = `
+          <div class="alert alert-danger">
+            Enter a card or bank reference for each Card or Bank Transfer payment.
+          </div>
+        `;
+        return;
+      }
+
+      enteredPayment = tenders.reduce(
+        (total, tender) => total + Number(tender.amount || 0),
+        0
+      );
+    } else if (["card", "transfer"].includes(selectedMethod)) {
+      if (!(paymentReference.value || "").trim()) {
+        checkoutMessage.innerHTML = `
+          <div class="alert alert-danger">
+            Enter the card or bank reference before completing checkout.
+          </div>
+        `;
+        return;
+      }
+    }
 
     if (!isPendingTransfer) {
       if (!enteredPayment || enteredPayment <= 0) {
@@ -751,7 +994,7 @@
         return;
       }
 
-      if (enteredPayment > calculatedCheckoutTotal) {
+      if (enteredPayment > calculatedCheckoutTotal + 0.01) {
         checkoutMessage.innerHTML = `
           <div class="alert alert-danger">
             Payment cannot exceed the total due of
@@ -763,7 +1006,10 @@
     }
 
     checkoutBtn.disabled = true;
-    checkoutBtn.textContent = "Processing...";
+    checkoutBtn.innerHTML = `
+      <span class="spinner-border spinner-border-sm me-2"></span>
+      Processing...
+    `;
     checkoutMessage.innerHTML = "";
     checkoutActions.classList.add("d-none");
     lastCheckoutInvoiceIds = [];
@@ -780,51 +1026,79 @@
         body: JSON.stringify({
           user_id: selectedCustomer.id,
           package_ids,
-          payment_method: paymentMethod.value,
+          payment_method: selectedMethod,
           payment_amount: isPendingTransfer ? 0 : enteredPayment,
-
+          payment_reference: (paymentReference?.value || "").trim(),
+          tenders,
           discount_type: discountType.value,
           discount_amount: discountAmount.value,
-
           notes: checkoutNotes.value
         })
       });
 
-      const data = await resp.json();
+      const data = await resp.json().catch(() => ({}));
 
-      if (!data.ok) {
-        checkoutMessage.innerHTML = `<div class="alert alert-danger">${data.error || "Checkout failed."}</div>`;
-        checkoutBtn.disabled = false;
-        checkoutBtn.textContent = "Complete Checkout";
-        checkoutActions.classList.add("d-none");
-        lastCheckoutInvoiceIds = [];
-        return;
+      if (!resp.ok || !data.ok) {
+        throw new Error(data.error || "Checkout failed.");
       }
 
       lastCheckoutInvoiceIds = data.invoice_ids || [];
 
-      checkoutMessage.innerHTML = `
-      <div class="alert alert-success">
-        ${data.message}<br>
-        Total: ${formatMoney(data.total)}
-      </div>
-    `;
+      const tenderLines = Array.isArray(data.tenders) && data.tenders.length
+        ? `
+          <hr class="my-2">
+          ${data.tenders.map(tender => `
+            <div>
+              ${String(tender.method || "Payment").replace(/_/g, " ")}:
+              ${formatMoney(tender.amount)}
+              ${tender.reference ? `(${tender.reference})` : ""}
+            </div>
+          `).join("")}
+        `
+        : "";
 
-      checkoutActions.classList.toggle("d-none", !lastCheckoutInvoiceIds.length);
+      checkoutMessage.innerHTML = `
+        <div class="alert alert-success">
+          ${data.message}<br>
+          Total: ${formatMoney(data.total)}
+          ${tenderLines}
+        </div>
+      `;
+
+      checkoutActions.classList.toggle(
+        "d-none",
+        !lastCheckoutInvoiceIds.length
+      );
 
       await loadPackages(selectedCustomer.id);
       selectAllPackages.checked = false;
+      paymentAmount.dataset.manual = "false";
+      paymentReference.value = "";
+
+      if (isSplitPayment) {
+        splitTenderRows.innerHTML = "";
+        ensureDefaultSplitTenders();
+      }
+
       updateSummary();
+      updatePaymentModeUI();
+
       if (barcodeScanInput) barcodeScanInput.focus();
+
     } catch (err) {
       console.error("POS checkout failed:", err);
-      checkoutMessage.innerHTML = `<div class="alert alert-danger">Something went wrong.</div>`;
+      checkoutMessage.innerHTML = `
+        <div class="alert alert-danger">
+          ${err.message || "Something went wrong."}
+        </div>
+      `;
       checkoutActions.classList.add("d-none");
       lastCheckoutInvoiceIds = [];
-    }
 
-    checkoutBtn.disabled = false;
-    checkoutBtn.textContent = "Complete Checkout";
+    } finally {
+      checkoutBtn.disabled = false;
+      checkoutBtn.textContent = "Complete Checkout";
+    }
   });
 
   printReceiptBtn.addEventListener("click", function () {

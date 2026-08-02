@@ -6251,93 +6251,265 @@ def api_customer_prealerts_create():
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    # Accept either JSON or multipart/form-data
-    if request.content_type and "multipart/form-data" in request.content_type:
+    # Accept either JSON or multipart/form-data.
+    if (
+        request.content_type
+        and "multipart/form-data" in request.content_type
+    ):
         data = request.form
-        invoice_file = request.files.get("invoice")
+
+        # Current mobile app sends multiple files using "invoices".
+        invoice_files = request.files.getlist("invoices")
+
+        # Compatibility with the previous single-file app version.
+        if not invoice_files:
+            old_invoice = request.files.get("invoice")
+            invoice_files = [old_invoice] if old_invoice else []
     else:
         data = request.get_json(silent=True) or {}
-        invoice_file = None
+        invoice_files = []
 
-    vendor_name = (data.get("vendor_name") or "").strip()
-    courier_name = (data.get("courier_name") or "").strip()
-    tracking_number = normalize_tracking((data.get("tracking_number") or "").strip())
-    package_contents = (data.get("package_contents") or "").strip()
+    # Remove empty file entries.
+    invoice_files = [
+        file
+        for file in invoice_files
+        if file and getattr(file, "filename", "")
+    ]
 
-    purchase_date_raw = (data.get("purchase_date") or "").strip()
+    # The mobile app allows a maximum of five attachments.
+    if len(invoice_files) > 5:
+        return jsonify({
+            "error": "A maximum of 5 attachments is allowed."
+        }), 400
+
+    vendor_name = (
+        data.get("vendor_name")
+        or ""
+    ).strip()
+
+    courier_name = (
+        data.get("courier_name")
+        or ""
+    ).strip()
+
+    tracking_number = normalize_tracking(
+        (
+            data.get("tracking_number")
+            or ""
+        ).strip()
+    )
+
+    package_contents = (
+        data.get("package_contents")
+        or ""
+    ).strip()
+
+    purchase_date_raw = (
+        data.get("purchase_date")
+        or ""
+    ).strip()
+
     item_value_raw = data.get("item_value_usd")
 
     if not vendor_name:
-        return jsonify({"error": "Vendor name is required"}), 400
+        return jsonify({
+            "error": "Vendor name is required"
+        }), 400
+
     if not tracking_number:
-        return jsonify({"error": "Tracking number is required"}), 400
+        return jsonify({
+            "error": "Tracking number is required"
+        }), 400
+
     if not package_contents:
-        return jsonify({"error": "Package contents are required"}), 400
+        return jsonify({
+            "error": "Package contents are required"
+        }), 400
 
     purchase_date = None
+
     if purchase_date_raw:
         try:
-            purchase_date = datetime.strptime(purchase_date_raw, "%Y-%m-%d").date()
-        except Exception:
-            return jsonify({"error": "Purchase date must be YYYY-MM-DD"}), 400
+            purchase_date = datetime.strptime(
+                purchase_date_raw,
+                "%Y-%m-%d",
+            ).date()
+        except (TypeError, ValueError):
+            return jsonify({
+                "error": "Purchase date must be YYYY-MM-DD"
+            }), 400
 
     try:
         item_value_usd = float(item_value_raw or 0)
-    except Exception:
-        return jsonify({"error": "Item value must be numeric"}), 400
+    except (TypeError, ValueError):
+        return jsonify({
+            "error": "Item value must be numeric"
+        }), 400
 
-    invoice_url = None
-    invoice_public_id = None
-    invoice_resource_type = None
-    invoice_original_name = None
+    if item_value_usd < 0:
+        return jsonify({
+            "error": "Item value cannot be negative"
+        }), 400
 
-    if invoice_file and getattr(invoice_file, "filename", ""):
-        original = (invoice_file.filename or "").strip()
+    # Validate every attachment before uploading anything.
+    for invoice_file in invoice_files:
+        original_name = (
+            invoice_file.filename
+            or ""
+        ).strip()
 
-        if not allowed_file(original):
-            return jsonify({"error": "Invalid invoice file type. Allowed: pdf, jpg, jpeg, png."}), 400
+        if not allowed_file(original_name):
+            return jsonify({
+                "error": (
+                    f"Invalid file type for {original_name}. "
+                    "Allowed file types are PDF, JPG, JPEG and PNG."
+                )
+            }), 400
 
-        from app.utils.cloudinary_storage import upload_prealert_invoice
-
-        invoice_original_name = original
-        invoice_url, invoice_public_id, invoice_resource_type = upload_prealert_invoice(invoice_file)
-
-    prealert_number = generate_prealert_number()
-
-    pa = Prealert(
-        prealert_number=prealert_number,
-        customer_id=user.id,
-        vendor_name=vendor_name,
-        courier_name=courier_name,
-        tracking_number=tracking_number,
-        purchase_date=purchase_date,
-        package_contents=package_contents,
-        item_value_usd=item_value_usd,
-        invoice_filename=invoice_url,
-        invoice_original_name=invoice_original_name,
-        invoice_public_id=invoice_public_id,
-        invoice_resource_type=invoice_resource_type,
-        created_at=datetime.now(timezone.utc),
+    from app.utils.cloudinary_storage import (
+        upload_prealert_invoice,
     )
 
-    db.session.add(pa)
-    db.session.commit()
+    uploaded_invoices = []
+
+    try:
+        # Upload all valid attachments to Cloudinary.
+        for invoice_file in invoice_files:
+            original_name = (
+                invoice_file.filename
+                or ""
+            ).strip()
+
+            (
+                invoice_url,
+                invoice_public_id,
+                invoice_resource_type,
+            ) = upload_prealert_invoice(invoice_file)
+
+            uploaded_invoices.append({
+                "url": invoice_url,
+                "original_name": original_name,
+                "public_id": invoice_public_id,
+                "resource_type": invoice_resource_type,
+            })
+
+        # Preserve the first attachment in the original Prealert
+        # fields for compatibility with existing pages and reports.
+        first_invoice = (
+            uploaded_invoices[0]
+            if uploaded_invoices
+            else None
+        )
+
+        prealert_number = generate_prealert_number()
+
+        pa = Prealert(
+            prealert_number=prealert_number,
+            customer_id=user.id,
+            vendor_name=vendor_name,
+            courier_name=courier_name,
+            tracking_number=tracking_number,
+            purchase_date=purchase_date,
+            package_contents=package_contents,
+            item_value_usd=item_value_usd,
+
+            invoice_filename=(
+                first_invoice["url"]
+                if first_invoice
+                else None
+            ),
+            invoice_original_name=(
+                first_invoice["original_name"]
+                if first_invoice
+                else None
+            ),
+            invoice_public_id=(
+                first_invoice["public_id"]
+                if first_invoice
+                else None
+            ),
+            invoice_resource_type=(
+                first_invoice["resource_type"]
+                if first_invoice
+                else None
+            ),
+
+            created_at=datetime.now(timezone.utc),
+        )
+
+        db.session.add(pa)
+
+        # Obtain the new pre-alert ID before creating attachment rows.
+        db.session.flush()
+
+        for item in uploaded_invoices:
+            attachment = PrealertAttachment(
+                prealert_id=pa.id,
+                file_url=item["url"],
+                original_name=item["original_name"],
+                cloud_public_id=item["public_id"],
+                cloud_resource_type=item["resource_type"],
+            )
+
+            db.session.add(attachment)
+
+        db.session.commit()
+
+    except Exception:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Unable to create mobile pre-alert for user_id=%s",
+            user.id,
+        )
+
+        return jsonify({
+            "error": (
+                "The pre-alert could not be saved. "
+                "Please try again."
+            )
+        }), 500
 
     return jsonify({
         "success": True,
-        "message": f"Pre-alert PA-{prealert_number} submitted successfully",
+        "message": (
+            f"Pre-alert PA-{prealert_number} "
+            "submitted successfully"
+        ),
         "prealert": {
             "id": pa.id,
             "prealert_number": pa.prealert_number,
             "vendor_name": pa.vendor_name or "",
             "courier_name": pa.courier_name or "",
             "tracking_number": pa.tracking_number or "",
-            "purchase_date": pa.purchase_date.strftime("%Y-%m-%d") if pa.purchase_date else "",
+            "purchase_date": (
+                pa.purchase_date.strftime("%Y-%m-%d")
+                if pa.purchase_date
+                else ""
+            ),
             "package_contents": pa.package_contents or "",
-            "item_value_usd": float(pa.item_value_usd or 0),
-            "invoice_filename": pa.invoice_filename or "",
-            "invoice_original_name": pa.invoice_original_name or "",
-        }
+            "item_value_usd": float(
+                pa.item_value_usd
+                or 0
+            ),
+            "invoice_filename": (
+                pa.invoice_filename
+                or ""
+            ),
+            "invoice_original_name": (
+                pa.invoice_original_name
+                or ""
+            ),
+            "attachment_count": len(uploaded_invoices),
+            "attachments": [
+                {
+                    "file_url": item["url"],
+                    "original_name": item["original_name"],
+                    "resource_type": item["resource_type"],
+                }
+                for item in uploaded_invoices
+            ],
+        },
     }), 201
 
 @customer_bp.route("/api/transactions", methods=["GET"])

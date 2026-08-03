@@ -195,23 +195,36 @@
 {% set totals = namespace(package_balance=0.0, total_weight=0) %}
 
 {% for pkg in packages %}
-{% set package_due = pkg.amount_due or 0 %}
-{% set raw_weight = pkg.weight or 0 %}
-{% set billable_weight = ((raw_weight|round(0, 'ceil'))|int) %}
+{% set package_due = (pkg.amount_due or 0) | float %}
+{% set raw_weight = (pkg.weight or 0) | float %}
+{% set billable_weight = raw_weight | round(0, 'ceil') | int %}
 
-{% set totals.package_balance = totals.package_balance + package_due %}
-{% set totals.total_weight = totals.total_weight + billable_weight %}
+{% set totals.package_balance =
+(totals.package_balance | float)
++
+package_due
+%}
+
+{% set totals.total_weight =
+(totals.total_weight | int)
++
+billable_weight
+%}
 {% endfor %}
 
 {% if delivery_status in ["Cancelled", "Canceled"] %}
-{% set delivery_fee_due = 0 %}
-{% elif fee_status|lower in ["paid", "waived", "refunded"] %}
-{% set delivery_fee_due = 0 %}
+{% set delivery_fee_due = 0.0 %}
+{% elif fee_status | lower in ["paid", "waived", "refunded"] %}
+{% set delivery_fee_due = 0.0 %}
 {% else %}
-{% set delivery_fee_due = delivery.delivery_fee or 0 %}
+{% set delivery_fee_due = (delivery.delivery_fee or 0) | float %}
 {% endif %}
 
-{% set expected_collection = totals.package_balance + delivery_fee_due %}
+{% set expected_collection =
+(totals.package_balance | float)
++
+(delivery_fee_due | float)
+%}
 
 <div class="container mt-4 mb-5 delivery-page">
 

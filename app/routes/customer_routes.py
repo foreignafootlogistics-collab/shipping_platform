@@ -7351,59 +7351,447 @@ def api_customer_create_delivery():
         }), 500
 
 
-@customer_bp.route(
-    "/api/deliveries/eligible-packages",
-    methods=["GET"],
-)
+def _mobile_delivery_json(delivery, packages=None):
+    if packages is None:
+        packages = (
+            Package.query
+            .filter(Package.scheduled_delivery_id == delivery.id)
+            .order_by(Package.id.asc())
+            .all()
+        )
+
+    return {
+        "id": delivery.id,
+        "invoice_number": delivery.invoice_number or f"DEL-{delivery.id}",
+        "scheduled_date": (
+            delivery.scheduled_date.isoformat()
+            if getattr(delivery, "scheduled_date", None)
+            else ""
+        ),
+        "scheduled_time": getattr(delivery, "scheduled_time", "") or "",
+        "scheduled_time_from": getattr(delivery, "scheduled_time_from", "") or "",
+        "scheduled_time_to": getattr(delivery, "scheduled_time_to", "") or "",
+        "location": getattr(delivery, "location", "") or "",
+        "direction": getattr(delivery, "direction", "") or "",
+        "mobile_number": getattr(delivery, "mobile_number", "") or "",
+        "person_receiving": getattr(delivery, "person_receiving", "") or "",
+        "area_zone": getattr(delivery, "area_zone", "") or "",
+        "delivery_parish": getattr(delivery, "delivery_parish", "") or "",
+        "delivery_branch": getattr(delivery, "delivery_branch", "") or "",
+        "distance_km": float(getattr(delivery, "distance_km", 0) or 0),
+        "delivery_type": getattr(delivery, "delivery_type", "") or "",
+        "is_free_delivery": bool(getattr(delivery, "is_free_delivery", False)),
+        "delivery_fee": float(getattr(delivery, "delivery_fee", 0) or 0),
+        "fee_currency": getattr(delivery, "fee_currency", "") or DELIVERY_FEE_CURRENCY,
+        "fee_status": getattr(delivery, "fee_status", "") or "",
+        "status": getattr(delivery, "status", "") or "",
+        "package_ids": [package.id for package in packages],
+        "packages": [
+            {
+                "id": package.id,
+                "house_awb": package.house_awb or "",
+                "tracking_number": package.tracking_number or "",
+                "description": package.description or "",
+                "amount_due": float(package.amount_due or 0),
+            }
+            for package in packages
+        ],
+    }
+
+
+@customer_bp.route("/api/deliveries", methods=["GET"])
+def api_customer_deliveries():
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    deliveries = (
+        ScheduledDelivery.query
+        .filter(ScheduledDelivery.user_id == user.id)
+        .order_by(ScheduledDelivery.created_at.desc(), ScheduledDelivery.id.desc())
+        .all()
+    )
+
+    return jsonify({
+        "enabled": True,
+        "rows": [_mobile_delivery_json(delivery) for delivery in deliveries],
+    })
+
+
+@customer_bp.route("/api/deliveries/<int:delivery_id>/invoice", methods=["GET"])
+def api_customer_delivery_invoice(delivery_id):
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    delivery = ScheduledDelivery.query.filter_by(
+        id=delivery_id,
+        user_id=user.id,
+    ).first()
+    if not delivery:
+        return jsonify({"error": "Delivery not found"}), 404
+
+    created_at = getattr(delivery, "created_at", None)
+    return jsonify({
+        "invoice_number": delivery.invoice_number or f"DEL-{delivery.id}",
+        "created_at": created_at.strftime("%Y-%m-%d %H:%M") if created_at else "",
+        "customer": {
+            "name": user.full_name or "",
+            "registration": user.registration_number or "",
+            "email": user.email or "",
+        },
+        "fee_status": getattr(delivery, "fee_status", "") or "",
+        "delivery_status": getattr(delivery, "status", "") or "",
+        "details": {
+            "scheduled_date": (
+                delivery.scheduled_date.isoformat()
+                if getattr(delivery, "scheduled_date", None)
+                else ""
+            ),
+            "scheduled_time": getattr(delivery, "scheduled_time", "") or "",
+            "location": getattr(delivery, "location", "") or "",
+            "direction": getattr(delivery, "direction", "") or "",
+            "mobile_number": getattr(delivery, "mobile_number", "") or "",
+            "person_receiving": getattr(delivery, "person_receiving", "") or "",
+        },
+        "charges": {
+            "description": "Delivery Request Fee",
+            "amount": float(getattr(delivery, "delivery_fee", 0) or 0),
+            "total_due": float(getattr(delivery, "delivery_fee", 0) or 0),
+        },
+    })
+
+
+@customer_bp.route("/api/deliveries/estimate", methods=["POST"])
+@csrf.exempt
+def api_customer_delivery_estimate():
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    parish = (data.get("delivery_parish") or "").strip()
+    address = (data.get("location") or "").strip()
+    schedule_date = (data.get("schedule_date") or data.get("date") or "").strip()
+
+    if not parish:
+        return jsonify({"success": False, "message": "Please select a delivery parish."}), 400
+    if not address:
+        return jsonify({"success": False, "message": "Please enter the delivery address."}), 400
+    if not schedule_date:
+        return jsonify({"success": False, "message": "Please select a delivery date."}), 400
+
+    try:
+        delivery_date = datetime.strptime(schedule_date, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "The selected delivery date is invalid."}), 400
+
+    jamaica_now = to_jamaica(datetime.now(timezone.utc)).replace(tzinfo=None)
+    booking_deadline = datetime.combine(
+        delivery_date - timedelta(days=1),
+        datetime.min.time(),
+    ) + timedelta(hours=20)
+    if jamaica_now > booking_deadline:
+        return jsonify({
+            "success": False,
+            "message": (
+                "Booking for this delivery date is closed. Deliveries must be "
+                "scheduled by 8:00 PM Jamaica time on the previous day."
+            ),
+        }), 400
+
+    settings = Settings.query.get(1)
+    if not settings:
+        return jsonify({"success": False, "message": "Delivery settings are not configured."}), 500
+
+    try:
+        distance_result = calculate_real_distance(
+            parish=parish,
+            destination_address=address,
+            settings=settings,
+        )
+        if not distance_result.get("success"):
+            return jsonify({
+                "success": False,
+                "message": distance_result.get("error", "Distance calculation failed."),
+            }), 400
+
+        distance_km = float(distance_result.get("distance_km") or 0)
+        details = build_delivery_details(
+            parish=parish,
+            distance_km=distance_km,
+            scheduled_date=delivery_date,
+            settings=settings,
+        )
+        if not details.get("allowed"):
+            return jsonify({
+                "success": False,
+                "message": (
+                    "This address exceeds the maximum delivery distance of "
+                    f"{details.get('max_distance', 0)} KM."
+                ),
+                "allowed": False,
+                "distance_km": distance_km,
+                "max_distance": details.get("max_distance"),
+            }), 400
+
+        return jsonify({
+            "success": True,
+            "distance_km": distance_km,
+            "duration_text": distance_result.get("duration_text") or "",
+            "delivery_fee": float(details.get("delivery_fee", 0) or 0),
+            "delivery_type": details.get("delivery_type") or "",
+            "is_free_delivery": bool(details.get("is_free_delivery", False)),
+            "delivery_branch": details.get("delivery_branch") or "",
+            "area_zone": details.get("area_zone") or "dynamic",
+            "allowed": True,
+            "max_distance": details.get("max_distance"),
+        })
+    except Exception:
+        current_app.logger.exception("api_customer_delivery_estimate failed")
+        return jsonify({
+            "success": False,
+            "message": "An unexpected error occurred while calculating the delivery estimate.",
+        }), 500
+
+
+@customer_bp.route("/api/deliveries/create", methods=["POST"])
+@csrf.exempt
+def api_customer_create_delivery():
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    raw_package_ids = data.get("package_ids") or []
+    if not isinstance(raw_package_ids, (list, tuple, set)):
+        raw_package_ids = [raw_package_ids]
+
+    package_ids = []
+    for raw_id in raw_package_ids:
+        try:
+            package_id = int(raw_id)
+            if package_id > 0:
+                package_ids.append(package_id)
+        except (TypeError, ValueError):
+            continue
+    package_ids = list(dict.fromkeys(package_ids))
+
+    schedule_date = (data.get("schedule_date") or data.get("date") or "").strip()
+    location = (data.get("location") or "").strip()
+    delivery_parish = (data.get("delivery_parish") or "").strip()
+    direction = (data.get("direction") or data.get("directions") or "").strip()
+    mobile_number = (data.get("mobile_number") or data.get("mobile") or "").strip()
+    person_receiving = (data.get("person_receiving") or "").strip()
+
+    missing = []
+    if not package_ids:
+        missing.append("at least one Ready for Pick Up package")
+    if not schedule_date:
+        missing.append("delivery date")
+    if not location:
+        missing.append("delivery address")
+    if not delivery_parish:
+        missing.append("delivery parish")
+    if not mobile_number:
+        missing.append("receiver mobile number")
+    if not person_receiving:
+        missing.append("person receiving")
+    if missing:
+        return jsonify({
+            "success": False,
+            "message": "Please provide: " + ", ".join(missing) + ".",
+        }), 400
+
+    delivery_date = None
+    for date_format in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            delivery_date = datetime.strptime(schedule_date, date_format).date()
+            break
+        except (TypeError, ValueError):
+            continue
+    if delivery_date is None:
+        return jsonify({"success": False, "message": "The selected delivery date is invalid."}), 400
+
+    jamaica_now = to_jamaica(datetime.now(timezone.utc)).replace(tzinfo=None)
+    booking_deadline = datetime.combine(
+        delivery_date - timedelta(days=1),
+        datetime.min.time(),
+    ) + timedelta(hours=20)
+    if jamaica_now > booking_deadline:
+        return jsonify({
+            "success": False,
+            "message": (
+                "Booking for this delivery date is closed. Deliveries must be "
+                "scheduled by 8:00 PM Jamaica time on the previous day."
+            ),
+        }), 400
+
+    try:
+        settings = Settings.query.get(1)
+        if not settings:
+            return jsonify({"success": False, "message": "Delivery settings are not configured."}), 500
+
+        selected_packages = (
+            Package.query
+            .filter(
+                Package.id.in_(package_ids),
+                Package.user_id == user.id,
+                func.lower(func.trim(Package.status)) == "ready for pick up",
+                Package.scheduled_delivery_id.is_(None),
+            )
+            .with_for_update()
+            .order_by(Package.id.asc())
+            .all()
+        )
+        if len(selected_packages) != len(package_ids):
+            return jsonify({
+                "success": False,
+                "message": (
+                    "One or more selected packages are no longer eligible. Only "
+                    "unassigned packages marked Ready for Pick Up can be scheduled."
+                ),
+            }), 400
+
+        distance_result = calculate_real_distance(
+            parish=delivery_parish,
+            destination_address=location,
+            settings=settings,
+        )
+        if not distance_result.get("success"):
+            return jsonify({
+                "success": False,
+                "message": distance_result.get("error", "Distance calculation failed."),
+            }), 400
+
+        distance_km = float(distance_result.get("distance_km") or 0)
+        details = build_delivery_details(
+            parish=delivery_parish,
+            distance_km=distance_km,
+            scheduled_date=delivery_date,
+            settings=settings,
+        )
+        if not details.get("allowed"):
+            return jsonify({
+                "success": False,
+                "message": (
+                    "This address exceeds the maximum delivery distance of "
+                    f"{details.get('max_distance', 0)} KM."
+                ),
+            }), 400
+
+        fee_amount = Decimal(str(details.get("delivery_fee", 0) or 0)).quantize(Decimal("0.01"))
+        delivery_type = details.get("delivery_type") or "paid"
+        is_free = bool(details.get("is_free_delivery", False))
+        fee_status = "Waived" if is_free or fee_amount <= Decimal("0.00") else "Unpaid"
+        if delivery_type == "admin_review":
+            fee_status = "Unpaid"
+
+        new_delivery = ScheduledDelivery(
+            user_id=user.id,
+            scheduled_date=delivery_date,
+            scheduled_time_from="09:00",
+            scheduled_time_to="17:00",
+            scheduled_time="09:00 - 17:00",
+            location=location,
+            direction=direction,
+            mobile_number=mobile_number,
+            person_receiving=person_receiving,
+            area_zone=details.get("area_zone") or "dynamic",
+            delivery_parish=delivery_parish,
+            delivery_branch=details.get("delivery_branch") or "",
+            distance_km=distance_km,
+            delivery_type=delivery_type,
+            is_free_delivery=is_free,
+            delivery_risk_status="safe",
+            delivery_fee=fee_amount,
+            fee_currency=DELIVERY_FEE_CURRENCY,
+            fee_status=fee_status,
+            status="Scheduled",
+        )
+        db.session.add(new_delivery)
+        db.session.flush()
+
+        for package in selected_packages:
+            package.scheduled_delivery_id = new_delivery.id
+
+        jamaica_created_at = to_jamaica(datetime.now(timezone.utc))
+        new_delivery.invoice_number = f"DEL-{jamaica_created_at.year}-{new_delivery.id:06d}"
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Delivery scheduled successfully.",
+            "delivery": _mobile_delivery_json(new_delivery, selected_packages),
+        }), 201
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("api_customer_create_delivery failed for customer %s", user.id)
+        return jsonify({
+            "success": False,
+            "message": "An unexpected error occurred while scheduling the delivery.",
+        }), 500
+
+
+@customer_bp.route("/api/deliveries/eligible-packages", methods=["GET"])
 def api_delivery_eligible_packages():
     user = get_api_user()
-
     if not user:
-        return jsonify({
-            "error": "Unauthorized",
-        }), 401
+        return jsonify({"error": "Unauthorized"}), 401
 
     packages = (
         Package.query
         .filter(
             Package.user_id == user.id,
-            func.lower(
-                func.trim(Package.status)
-            ) == "ready for pick up",
-            Package.scheduled_delivery_id.is_(
-                None
-            ),
+            func.lower(func.trim(Package.status)) == "ready for pick up",
+            Package.scheduled_delivery_id.is_(None),
         )
-        .order_by(
-            Package.id.desc()
-        )
+        .order_by(Package.id.desc())
         .all()
     )
-
     return jsonify({
         "packages": [
             {
                 "id": package.id,
-                "house_awb": (
-                    package.house_awb
-                    or ""
-                ),
-                "description": (
-                    package.description
-                    or ""
-                ),
-                "tracking_number": (
-                    package.tracking_number
-                    or ""
-                ),
-                "amount_due": float(
-                    package.amount_due
-                    or 0
-                ),
+                "house_awb": package.house_awb or "",
+                "description": package.description or "",
+                "tracking_number": package.tracking_number or "",
+                "amount_due": float(package.amount_due or 0),
             }
             for package in packages
         ],
     })
+
+
+@customer_bp.route("/api/deliveries/<int:delivery_id>/cancel", methods=["POST"])
+@csrf.exempt
+def api_customer_cancel_delivery(delivery_id):
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    delivery = ScheduledDelivery.query.filter_by(
+        id=delivery_id,
+        user_id=user.id,
+    ).first()
+    if not delivery:
+        return jsonify({"success": False, "message": "Delivery not found."}), 404
+    if (delivery.status or "").strip().lower() == "delivered":
+        return jsonify({"success": False, "message": "This delivery is already delivered."}), 400
+    if (delivery.status or "").strip().lower() == "cancelled":
+        return jsonify({"success": True, "message": "Delivery is already cancelled."}), 200
+
+    packages = Package.query.filter(Package.scheduled_delivery_id == delivery.id).all()
+    for package in packages:
+        package.scheduled_delivery_id = None
+
+    delivery.status = "Cancelled"
+    db.session.commit()
+    return jsonify({
+        "success": True,
+        "message": "Delivery cancelled.",
+        "released_package_ids": [package.id for package in packages],
+    }), 200
 
 @customer_bp.route("/api/login", methods=["POST"])
 @csrf.exempt

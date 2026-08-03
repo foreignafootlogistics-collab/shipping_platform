@@ -4298,6 +4298,23 @@ def schedule_delivery_detail(delivery_id):
         packages=packages
     )
 
+@customer_bp.route(
+    "/schedule-delivery/<int:delivery_id>/invoice",
+    methods=["GET"],
+)
+@login_required
+def delivery_invoice_view(delivery_id):
+    delivery = ScheduledDelivery.query.filter_by(
+        id=delivery_id,
+        user_id=current_user.id,
+    ).first_or_404()
+
+    return redirect(
+        url_for(
+            "customer.schedule_delivery_detail",
+            delivery_id=delivery.id,
+        )
+    )
 
 @customer_bp.route(
     "/schedule-delivery/add",

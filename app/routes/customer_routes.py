@@ -6095,13 +6095,14 @@ def api_customer_dashboard():
             "full_name": user.full_name,
             "registration": user.registration_number,
             "email": user.email,
-            "mobile": user.mobile
+            "mobile": user.mobile,
+            "profile_picture": (getattr(user, "profile_pic", "") or "").strip(),
         },
         "addresses": {
             "overseas": {
                 "recipient": user.full_name or "",
                 "street": us_street,
-                "suite": f"KCDA-{reg}" if reg else "KCDA",
+                "suite": f"{reg}",
                 "city": us_city,
                 "state": us_state,
                 "zip": us_zip

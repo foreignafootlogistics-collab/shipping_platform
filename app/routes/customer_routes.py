@@ -7610,6 +7610,284 @@ def api_customer_cancel_delivery(delivery_id):
         "released_package_ids": [package.id for package in packages],
     }), 200
 
+def _mobile_pickup_package_json(package):
+    return {
+        "id": package.id,
+        "house_awb": package.house_awb or "",
+        "tracking_number": package.tracking_number or "",
+        "description": package.description or "",
+        "weight": float(package.weight or 0),
+        "amount_due": float(package.amount_due or 0),
+    }
+
+
+def _mobile_pickup_json(pickup):
+    packages = list(getattr(pickup, "packages", None) or [])
+    created_at = getattr(pickup, "created_at", None)
+    jamaica_created_at = to_jamaica(created_at) if created_at else None
+
+    return {
+        "id": pickup.id,
+        "pickup_date": (
+            pickup.pickup_date.isoformat()
+            if getattr(pickup, "pickup_date", None)
+            else ""
+        ),
+        "branch": getattr(pickup, "branch", "") or "Gregory Park",
+        "status": getattr(pickup, "status", "") or "Scheduled",
+        "authorized_person": getattr(pickup, "authorized_person", "") or "",
+        "notes": getattr(pickup, "notes", "") or "",
+        "created_at": (
+            jamaica_created_at.strftime("%Y-%m-%d %H:%M")
+            if jamaica_created_at
+            else ""
+        ),
+        "package_ids": [package.id for package in packages],
+        "packages": [_mobile_pickup_package_json(package) for package in packages],
+    }
+
+
+@customer_bp.route("/api/store-pickups", methods=["GET"])
+def api_customer_store_pickups():
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    active_statuses = ["Scheduled", "Ready"]
+
+    eligible_packages = (
+        Package.query
+        .filter(
+            Package.user_id == user.id,
+            func.lower(func.trim(Package.status)) == "ready for pick up",
+            ~Package.scheduled_pickups.any(
+                ScheduledPickup.status.in_(active_statuses)
+            ),
+        )
+        .order_by(Package.created_at.desc(), Package.id.desc())
+        .all()
+    )
+
+    pickups = (
+        ScheduledPickup.query
+        .filter(ScheduledPickup.user_id == user.id)
+        .order_by(ScheduledPickup.pickup_date.desc(), ScheduledPickup.id.desc())
+        .all()
+    )
+
+    authorized_people = (
+        AuthorizedPickup.query
+        .filter(AuthorizedPickup.user_id == user.id)
+        .order_by(AuthorizedPickup.full_name.asc(), AuthorizedPickup.id.asc())
+        .all()
+    )
+
+    return jsonify({
+        "branch": "Gregory Park",
+        "self": {
+            "id": "self",
+            "full_name": user.full_name or "",
+            "phone_number": user.mobile or "",
+        },
+        "authorized_people": [
+            {
+                "id": person.id,
+                "full_name": person.full_name or "",
+                "email": person.email or "",
+                "phone_number": person.phone_number or "",
+            }
+            for person in authorized_people
+        ],
+        "eligible_packages": [
+            _mobile_pickup_package_json(package)
+            for package in eligible_packages
+        ],
+        "rows": [_mobile_pickup_json(pickup) for pickup in pickups],
+    }), 200
+
+
+@customer_bp.route("/api/store-pickups/create", methods=["POST"])
+@csrf.exempt
+def api_customer_store_pickup_create():
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    pickup_date_raw = (data.get("pickup_date") or "").strip()
+    authorized_pickup_id = str(
+        data.get("authorized_pickup_id") or "self"
+    ).strip()
+    notes = (data.get("notes") or "").strip()
+
+    raw_package_ids = data.get("package_ids") or []
+    if not isinstance(raw_package_ids, (list, tuple, set)):
+        raw_package_ids = [raw_package_ids]
+
+    package_ids = []
+    for raw_id in raw_package_ids:
+        try:
+            package_id = int(raw_id)
+            if package_id > 0:
+                package_ids.append(package_id)
+        except (TypeError, ValueError):
+            continue
+    package_ids = list(dict.fromkeys(package_ids))
+
+    if not pickup_date_raw:
+        return jsonify({
+            "success": False,
+            "message": "Please select a pickup date.",
+        }), 400
+
+    if not package_ids:
+        return jsonify({
+            "success": False,
+            "message": "Please select at least one package.",
+        }), 400
+
+    try:
+        pickup_date = datetime.strptime(pickup_date_raw, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return jsonify({
+            "success": False,
+            "message": "Invalid pickup date.",
+        }), 400
+
+    jamaica_today = to_jamaica(datetime.now(timezone.utc)).date()
+    if pickup_date < jamaica_today:
+        return jsonify({
+            "success": False,
+            "message": "The pickup date cannot be in the past.",
+        }), 400
+
+    if authorized_pickup_id == "self":
+        authorized_person = (user.full_name or "").strip()
+        if not authorized_person:
+            return jsonify({
+                "success": False,
+                "message": (
+                    "Your account does not have a full name. Please update "
+                    "your profile before scheduling pickup."
+                ),
+            }), 400
+    else:
+        try:
+            person_id = int(authorized_pickup_id)
+        except (TypeError, ValueError):
+            return jsonify({
+                "success": False,
+                "message": "Please select a valid pickup person.",
+            }), 400
+
+        authorized_record = AuthorizedPickup.query.filter_by(
+            id=person_id,
+            user_id=user.id,
+        ).first()
+        if not authorized_record:
+            return jsonify({
+                "success": False,
+                "message": "The selected authorized person was not found on your account.",
+            }), 400
+        authorized_person = authorized_record.full_name
+
+    active_statuses = ["Scheduled", "Ready"]
+
+    try:
+        packages = (
+            Package.query
+            .filter(
+                Package.user_id == user.id,
+                Package.id.in_(package_ids),
+                func.lower(func.trim(Package.status)) == "ready for pick up",
+                ~Package.scheduled_pickups.any(
+                    ScheduledPickup.status.in_(active_statuses)
+                ),
+            )
+            .with_for_update(of=Package)
+            .order_by(Package.id.asc())
+            .all()
+        )
+
+        if len(packages) != len(package_ids):
+            return jsonify({
+                "success": False,
+                "message": (
+                    "One or more selected packages are no longer eligible. "
+                    "Only unscheduled packages marked Ready for Pick Up can be selected."
+                ),
+            }), 400
+
+        pickup = ScheduledPickup(
+            user_id=user.id,
+            pickup_date=pickup_date,
+            branch="Gregory Park",
+            status="Scheduled",
+            authorized_person=authorized_person,
+            notes=notes,
+        )
+        db.session.add(pickup)
+        db.session.flush()
+
+        for package in packages:
+            pickup.packages.append(package)
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Store pickup scheduled successfully.",
+            "pickup": _mobile_pickup_json(pickup),
+        }), 201
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "api_customer_store_pickup_create failed for customer %s",
+            user.id,
+        )
+        return jsonify({
+            "success": False,
+            "message": "An unexpected error occurred while scheduling the store pickup.",
+        }), 500
+
+
+@customer_bp.route(
+    "/api/store-pickups/<int:pickup_id>/cancel",
+    methods=["POST"],
+)
+@csrf.exempt
+def api_customer_store_pickup_cancel(pickup_id):
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    pickup = ScheduledPickup.query.filter_by(
+        id=pickup_id,
+        user_id=user.id,
+    ).first()
+
+    if not pickup:
+        return jsonify({
+            "success": False,
+            "message": "Store pickup not found.",
+        }), 404
+
+    status = (pickup.status or "").strip()
+    if status != "Scheduled":
+        return jsonify({
+            "success": False,
+            "message": "This pickup can no longer be cancelled online.",
+        }), 400
+
+    pickup.status = "Cancelled"
+    db.session.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "Store pickup cancelled.",
+        "pickup": _mobile_pickup_json(pickup),
+    }), 200
+
 @customer_bp.route("/api/login", methods=["POST"])
 @csrf.exempt
 def api_customer_login():

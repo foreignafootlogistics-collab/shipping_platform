@@ -6701,7 +6701,16 @@ def api_customer_transactions():
             "amount_paid": paid_sum,
             "amount_owed": owed,
             "invoice_id": inv.id,
-            "pdf_url": url_for("customer.invoice_pdf", invoice_id=inv.id, _external=True),
+            "pdf_url": url_for(
+                "customer.mobile_document_handoff",
+                document_token=_create_mobile_document_token(
+                    user.id,
+                    "invoice",
+                    inv.id,
+                ),
+                _external=True,
+                _scheme="https",
+            ),
         })
 
     # Payment / refund rows
@@ -6760,11 +6769,32 @@ def api_customer_transactions():
             "amount_owed": amount_owed,
             "payment_id": p.id,
             "pdf_url": (
-                url_for("customer.invoice_pdf", invoice_id=inv.id, _external=True)
+                url_for(
+                    "customer.mobile_document_handoff",
+                    document_token=_create_mobile_document_token(
+                        user.id,
+                        "invoice",
+                        inv.id,
+                    ),
+                    _external=True,
+                    _scheme="https",
+                )
                 if inv
                 else (
-                    url_for("customer.receipt_pdf_inline", payment_id=p.id, _external=True)
-                    if tx_type not in ("package_refund", "delivery_refund")
+                    url_for(
+                        "customer.mobile_document_handoff",
+                        document_token=_create_mobile_document_token(
+                            user.id,
+                            "receipt",
+                            p.id,
+                        ),
+                        _external=True,
+                        _scheme="https",
+                    )
+                    if tx_type not in (
+                        "package_refund",
+                        "delivery_refund",
+                    )
                     else ""
                 )
             ),
@@ -6833,6 +6863,119 @@ def api_customer_transactions():
         },
         "rows": rows,
     })
+
+def _create_mobile_document_token(
+    user_id,
+    document_type,
+    document_id,
+):
+    from itsdangerous import URLSafeTimedSerializer
+
+    serializer = URLSafeTimedSerializer(
+        current_app.config["SECRET_KEY"],
+        salt="fafl-mobile-document",
+    )
+
+    return serializer.dumps({
+        "user_id": int(user_id),
+        "document_type": str(document_type),
+        "document_id": int(document_id),
+    })
+
+
+@customer_bp.route(
+    "/mobile/document/<string:document_token>",
+    methods=["GET"],
+)
+def mobile_document_handoff(document_token):
+    from itsdangerous import (
+        BadSignature,
+        SignatureExpired,
+        URLSafeTimedSerializer,
+    )
+
+    serializer = URLSafeTimedSerializer(
+        current_app.config["SECRET_KEY"],
+        salt="fafl-mobile-document",
+    )
+
+    try:
+        payload = serializer.loads(
+            document_token,
+            max_age=600,  # Valid for 10 minutes
+        )
+    except SignatureExpired:
+        return (
+            "This document link has expired. "
+            "Please return to the app and open it again.",
+            410,
+        )
+    except BadSignature:
+        abort(403)
+
+    user_id = payload.get("user_id")
+    document_type = (
+        payload.get("document_type")
+        or ""
+    ).strip()
+    document_id = payload.get("document_id")
+
+    try:
+        user_id = int(user_id)
+        document_id = int(document_id)
+    except (TypeError, ValueError):
+        abort(403)
+
+    user = db.session.get(User, user_id)
+
+    if not user or not user.is_enabled:
+        abort(403)
+
+    if document_type == "invoice":
+        invoice = Invoice.query.filter_by(
+            id=document_id,
+            user_id=user.id,
+        ).first()
+
+        if not invoice:
+            abort(404)
+
+        login_user(
+            user,
+            remember=False,
+            force=False,
+        )
+
+        return redirect(
+            url_for(
+                "customer.invoice_pdf",
+                invoice_id=invoice.id,
+            )
+        )
+
+    if document_type == "receipt":
+        payment = Payment.query.filter_by(
+            id=document_id,
+            user_id=user.id,
+        ).first()
+
+        if not payment:
+            abort(404)
+
+        login_user(
+            user,
+            remember=False,
+            force=False,
+        )
+
+        return redirect(
+            url_for(
+                "customer.receipt_pdf_inline",
+                payment_id=payment.id,
+            )
+        )
+
+    abort(404)
 
 @customer_bp.route("/api/deliveries", methods=["GET"])
 def api_customer_deliveries():

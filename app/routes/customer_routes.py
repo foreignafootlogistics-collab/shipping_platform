@@ -4504,7 +4504,7 @@ def schedule_delivery_add():
                     None
                 ),
             )
-            .with_for_update()
+            .with_for_update(of=Package)
             .order_by(
                 Package.id.asc()
             )
@@ -7267,7 +7267,7 @@ def api_customer_create_delivery():
                 func.lower(func.trim(Package.status)) == "ready for pick up",
                 Package.scheduled_delivery_id.is_(None),
             )
-            .with_for_update()
+            .with_for_update(of=Package)
             .order_by(Package.id.asc())
             .all()
         )

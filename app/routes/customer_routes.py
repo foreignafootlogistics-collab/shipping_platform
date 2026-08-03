@@ -6051,88 +6051,255 @@ def api_customer_dashboard():
 
     settings = db.session.get(Settings, 1)
 
-    us_street = getattr(settings, "us_street", None) or "3200 NW 112th Avenue"
-    us_city = getattr(settings, "us_city", None) or "Doral"
+    us_street = getattr(settings, "us_street", None) or "559 NE 42ND ST"
+    us_city = getattr(settings, "us_city", None) or "Oakland Park"
     us_state = getattr(settings, "us_state", None) or "Florida"
-    us_zip = getattr(settings, "us_zip", None) or "33172"
+    us_zip = getattr(settings, "us_zip", None) or "33334"
 
-    reg = (getattr(user, "registration_number", "") or "").strip()
-    reg = reg.replace("FAFL#", "").replace("FAFL ", "FAFL").replace(" ", "")
+    registration = (getattr(user, "registration_number", "") or "").strip()
+    registration_clean = (
+        registration
+        .replace("FAFL#", "")
+        .replace("FAFL ", "FAFL")
+        .replace(" ", "")
+    )
+
+    status_normalized = func.lower(func.trim(Package.status))
 
     overseas_packages = db.session.scalar(
         sa.select(func.count()).select_from(Package).where(
             Package.user_id == user.id,
-            Package.status == "Overseas"
+            status_normalized == "overseas",
         )
     ) or 0
 
     ready_to_pickup = db.session.scalar(
         sa.select(func.count()).select_from(Package).where(
             Package.user_id == user.id,
-            Package.status == "Ready for Pick Up"
-        )
-    ) or 0
-
-    status_norm = func.lower(func.trim(Package.status))
-
-    total_shipped = db.session.scalar(
-        sa.select(func.count()).select_from(Package).where(
-            Package.user_id == user.id,
-            status_norm.notin_(('cancelled', 'canceled', 'deleted', 'draft'))
+            status_normalized == "ready for pick up",
         )
     ) or 0
 
     ready_packages = (
         Package.query
-        .filter_by(user_id=user.id, status="Ready for Pick Up")
-        .order_by(Package.received_date.desc().nullslast())
+        .filter(
+            Package.user_id == user.id,
+            status_normalized == "ready for pick up",
+        )
+        .order_by(Package.received_date.desc().nullslast(), Package.id.desc())
         .limit(5)
         .all()
     )
 
+    def _number(value):
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    # Match the current website dashboard's Total Owed calculation.
+    total_owed = 0.0
+    pending_invoice_count = 0
+
+    for invoice in Invoice.query.filter_by(user_id=user.id).all():
+        invoice_status = (
+            getattr(invoice, "status", None) or "unpaid"
+        ).strip().lower()
+
+        if invoice_status in {
+            "draft", "quoted", "cancelled", "canceled",
+            "paid", "void", "voided",
+        }:
+            continue
+
+        invoice_total = _number(
+            getattr(
+                invoice,
+                "grand_total",
+                getattr(invoice, "subtotal", 0),
+            )
+        )
+
+        completed_payments = [
+            payment
+            for payment in (getattr(invoice, "payments", None) or [])
+            if (
+                getattr(payment, "status", "completed") or "completed"
+            ).strip().lower() in {"completed", "settled"}
+            and getattr(
+                payment,
+                "transaction_type",
+                "invoice_payment",
+            ) in {
+                "invoice_payment",
+                "subscription_payment",
+                "subscription_upgrade_payment",
+            }
+        ]
+
+        paid_total = sum(
+            _number(getattr(payment, "amount_jmd", 0))
+            for payment in completed_payments
+        )
+
+        amount_owed = max(invoice_total - paid_total, 0.0)
+
+        if amount_owed > 0.01:
+            total_owed += amount_owed
+            pending_invoice_count += 1
+
+    referral_code = ensure_user_referral_code(user) or ""
+    summary = get_subscription_summary(user.id)
+
+    def _summary_value(*keys, default=None):
+        for key in keys:
+            if isinstance(summary, dict) and key in summary:
+                value = summary.get(key)
+                if value is not None:
+                    return value
+            elif summary is not None and hasattr(summary, key):
+                value = getattr(summary, key, None)
+                if value is not None:
+                    return value
+        return default
+
+    subscription_status = str(
+        _summary_value("status", "subscription_status", default="") or ""
+    ).strip()
+
+    plan_name = str(
+        _summary_value("plan_name", "name", default="") or ""
+    ).strip()
+
+    package_limit = int(_number(
+        _summary_value("package_limit", "packages_limit", default=0)
+    ))
+    packages_used = int(_number(
+        _summary_value("packages_used", "package_used", "used_packages", default=0)
+    ))
+    packages_remaining = int(_number(
+        _summary_value(
+            "packages_remaining",
+            "package_remaining",
+            "remaining_packages",
+            default=max(package_limit - packages_used, 0),
+        )
+    ))
+
+    weight_limit = _number(
+        _summary_value("weight_limit", "weight_limit_lbs", default=0)
+    )
+    weight_used = _number(
+        _summary_value("weight_used", "used_weight", "used_weight_lbs", default=0)
+    )
+    weight_remaining = _number(
+        _summary_value(
+            "weight_remaining",
+            "remaining_weight",
+            "remaining_weight_lbs",
+            default=max(weight_limit - weight_used, 0),
+        )
+    )
+
+    member_count = int(_number(
+        _summary_value("member_count", "members_count", "members", default=1)
+    ))
+    max_members = int(_number(
+        _summary_value("max_members", "max_users", default=1)
+    ))
+    days_remaining = int(_number(
+        _summary_value("days_remaining", "remaining_days", default=0)
+    ))
+
+    expires_value = _summary_value(
+        "expires_at", "end_date", "expiry_date", default=None
+    )
+    if hasattr(expires_value, "isoformat"):
+        expires_at = expires_value.isoformat()
+    else:
+        expires_at = str(expires_value or "")
+
+    subscription_active = bool(summary) and (
+        subscription_status.lower() in {"active", "exhausted"}
+        or bool(_summary_value("active", "is_active", default=False))
+    )
+
+    tax_certificate_url = url_for(
+        "static",
+        filename="docs/amazon_tax_exemption_certificate.pdf",
+        _external=True,
+        _scheme="https",
+    )
+
     return jsonify({
         "user": {
-            "full_name": user.full_name,
-            "registration": user.registration_number,
-            "email": user.email,
-            "mobile": user.mobile,
-            "profile_picture": (getattr(user, "profile_pic", "") or "").strip(),
+            "full_name": user.full_name or "",
+            "registration": registration,
+            "email": user.email or "",
+            "mobile": user.mobile or "",
+            "profile_picture": (
+                getattr(user, "profile_pic", "") or ""
+            ).strip(),
+            "referral_code": referral_code,
         },
         "addresses": {
             "overseas": {
                 "recipient": user.full_name or "",
                 "street": us_street,
-                "suite": f"{reg}",
+                "suite": registration_clean or "KCDA",
                 "city": us_city,
                 "state": us_state,
-                "zip": us_zip
+                "zip": us_zip,
             },
-            "home": (getattr(user, "address", "") or "").strip()
+            "home": (getattr(user, "address", "") or "").strip(),
         },
         "stats": {
-            "overseas": overseas_packages,
-            "ready": ready_to_pickup,
-            "shipped": total_shipped,
-            "wallet": float(user.wallet_balance or 0)
+            "overseas": int(overseas_packages),
+            "ready": int(ready_to_pickup),
+            "total_owed": round(total_owed, 2),
+            "pending_invoice_count": pending_invoice_count,
+            "wallet": _number(getattr(user, "wallet_balance", 0)),
+        },
+        "subscription": {
+            "active": subscription_active,
+            "status": subscription_status,
+            "plan_name": plan_name,
+            "packages_used": packages_used,
+            "package_limit": package_limit,
+            "packages_remaining": packages_remaining,
+            "weight_used": weight_used,
+            "weight_limit": weight_limit,
+            "weight_remaining": weight_remaining,
+            "member_count": member_count,
+            "max_members": max_members,
+            "days_remaining": days_remaining,
+            "expires_at": expires_at,
+        },
+        "links": {
+            "tax_certificate": tax_certificate_url,
         },
         "ready_packages": [
             {
-                "id": pkg.id,
-                "house_awb": pkg.house_awb or "",
-                "status": pkg.status or "",
-                "description": pkg.description or "",
-                "tracking_number": pkg.tracking_number or "",
-                "weight": int(math.ceil(float(pkg.weight or 0))) if pkg.weight is not None else 0,
+                "id": package.id,
+                "house_awb": package.house_awb or "",
+                "status": package.status or "",
+                "description": package.description or "",
+                "tracking_number": package.tracking_number or "",
+                "weight": (
+                    int(math.ceil(float(package.weight or 0)))
+                    if package.weight is not None
+                    else 0
+                ),
                 "received_date": (
-                    pkg.received_date.strftime("%Y-%m-%d")
-                    if getattr(pkg, "received_date", None)
+                    package.received_date.strftime("%Y-%m-%d")
+                    if getattr(package, "received_date", None)
                     else ""
                 ),
-                "amount_due": float(pkg.amount_due or 0)
+                "amount_due": _number(package.amount_due),
             }
-            for pkg in ready_packages
-        ]
-    })
+            for package in ready_packages
+        ],
+    }), 200
 
 @customer_bp.route("/api/packages", methods=["GET"])
 def api_customer_packages():

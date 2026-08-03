@@ -4033,6 +4033,7 @@ def schedule_pickup_overview():
         .filter(
             Package.user_id == current_user.id,
             func.lower(func.trim(Package.status)) == "ready for pick up",
+            Package.scheduled_delivery_id.is_(None),
             ~Package.scheduled_pickups.any(
                 ScheduledPickup.status.in_(active_pickup_statuses)
             )
@@ -4161,21 +4162,25 @@ def schedule_pickup_add():
             Package.id.in_(package_ids),
             func.lower(func.trim(Package.status))
             == "ready for pick up",
+            Package.scheduled_delivery_id.is_(None),
             ~Package.scheduled_pickups.any(
                 ScheduledPickup.status.in_(
                     active_pickup_statuses
                 )
-            )
+            ),
         )
+        .with_for_update(of=Package)
+        .order_by(Package.id.asc())
         .all()
     )
 
-    if not packages:
+    if len(packages) != len(package_ids):
         return jsonify({
             "success": False,
             "message": (
-                "No eligible packages selected. They may already "
-                "be scheduled for pickup."
+                "One or more selected packages are no longer eligible. "
+                "A package cannot be scheduled for store pickup while "
+                "it belongs to an active delivery or another active pickup."
             )
         }), 400
 
@@ -4264,6 +4269,12 @@ def schedule_delivery_overview():
                 func.trim(Package.status)
             ) == "ready for pick up",
             Package.scheduled_delivery_id.is_(None),
+            ~Package.scheduled_pickups.any(
+                ScheduledPickup.status.in_([
+                    "Scheduled",
+                    "Ready",
+                ])
+            ),
         )
         .order_by(
             Package.id.desc()
@@ -4519,6 +4530,12 @@ def schedule_delivery_add():
                 == "ready for pick up",
                 Package.scheduled_delivery_id.is_(
                     None
+                ),
+                ~Package.scheduled_pickups.any(
+                    ScheduledPickup.status.in_([
+                        "Scheduled",
+                        "Ready",
+                    ])
                 ),
             )
             .with_for_update(of=Package)
@@ -4970,18 +4987,59 @@ def request_delivery_reschedule(delivery_id):
     })
 
 
-@customer_bp.route('/schedule-delivery/<int:delivery_id>/cancel', methods=['POST'])
+@customer_bp.route(
+    "/schedule-delivery/<int:delivery_id>/cancel",
+    methods=["POST"],
+)
 @login_required
 def schedule_delivery_cancel(delivery_id):
-    d = ScheduledDelivery.query.filter_by(id=delivery_id, user_id=current_user.id).first_or_404()
+    delivery = (
+        ScheduledDelivery.query
+        .filter(
+            ScheduledDelivery.id == delivery_id,
+            ScheduledDelivery.user_id == current_user.id,
+        )
+        .with_for_update()
+        .first_or_404()
+    )
 
-    # only allow cancel if not already delivered
-    if (d.status or "").lower() == "delivered":
-        return jsonify({"success": False, "message": "This delivery is already delivered."}), 400
+    status = (delivery.status or "").strip().lower()
 
-    d.status = "Cancelled"
+    if status == "delivered":
+        return jsonify({
+            "success": False,
+            "message": "This delivery is already delivered.",
+        }), 400
+
+    if status == "cancelled":
+        return jsonify({
+            "success": True,
+            "message": "Delivery is already cancelled.",
+        }), 200
+
+    packages = (
+        Package.query
+        .filter(
+            Package.user_id == current_user.id,
+            Package.scheduled_delivery_id == delivery.id,
+        )
+        .with_for_update(of=Package)
+        .all()
+    )
+
+    for package in packages:
+        package.scheduled_delivery_id = None
+
+    delivery.status = "Cancelled"
     db.session.commit()
-    return jsonify({"success": True, "message": "Delivery cancelled."}), 200
+
+    return jsonify({
+        "success": True,
+        "message": "Delivery cancelled.",
+        "released_package_ids": [
+            package.id for package in packages
+        ],
+    }), 200
 
 
 @customer_bp.route(
@@ -7456,6 +7514,12 @@ def api_customer_create_delivery():
                 Package.user_id == user.id,
                 func.lower(func.trim(Package.status)) == "ready for pick up",
                 Package.scheduled_delivery_id.is_(None),
+                ~Package.scheduled_pickups.any(
+                    ScheduledPickup.status.in_([
+                        "Scheduled",
+                        "Ready",
+                    ])
+                ),
             )
             .with_for_update(of=Package)
             .order_by(Package.id.asc())
@@ -7562,6 +7626,12 @@ def api_delivery_eligible_packages():
             Package.user_id == user.id,
             func.lower(func.trim(Package.status)) == "ready for pick up",
             Package.scheduled_delivery_id.is_(None),
+            ~Package.scheduled_pickups.any(
+                    ScheduledPickup.status.in_([
+                        "Scheduled",
+                        "Ready",
+                    ])
+                ),
         )
         .order_by(Package.id.desc())
         .all()
@@ -7660,6 +7730,7 @@ def api_customer_store_pickups():
         .filter(
             Package.user_id == user.id,
             func.lower(func.trim(Package.status)) == "ready for pick up",
+            Package.scheduled_delivery_id.is_(None),
             ~Package.scheduled_pickups.any(
                 ScheduledPickup.status.in_(active_statuses)
             ),
@@ -7800,6 +7871,7 @@ def api_customer_store_pickup_create():
                 Package.user_id == user.id,
                 Package.id.in_(package_ids),
                 func.lower(func.trim(Package.status)) == "ready for pick up",
+                Package.scheduled_delivery_id.is_(None),
                 ~Package.scheduled_pickups.any(
                     ScheduledPickup.status.in_(active_statuses)
                 ),

@@ -7059,9 +7059,14 @@ def api_customer_delivery_invoice(delivery_id):
         return jsonify({"error": "Delivery not found"}), 404
 
     created_at = getattr(delivery, "created_at", None)
+    jamaica_created_at = to_jamaica(created_at) if created_at else None
     return jsonify({
         "invoice_number": delivery.invoice_number or f"DEL-{delivery.id}",
-        "created_at": created_at.strftime("%Y-%m-%d %H:%M") if created_at else "",
+        "created_at": (
+            jamaica_created_at.strftime("%Y-%m-%d %H:%M")
+            if jamaica_created_at
+            else ""
+        ),
         "customer": {
             "name": user.full_name or "",
             "registration": user.registration_number or "",

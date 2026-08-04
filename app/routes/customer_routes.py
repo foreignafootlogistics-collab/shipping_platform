@@ -7901,6 +7901,77 @@ def api_customer_deliveries():
     })
 
 
+@customer_bp.route("/api/deliveries/<int:delivery_id>", methods=["GET"])
+def api_customer_delivery_detail(delivery_id):
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    delivery = ScheduledDelivery.query.filter_by(
+        id=delivery_id,
+        user_id=user.id,
+    ).first()
+    if not delivery:
+        return jsonify({"error": "Delivery not found"}), 404
+
+    packages = (
+        Package.query
+        .filter(Package.scheduled_delivery_id == delivery.id)
+        .order_by(Package.id.asc())
+        .all()
+    )
+    row = _mobile_delivery_json(delivery, packages)
+
+    package_balance = sum(
+        float(getattr(package, "amount_due", 0) or 0)
+        for package in packages
+    )
+    delivery_fee = float(getattr(delivery, "delivery_fee", 0) or 0)
+    delivery_status = (
+        getattr(delivery, "status", "") or ""
+    ).strip().lower()
+    fee_status = (
+        getattr(delivery, "fee_status", "") or ""
+    ).strip().lower()
+
+    delivery_fee_due = delivery_fee
+    if delivery_status in {"cancelled", "canceled"}:
+        delivery_fee_due = 0.0
+    elif fee_status in {"paid", "waived"}:
+        delivery_fee_due = 0.0
+
+    created_at = getattr(delivery, "created_at", None)
+    jamaica_created_at = to_jamaica(created_at) if created_at else None
+    status_key = delivery_status.replace("_", " ")
+
+    row.update({
+        "created_at": (
+            jamaica_created_at.strftime("%Y-%m-%d %I:%M %p")
+            if jamaica_created_at
+            else ""
+        ),
+        "package_count": len(packages),
+        "total_billable_weight": float(sum(
+            ceil(float(getattr(package, "weight", 0) or 0))
+            for package in packages
+        )),
+        "package_balance": round(package_balance, 2),
+        "delivery_fee_due": round(delivery_fee_due, 2),
+        "expected_collection": round(
+            package_balance + delivery_fee_due,
+            2,
+        ),
+        "can_cancel": status_key not in {
+            "cancelled", "canceled", "delivered",
+        },
+        "can_reschedule": status_key in {
+            "requested", "request submitted", "scheduled",
+        },
+    })
+
+    return jsonify({"delivery": row}), 200
+
+
 @customer_bp.route("/api/deliveries/<int:delivery_id>/invoice", methods=["GET"])
 def api_customer_delivery_invoice(delivery_id):
     user = get_api_user()

@@ -1692,8 +1692,24 @@ def transactions_all():
     # ======================================================
     total_shipments = len(invoices)
     billing_records = len(rows)
-    total_owed = sum((r.get("amount_owed") or 0) for r in rows)
-    pending_count = sum(1 for r in rows if (r.get("amount_owed") or 0) > 0)
+    # A payment row is transaction history, not a separate customer debt.
+    # Counting pending/failed payment attempts here would duplicate the
+    # balance already represented by the related invoice row.  Only actual
+    # billing records contribute to the customer's outstanding balance.
+    balance_rows = [
+        row
+        for row in rows
+        if row.get("type") in {"invoice", "delivery_invoice"}
+    ]
+    total_owed = sum(
+        (row.get("amount_owed") or 0)
+        for row in balance_rows
+    )
+    pending_count = sum(
+        1
+        for row in balance_rows
+        if (row.get("amount_owed") or 0) > 0
+    )
 
     return render_template(
         "customer/transactions/all.html",
@@ -7677,8 +7693,22 @@ def api_customer_transactions():
 
     total_shipments = len(invoices)
     billing_records = len(rows)
-    total_owed = sum((r.get("amount_owed") or 0) for r in rows)
-    pending_count = sum(1 for r in rows if (r.get("amount_owed") or 0) > 0)
+    # Payment rows are history and must not duplicate the balance already
+    # carried by their invoice.  Only actual billing rows count as debt.
+    balance_rows = [
+        row
+        for row in rows
+        if row.get("type") in {"invoice", "delivery_invoice"}
+    ]
+    total_owed = sum(
+        (row.get("amount_owed") or 0)
+        for row in balance_rows
+    )
+    pending_count = sum(
+        1
+        for row in balance_rows
+        if (row.get("amount_owed") or 0) > 0
+    )
 
     return jsonify({
         "summary": {

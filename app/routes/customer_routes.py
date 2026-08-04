@@ -6425,6 +6425,11 @@ def api_customer_packages():
                 "date_received": _mobile_package_received_date(pkg),
                 "amount_due": float(pkg.get("amount_due") or 0),
                 "declared_value": float(pkg.get("declared_value") or 0),
+                "invoice_id": int(pkg.get("invoice_id") or 0),
+                "invoice_total": float(pkg.get("invoice_total") or 0),
+                "invoice_paid_sum": float(pkg.get("invoice_paid_sum") or 0),
+                "invoice_balance": float(pkg.get("invoice_balance") or 0),
+                "invoice_paid": bool(pkg.get("invoice_paid")),
                 "subscription_applied": bool(
                     getattr(
                         package_models.get(pkg.get("id")),
@@ -6460,6 +6465,25 @@ def api_customer_package_detail(pkg_id):
     pkg = Package.query.filter_by(id=pkg_id, user_id=user.id).first()
     if not pkg:
         return jsonify({"error": "Package not found"}), 404
+
+    normalized_query = (
+        db.session.query(
+            Package,
+            User.full_name,
+            User.registration_number,
+        )
+        .join(User, Package.user_id == User.id)
+        .filter(
+            Package.id == pkg.id,
+            Package.user_id == user.id,
+        )
+    )
+    normalized_rows = fetch_packages_normalized(
+        base_query=normalized_query,
+        include_user=True,
+        include_attachments=True,
+    )
+    normalized_pkg = normalized_rows[0] if normalized_rows else {}
 
     attachments = []
     try:
@@ -6498,6 +6522,15 @@ def api_customer_package_detail(pkg_id):
         ),
         "declared_value": float(getattr(pkg, "declared_value", 0) or 0),
         "amount_due": float(pkg.amount_due or 0),
+        "invoice_id": int(normalized_pkg.get("invoice_id") or 0),
+        "invoice_total": float(normalized_pkg.get("invoice_total") or 0),
+        "invoice_paid_sum": float(
+            normalized_pkg.get("invoice_paid_sum") or 0
+        ),
+        "invoice_balance": float(
+            normalized_pkg.get("invoice_balance") or 0
+        ),
+        "invoice_paid": bool(normalized_pkg.get("invoice_paid")),
         "invoice_file": getattr(pkg, "invoice_file", "") or "",
         "attachments": attachments,
         "subscription_applied": bool(

@@ -6386,6 +6386,13 @@ def api_customer_packages():
         include_attachments=True,
     )
 
+    package_models = {
+        package.id: package
+        for package in Package.query.filter(
+            Package.user_id == user.id
+        ).all()
+    }
+
     return jsonify({
         "packages": [
             {
@@ -6394,7 +6401,11 @@ def api_customer_packages():
                 "status": pkg.get("status") or "",
                 "description": pkg.get("description") or "",
                 "tracking_number": pkg.get("tracking_number") or "",
-                "weight": pkg.get("weight") or 0,
+                "weight": (
+                    int(math.ceil(float(pkg.get("weight") or 0)))
+                    if float(pkg.get("weight") or 0) > 0
+                    else 0
+                ),
                 "date_received": (
                     pkg.get("date_received").strftime("%Y-%m-%d")
                     if hasattr(pkg.get("date_received"), "strftime") and pkg.get("date_received")
@@ -6402,6 +6413,23 @@ def api_customer_packages():
                 ),
                 "amount_due": float(pkg.get("amount_due") or 0),
                 "declared_value": float(pkg.get("declared_value") or 0),
+                "subscription_applied": bool(
+                    getattr(
+                        package_models.get(pkg.get("id")),
+                        "subscription_applied",
+                        False,
+                    )
+                ),
+                "subscription_label": _subscription_package_label(
+                    package_models.get(pkg.get("id"))
+                ),
+                "unknown_package": bool(
+                    getattr(
+                        package_models.get(pkg.get("id")),
+                        "bad_address",
+                        False,
+                    )
+                ),
             }
             for pkg in packages
         ]
@@ -6435,7 +6463,11 @@ def api_customer_package_detail(pkg_id):
         "status": pkg.status or "",
         "description": pkg.description or "",
         "tracking_number": pkg.tracking_number or "",
-        "weight": float(pkg.weight or 0),
+        "weight": (
+            int(math.ceil(float(pkg.weight or 0)))
+            if float(pkg.weight or 0) > 0
+            else 0
+        ),
         "date_received": (
             pkg.received_date.strftime("%Y-%m-%d")
             if getattr(pkg, "received_date", None)
@@ -6445,6 +6477,13 @@ def api_customer_package_detail(pkg_id):
         "amount_due": float(pkg.amount_due or 0),
         "invoice_file": getattr(pkg, "invoice_file", "") or "",
         "attachments": attachments,
+        "subscription_applied": bool(
+            getattr(pkg, "subscription_applied", False)
+        ),
+        "subscription_label": _subscription_package_label(pkg),
+        "unknown_package": bool(
+            getattr(pkg, "bad_address", False)
+        ),
     })
 
 @customer_bp.route("/api/prealerts", methods=["GET"])
@@ -8028,6 +8067,20 @@ def api_package_upload_docs(pkg_id):
     pkg = Package.query.filter_by(id=pkg_id, user_id=user.id).first()
     if not pkg:
         return jsonify({"error": "Package not found"}), 404
+
+    editable_statuses = {
+        "overseas",
+        "received at local port",
+    }
+    current_status = (pkg.status or "").strip().lower()
+
+    if current_status not in editable_statuses:
+        return jsonify({
+            "error": (
+                "Invoice and item-value updates are no longer available "
+                "for this package."
+            )
+        }), 409
 
     dv = request.form.get("declared_value")
     if dv:

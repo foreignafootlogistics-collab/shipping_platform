@@ -363,6 +363,7 @@ def customer_dashboard():
                 "invoice_payment",
                 "subscription_payment",
                 "subscription_upgrade_payment",
+                "subscription_waiver",
             )
         ]
 
@@ -375,6 +376,28 @@ def customer_dashboard():
 
         if owed > 0:
             total_owed += owed
+            pending_invoice_count += 1
+
+    # Include unpaid fees for active delivery requests in the same amount owed.
+    customer_deliveries = ScheduledDelivery.query.filter_by(
+        user_id=user.id
+    ).all()
+    for delivery in customer_deliveries:
+        delivery_status = (
+            getattr(delivery, "status", "") or ""
+        ).strip().lower()
+        fee_status = (
+            getattr(delivery, "fee_status", "") or ""
+        ).strip().lower()
+
+        if delivery_status in {"cancelled", "canceled"}:
+            continue
+        if fee_status in {"paid", "waived"}:
+            continue
+
+        delivery_fee = _num(getattr(delivery, "delivery_fee", 0))
+        if delivery_fee > 0.01:
+            total_owed += delivery_fee
             pending_invoice_count += 1
 
     return render_template(
@@ -1266,6 +1289,16 @@ def transactions_all():
         .all()
     )
 
+    deliveries = (
+        ScheduledDelivery.query
+        .filter(ScheduledDelivery.user_id == current_user.id)
+        .order_by(
+            ScheduledDelivery.created_at.desc(),
+            ScheduledDelivery.id.desc(),
+        )
+        .all()
+    )
+
     def _dt(x):
         return x or datetime.utcnow()
 
@@ -1389,7 +1422,7 @@ def transactions_all():
             or owed <= 0.01
         ):
             inv_status = "paid"
-
+            owed = 0.0
 
         elif paid_sum > 0:
             inv_status = "partial"
@@ -1429,7 +1462,7 @@ def transactions_all():
     # ======================================================
     for p in payments:
 
-        tx_type = (getattr(p, "transaction_type", "") or "").strip()
+        tx_type = (getattr(p, "transaction_type", "") or "").strip().lower()
         tx_status = (getattr(p, "status", "completed") or "completed").strip().lower()
 
         amount = _num(getattr(p, "amount_jmd", 0))
@@ -1509,8 +1542,9 @@ def transactions_all():
             amount_owed = 0.0
         else:
             amount_due = amount
-            amount_paid = amount if tx_status == "completed" else 0.0
-            amount_owed = 0.0 if tx_status == "completed" else amount
+            is_completed = tx_status in {"completed", "settled"}
+            amount_paid = amount if is_completed else 0.0
+            amount_owed = 0.0 if is_completed else amount
 
         # ---------------------------
         # decide which modal / pdf / full page to open
@@ -1543,7 +1577,75 @@ def transactions_all():
             "view_url": view_url,
             "pdf_url": pdf_url,
             "full_url": full_url,
-            "is_paid": tx_status == "completed",
+            "is_paid": tx_status in {"completed", "settled"},
+        })
+
+    # ======================================================
+    # DELIVERY INVOICE ROWS
+    # ======================================================
+    for delivery in deliveries:
+        delivery_status = (
+            getattr(delivery, "status", "") or ""
+        ).strip()
+        if delivery_status.lower() in {"cancelled", "canceled"}:
+            continue
+
+        delivery_fee = _num(getattr(delivery, "delivery_fee", 0))
+        fee_status = (
+            getattr(delivery, "fee_status", "") or ""
+        ).strip().lower()
+        created = _dt(getattr(delivery, "created_at", None))
+        scheduled_date = getattr(delivery, "scheduled_date", None)
+
+        if fee_status == "waived":
+            row_status = "paid"
+            method_label = "Waived"
+            amount_paid = delivery_fee
+            amount_owed = 0.0
+        elif fee_status == "paid":
+            row_status = "paid"
+            method_label = "Paid"
+            amount_paid = delivery_fee
+            amount_owed = 0.0
+        else:
+            row_status = "pending"
+            method_label = "Awaiting Payment"
+            amount_paid = 0.0
+            amount_owed = delivery_fee
+
+        reference = (
+            getattr(delivery, "invoice_number", None)
+            or f"DEL-{delivery.id}"
+        )
+        description = "Delivery Invoice"
+        if scheduled_date:
+            description = (
+                f"Delivery Invoice • {scheduled_date.strftime('%Y-%m-%d')}"
+            )
+
+        rows.append({
+            "type": "delivery_invoice",
+            "date": created,
+            "reference_main": reference,
+            "reference_sub": description,
+            "status": row_status,
+            "method": method_label,
+            "amount_due": delivery_fee,
+            "amount_paid": amount_paid,
+            "amount_owed": amount_owed,
+            "view_url": url_for(
+                "customer.delivery_invoice_view",
+                delivery_id=delivery.id,
+            ),
+            "pdf_url": url_for(
+                "customer.delivery_invoice_view",
+                delivery_id=delivery.id,
+            ),
+            "full_url": url_for(
+                "customer.schedule_delivery_detail",
+                delivery_id=delivery.id,
+            ),
+            "is_paid": row_status == "paid",
         })
 
     # ======================================================
@@ -6246,6 +6348,7 @@ def api_customer_dashboard():
                 "invoice_payment",
                 "subscription_payment",
                 "subscription_upgrade_payment",
+                "subscription_waiver",
             }
         ]
 
@@ -6258,6 +6361,26 @@ def api_customer_dashboard():
 
         if amount_owed > 0.01:
             total_owed += amount_owed
+            pending_invoice_count += 1
+
+    # Keep the mobile dashboard aligned with Transactions by including unpaid
+    # fees for active delivery requests.
+    for delivery in ScheduledDelivery.query.filter_by(user_id=user.id).all():
+        delivery_status = (
+            getattr(delivery, "status", "") or ""
+        ).strip().lower()
+        fee_status = (
+            getattr(delivery, "fee_status", "") or ""
+        ).strip().lower()
+
+        if delivery_status in {"cancelled", "canceled"}:
+            continue
+        if fee_status in {"paid", "waived"}:
+            continue
+
+        delivery_fee = _number(getattr(delivery, "delivery_fee", 0))
+        if delivery_fee > 0.01:
+            total_owed += delivery_fee
             pending_invoice_count += 1
 
     referral_code = ensure_user_referral_code(user) or ""
@@ -7283,11 +7406,25 @@ def api_customer_transactions():
         if m == "refund":
             return "Refund"
 
+        if m in ("bank transfer / cash", "subscription upgrade"):
+            return "Subscription Payment"
+        if m == "admin waiver":
+            return "Complimentary"
+        if m == "subscription refund":
+            return "Subscription Refund"
+        if m == "admin override":
+            return "Admin Adjustment"
+
         return m.title() if m else ""
 
     def transaction_label(tx_type):
         labels = {
             "invoice_payment": "Invoice Payment",
+            "subscription_payment": "Subscription Payment",
+            "subscription_upgrade_payment": "Subscription Upgrade",
+            "subscription_waiver": "Complimentary Subscription",
+            "subscription_refund": "Subscription Refund",
+            "subscription_cancel_override": "Subscription Cancellation",
             "delivery_payment": "Delivery Payment",
             "package_refund": "Package Refund",
             "delivery_refund": "Delivery Refund",
@@ -7302,8 +7439,19 @@ def api_customer_transactions():
 
         payments_list = [
             p for p in (getattr(inv, "payments", None) or [])
-            if getattr(p, "transaction_type", "invoice_payment") == "invoice_payment"
-            and getattr(p, "status", "completed") == "completed"
+            if (
+                getattr(p, "transaction_type", "invoice_payment")
+                or "invoice_payment"
+            ).strip().lower() in {
+                "invoice_payment",
+                "subscription_payment",
+                "subscription_upgrade_payment",
+                "subscription_waiver",
+            }
+            and (
+                getattr(p, "status", "completed")
+                or "completed"
+            ).strip().lower() in {"completed", "settled"}
         ]
 
         paid_sum = sum(_num(getattr(p, "amount_jmd", 0)) for p in payments_list)
@@ -7319,10 +7467,7 @@ def api_customer_transactions():
                 reverse=True
             )[0]
 
-        owed = max(
-            inv_total - paid_sum,
-            0.0,
-        )
+        owed = max(inv_total - paid_sum, 0.0)
 
         stored_invoice_status = (
             getattr(inv, "status", "")
@@ -7341,6 +7486,7 @@ def api_customer_transactions():
             or owed <= 0.01
         ):
             inv_status = "paid"
+            owed = 0.0
 
         elif paid_sum > 0:
             inv_status = "partial"
@@ -7384,7 +7530,9 @@ def api_customer_transactions():
 
     # Payment / refund rows
     for p in payments:
-        tx_type = (getattr(p, "transaction_type", "") or "").strip()
+        tx_type = (
+            getattr(p, "transaction_type", "") or ""
+        ).strip().lower()
         tx_status = (getattr(p, "status", "completed") or "completed").strip().lower()
 
         amount = _num(getattr(p, "amount_jmd", 0))
@@ -7399,7 +7547,12 @@ def api_customer_transactions():
 
         inv = None
 
-        if tx_type == "invoice_payment":
+        if tx_type in {
+            "invoice_payment",
+            "subscription_payment",
+            "subscription_upgrade_payment",
+            "subscription_waiver",
+        }:
             inv = Invoice.query.filter_by(
                 id=p.invoice_id,
                 user_id=user.id
@@ -7423,8 +7576,9 @@ def api_customer_transactions():
             amount_owed = 0.0
         else:
             amount_due = amount
-            amount_paid = amount if tx_status == "completed" else 0.0
-            amount_owed = 0.0 if tx_status == "completed" else amount
+            is_completed = tx_status in {"completed", "settled"}
+            amount_paid = amount if is_completed else 0.0
+            amount_owed = 0.0 if is_completed else amount
 
         rows.append({
             "type": tx_type or "transaction",
@@ -7474,6 +7628,9 @@ def api_customer_transactions():
         delivery_fee = _num(getattr(d, "delivery_fee", 0))
         fee_status = (getattr(d, "fee_status", "") or "").strip().lower()
         delivery_status = (getattr(d, "status", "") or "").strip()
+
+        if delivery_status.lower() in {"cancelled", "canceled"}:
+            continue
 
         created_dt = _dt(getattr(d, "created_at", None))
         scheduled_dt = getattr(d, "scheduled_date", None)

@@ -6680,6 +6680,8 @@ def api_customer_prealerts():
             ),
             "attachment_count": len(attachments),
             "attachments": attachments,
+            "is_locked": bool(prealert.is_locked),
+            "linked_package_id": prealert.linked_package_id,
         })
 
     return jsonify({
@@ -6954,6 +6956,206 @@ def api_customer_prealerts_create():
             ],
         },
     }), 201
+
+
+@customer_bp.route("/api/prealerts/<int:prealert_id>", methods=["PUT"])
+@csrf.exempt
+def api_customer_prealerts_update(prealert_id):
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    pa = Prealert.query.filter_by(
+        id=prealert_id,
+        customer_id=user.id,
+    ).first()
+
+    if not pa:
+        return jsonify({"error": "Pre-alert not found"}), 404
+
+    if pa.linked_package_id or pa.is_locked:
+        return jsonify({
+            "error": (
+                "This pre-alert can no longer be edited because it is "
+                "locked or linked to a package."
+            )
+        }), 409
+
+    if request.content_type and "multipart/form-data" in request.content_type:
+        data = request.form
+        invoice_files = request.files.getlist("invoices")
+        if not invoice_files:
+            old_invoice = request.files.get("invoice")
+            invoice_files = [old_invoice] if old_invoice else []
+    else:
+        data = request.get_json(silent=True) or {}
+        invoice_files = []
+
+    invoice_files = [
+        file for file in invoice_files
+        if file and getattr(file, "filename", "")
+    ]
+
+    existing_attachment_count = len(getattr(pa, "attachments", []) or [])
+    if existing_attachment_count + len(invoice_files) > 5:
+        return jsonify({
+            "error": "A maximum of 5 attachments is allowed."
+        }), 400
+
+    vendor_name = (data.get("vendor_name") or "").strip()
+    courier_name = (data.get("courier_name") or "").strip()
+    tracking_number = normalize_tracking(
+        (data.get("tracking_number") or "").strip()
+    )
+    package_contents = (data.get("package_contents") or "").strip()
+    purchase_date_raw = (data.get("purchase_date") or "").strip()
+
+    if not vendor_name:
+        return jsonify({"error": "Vendor name is required"}), 400
+    if not tracking_number:
+        return jsonify({"error": "Tracking number is required"}), 400
+    if not package_contents:
+        return jsonify({"error": "Package contents are required"}), 400
+
+    duplicate = (
+        Prealert.query
+        .filter(Prealert.customer_id == user.id)
+        .filter(Prealert.tracking_number == tracking_number)
+        .filter(Prealert.id != pa.id)
+        .filter(Prealert.linked_package_id.is_(None))
+        .first()
+    )
+    if duplicate:
+        return jsonify({
+            "error": (
+                f"A pre-alert already exists for tracking number "
+                f"{tracking_number}."
+            )
+        }), 409
+
+    purchase_date = None
+    if purchase_date_raw:
+        try:
+            purchase_date = datetime.strptime(
+                purchase_date_raw,
+                "%Y-%m-%d",
+            ).date()
+        except (TypeError, ValueError):
+            return jsonify({
+                "error": "Purchase date must be YYYY-MM-DD"
+            }), 400
+
+    try:
+        item_value_usd = float(data.get("item_value_usd") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Item value must be numeric"}), 400
+
+    if item_value_usd < 0:
+        return jsonify({"error": "Item value cannot be negative"}), 400
+
+    for invoice_file in invoice_files:
+        original_name = (invoice_file.filename or "").strip()
+        if not allowed_file(original_name):
+            return jsonify({
+                "error": (
+                    f"Invalid file type for {original_name}. Allowed file "
+                    "types are PDF, JPG, JPEG and PNG."
+                )
+            }), 400
+
+    try:
+        from app.utils.cloudinary_storage import upload_prealert_invoice
+
+        pa.vendor_name = vendor_name
+        pa.courier_name = courier_name
+        pa.tracking_number = tracking_number
+        pa.purchase_date = purchase_date
+        pa.package_contents = package_contents
+        pa.item_value_usd = item_value_usd
+
+        for invoice_file in invoice_files:
+            original_name = (invoice_file.filename or "").strip()
+            invoice_url, public_id, resource_type = upload_prealert_invoice(
+                invoice_file
+            )
+
+            if not pa.invoice_filename:
+                pa.invoice_filename = invoice_url
+                pa.invoice_original_name = original_name
+                pa.invoice_public_id = public_id
+                pa.invoice_resource_type = resource_type
+
+            db.session.add(PrealertAttachment(
+                prealert_id=pa.id,
+                file_url=invoice_url,
+                original_name=original_name,
+                cloud_public_id=public_id,
+                cloud_resource_type=resource_type,
+            ))
+
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "Unable to update mobile pre-alert id=%s for user_id=%s",
+            pa.id,
+            user.id,
+        )
+        return jsonify({
+            "error": "The pre-alert could not be updated. Please try again."
+        }), 500
+
+    return jsonify({
+        "success": True,
+        "message": f"Pre-alert PA-{pa.prealert_number} updated successfully."
+    }), 200
+
+
+@customer_bp.route("/api/prealerts/<int:prealert_id>", methods=["DELETE"])
+@csrf.exempt
+def api_customer_prealerts_delete(prealert_id):
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    pa = Prealert.query.filter_by(
+        id=prealert_id,
+        customer_id=user.id,
+    ).first()
+
+    if not pa:
+        return jsonify({"error": "Pre-alert not found"}), 404
+
+    if pa.linked_package_id or pa.is_locked:
+        return jsonify({
+            "error": (
+                "This pre-alert cannot be deleted because it is locked or "
+                "linked to a package."
+            )
+        }), 409
+
+    number = pa.prealert_number
+
+    try:
+        db.session.delete(pa)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "Unable to delete mobile pre-alert id=%s for user_id=%s",
+            prealert_id,
+            user.id,
+        )
+        return jsonify({
+            "error": "The pre-alert could not be deleted. Please try again."
+        }), 500
+
+    return jsonify({
+        "success": True,
+        "message": f"Pre-alert PA-{number} deleted successfully."
+    }), 200
 
 @customer_bp.route("/api/transactions", methods=["GET"])
 def api_customer_transactions():

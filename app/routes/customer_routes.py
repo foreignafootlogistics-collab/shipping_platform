@@ -7157,6 +7157,81 @@ def api_customer_prealerts_delete(prealert_id):
         "message": f"Pre-alert PA-{number} deleted successfully."
     }), 200
 
+
+@customer_bp.route(
+    "/api/prealerts/<int:prealert_id>/attachments/<int:attachment_id>",
+    methods=["DELETE"],
+)
+@csrf.exempt
+def api_customer_prealert_attachment_delete(prealert_id, attachment_id):
+    user = get_api_user()
+
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    pa = Prealert.query.filter_by(
+        id=prealert_id,
+        customer_id=user.id,
+    ).first()
+
+    if not pa:
+        return jsonify({"error": "Pre-alert not found"}), 404
+
+    if pa.linked_package_id or pa.is_locked:
+        return jsonify({
+            "error": (
+                "Attachments cannot be removed because this pre-alert is "
+                "locked or linked to a package."
+            )
+        }), 409
+
+    # Older pre-alerts can expose their single legacy invoice as attachment 0.
+    if attachment_id == 0:
+        if not pa.invoice_filename:
+            return jsonify({"error": "Attachment not found"}), 404
+
+        pa.invoice_filename = None
+        pa.invoice_original_name = None
+        pa.invoice_public_id = None
+        pa.invoice_resource_type = None
+    else:
+        attachment = PrealertAttachment.query.filter_by(
+            id=attachment_id,
+            prealert_id=pa.id,
+        ).first()
+
+        if not attachment:
+            return jsonify({"error": "Attachment not found"}), 404
+
+        if (
+            pa.invoice_filename
+            and pa.invoice_filename == getattr(attachment, "file_url", None)
+        ):
+            pa.invoice_filename = None
+            pa.invoice_original_name = None
+            pa.invoice_public_id = None
+            pa.invoice_resource_type = None
+
+        db.session.delete(attachment)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "Unable to remove attachment id=%s from mobile pre-alert id=%s",
+            attachment_id,
+            pa.id,
+        )
+        return jsonify({
+            "error": "The attachment could not be removed. Please try again."
+        }), 500
+
+    return jsonify({
+        "success": True,
+        "message": "Attachment removed successfully."
+    }), 200
+
 @customer_bp.route("/api/transactions", methods=["GET"])
 def api_customer_transactions():
     user = get_api_user()

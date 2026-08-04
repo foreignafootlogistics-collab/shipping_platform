@@ -6393,6 +6393,22 @@ def api_customer_packages():
         ).all()
     }
 
+    def _mobile_package_received_date(pkg_dict):
+        package_model = package_models.get(pkg_dict.get("id"))
+        received = (
+            getattr(package_model, "received_date", None)
+            or getattr(package_model, "date_received", None)
+            or getattr(package_model, "created_at", None)
+            or pkg_dict.get("received_date")
+            or pkg_dict.get("date_received")
+            or pkg_dict.get("created_at")
+        )
+
+        if hasattr(received, "strftime"):
+            return received.strftime("%Y-%m-%d")
+
+        return str(received or "")
+
     return jsonify({
         "packages": [
             {
@@ -6406,11 +6422,7 @@ def api_customer_packages():
                     if float(pkg.get("weight") or 0) > 0
                     else 0
                 ),
-                "date_received": (
-                    pkg.get("date_received").strftime("%Y-%m-%d")
-                    if hasattr(pkg.get("date_received"), "strftime") and pkg.get("date_received")
-                    else (pkg.get("date_received") or "")
-                ),
+                "date_received": _mobile_package_received_date(pkg),
                 "amount_due": float(pkg.get("amount_due") or 0),
                 "declared_value": float(pkg.get("declared_value") or 0),
                 "subscription_applied": bool(
@@ -6424,11 +6436,14 @@ def api_customer_packages():
                     package_models.get(pkg.get("id"))
                 ),
                 "unknown_package": bool(
-                    getattr(
-                        package_models.get(pkg.get("id")),
-                        "bad_address",
-                        False,
-                    )
+                    str(
+                        getattr(
+                            package_models.get(pkg.get("id")),
+                            "epc",
+                            "",
+                        )
+                        or ""
+                    ).strip()
                 ),
             }
             for pkg in packages
@@ -6469,8 +6484,16 @@ def api_customer_package_detail(pkg_id):
             else 0
         ),
         "date_received": (
-            pkg.received_date.strftime("%Y-%m-%d")
-            if getattr(pkg, "received_date", None)
+            (
+                getattr(pkg, "received_date", None)
+                or getattr(pkg, "date_received", None)
+                or getattr(pkg, "created_at", None)
+            ).strftime("%Y-%m-%d")
+            if (
+                getattr(pkg, "received_date", None)
+                or getattr(pkg, "date_received", None)
+                or getattr(pkg, "created_at", None)
+            )
             else ""
         ),
         "declared_value": float(getattr(pkg, "declared_value", 0) or 0),
@@ -6482,7 +6505,7 @@ def api_customer_package_detail(pkg_id):
         ),
         "subscription_label": _subscription_package_label(pkg),
         "unknown_package": bool(
-            getattr(pkg, "bad_address", False)
+            str(getattr(pkg, "epc", "") or "").strip()
         ),
     })
 

@@ -2,135 +2,528 @@
 {% block title %}Edit Pre-Alert{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-  <h3>✏️ Edit Pre-Alert PA-{{ "%05d"|format(prealert.prealert_number or prealert.id) }}</h3>
+<style>
+  .prealert-edit-page {
+    --pa-purple: #4a148c;
+    --pa-deep: #2e0854;
+    --pa-gold: #facc15;
+    --pa-soft: #f8f2fc;
+    --pa-border: #e5d8ed;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 1.25rem 0 2.5rem;
+  }
 
-  <div class="d-flex justify-content-end mb-3">
-    <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-dashboard">
-      View All Pre-Alert Shipments
-    </a>
+  .pa-edit-hero {
+    position: relative;
+    overflow: hidden;
+    padding: 1.55rem 1.75rem;
+    border-radius: 22px;
+    color: #fff;
+    background: linear-gradient(125deg, var(--pa-deep), var(--pa-purple) 55%, #7e22ce);
+    box-shadow: 0 14px 32px rgba(74, 20, 140, .2);
+  }
+
+  .pa-edit-hero::after {
+    content: "";
+    position: absolute;
+    right: -45px;
+    top: -70px;
+    width: 190px;
+    height: 190px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .1);
+  }
+
+  .pa-edit-hero h1 {
+    font-size: clamp(1.45rem, 3vw, 2rem);
+    font-weight: 850;
+    margin: 0;
+  }
+
+  .pa-edit-hero p {
+    margin: .35rem 0 0;
+    color: rgba(255, 255, 255, .78);
+  }
+
+  .pa-hero-icon {
+    width: 52px;
+    height: 52px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    background: var(--pa-gold);
+    color: var(--pa-deep);
+    font-size: 1.4rem;
+  }
+
+  .pa-back-btn {
+    position: relative;
+    z-index: 1;
+    border: 1px solid rgba(255, 255, 255, .55);
+    color: #fff;
+    background: rgba(255, 255, 255, .1);
+    border-radius: 12px;
+    padding: .65rem 1rem;
+    text-decoration: none;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+
+  .pa-back-btn:hover {
+    color: var(--pa-deep);
+    background: #fff;
+  }
+
+  .pa-edit-notice {
+    display: flex;
+    gap: .75rem;
+    align-items: flex-start;
+    margin-top: 1rem;
+    padding: 1rem 1.15rem;
+    border: 1px solid #d9c1e7;
+    border-radius: 15px;
+    background: linear-gradient(135deg, #fbf7fd, #f4eafa);
+    color: #514058;
+  }
+
+  .pa-edit-notice i {
+    color: var(--pa-purple);
+    font-size: 1.15rem;
+  }
+
+  .pa-form-card {
+    margin-top: 1rem;
+    background: #fff;
+    border: 1px solid var(--pa-border);
+    border-radius: 22px;
+    box-shadow: 0 10px 26px rgba(46, 8, 84, .08);
+    overflow: hidden;
+  }
+
+  .pa-form-section {
+    padding: 1.35rem 1.5rem;
+  }
+
+  .pa-form-section+.pa-form-section {
+    border-top: 1px solid var(--pa-border);
+  }
+
+  .pa-section-title {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    margin-bottom: 1rem;
+  }
+
+  .pa-section-icon {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 11px;
+    background: #f0e3f8;
+    color: var(--pa-purple);
+  }
+
+  .pa-section-title h2 {
+    font-size: 1.05rem;
+    font-weight: 850;
+    margin: 0;
+    color: #2d2432;
+  }
+
+  .prealert-edit-page .form-label {
+    font-weight: 750;
+    color: #463b4c;
+    margin-bottom: .4rem;
+  }
+
+  .prealert-edit-page .form-control {
+    min-height: 48px;
+    border-radius: 12px;
+    border-color: #d8cadf;
+  }
+
+  .prealert-edit-page .form-control:focus {
+    border-color: var(--pa-purple);
+    box-shadow: 0 0 0 .2rem rgba(74, 20, 140, .12);
+  }
+
+  .pa-current-files {
+    display: grid;
+    gap: .7rem;
+  }
+
+  .pa-current-file {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding: .85rem;
+    border: 1px solid var(--pa-border);
+    border-radius: 14px;
+    background: #fcfafd;
+  }
+
+  .pa-file-icon {
+    flex: 0 0 auto;
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: #f1e7f7;
+    color: var(--pa-purple);
+    font-size: 1.1rem;
+  }
+
+  .pa-current-file-name {
+    min-width: 0;
+    flex: 1;
+    font-weight: 750;
+    overflow-wrap: anywhere;
+  }
+
+  .pa-current-file-actions {
+    display: flex;
+    gap: .4rem;
+    flex-wrap: wrap;
+  }
+
+  .pa-current-file-actions .btn {
+    border-radius: 9px;
+  }
+
+  .pa-no-files {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    padding: 1rem;
+    border: 1px dashed #cbb7d5;
+    border-radius: 14px;
+    color: #776c7c;
+    background: #fcfafd;
+  }
+
+  .pa-file-row {
+    border: 1.5px dashed #b996cc;
+    border-radius: 14px;
+    background: var(--pa-soft);
+    padding: .85rem;
+    margin-bottom: .75rem;
+  }
+
+  .pa-file-row .form-control {
+    min-height: auto;
+    background: #fff;
+  }
+
+  .pa-file-name {
+    display: none;
+    margin-top: .55rem;
+    color: var(--pa-purple);
+    font-size: .86rem;
+    font-weight: 750;
+  }
+
+  .pa-file-row.has-file .pa-file-name {
+    display: block;
+  }
+
+  .pa-file-row.has-file {
+    border-style: solid;
+    border-color: #8b5aaa;
+    background: #fbf7fd;
+  }
+
+  .pa-add-file {
+    border: 1px solid var(--pa-purple);
+    color: var(--pa-purple);
+    background: #fff;
+    border-radius: 11px;
+    font-weight: 750;
+  }
+
+  .pa-add-file:hover {
+    color: var(--pa-deep);
+    background: #f3e8fa;
+  }
+
+  .pa-limit-note {
+    color: #756a7b;
+    font-size: .83rem;
+    margin-top: .55rem;
+  }
+
+  .pa-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .75rem;
+    padding: 1.15rem 1.5rem;
+    background: #fcfafd;
+    border-top: 1px solid var(--pa-border);
+  }
+
+  .pa-save-btn {
+    min-width: 210px;
+    border: 0;
+    border-radius: 12px;
+    padding: .78rem 1.25rem;
+    background: linear-gradient(110deg, var(--pa-purple), #7222b5);
+    color: #fff;
+    font-weight: 850;
+    box-shadow: 0 8px 18px rgba(74, 20, 140, .2);
+  }
+
+  .pa-save-btn:hover {
+    color: #fff;
+    transform: translateY(-1px);
+  }
+
+  .pa-save-btn:disabled {
+    opacity: .65;
+    transform: none;
+  }
+
+  .pa-cancel-btn {
+    border-radius: 12px;
+    padding: .75rem 1.1rem;
+    font-weight: 750;
+  }
+
+  @media (max-width:767.98px) {
+    .prealert-edit-page {
+      padding-top: .75rem;
+    }
+
+    .pa-edit-hero {
+      padding: 1.2rem;
+      border-radius: 17px;
+    }
+
+    .pa-edit-hero .hero-layout {
+      align-items: flex-start !important;
+    }
+
+    .pa-hero-icon {
+      width: 44px;
+      height: 44px;
+    }
+
+    .pa-back-btn {
+      padding: .55rem .75rem;
+      font-size: .84rem;
+    }
+
+    .pa-form-section {
+      padding: 1.1rem;
+    }
+
+    .pa-current-file {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .pa-current-file-actions {
+      width: 100%;
+      padding-left: 3.55rem;
+    }
+
+    .pa-form-actions {
+      flex-direction: column-reverse;
+      padding: 1rem;
+    }
+
+    .pa-form-actions .btn,
+    .pa-save-btn {
+      width: 100%;
+    }
+  }
+</style>
+
+{% set current_attachment_count = prealert.attachments|length if prealert.attachments else (1 if
+prealert.invoice_filename else 0) %}
+
+<div class="container prealert-edit-page">
+  <section class="pa-edit-hero">
+    <div class="hero-layout d-flex justify-content-between align-items-center gap-3 position-relative"
+      style="z-index:1;">
+      <div class="d-flex align-items-center gap-3">
+        <div class="pa-hero-icon"><i class="bi bi-pencil-square"></i></div>
+        <div>
+          <h1>Edit PA-{{ "%05d"|format(prealert.prealert_number or prealert.id) }}</h1>
+          <p>Update shipment information and manage supporting documents.</p>
+        </div>
+      </div>
+      <a href="{{ url_for('customer.prealerts_view') }}" class="pa-back-btn">
+        <i class="bi bi-list-ul me-1"></i> View Pre-Alerts
+      </a>
+    </div>
+  </section>
+
+  <div class="pa-edit-notice">
+    <i class="bi bi-info-circle-fill"></i>
+    <div><strong>Still editable:</strong> You can update this pre-alert until it is linked to a received package or
+      locked by FAFL.</div>
   </div>
 
-  <div class="alert alert-note-purple" role="alert">
-    <strong>Note:</strong> You can edit this pre-alert until it is linked to a received package or locked by FAFL.
-  </div>
-
-  <form id="prealertEditForm" method="POST" enctype="multipart/form-data" class="mb-4">
+  <form id="prealertEditForm" method="POST" enctype="multipart/form-data" class="pa-form-card">
     {{ form.hidden_tag() }}
 
-    <div class="row g-3">
-      <div class="col-md-6">
-        {{ form.vendor_name.label(class="form-label") }}
-        {{ form.vendor_name(class="form-control", autocomplete="organization") }}
+    <section class="pa-form-section">
+      <div class="pa-section-title">
+        <span class="pa-section-icon"><i class="bi bi-truck"></i></span>
+        <h2>Shipment information</h2>
       </div>
-
-      <div class="col-md-6">
-        {{ form.courier_name.label(class="form-label") }}
-        {{ form.courier_name(class="form-control") }}
+      <div class="row g-3">
+        <div class="col-md-6">
+          {{ form.vendor_name.label(class="form-label") }}
+          {{ form.vendor_name(class="form-control", autocomplete="organization", placeholder="Example: Amazon or Temu")
+          }}
+        </div>
+        <div class="col-md-6">
+          {{ form.courier_name.label(class="form-label") }}
+          {{ form.courier_name(class="form-control", placeholder="Example: FedEx, UPS or USPS") }}
+        </div>
+        <div class="col-md-7">
+          {{ form.tracking_number.label(class="form-label") }}
+          {{ form.tracking_number(class="form-control", id="tracking_number", autocapitalize="characters",
+          spellcheck="false", placeholder="Enter the courier tracking number") }}
+          <div class="form-text"><i class="bi bi-lightbulb me-1"></i>Spaces are removed automatically.</div>
+        </div>
+        <div class="col-md-5">
+          {{ form.purchase_date.label(class="form-label") }}
+          {{ form.purchase_date(class="form-control") }}
+        </div>
       </div>
+    </section>
 
-      <div class="col-md-6">
-        {{ form.tracking_number.label(class="form-label") }}
-        {{ form.tracking_number(class="form-control", id="tracking_number", autocapitalize="characters",
-        spellcheck="false") }}
-        <div class="form-text">Tip: Don’t include spaces. We’ll auto-trim for you.</div>
+    <section class="pa-form-section">
+      <div class="pa-section-title">
+        <span class="pa-section-icon"><i class="bi bi-bag-check"></i></span>
+        <h2>Purchase details</h2>
       </div>
-
-      <div class="col-md-6">
-        {{ form.purchase_date.label(class="form-label") }}
-        {{ form.purchase_date(class="form-control") }}
-      </div>
-
-      <div class="col-md-6">
-        {{ form.package_contents.label(class="form-label") }}
-        {{ form.package_contents(class="form-control") }}
-      </div>
-
-      <div class="col-md-6">
-        {{ form.item_value_usd.label(class="form-label") }}
-        {{ form.item_value_usd(class="form-control") }}
-      </div>
-
-      <div class="col-md-12">
-        <label class="form-label fw-semibold">Current Attachments</label>
-
-        {% if prealert.attachments and prealert.attachments|length > 0 %}
-        <div class="border rounded bg-light p-2 mb-3">
-          {% for a in prealert.attachments %}
-          <div class="d-flex justify-content-between align-items-center border-bottom py-2">
-            <div>
-              <i class="bi bi-paperclip me-1"></i>
-              <strong>{{ a.original_name or 'Attachment' }}</strong>
-            </div>
-
-            <div class="d-flex gap-2">
-              {% if not (a.original_name or '').lower().endswith('.pdf') %}
-              <a class="btn btn-sm btn-outline-secondary"
-                href="{{ url_for('customer.prealert_attachment', attachment_id=a.id) }}" target="_blank">
-                View
-              </a>
-              {% endif %}
-
-              <a class="btn btn-sm btn-outline-secondary"
-                href="{{ url_for('customer.prealert_attachment_download', attachment_id=a.id) }}">
-                Download
-              </a>
-
-              <button type="submit" form="deleteAttachmentForm{{ a.id }}" class="btn btn-sm btn-outline-danger"
-                onclick="return confirm('Remove this attachment?');">
-                Remove
-              </button>
-            </div>
+      <div class="row g-3">
+        <div class="col-md-8">
+          {{ form.package_contents.label(class="form-label") }}
+          {{ form.package_contents(class="form-control", placeholder="Briefly describe the items in this package") }}
+        </div>
+        <div class="col-md-4">
+          {{ form.item_value_usd.label(class="form-label") }}
+          <div class="input-group">
+            <span class="input-group-text">USD $</span>
+            {{ form.item_value_usd(class="form-control", placeholder="0.00") }}
           </div>
-          {% endfor %}
         </div>
-        {% elif prealert.invoice_filename %}
-        <div class="border rounded bg-light p-2 mb-3">
-          <i class="bi bi-paperclip me-1"></i>
-          {{ prealert.invoice_original_name or 'Current invoice' }}
+      </div>
+    </section>
 
-          <a class="btn btn-sm btn-link"
-            href="{{ url_for('customer.prealert_invoice_download', prealert_id=prealert.id) }}">
-            Download
-          </a>
+    <section class="pa-form-section">
+      <div class="pa-section-title">
+        <span class="pa-section-icon"><i class="bi bi-folder2-open"></i></span>
+        <div>
+          <h2>Current attachments</h2>
+          <div class="small text-muted">{{ current_attachment_count }} of 5 attachment spaces currently used.</div>
         </div>
-        {% else %}
-        <div class="text-muted mb-3">No attachments uploaded yet.</div>
-        {% endif %}
+      </div>
 
-        <label class="form-label fw-semibold">Add New Attachments</label>
-
-        <div id="attachmentInputs">
-          <div class="input-group mb-2 attachment-input-row">
-            <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
-            <button class="btn btn-outline-danger remove-attachment-btn" type="button" style="display:none;">
-              <i class="bi bi-x-lg"></i>
+      {% if prealert.attachments and prealert.attachments|length > 0 %}
+      <div class="pa-current-files">
+        {% for a in prealert.attachments %}
+        {% set attachment_name = a.original_name or 'Attachment' %}
+        {% set is_pdf = '.pdf' in attachment_name|lower %}
+        <div class="pa-current-file">
+          <div class="pa-file-icon"><i
+              class="bi {{ 'bi-file-earmark-pdf' if is_pdf else 'bi-file-earmark-image' }}"></i></div>
+          <div class="pa-current-file-name">{{ attachment_name }}</div>
+          <div class="pa-current-file-actions">
+            <a class="btn btn-sm btn-outline-secondary"
+              href="{{ url_for('customer.prealert_attachment', attachment_id=a.id) }}" target="_blank" rel="noopener">
+              <i class="bi bi-eye me-1"></i>View
+            </a>
+            <a class="btn btn-sm btn-outline-secondary"
+              href="{{ url_for('customer.prealert_attachment_download', attachment_id=a.id) }}">
+              <i class="bi bi-download me-1"></i>Download
+            </a>
+            <button type="submit" form="deleteAttachmentForm{{ a.id }}" class="btn btn-sm btn-outline-danger"
+              onclick="return confirm('Remove this attachment?');">
+              <i class="bi bi-trash me-1"></i>Remove
             </button>
           </div>
         </div>
-
-        <button type="button" id="addAttachmentBtn" class="btn btn-sm btn-outline-secondary mt-1">
-          <i class="bi bi-plus-circle me-1"></i> Add Another Attachment
-        </button>
-
-        <div class="form-text">Allowed formats: jpg, jpeg, png, pdf. Add each file separately.</div>
+        {% endfor %}
       </div>
-    </div>
+      {% elif prealert.invoice_filename %}
+      <div class="pa-current-file">
+        <div class="pa-file-icon"><i class="bi bi-file-earmark"></i></div>
+        <div class="pa-current-file-name">{{ prealert.invoice_original_name or 'Current invoice' }}</div>
+        <div class="pa-current-file-actions">
+          <a class="btn btn-sm btn-outline-secondary"
+            href="{{ url_for('customer.prealert_invoice_download', prealert_id=prealert.id) }}">
+            <i class="bi bi-download me-1"></i>Download
+          </a>
+          <button type="submit" form="deleteLegacyInvoiceForm" class="btn btn-sm btn-outline-danger"
+            onclick="return confirm('Remove this attachment?');">
+            <i class="bi bi-trash me-1"></i>Remove
+          </button>
+        </div>
+      </div>
+      {% else %}
+      <div class="pa-no-files"><i class="bi bi-paperclip"></i><span>No attachments uploaded yet.</span></div>
+      {% endif %}
+    </section>
 
-    <div class="mt-4 d-flex gap-2">
-      <button type="submit" class="btn btn-dashboard">Save Changes</button>
-      <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-secondary">Cancel</a>
-    </div>
-  </form>
+    <section class="pa-form-section">
+      <div class="pa-section-title">
+        <span class="pa-section-icon"><i class="bi bi-cloud-arrow-up"></i></span>
+        <div>
+          <h2>Add new attachments</h2>
+          <div class="small text-muted">PDF, JPG, JPEG or PNG, maximum 10 MB each.</div>
+        </div>
+      </div>
 
-  {% if prealert.attachments %}
-  {% for a in prealert.attachments %}
-  <form id="deleteAttachmentForm{{ a.id }}" method="POST"
-    action="{{ url_for('customer.prealert_attachment_delete', attachment_id=a.id) }}">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  </form>
-  {% endfor %}
-  {% endif %}
+      {% if current_attachment_count < 5 %} <div id="attachmentInputs">
+        <div class="pa-file-row attachment-input-row">
+          <div class="input-group">
+            <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
+            <button class="btn btn-outline-danger remove-attachment-btn" type="button" style="display:none;"
+              aria-label="Remove attachment"><i class="bi bi-x-lg"></i></button>
+          </div>
+          <div class="pa-file-name"><i class="bi bi-check-circle-fill me-1"></i><span></span></div>
+        </div>
+</div>
+<button type="button" id="addAttachmentBtn" class="btn pa-add-file mt-1">
+  <i class="bi bi-plus-circle me-1"></i>Add Another Attachment
+</button>
+<div class="pa-limit-note">You can add {{ 5 - current_attachment_count }} more attachment{{ '' if (5 -
+  current_attachment_count) == 1 else 's' }}.</div>
+{% else %}
+<div class="alert alert-light border mb-0"><i class="bi bi-info-circle me-1"></i>The maximum of 5 attachments has been
+  reached. Remove one to upload another.</div>
+{% endif %}
+</section>
+
+<div class="pa-form-actions">
+  <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-outline-secondary pa-cancel-btn">Cancel</a>
+  <button type="submit" class="pa-save-btn"><i class="bi bi-check2-circle me-1"></i>Save Changes</button>
+</div>
+</form>
+
+{% if prealert.attachments %}
+{% for a in prealert.attachments %}
+<form id="deleteAttachmentForm{{ a.id }}" method="POST"
+  action="{{ url_for('customer.prealert_attachment_delete', attachment_id=a.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endfor %}
+{% endif %}
+
+{% if prealert.invoice_filename and not prealert.attachments %}
+<form id="deleteLegacyInvoiceForm" method="POST"
+  action="{{ url_for('customer.prealert_invoice_delete', prealert_id=prealert.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endif %}
 </div>
 
 <script>
@@ -138,71 +531,79 @@
     const form = document.getElementById('prealertEditForm');
     const attachmentWrap = document.getElementById('attachmentInputs');
     const addBtn = document.getElementById('addAttachmentBtn');
+    const currentCount = {{ current_attachment_count| int
+  }};
+  const maxNewAttachments = Math.max(0, 5 - currentCount);
 
-    if (!form) return;
+  if (!form) return;
 
-    function trimEl(idOrName) {
-      const el = document.getElementById(idOrName) || form.querySelector(`[name="${idOrName}"]`);
-      if (!el || typeof el.value !== 'string') return;
-      el.value = el.value.trim();
-    }
+  function trimEl(idOrName) {
+    const el = document.getElementById(idOrName) || form.querySelector(`[name="${idOrName}"]`);
+    if (el && typeof el.value === 'string') el.value = el.value.trim();
+  }
 
-    function updateRemoveButtons() {
-      const rows = attachmentWrap.querySelectorAll('.attachment-input-row');
-      rows.forEach(function (row) {
-        const btn = row.querySelector('.remove-attachment-btn');
-        if (btn) {
-          btn.style.display = rows.length > 1 ? '' : 'none';
-        }
-      });
-    }
-
-    function addAttachmentInput() {
-      const row = document.createElement('div');
-      row.className = 'input-group mb-2 attachment-input-row';
-      row.innerHTML = `
-      <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
-      <button class="btn btn-outline-danger remove-attachment-btn" type="button">
-        <i class="bi bi-x-lg"></i>
-      </button>
-    `;
-
-      attachmentWrap.appendChild(row);
-      updateRemoveButtons();
-    }
-
-    if (addBtn && attachmentWrap) {
-      addBtn.addEventListener('click', addAttachmentInput);
-
-      attachmentWrap.addEventListener('click', function (e) {
-        const btn = e.target.closest('.remove-attachment-btn');
-        if (!btn) return;
-
-        const row = btn.closest('.attachment-input-row');
-        if (row) row.remove();
-
-        updateRemoveButtons();
-      });
-
-      updateRemoveButtons();
-    }
-
-    form.addEventListener('submit', function () {
-      trimEl('vendor_name');
-      trimEl('courier_name');
-      trimEl('package_contents');
-
-      const t = document.getElementById('tracking_number') || form.querySelector('[name="tracking_number"]');
-      if (t && typeof t.value === 'string') {
-        t.value = t.value.trim().toUpperCase();
-      }
-
-      const submitBtn = form.querySelector('button[type="submit"]');
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerText = "Saving...";
-      }
+  function updateRows() {
+    if (!attachmentWrap) return;
+    const rows = attachmentWrap.querySelectorAll('.attachment-input-row');
+    rows.forEach(function (row) {
+      const button = row.querySelector('.remove-attachment-btn');
+      if (button) button.style.display = rows.length > 1 ? '' : 'none';
     });
-  })();
+    if (addBtn) addBtn.disabled = rows.length >= maxNewAttachments;
+  }
+
+  function bindFileRow(row) {
+    const input = row.querySelector('input[type="file"]');
+    const nameText = row.querySelector('.pa-file-name span');
+    if (!input) return;
+    input.addEventListener('change', function () {
+      const file = input.files && input.files[0];
+      row.classList.toggle('has-file', !!file);
+      if (nameText) nameText.textContent = file ? file.name : '';
+    });
+  }
+
+  function addAttachmentInput() {
+    if (!attachmentWrap) return;
+    const rows = attachmentWrap.querySelectorAll('.attachment-input-row');
+    if (rows.length >= maxNewAttachments) return;
+    const row = document.createElement('div');
+    row.className = 'pa-file-row attachment-input-row';
+    row.innerHTML = `
+        <div class="input-group">
+          <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
+          <button class="btn btn-outline-danger remove-attachment-btn" type="button" aria-label="Remove attachment"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="pa-file-name"><i class="bi bi-check-circle-fill me-1"></i><span></span></div>
+      `;
+    attachmentWrap.appendChild(row);
+    bindFileRow(row);
+    updateRows();
+  }
+
+  if (attachmentWrap) {
+    attachmentWrap.querySelectorAll('.attachment-input-row').forEach(bindFileRow);
+    attachmentWrap.addEventListener('click', function (event) {
+      const button = event.target.closest('.remove-attachment-btn');
+      if (!button) return;
+      const row = button.closest('.attachment-input-row');
+      if (row) row.remove();
+      updateRows();
+    });
+  }
+  if (addBtn) addBtn.addEventListener('click', addAttachmentInput);
+
+  form.addEventListener('submit', function () {
+    trimEl('vendor_name');
+    trimEl('courier_name');
+    trimEl('package_contents');
+    const tracking = document.getElementById('tracking_number') || form.querySelector('[name="tracking_number"]');
+    if (tracking && typeof tracking.value === 'string') tracking.value = tracking.value.replace(/\s+/g, '').toUpperCase();
+    const submitBtn = form.querySelector('.pa-save-btn');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving...'; }
+  });
+
+  updateRows();
+  }) ();
 </script>
 {% endblock %}

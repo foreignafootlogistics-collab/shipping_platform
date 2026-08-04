@@ -2,205 +2,746 @@
 {% block title %}View Pre-Alert Shipments{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-  <h3>📦 Your Pre-Alert Shipments</h3>
+<style>
+  .prealert-list-page {
+    --pa-purple: #4a148c;
+    --pa-deep: #2e0854;
+    --pa-gold: #facc15;
+    --pa-border: #e3d8e9;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 1.25rem 0 2.5rem;
+  }
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <a href="{{ url_for('customer.prealerts_create') }}" class="btn btn-dashboard">
-      Create New Pre-Alert Shipment
-    </a>
+  .pa-list-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 22px;
+    padding: 1.45rem 1.65rem;
+    color: #fff;
+    background: linear-gradient(125deg, var(--pa-deep), var(--pa-purple) 58%, #7e22ce);
+    box-shadow: 0 14px 32px rgba(74, 20, 140, .2);
+  }
 
-    <div class="d-flex gap-2">
-      <button id="editSelectedPrealertBtn" type="button" class="btn btn-outline-secondary btn-sm" disabled>
-        <i class="bi bi-pencil-square"></i> Edit Selected
+  .pa-list-hero::after {
+    content: "";
+    position: absolute;
+    width: 190px;
+    height: 190px;
+    border-radius: 50%;
+    right: -55px;
+    top: -75px;
+    background: rgba(255, 255, 255, .1);
+  }
+
+  .pa-list-hero h1 {
+    margin: 0;
+    font-size: clamp(1.55rem, 3vw, 2.1rem);
+    font-weight: 850;
+  }
+
+  .pa-list-hero p {
+    margin: .35rem 0 0;
+    color: rgba(255, 255, 255, .78);
+  }
+
+  .pa-new-btn {
+    position: relative;
+    z-index: 1;
+    border: 0;
+    border-radius: 12px;
+    text-decoration: none;
+    background: var(--pa-gold);
+    color: #2b2000;
+    padding: .72rem 1.05rem;
+    font-weight: 800;
+    box-shadow: 0 7px 16px rgba(0, 0, 0, .16);
+    white-space: nowrap;
+  }
+
+  .pa-new-btn:hover {
+    color: #2b2000;
+    background: #fde047;
+    transform: translateY(-1px);
+  }
+
+  .pa-toolbar {
+    margin-top: 1rem;
+    padding: .85rem;
+    background: #fff;
+    border: 1px solid var(--pa-border);
+    border-radius: 16px;
+    box-shadow: 0 6px 16px rgba(46, 8, 84, .05);
+  }
+
+  .pa-search-wrap {
+    position: relative;
+    flex: 1 1 330px;
+  }
+
+  .pa-search-wrap i {
+    position: absolute;
+    left: .9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--pa-purple);
+  }
+
+  .pa-search-wrap input {
+    min-height: 44px;
+    padding-left: 2.55rem;
+    border-radius: 11px;
+    border-color: #d6c7de;
+  }
+
+  .pa-filter-select {
+    min-height: 44px;
+    border-radius: 11px;
+    border-color: #d6c7de;
+    min-width: 165px;
+  }
+
+  .pa-action-btn {
+    min-height: 42px;
+    border-radius: 11px;
+    font-weight: 700;
+  }
+
+  .pa-show-wrap {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    color: #655b6a;
+    font-size: .82rem;
+    white-space: nowrap;
+  }
+
+  .pa-show-wrap select {
+    width: 72px;
+    min-height: 40px;
+    border-radius: 10px;
+    border-color: #d6c7de;
+  }
+
+  .pa-selection-actions {
+    display: none;
+    justify-content: flex-end;
+    gap: .5rem;
+    margin-top: .65rem;
+  }
+
+  .pa-selection-actions.active {
+    display: flex;
+  }
+
+  .pa-table-card {
+    margin-top: 1rem;
+    background: #fff;
+    border: 1px solid var(--pa-border);
+    border-radius: 18px;
+    box-shadow: 0 8px 22px rgba(46, 8, 84, .07);
+    overflow: hidden;
+  }
+
+  .pa-table-card table {
+    margin: 0;
+  }
+
+  .pa-table-card thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #29252d;
+    color: #fff;
+    border-color: #454047;
+    padding: .9rem .75rem;
+    font-size: .82rem;
+    white-space: nowrap;
+  }
+
+  .pa-table-card tbody td {
+    padding: .9rem .75rem;
+    border-color: #eee7f1;
+    vertical-align: middle;
+  }
+
+  .pa-table-card tbody tr {
+    transition: background .15s ease, transform .15s ease;
+  }
+
+  .pa-table-card tbody tr:hover {
+    background: #fbf7fd;
+  }
+
+  .pa-reference {
+    color: var(--pa-purple);
+    font-weight: 850;
+    font-size: .95rem;
+  }
+
+  .pa-vendor {
+    font-weight: 750;
+    color: #332c38;
+  }
+
+  .pa-muted {
+    color: #7d7282;
+    font-size: .79rem;
+  }
+
+  .pa-tracking {
+    display: inline-block;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #514759;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .79rem;
+  }
+
+  .pa-contents {
+    max-width: 320px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .pa-value {
+    color: var(--pa-purple);
+    font-weight: 850;
+    white-space: nowrap;
+  }
+
+  .pa-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    border-radius: 999px;
+    padding: .3rem .58rem;
+    font-size: .72rem;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .pill-editable {
+    background: #dbeafe;
+    color: #1d4ed8;
+  }
+
+  .pill-linked {
+    background: #dcfce7;
+    color: #15803d;
+  }
+
+  .pill-locked {
+    background: #e9e5eb;
+    color: #625867;
+  }
+
+  .pill-files {
+    background: #f3e8ff;
+    color: var(--pa-purple);
+    border: 0;
+  }
+
+  .pill-none {
+    background: #f1f5f9;
+    color: #64748b;
+  }
+
+  .pa-empty {
+    padding: 3.5rem 1rem !important;
+    text-align: center;
+  }
+
+  .pa-empty-icon {
+    width: 68px;
+    height: 68px;
+    display: grid;
+    place-items: center;
+    margin: 0 auto 1rem;
+    border-radius: 20px;
+    background: #f2e7f8;
+    color: var(--pa-purple);
+    font-size: 1.7rem;
+  }
+
+  .pa-no-results {
+    display: none;
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: #756a7b;
+  }
+
+  .pa-pagination-wrap {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    border-top: 1px solid var(--pa-border);
+    background: #fcfafd;
+  }
+
+  .pa-page-info {
+    color: #756a7b;
+    font-size: .82rem;
+  }
+
+  .pa-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .35rem;
+  }
+
+  .pa-page-btn {
+    min-width: 36px;
+    height: 36px;
+    border: 1px solid #d8c9e0;
+    border-radius: 9px;
+    background: #fff;
+    color: var(--pa-purple);
+    font-weight: 750;
+  }
+
+  .pa-page-btn:hover:not(:disabled) {
+    background: #f3e8fa;
+  }
+
+  .pa-page-btn.active {
+    border-color: var(--pa-purple);
+    background: var(--pa-purple);
+    color: #fff;
+  }
+
+  .pa-page-btn:disabled {
+    color: #aaa0ae;
+    background: #f4f1f5;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: 991.98px) {
+
+    .pa-table-card table,
+    .pa-table-card tbody,
+    .pa-table-card tr,
+    .pa-table-card td {
+      display: block;
+      width: 100%;
+    }
+
+    .pa-table-card thead {
+      display: none;
+    }
+
+    .pa-table-card tbody {
+      padding: .65rem;
+    }
+
+    .pa-table-card tbody tr {
+      position: relative;
+      margin-bottom: .75rem;
+      padding: 1rem;
+      border: 1px solid var(--pa-border);
+      border-radius: 15px;
+      background: #fff;
+      box-shadow: 0 4px 12px rgba(46, 8, 84, .05);
+    }
+
+    .pa-table-card tbody tr:last-child {
+      margin-bottom: 0;
+    }
+
+    .pa-table-card tbody td {
+      padding: .34rem 0;
+      border: 0;
+    }
+
+    .pa-table-card tbody td[data-label]::before {
+      content: attr(data-label);
+      display: block;
+      margin-bottom: .12rem;
+      color: #807586;
+      font-size: .67rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .pa-select-cell {
+      position: absolute;
+      right: 1rem;
+      top: .85rem;
+      width: auto !important;
+    }
+
+    .pa-reference-cell {
+      padding-right: 3rem !important;
+    }
+
+    .pa-contents {
+      max-width: none;
+    }
+
+    .pa-tracking {
+      max-width: calc(100vw - 110px);
+    }
+  }
+
+  @media (max-width: 575.98px) {
+    .prealert-list-page {
+      padding-top: .75rem;
+    }
+
+    .pa-list-hero {
+      border-radius: 17px;
+      padding: 1.2rem;
+    }
+
+    .pa-list-hero .hero-layout {
+      align-items: flex-start !important;
+    }
+
+    .pa-new-btn {
+      font-size: .82rem;
+      padding: .6rem .75rem;
+    }
+
+    .pa-stat-card {
+      padding: .75rem;
+      gap: .55rem;
+    }
+
+    .pa-stat-icon {
+      width: 35px;
+      height: 35px;
+    }
+
+    .pa-stat-value {
+      font-size: 1.15rem;
+    }
+
+    .pa-toolbar .toolbar-layout {
+      align-items: stretch !important;
+    }
+
+    .pa-filter-select {
+      width: 100%;
+    }
+
+    .pa-pagination-wrap {
+      flex-direction: column;
+      align-items: stretch;
+      text-align: center;
+    }
+
+    .pa-pagination {
+      justify-content: center;
+    }
+  }
+</style>
+
+<div class="container prealert-list-page">
+  <section class="pa-list-hero">
+    <div class="hero-layout d-flex justify-content-between align-items-center gap-3 position-relative"
+      style="z-index:1;">
+      <div>
+        <h1><i class="bi bi-box-seam me-2" style="color:var(--pa-gold);"></i>Your Pre-Alerts</h1>
+        <p>Track expected packages and keep invoices organized in one place.</p>
+      </div>
+      <a href="{{ url_for('customer.prealerts_create') }}" class="pa-new-btn">
+        <i class="bi bi-plus-lg me-1"></i> New Pre-Alert
+      </a>
+    </div>
+  </section>
+
+  <section class="pa-toolbar">
+    <div class="toolbar-layout d-flex flex-wrap align-items-center gap-2">
+      <div class="pa-search-wrap">
+        <i class="bi bi-search"></i>
+        <input id="prealertSearch" type="search" class="form-control"
+          placeholder="Search pre-alert, vendor, tracking or contents" autocomplete="off">
+      </div>
+      <div class="pa-show-wrap ms-auto">
+        <label for="prealertPageSize">Show</label>
+        <select id="prealertPageSize" class="form-select form-select-sm" aria-label="Rows per page">
+          <option value="10" selected>10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+    </div>
+    <div id="prealertSelectionActions" class="pa-selection-actions">
+      <button id="editSelectedPrealertBtn" type="button" class="btn btn-outline-secondary pa-action-btn" disabled>
+        <i class="bi bi-pencil-square"></i> Edit
       </button>
-
       <form id="deleteSelectedPrealertForm" method="POST" action="">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button id="deleteSelectedPrealertBtn" type="submit" class="btn btn-outline-danger btn-sm" disabled>
-          <i class="bi bi-trash"></i> Delete Selected
+        <button id="deleteSelectedPrealertBtn" type="submit" class="btn btn-outline-danger pa-action-btn" disabled>
+          <i class="bi bi-trash"></i> Delete
         </button>
       </form>
     </div>
-  </div>
+  </section>
 
-  <div class="table-responsive">
-    <table class="table table-hover table-striped table-bordered align-middle">
-      <thead class="table-dark">
-        <tr>
-          <th class="text-center" style="width: 50px;"></th>
-          <th>Pre-Alert #</th>
-          <th>Vendor</th>
-          <th>Courier</th>
-          <th>Tracking #</th>
-          <th>Purchase Date</th>
-          <th>Contents</th>
-          <th>Value (USD)</th>
-          <th>Attachments</th>
-          <th>Submitted On</th>
-        </tr>
-      </thead>
+  <section class="pa-table-card">
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th class="text-center" style="width:48px;"></th>
+            <th>Pre-Alert</th>
+            <th>Vendor / Courier</th>
+            <th>Tracking</th>
+            <th>Contents</th>
+            <th>Value</th>
+            <th>Attachments</th>
+            <th>Dates</th>
+          </tr>
+        </thead>
+        <tbody id="prealertTableBody">
+          {% if prealerts %}
+          {% for p in prealerts %}
+          {% set has_files = (p.attachments and p.attachments|length > 0) or p.invoice_filename %}
+          {% set row_status = 'linked' if p.linked_package_id else ('locked' if p.is_locked else 'editable') %}
+          <tr class="prealert-row" data-status="{{ row_status }}"
+            data-attachments="{{ 'with' if has_files else 'without' }}"
+            data-search="{{ ((p.prealert_number or '')|string ~ ' ' ~ (p.vendor_name or '') ~ ' ' ~ (p.courier_name or '') ~ ' ' ~ (p.tracking_number or '') ~ ' ' ~ (p.package_contents or ''))|lower|e }}">
+            <td class="text-center pa-select-cell">
+              {% if p.linked_package_id or p.is_locked %}
+              <i class="bi bi-lock-fill text-muted"
+                title="{% if p.linked_package_id %}Linked to package{% else %}Locked by FAFL{% endif %}"></i>
+              {% else %}
+              <input type="checkbox" class="form-check-input prealert-select" value="{{ p.id }}"
+                aria-label="Select pre-alert {{ p.prealert_number or p.id }}"
+                data-edit-url="{{ url_for('customer.prealerts_edit', prealert_id=p.id) }}"
+                data-delete-url="{{ url_for('customer.prealerts_delete', prealert_id=p.id) }}">
+              {% endif %}
+            </td>
 
-      <tbody>
-        {% if prealerts %}
-        {% for p in prealerts %}
-        <tr>
-          <td class="text-center">
-            {% if p.linked_package_id or p.is_locked %}
-            <i class="bi bi-lock-fill text-muted"
-              title="{% if p.linked_package_id %}Locked: linked to package{% else %}Locked by FAFL{% endif %}">
-            </i>
-            {% else %}
-            <input type="checkbox" class="form-check-input prealert-select" value="{{ p.id }}"
-              data-edit-url="{{ url_for('customer.prealerts_edit', prealert_id=p.id) }}"
-              data-delete-url="{{ url_for('customer.prealerts_delete', prealert_id=p.id) }}">
-            {% endif %}
-          </td>
-
-          <td>
-            {% if p.prealert_number %}
-            PA-{{ "%05d"|format(p.prealert_number) }}
-            {% else %}
-            {{ p.id }}
-            {% endif %}
-          </td>
-
-          <td>{{ p.vendor_name or 'N/A' }}</td>
-          <td>{{ p.courier_name or 'N/A' }}</td>
-          <td>{{ p.tracking_number or 'N/A' }}</td>
-
-          <td>
-            {% if p.purchase_date %}
-            {{ p.purchase_date }}
-            {% else %}
-            N/A
-            {% endif %}
-          </td>
-
-          <td>{{ p.package_contents or 'N/A' }}</td>
-
-          <td>${{ "%.2f"|format(p.item_value_usd or 0) }}</td>
-
-          <td>
-            {% if p.attachments and p.attachments|length > 0 %}
-
-            <div class="dropdown">
-              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                aria-expanded="false">
-                <i class="bi bi-paperclip"></i>
-                {{ p.attachments|length }}
-              </button>
-
-              <ul class="dropdown-menu p-2" style="min-width: 260px;">
-                {% for a in p.attachments %}
-                <li class="mb-2">
-                  <div class="small fw-semibold text-wrap">
-                    <i class="bi bi-paperclip me-1"></i>
-                    {{ a.original_name or 'Attachment' }}
-                  </div>
-
-                  <a class="btn btn-sm btn-link p-0"
-                    href="{{ url_for('customer.prealert_attachment', attachment_id=a.id) }}" target="_blank">
-                    View
-                  </a>
-
-                  <a class="btn btn-sm btn-link p-0 ms-2"
-                    href="{{ url_for('customer.prealert_attachment_download', attachment_id=a.id) }}">
-                    Download
-                  </a>
-                </li>
-
-                {% if not loop.last %}
-                <li>
-                  <hr class="dropdown-divider">
-                </li>
+            <td class="pa-reference-cell" data-label="Pre-Alert">
+              <div class="pa-reference">
+                {% if p.prealert_number %}PA-{{ "%05d"|format(p.prealert_number) }}{% else %}PA-{{ p.id }}{% endif %}
+              </div>
+              <div class="mt-2">
+                {% if p.linked_package_id %}
+                <span class="pa-pill pill-linked"><i class="bi bi-link-45deg"></i>Linked</span>
+                {% elif p.is_locked %}
+                <span class="pa-pill pill-locked"><i class="bi bi-lock-fill"></i>Locked</span>
+                {% else %}
+                <span class="pa-pill pill-editable"><i class="bi bi-pencil"></i>Editable</span>
                 {% endif %}
-                {% endfor %}
-              </ul>
-            </div>
+              </div>
+            </td>
 
-            {% elif p.invoice_filename %}
-            <a class="btn btn-sm btn-link p-0"
-              href="{{ url_for('customer.prealert_invoice_download', prealert_id=p.id) }}">
-              Download
-            </a>
+            <td data-label="Vendor / Courier">
+              <div class="pa-vendor">{{ p.vendor_name or 'Not provided' }}</div>
+              <div class="pa-muted"><i class="bi bi-truck me-1"></i>{{ p.courier_name or 'Courier not provided' }}</div>
+            </td>
 
-            {% if p.invoice_original_name %}
-            <div class="small text-muted mt-1">{{ p.invoice_original_name }}</div>
-            {% endif %}
+            <td data-label="Tracking">
+              <span class="pa-tracking" title="{{ p.tracking_number or 'Not provided' }}">{{ p.tracking_number or 'Not
+                provided' }}</span>
+            </td>
 
-            {% else %}
-            <span class="text-muted">N/A</span>
-            {% endif %}
-          </td>
+            <td data-label="Contents">
+              <div class="pa-contents" title="{{ p.package_contents or 'Not provided' }}">{{ p.package_contents or 'Not
+                provided' }}</div>
+            </td>
 
-          <td>
-            {% if p.created_at %}
-            {{ to_jamaica(p.created_at).strftime("%Y-%m-%d %I:%M %p") }}
-            {% else %}
-            N/A
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-        {% else %}
-        <tr>
-          <td colspan="10" class="text-center text-muted">
-            No pre-alert shipments available.
-          </td>
-        </tr>
-        {% endif %}
-      </tbody>
-    </table>
-  </div>
+            <td data-label="Value"><span class="pa-value">USD ${{ "%.2f"|format(p.item_value_usd or 0) }}</span></td>
+
+            <td data-label="Attachments">
+              {% if p.attachments and p.attachments|length > 0 %}
+              <div class="dropdown">
+                <button class="pa-pill pill-files dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                  aria-expanded="false">
+                  <i class="bi bi-paperclip"></i>{{ p.attachments|length }} file{{ '' if p.attachments|length == 1 else
+                  's' }}
+                </button>
+                <ul class="dropdown-menu p-2 shadow" style="min-width:280px;">
+                  {% for a in p.attachments %}
+                  <li class="p-2">
+                    <div class="small fw-semibold text-wrap"><i class="bi bi-file-earmark me-1"></i>{{ a.original_name
+                      or 'Attachment' }}</div>
+                    <div class="mt-1">
+                      <a class="btn btn-sm btn-link p-0"
+                        href="{{ url_for('customer.prealert_attachment', attachment_id=a.id) }}" target="_blank"
+                        rel="noopener">View</a>
+                      <a class="btn btn-sm btn-link p-0 ms-2"
+                        href="{{ url_for('customer.prealert_attachment_download', attachment_id=a.id) }}">Download</a>
+                    </div>
+                  </li>
+                  {% if not loop.last %}<li>
+                    <hr class="dropdown-divider my-0">
+                  </li>{% endif %}
+                  {% endfor %}
+                </ul>
+              </div>
+              {% elif p.invoice_filename %}
+              <a class="pa-pill pill-files text-decoration-none"
+                href="{{ url_for('customer.prealert_invoice_download', prealert_id=p.id) }}">
+                <i class="bi bi-paperclip"></i>1 file
+              </a>
+              {% else %}
+              <span class="pa-pill pill-none"><i class="bi bi-paperclip"></i>No file</span>
+              {% endif %}
+            </td>
+
+            <td data-label="Dates">
+              <div class="small fw-semibold"><i class="bi bi-cart3 me-1 text-muted"></i>{{ p.purchase_date or 'No
+                purchase date' }}</div>
+              <div class="pa-muted mt-1">
+                <i class="bi bi-clock me-1"></i>
+                {% if p.created_at %}{{ to_jamaica(p.created_at).strftime("%Y-%m-%d %I:%M %p") }}{% else %}Not
+                available{% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+          {% else %}
+          <tr>
+            <td colspan="8" class="pa-empty">
+              <div class="pa-empty-icon"><i class="bi bi-box-seam"></i></div>
+              <h5 class="fw-bold">No pre-alerts yet</h5>
+              <p class="text-muted mb-3">Create a pre-alert before your next package arrives.</p>
+              <a href="{{ url_for('customer.prealerts_create') }}" class="btn btn-dashboard">Create Pre-Alert</a>
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+      <div id="prealertNoResults" class="pa-no-results">
+        <i class="bi bi-search fs-3 d-block mb-2"></i>No pre-alerts match your search.
+      </div>
+    </div>
+    {% if prealerts %}
+    <div class="pa-pagination-wrap">
+      <div id="prealertPageInfo" class="pa-page-info"></div>
+      <nav id="prealertPagination" class="pa-pagination" aria-label="Pre-alert pages"></nav>
+    </div>
+    {% endif %}
+  </section>
 </div>
 
 <script>
-  document.addEventListener("DOMContentLoaded", function () {
-    const checks = document.querySelectorAll(".prealert-select");
-    const editBtn = document.getElementById("editSelectedPrealertBtn");
-    const deleteBtn = document.getElementById("deleteSelectedPrealertBtn");
-    const deleteForm = document.getElementById("deleteSelectedPrealertForm");
+  document.addEventListener('DOMContentLoaded', function () {
+    const checks = document.querySelectorAll('.prealert-select');
+    const editBtn = document.getElementById('editSelectedPrealertBtn');
+    const deleteBtn = document.getElementById('deleteSelectedPrealertBtn');
+    const deleteForm = document.getElementById('deleteSelectedPrealertForm');
+    const selectionActions = document.getElementById('prealertSelectionActions');
+    const searchInput = document.getElementById('prealertSearch');
+    const pageSizeSelect = document.getElementById('prealertPageSize');
+    const rows = Array.from(document.querySelectorAll('.prealert-row'));
+    const noResults = document.getElementById('prealertNoResults');
+    const pagination = document.getElementById('prealertPagination');
+    const pageInfo = document.getElementById('prealertPageInfo');
+    let currentPage = 1;
 
-    function updateBtn() {
-      const selected = document.querySelectorAll(".prealert-select:checked");
-
-      checks.forEach(function (chk) {
-        chk.disabled = selected.length > 0 && !chk.checked;
+    function updateButtons() {
+      const selected = document.querySelectorAll('.prealert-select:checked');
+      checks.forEach(function (checkbox) {
+        checkbox.disabled = selected.length > 0 && !checkbox.checked;
       });
-
       editBtn.disabled = selected.length !== 1;
       deleteBtn.disabled = selected.length !== 1;
-
+      if (selectionActions) selectionActions.classList.toggle('active', selected.length === 1);
       if (selected.length === 1) {
         editBtn.dataset.editUrl = selected[0].dataset.editUrl;
         deleteForm.action = selected[0].dataset.deleteUrl;
       } else {
         delete editBtn.dataset.editUrl;
-        deleteForm.removeAttribute("action");
+        deleteForm.removeAttribute('action');
       }
     }
 
-    checks.forEach(function (chk) {
-      chk.addEventListener("change", updateBtn);
+    function clearSelection() {
+      checks.forEach(function (checkbox) {
+        checkbox.checked = false;
+        checkbox.disabled = false;
+      });
+      updateButtons();
+    }
+
+    function matchingRows() {
+      const query = (searchInput.value || '').trim().toLowerCase();
+      return rows.filter(function (row) {
+        return !query || (row.dataset.search || '').includes(query);
+      });
+    }
+
+    function pageButton(label, page, options) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'pa-page-btn';
+      button.textContent = label;
+      button.disabled = !!(options && options.disabled);
+      if (options && options.active) {
+        button.classList.add('active');
+        button.setAttribute('aria-current', 'page');
+      }
+      button.addEventListener('click', function () {
+        clearSelection();
+        currentPage = page;
+        renderRows();
+        document.querySelector('.pa-table-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      return button;
+    }
+
+    function renderPagination(totalPages) {
+      if (!pagination) return;
+      pagination.innerHTML = '';
+      pagination.appendChild(pageButton('‹', Math.max(1, currentPage - 1), { disabled: currentPage === 1 }));
+
+      for (let page = 1; page <= totalPages; page += 1) {
+        pagination.appendChild(pageButton(String(page), page, { active: page === currentPage }));
+      }
+
+      pagination.appendChild(pageButton('›', Math.min(totalPages, currentPage + 1), { disabled: currentPage === totalPages }));
+    }
+
+    function renderRows() {
+      const filtered = matchingRows();
+      const pageSize = Math.max(1, parseInt(pageSizeSelect.value, 10) || 10);
+      const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+      if (currentPage > totalPages) currentPage = totalPages;
+      const start = (currentPage - 1) * pageSize;
+      const end = Math.min(start + pageSize, filtered.length);
+
+      rows.forEach(function (row) { row.style.display = 'none'; });
+      filtered.slice(start, end).forEach(function (row) { row.style.display = ''; });
+
+      if (noResults) noResults.style.display = rows.length > 0 && filtered.length === 0 ? 'block' : 'none';
+      if (pageInfo) {
+        pageInfo.textContent = filtered.length === 0
+          ? 'Showing 0 pre-alerts'
+          : `Showing ${start + 1} to ${end} of ${filtered.length} pre-alerts`;
+      }
+      renderPagination(totalPages);
+    }
+
+    checks.forEach(function (checkbox) { checkbox.addEventListener('change', updateButtons); });
+    searchInput.addEventListener('input', function () { clearSelection(); currentPage = 1; renderRows(); });
+    pageSizeSelect.addEventListener('change', function () { clearSelection(); currentPage = 1; renderRows(); });
+
+    editBtn.addEventListener('click', function () {
+      if (editBtn.dataset.editUrl) window.location.href = editBtn.dataset.editUrl;
     });
 
-    editBtn.addEventListener("click", function () {
-      if (editBtn.dataset.editUrl) {
-        window.location.href = editBtn.dataset.editUrl;
+    deleteForm.addEventListener('submit', function (event) {
+      if (!deleteForm.action || !confirm('Delete this pre-alert? This will also remove its uploaded attachments.')) {
+        event.preventDefault();
       }
     });
 
-    deleteForm.addEventListener("submit", function (e) {
-      if (!deleteForm.action) {
-        e.preventDefault();
-        return;
-      }
-
-      if (!confirm("Delete this pre-alert? This will also remove its uploaded attachments.")) {
-        e.preventDefault();
-      }
-    });
+    updateButtons();
+    renderRows();
   });
 </script>
 {% endblock %}

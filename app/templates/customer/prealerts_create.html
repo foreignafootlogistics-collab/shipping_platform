@@ -2,84 +2,402 @@
 {% block title %}Create Pre-Alert{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-  <h3>📦 Create Pre-Alert</h3>
+<style>
+  .prealert-create-page {
+    --pa-purple: #4a148c;
+    --pa-deep: #2e0854;
+    --pa-gold: #facc15;
+    --pa-soft: #f8f2fc;
+    --pa-border: #e5d8ed;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 1.25rem 0 2.5rem;
+  }
 
-  <div class="d-flex justify-content-end mb-3">
-    <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-dashboard">
-      View All Pre-Alert Shipments
-    </a>
-  </div>
+  .pa-create-hero {
+    position: relative;
+    overflow: hidden;
+    padding: 1.55rem 1.75rem;
+    border-radius: 22px;
+    color: #fff;
+    background: linear-gradient(125deg, var(--pa-deep), var(--pa-purple) 55%, #7e22ce);
+    box-shadow: 0 14px 32px rgba(74, 20, 140, .2);
+  }
 
-  <div class="alert alert-note-purple" role="alert">
-    <strong>Note:</strong> All uploaded invoices <em>must include</em> the following details:
-    <ul class="mb-0">
-      <li>Order Number</li>
-      <li>Customer Name and Address</li>
-      <li>Content of the Order</li>
-      <li>Breakdown of Charges with Total Charge</li>
+  .pa-create-hero::after {
+    content: "";
+    position: absolute;
+    right: -45px;
+    top: -70px;
+    width: 190px;
+    height: 190px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .1);
+  }
+
+  .pa-create-hero h1 {
+    font-size: clamp(1.55rem, 3vw, 2.1rem);
+    font-weight: 800;
+    margin: 0;
+  }
+
+  .pa-create-hero p {
+    margin: .35rem 0 0;
+    color: rgba(255, 255, 255, .78);
+  }
+
+  .pa-create-hero .hero-icon {
+    width: 52px;
+    height: 52px;
+    display: grid;
+    place-items: center;
+    border-radius: 16px;
+    background: var(--pa-gold);
+    color: var(--pa-deep);
+    font-size: 1.45rem;
+  }
+
+  .pa-back-btn {
+    border: 1px solid rgba(255, 255, 255, .55);
+    color: #fff;
+    background: rgba(255, 255, 255, .1);
+    border-radius: 12px;
+    padding: .65rem 1rem;
+    text-decoration: none;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .pa-back-btn:hover {
+    color: var(--pa-deep);
+    background: #fff;
+  }
+
+  .pa-requirements {
+    margin-top: 1rem;
+    border: 1px solid #dac2e7;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #fbf7fd, #f4eafa);
+    overflow: hidden;
+  }
+
+  .pa-requirements summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 1rem 1.15rem;
+    font-weight: 800;
+    color: var(--pa-purple);
+  }
+
+  .pa-requirements summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .pa-requirements summary::after {
+    content: "+";
+    float: right;
+    font-size: 1.3rem;
+  }
+
+  .pa-requirements[open] summary::after {
+    content: "−";
+  }
+
+  .pa-requirements ul {
+    margin: 0;
+    padding: 0 1.5rem 1rem 2.8rem;
+    color: #514558;
+  }
+
+  .pa-form-card {
+    margin-top: 1rem;
+    background: #fff;
+    border: 1px solid var(--pa-border);
+    border-radius: 22px;
+    box-shadow: 0 10px 26px rgba(46, 8, 84, .08);
+    overflow: hidden;
+  }
+
+  .pa-form-section {
+    padding: 1.35rem 1.5rem;
+  }
+
+  .pa-form-section+.pa-form-section {
+    border-top: 1px solid var(--pa-border);
+  }
+
+  .pa-section-title {
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    margin-bottom: 1rem;
+  }
+
+  .pa-section-title span {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 11px;
+    background: #f0e3f8;
+    color: var(--pa-purple);
+  }
+
+  .pa-section-title h2 {
+    font-size: 1.05rem;
+    font-weight: 800;
+    margin: 0;
+    color: #2d2432;
+  }
+
+  .prealert-create-page .form-label {
+    font-weight: 700;
+    color: #463b4c;
+    margin-bottom: .4rem;
+  }
+
+  .prealert-create-page .form-control {
+    min-height: 48px;
+    border-radius: 12px;
+    border-color: #d8cadf;
+    background: #fff;
+  }
+
+  .prealert-create-page .form-control:focus {
+    border-color: var(--pa-purple);
+    box-shadow: 0 0 0 .2rem rgba(74, 20, 140, .12);
+  }
+
+  .pa-file-row {
+    border: 1.5px dashed #b996cc;
+    border-radius: 14px;
+    background: var(--pa-soft);
+    padding: .85rem;
+    margin-bottom: .75rem;
+  }
+
+  .pa-file-row .form-control {
+    min-height: auto;
+    background: #fff;
+  }
+
+  .pa-file-name {
+    display: none;
+    margin-top: .55rem;
+    color: var(--pa-purple);
+    font-size: .86rem;
+    font-weight: 700;
+  }
+
+  .pa-file-row.has-file .pa-file-name {
+    display: block;
+  }
+
+  .pa-file-row.has-file {
+    border-style: solid;
+    border-color: #8b5aaa;
+    background: #fbf7fd;
+  }
+
+  .pa-add-file {
+    border: 1px solid var(--pa-purple);
+    color: var(--pa-purple);
+    background: #fff;
+    border-radius: 11px;
+    font-weight: 700;
+  }
+
+  .pa-add-file:hover {
+    background: #f3e8fa;
+    color: var(--pa-deep);
+  }
+
+  .pa-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .75rem;
+    padding: 1.15rem 1.5rem;
+    background: #fcfafd;
+    border-top: 1px solid var(--pa-border);
+  }
+
+  .pa-submit-btn {
+    min-width: 220px;
+    border: 0;
+    border-radius: 12px;
+    padding: .78rem 1.25rem;
+    background: linear-gradient(110deg, var(--pa-purple), #7222b5);
+    color: #fff;
+    font-weight: 800;
+    box-shadow: 0 8px 18px rgba(74, 20, 140, .2);
+  }
+
+  .pa-submit-btn:hover {
+    color: #fff;
+    transform: translateY(-1px);
+  }
+
+  .pa-submit-btn:disabled {
+    opacity: .65;
+    transform: none;
+  }
+
+  .pa-cancel-btn {
+    border-radius: 12px;
+    padding: .75rem 1.1rem;
+    font-weight: 700;
+  }
+
+  @media (max-width: 767.98px) {
+    .prealert-create-page {
+      padding-top: .75rem;
+    }
+
+    .pa-create-hero {
+      padding: 1.2rem;
+      border-radius: 17px;
+    }
+
+    .pa-create-hero .hero-layout {
+      align-items: flex-start !important;
+    }
+
+    .pa-create-hero .hero-icon {
+      width: 44px;
+      height: 44px;
+    }
+
+    .pa-back-btn {
+      padding: .55rem .75rem;
+      font-size: .85rem;
+    }
+
+    .pa-form-section {
+      padding: 1.1rem;
+    }
+
+    .pa-form-actions {
+      flex-direction: column-reverse;
+      padding: 1rem;
+    }
+
+    .pa-form-actions .btn,
+    .pa-submit-btn {
+      width: 100%;
+    }
+  }
+</style>
+
+<div class="container prealert-create-page">
+  <section class="pa-create-hero">
+    <div class="hero-layout d-flex justify-content-between align-items-center gap-3 position-relative"
+      style="z-index:1;">
+      <div class="d-flex align-items-center gap-3">
+        <div class="hero-icon"><i class="bi bi-box-seam"></i></div>
+        <div>
+          <h1>Create a Pre-Alert</h1>
+          <p>Tell us what is on the way so we can identify and process it faster.</p>
+        </div>
+      </div>
+      <a href="{{ url_for('customer.prealerts_view') }}" class="pa-back-btn">
+        <i class="bi bi-list-ul me-1"></i> View Pre-Alerts
+      </a>
+    </div>
+  </section>
+
+  <details class="pa-requirements">
+    <summary><i class="bi bi-info-circle me-2"></i>What must my invoice include?</summary>
+    <ul>
+      <li>Order number</li>
+      <li>Customer name and address</li>
+      <li>Contents of the order</li>
+      <li>Breakdown of charges and the total charged</li>
     </ul>
-  </div>
+  </details>
 
-  <form id="prealertCreateForm" method="POST" enctype="multipart/form-data" class="mb-4">
+  <form id="prealertCreateForm" method="POST" enctype="multipart/form-data" class="pa-form-card">
     {{ form.hidden_tag() }}
 
-    <div class="row g-3">
-      <div class="col-md-6">
-        {{ form.vendor_name.label(class="form-label") }}
-        {{ form.vendor_name(class="form-control", autocomplete="organization") }}
+    <section class="pa-form-section">
+      <div class="pa-section-title">
+        <span><i class="bi bi-truck"></i></span>
+        <h2>Shipment information</h2>
       </div>
 
-      <div class="col-md-6">
-        {{ form.courier_name.label(class="form-label") }}
-        {{ form.courier_name(class="form-control") }}
+      <div class="row g-3">
+        <div class="col-md-6">
+          {{ form.vendor_name.label(class="form-label") }}
+          {{ form.vendor_name(class="form-control", autocomplete="organization", placeholder="Example: Amazon or Temu")
+          }}
+        </div>
+        <div class="col-md-6">
+          {{ form.courier_name.label(class="form-label") }}
+          {{ form.courier_name(class="form-control", placeholder="Example: FedEx, UPS or USPS") }}
+        </div>
+        <div class="col-md-7">
+          {{ form.tracking_number.label(class="form-label") }}
+          {{ form.tracking_number(class="form-control", id="tracking_number", autocapitalize="characters",
+          spellcheck="false", placeholder="Enter the courier tracking number") }}
+          <div class="form-text"><i class="bi bi-lightbulb me-1"></i>Spaces are removed automatically.</div>
+        </div>
+        <div class="col-md-5">
+          {{ form.purchase_date.label(class="form-label") }}
+          {{ form.purchase_date(class="form-control") }}
+        </div>
+      </div>
+    </section>
+
+    <section class="pa-form-section">
+      <div class="pa-section-title">
+        <span><i class="bi bi-bag-check"></i></span>
+        <h2>Purchase details</h2>
       </div>
 
-      <div class="col-md-6">
-        {{ form.tracking_number.label(class="form-label") }}
-        {{ form.tracking_number(class="form-control", id="tracking_number", autocapitalize="characters",
-        spellcheck="false") }}
-        <div class="form-text">Tip: Don’t include spaces. We’ll auto-trim for you.</div>
+      <div class="row g-3">
+        <div class="col-md-8">
+          {{ form.package_contents.label(class="form-label") }}
+          {{ form.package_contents(class="form-control", placeholder="Briefly describe the items in this package") }}
+        </div>
+        <div class="col-md-4">
+          {{ form.item_value_usd.label(class="form-label") }}
+          <div class="input-group">
+            <span class="input-group-text">USD $</span>
+            {{ form.item_value_usd(class="form-control", placeholder="0.00") }}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pa-form-section">
+      <div class="pa-section-title">
+        <span><i class="bi bi-paperclip"></i></span>
+        <div>
+          <h2>Invoices and attachments</h2>
+          <div class="small text-muted">Add up to 5 PDF, JPG, JPEG or PNG files, maximum 10 MB each.</div>
+        </div>
       </div>
 
-      <div class="col-md-6">
-        {{ form.purchase_date.label(class="form-label") }}
-        {{ form.purchase_date(class="form-control") }}
-      </div>
-
-      <div class="col-md-6">
-        {{ form.package_contents.label(class="form-label") }}
-        {{ form.package_contents(class="form-control") }}
-      </div>
-
-      <div class="col-md-6">
-        {{ form.item_value_usd.label(class="form-label") }}
-        {{ form.item_value_usd(class="form-control") }}
-      </div>
-
-      <div class="col-md-12">
-        <label class="form-label">Invoices / Attachments</label>
-
-        <div id="attachmentInputs">
-          <div class="input-group mb-2 attachment-input-row">
+      <div id="attachmentInputs">
+        <div class="pa-file-row attachment-input-row">
+          <div class="input-group">
             <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
-            <button class="btn btn-outline-danger remove-attachment-btn" type="button" style="display:none;">
+            <button class="btn btn-outline-danger remove-attachment-btn" type="button" style="display:none;"
+              aria-label="Remove attachment">
               <i class="bi bi-x-lg"></i>
             </button>
           </div>
+          <div class="pa-file-name"><i class="bi bi-check-circle-fill me-1"></i><span></span></div>
         </div>
-
-        <button type="button" id="addAttachmentBtn" class="btn btn-sm btn-outline-secondary mt-1">
-          <i class="bi bi-plus-circle me-1"></i> Add Another Attachment
-        </button>
-
-        <div class="form-text">Allowed formats: jpg, jpeg, png, pdf. Add each file separately.</div>
       </div>
-    </div>
 
-    <div class="mt-4 d-flex gap-2">
-      {{ form.submit(class="btn btn-dashboard") }}
-      <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-secondary">Cancel</a>
+      <button type="button" id="addAttachmentBtn" class="btn pa-add-file mt-1">
+        <i class="bi bi-plus-circle me-1"></i> Add Another Attachment
+      </button>
+    </section>
+
+    <div class="pa-form-actions">
+      <a href="{{ url_for('customer.prealerts_view') }}" class="btn btn-outline-secondary pa-cancel-btn">Cancel</a>
+      {{ form.submit(class="pa-submit-btn") }}
     </div>
   </form>
 </div>
@@ -89,72 +407,87 @@
     const form = document.getElementById('prealertCreateForm');
     const attachmentWrap = document.getElementById('attachmentInputs');
     const addBtn = document.getElementById('addAttachmentBtn');
+    const maxAttachments = 5;
 
-    if (!form) return;
+    if (!form || !attachmentWrap) return;
 
     function trimEl(idOrName) {
       const el = document.getElementById(idOrName) || form.querySelector(`[name="${idOrName}"]`);
-      if (!el || typeof el.value !== 'string') return;
-      el.value = el.value.trim();
+      if (el && typeof el.value === 'string') el.value = el.value.trim();
     }
 
-    function updateRemoveButtons() {
+    function updateRows() {
       const rows = attachmentWrap.querySelectorAll('.attachment-input-row');
-      rows.forEach(function (row, index) {
-        const btn = row.querySelector('.remove-attachment-btn');
-        if (btn) {
-          btn.style.display = rows.length > 1 ? '' : 'none';
-        }
+      rows.forEach(function (row) {
+        const removeBtn = row.querySelector('.remove-attachment-btn');
+        if (removeBtn) removeBtn.style.display = rows.length > 1 ? '' : 'none';
+      });
+      if (addBtn) addBtn.disabled = rows.length >= maxAttachments;
+    }
+
+    function bindFileRow(row) {
+      const input = row.querySelector('input[type="file"]');
+      const nameWrap = row.querySelector('.pa-file-name');
+      const nameText = nameWrap ? nameWrap.querySelector('span') : null;
+      if (!input) return;
+
+      input.addEventListener('change', function () {
+        const file = input.files && input.files[0];
+        row.classList.toggle('has-file', !!file);
+        if (nameText) nameText.textContent = file ? file.name : '';
       });
     }
 
     function addAttachmentInput() {
+      const rows = attachmentWrap.querySelectorAll('.attachment-input-row');
+      if (rows.length >= maxAttachments) return;
+
       const row = document.createElement('div');
-      row.className = 'input-group mb-2 attachment-input-row';
+      row.className = 'pa-file-row attachment-input-row';
       row.innerHTML = `
-        <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
-        <button class="btn btn-outline-danger remove-attachment-btn" type="button">
-          <i class="bi bi-x-lg"></i>
-        </button>
+        <div class="input-group">
+          <input class="form-control" type="file" name="invoices" accept=".jpg,.jpeg,.png,.pdf">
+          <button class="btn btn-outline-danger remove-attachment-btn" type="button" aria-label="Remove attachment">
+            <i class="bi bi-x-lg"></i>
+          </button>
+        </div>
+        <div class="pa-file-name"><i class="bi bi-check-circle-fill me-1"></i><span></span></div>
       `;
-
       attachmentWrap.appendChild(row);
-      updateRemoveButtons();
+      bindFileRow(row);
+      updateRows();
     }
 
-    if (addBtn && attachmentWrap) {
-      addBtn.addEventListener('click', addAttachmentInput);
+    attachmentWrap.querySelectorAll('.attachment-input-row').forEach(bindFileRow);
+    if (addBtn) addBtn.addEventListener('click', addAttachmentInput);
 
-      attachmentWrap.addEventListener('click', function (e) {
-        const btn = e.target.closest('.remove-attachment-btn');
-        if (!btn) return;
-
-        const row = btn.closest('.attachment-input-row');
-        if (row) row.remove();
-
-        updateRemoveButtons();
-      });
-
-      updateRemoveButtons();
-    }
+    attachmentWrap.addEventListener('click', function (event) {
+      const button = event.target.closest('.remove-attachment-btn');
+      if (!button) return;
+      const row = button.closest('.attachment-input-row');
+      if (row) row.remove();
+      updateRows();
+    });
 
     form.addEventListener('submit', function () {
       trimEl('vendor_name');
       trimEl('courier_name');
       trimEl('package_contents');
 
-      const t = document.getElementById('tracking_number') || form.querySelector('[name="tracking_number"]');
-      if (t && typeof t.value === 'string') {
-        t.value = t.value.trim().toUpperCase();
+      const tracking = document.getElementById('tracking_number') || form.querySelector('[name="tracking_number"]');
+      if (tracking && typeof tracking.value === 'string') {
+        tracking.value = tracking.value.replace(/\s+/g, '').toUpperCase();
       }
 
       const submitBtn = form.querySelector('input[type="submit"], button[type="submit"]');
       if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.value = "Submitting...";
-        submitBtn.innerText = "Submitting...";
+        if ('value' in submitBtn) submitBtn.value = 'Submitting...';
+        submitBtn.textContent = 'Submitting...';
       }
     });
+
+    updateRows();
   })();
 </script>
 {% endblock %}

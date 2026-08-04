@@ -549,6 +549,48 @@ def prealert_invoice_download(prealert_id):
     pa = Prealert.query.filter_by(id=prealert_id, customer_id=current_user.id).first_or_404()
     return serve_prealert_invoice_file(pa, download_name_prefix="prealert", as_attachment=True)
 
+
+@customer_bp.route(
+    "/prealerts/invoice/<int:prealert_id>/delete",
+    methods=["POST"],
+)
+@login_required
+def prealert_invoice_delete(prealert_id):
+    pa = Prealert.query.filter_by(
+        id=prealert_id,
+        customer_id=current_user.id,
+    ).first_or_404()
+
+    if pa.linked_package_id or pa.is_locked:
+        flash(
+            "Attachments cannot be removed because this pre-alert "
+            "is locked or linked to a package.",
+            "warning",
+        )
+        return redirect(
+            url_for("customer.prealerts_view")
+        )
+
+    if not pa.invoice_filename:
+        flash("This pre-alert does not have a legacy invoice to remove.", "info")
+        return redirect(
+            url_for("customer.prealerts_edit", prealert_id=pa.id)
+        )
+
+    # Clear only the legacy pre-alert reference. The underlying cloud file may
+    # also be referenced by a linked package attachment and must not be deleted.
+    pa.invoice_filename = None
+    pa.invoice_original_name = None
+    pa.invoice_public_id = None
+    pa.invoice_resource_type = None
+
+    db.session.commit()
+
+    flash("Attachment removed successfully.", "success")
+    return redirect(
+        url_for("customer.prealerts_edit", prealert_id=pa.id)
+    )
+
 @customer_bp.route('/prealerts/view')
 @login_required
 def prealerts_view():
@@ -779,6 +821,18 @@ def prealert_attachment_delete(attachment_id):
     if pa.linked_package_id or pa.is_locked:
         flash("Attachments cannot be removed because this pre-alert is locked or linked to a package.", "warning")
         return redirect(url_for("customer.prealerts_view"))
+
+    # The first modern attachment may also be stored in the old single-file
+    # fields for backwards compatibility. Clear those fields so the deleted
+    # attachment does not reappear as a legacy invoice.
+    if (
+        pa.invoice_filename
+        and pa.invoice_filename == getattr(att, "file_url", None)
+    ):
+        pa.invoice_filename = None
+        pa.invoice_original_name = None
+        pa.invoice_public_id = None
+        pa.invoice_resource_type = None
 
     db.session.delete(att)
     db.session.commit()

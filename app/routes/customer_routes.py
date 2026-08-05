@@ -1,5 +1,5 @@
 # app/routes/customer_routes.py (imports)
-import os, re, io
+import os, re, io, json
 import math
 from math import ceil
 from datetime import datetime, date, timezone, timedelta
@@ -3056,6 +3056,386 @@ def cancel_purchase_request(request_id):
     return redirect(
         url_for("customer.purchase_requests")
     )
+
+
+# ---------------------------------------------------
+# Mobile API: Shop For Me
+# ---------------------------------------------------
+
+def _mobile_shop_request_json(pr, include_details=False):
+    def _number(value):
+        try:
+            return float(value or 0)
+        except Exception:
+            return 0.0
+
+    status = (getattr(pr, "status", "") or "requested").strip().lower()
+    invoice = getattr(pr, "invoice", None)
+    invoice_total = _number(getattr(invoice, "grand_total", 0)) if invoice else 0.0
+    invoice_due = _number(getattr(invoice, "amount_due", 0)) if invoice else 0.0
+    created_at = getattr(pr, "created_at", None)
+    quoted_at = getattr(pr, "quoted_at", None)
+
+    row = {
+        "id": pr.id,
+        "request_number": getattr(pr, "request_number", "") or f"PS{pr.id:06d}",
+        "status": status,
+        "store_name": getattr(pr, "store_name", "") or "",
+        "item_name": getattr(pr, "item_name", "") or "",
+        "product_url": getattr(pr, "product_url", "") or "",
+        "quantity": int(getattr(pr, "quantity", 0) or 0),
+        "notes": getattr(pr, "notes", "") or "",
+        "created_at": (
+            to_jamaica(created_at).strftime("%Y-%m-%d %I:%M %p")
+            if created_at else ""
+        ),
+        "quoted_at": (
+            to_jamaica(quoted_at).strftime("%Y-%m-%d %I:%M %p")
+            if quoted_at else ""
+        ),
+        "quoted_item_price_usd": _number(
+            getattr(pr, "quoted_item_price_usd", 0)
+        ),
+        "quoted_service_fee_jmd": _number(
+            getattr(pr, "quoted_service_fee_jmd", 0)
+        ),
+        "invoice_id": getattr(pr, "invoice_id", None) or 0,
+        "invoice_number": (
+            getattr(invoice, "invoice_number", "") or "" if invoice else ""
+        ),
+        "invoice_status": (
+            getattr(invoice, "status", "") or "" if invoice else ""
+        ),
+        "invoice_total_jmd": invoice_total,
+        "amount_due_jmd": invoice_due,
+        "can_approve": status == "quoted" and bool(invoice),
+        "can_decline": status == "quoted",
+        "can_cancel": status in {
+            "requested", "quoted", "quote_expired", "awaiting_payment",
+        },
+    }
+
+    if include_details:
+        items = (
+            PurchaseRequestItem.query
+            .filter_by(purchase_request_id=pr.id)
+            .order_by(PurchaseRequestItem.id.asc())
+            .all()
+        )
+        attachments = (
+            PurchaseRequestAttachment.query
+            .filter_by(purchase_request_id=pr.id)
+            .order_by(PurchaseRequestAttachment.id.asc())
+            .all()
+        )
+        row["items"] = [
+            {
+                "id": item.id,
+                "product_url": getattr(item, "product_url", "") or "",
+                "store_name": getattr(item, "store_name", "") or "",
+                "item_name": getattr(item, "item_name", "") or "",
+                "quantity": int(getattr(item, "quantity", 1) or 1),
+                "color": getattr(item, "color", "") or "",
+                "size": getattr(item, "size", "") or "",
+                "notes": getattr(item, "notes", "") or "",
+            }
+            for item in items
+        ]
+        row["attachments"] = [
+            {
+                "id": attachment.id,
+                "original_name": (
+                    getattr(attachment, "original_name", "") or "Screenshot"
+                ),
+                "file_url": getattr(attachment, "file_url", "") or "",
+            }
+            for attachment in attachments
+        ]
+
+    return row
+
+
+@customer_bp.route("/api/shop-for-me", methods=["GET"])
+def api_customer_shop_for_me_list():
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    rows = (
+        PurchaseRequest.query
+        .filter_by(user_id=user.id)
+        .order_by(PurchaseRequest.created_at.desc(), PurchaseRequest.id.desc())
+        .all()
+    )
+    return jsonify({
+        "requests": [_mobile_shop_request_json(row) for row in rows],
+        "summary": {
+            "total": len(rows),
+            "awaiting_quote": sum(
+                1 for row in rows
+                if (getattr(row, "status", "") or "").strip().lower()
+                == "requested"
+            ),
+            "action_required": sum(
+                1 for row in rows
+                if (getattr(row, "status", "") or "").strip().lower()
+                == "quoted"
+            ),
+        },
+    }), 200
+
+
+@customer_bp.route("/api/shop-for-me/<int:request_id>", methods=["GET"])
+def api_customer_shop_for_me_detail(request_id):
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    pr = PurchaseRequest.query.filter_by(id=request_id, user_id=user.id).first()
+    if not pr:
+        return jsonify({"error": "Shop For Me request not found"}), 404
+    return jsonify({"request": _mobile_shop_request_json(pr, True)}), 200
+
+
+@customer_bp.route("/api/shop-for-me", methods=["POST"])
+@csrf.exempt
+def api_customer_shop_for_me_create():
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        items_data = json.loads(request.form.get("items") or "[]")
+    except Exception:
+        return jsonify({"error": "Items must be valid JSON"}), 400
+
+    if not isinstance(items_data, list):
+        return jsonify({"error": "Items must be a list"}), 400
+
+    store_name = (request.form.get("store_name") or "").strip()
+    valid_items = []
+    total_quantity = 0
+    for raw in items_data:
+        if not isinstance(raw, dict):
+            continue
+        product_url = (raw.get("product_url") or "").strip()
+        if not product_url:
+            continue
+        try:
+            quantity = max(int(raw.get("quantity") or 1), 1)
+        except Exception:
+            quantity = 1
+        valid_items.append({
+            "product_url": product_url,
+            "item_name": (raw.get("item_name") or "").strip(),
+            "quantity": quantity,
+            "color": (raw.get("color") or "").strip(),
+            "size": (raw.get("size") or "").strip(),
+            "notes": (raw.get("notes") or "").strip(),
+        })
+        total_quantity += quantity
+
+    if not valid_items:
+        return jsonify({"error": "Please add at least one product link"}), 400
+
+    screenshots = [
+        file for file in request.files.getlist("screenshots")
+        if file and (file.filename or "").strip()
+    ]
+    if len(screenshots) > 5:
+        return jsonify({"error": "A maximum of 5 screenshots is allowed"}), 400
+
+    allowed_extensions = {"jpg", "jpeg", "png", "pdf"}
+    for file in screenshots:
+        extension = (
+            file.filename.rsplit(".", 1)[-1].lower()
+            if "." in file.filename else ""
+        )
+        if extension not in allowed_extensions:
+            return jsonify({
+                "error": "Screenshots must be PDF, JPG, JPEG or PNG files"
+            }), 400
+
+    first = valid_items[0]
+    try:
+        pr = PurchaseRequest(
+            request_number=generate_purchase_request_number(),
+            user_id=user.id,
+            customer_fafl_number=user.registration_number,
+            product_url=first["product_url"],
+            store_name=store_name,
+            item_name=first["item_name"],
+            quantity=total_quantity,
+            status="requested",
+            created_at=datetime.now(timezone.utc),
+        )
+        db.session.add(pr)
+        db.session.flush()
+
+        for raw in valid_items:
+            db.session.add(PurchaseRequestItem(
+                purchase_request_id=pr.id,
+                product_url=raw["product_url"],
+                store_name=store_name,
+                item_name=raw["item_name"],
+                quantity=raw["quantity"],
+                color=raw["color"],
+                size=raw["size"],
+                notes=raw["notes"],
+                created_at=datetime.now(timezone.utc),
+            ))
+
+        for screenshot in screenshots:
+            url, public_id, resource_type = upload_file(
+                screenshot,
+                folder="fafl/shop_for_me",
+            )
+            if url:
+                db.session.add(PurchaseRequestAttachment(
+                    purchase_request_id=pr.id,
+                    file_url=url,
+                    original_name=screenshot.filename,
+                    cloud_public_id=public_id,
+                    cloud_resource_type=resource_type,
+                    created_at=datetime.now(timezone.utc),
+                ))
+
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Mobile Shop For Me submission failed")
+        return jsonify({
+            "error": "The request could not be submitted. Please try again."
+        }), 500
+
+    return jsonify({
+        "success": True,
+        "message": "Your Shop For Me request was submitted successfully.",
+        "request": _mobile_shop_request_json(pr, True),
+    }), 201
+
+
+def _mobile_shop_action_request(request_id, action):
+    user = get_api_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    pr = PurchaseRequest.query.filter_by(id=request_id, user_id=user.id).first()
+    if not pr:
+        return jsonify({"error": "Shop For Me request not found"}), 404
+
+    status = (pr.status or "requested").strip().lower()
+    invoice = getattr(pr, "invoice", None)
+
+    if action in {"approve", "decline"} and status != "quoted":
+        return jsonify({"error": "Only quoted requests can be updated"}), 409
+
+    if action == "approve":
+        if not invoice:
+            return jsonify({"error": "The quote invoice could not be found"}), 409
+        now_utc = datetime.now(timezone.utc)
+        if (
+            not getattr(pr, "quoted_at", None)
+            or to_jamaica(pr.quoted_at).date() != to_jamaica(now_utc).date()
+        ):
+            pr.status = "quote_expired"
+            if (invoice.status or "").strip().lower() in {
+                "draft", "quoted", "unpaid", "pending",
+            }:
+                invoice.status = "cancelled"
+                invoice.amount_due = 0
+            db.session.commit()
+            return jsonify({"error": "This quote has expired"}), 409
+        total_due = float(invoice.grand_total or 0)
+        if total_due <= 0:
+            return jsonify({"error": "The quote total is invalid"}), 409
+        pr.status = "awaiting_payment"
+        invoice.status = "unpaid"
+        invoice.amount_due = total_due
+        if hasattr(invoice, "date_issued"):
+            invoice.date_issued = now_utc
+        message = "Quote approved. Please make payment."
+
+    elif action == "decline":
+        pr.status = "cancelled"
+        if invoice and (invoice.status or "").strip().lower() in {
+            "draft", "quoted", "unpaid", "pending",
+        }:
+            invoice.status = "cancelled"
+            invoice.amount_due = 0
+        message = "Quote declined and request cancelled."
+
+    else:
+        if status in {"paid", "purchased"}:
+            return jsonify({
+                "error": "A paid or purchased request cannot be cancelled"
+            }), 409
+        if status not in {
+            "requested", "quoted", "quote_expired", "awaiting_payment",
+        }:
+            return jsonify({
+                "error": "This request cannot be cancelled in its current status"
+            }), 409
+        if invoice:
+            if (invoice.status or "").strip().lower() == "paid":
+                return jsonify({"error": "The invoice is already paid"}), 409
+            existing_payment = Payment.query.filter(
+                Payment.invoice_id == invoice.id,
+                func.lower(func.coalesce(Payment.status, "")).in_([
+                    "pending", "processing", "completed", "settled",
+                ]),
+            ).first()
+            if existing_payment:
+                return jsonify({
+                    "error": "This request has a payment. Please contact FAFL."
+                }), 409
+            invoice.status = "cancelled"
+            invoice.amount_due = 0
+        reason = "Cancelled by customer"
+        if request.is_json:
+            reason = ((request.get_json(silent=True) or {}).get("reason") or reason).strip()
+        pr.status = "cancelled"
+        existing_notes = (getattr(pr, "notes", "") or "").strip()
+        pr.notes = (
+            f"{existing_notes}\n\nCustomer Cancellation: {reason}"
+            if existing_notes else f"Customer Cancellation: {reason}"
+        )
+        message = "Shop For Me request cancelled."
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "Mobile Shop For Me action failed: request=%s action=%s",
+            request_id,
+            action,
+        )
+        return jsonify({"error": "The request could not be updated"}), 500
+
+    return jsonify({
+        "success": True,
+        "message": message,
+        "request": _mobile_shop_request_json(pr, True),
+    }), 200
+
+
+@customer_bp.route("/api/shop-for-me/<int:request_id>/approve", methods=["POST"])
+@csrf.exempt
+def api_customer_shop_for_me_approve(request_id):
+    return _mobile_shop_action_request(request_id, "approve")
+
+
+@customer_bp.route("/api/shop-for-me/<int:request_id>/decline", methods=["POST"])
+@csrf.exempt
+def api_customer_shop_for_me_decline(request_id):
+    return _mobile_shop_action_request(request_id, "decline")
+
+
+@customer_bp.route("/api/shop-for-me/<int:request_id>/cancel", methods=["POST"])
+@csrf.exempt
+def api_customer_shop_for_me_cancel(request_id):
+    return _mobile_shop_action_request(request_id, "cancel")
 
 # -----------------------------
 # Messaging
@@ -7843,6 +8223,14 @@ def _mobile_delivery_json(delivery, packages=None):
             .all()
         )
 
+    area_zone = (getattr(delivery, "area_zone", "") or "").strip()
+    area_zone_labels = {
+        "pm_core": "Portmore Core",
+        "pm_outside": "Portmore Outside",
+        "kgn_core": "Kingston Core",
+        "kgn_outside": "Kingston Outside",
+    }
+
     return {
         "id": delivery.id,
         "invoice_number": delivery.invoice_number or f"DEL-{delivery.id}",
@@ -7858,7 +8246,11 @@ def _mobile_delivery_json(delivery, packages=None):
         "direction": getattr(delivery, "direction", "") or "",
         "mobile_number": getattr(delivery, "mobile_number", "") or "",
         "person_receiving": getattr(delivery, "person_receiving", "") or "",
-        "area_zone": getattr(delivery, "area_zone", "") or "",
+        "area_zone": area_zone,
+        "area_zone_label": area_zone_labels.get(
+            area_zone.lower(),
+            area_zone.replace("_", " ").title(),
+        ),
         "delivery_parish": getattr(delivery, "delivery_parish", "") or "",
         "delivery_branch": getattr(delivery, "delivery_branch", "") or "",
         "distance_km": float(getattr(delivery, "distance_km", 0) or 0),
@@ -7987,6 +8379,15 @@ def api_customer_delivery_invoice(delivery_id):
 
     created_at = getattr(delivery, "created_at", None)
     jamaica_created_at = to_jamaica(created_at) if created_at else None
+    delivery_status = (getattr(delivery, "status", "") or "").strip().lower()
+    fee_status = (getattr(delivery, "fee_status", "") or "").strip().lower()
+    original_fee = float(getattr(delivery, "delivery_fee", 0) or 0)
+    total_due = original_fee
+    if delivery_status in {"cancelled", "canceled"} or fee_status in {
+        "paid", "waived",
+    }:
+        total_due = 0.0
+
     return jsonify({
         "invoice_number": delivery.invoice_number or f"DEL-{delivery.id}",
         "created_at": (
@@ -8015,8 +8416,17 @@ def api_customer_delivery_invoice(delivery_id):
         },
         "charges": {
             "description": "Delivery Request Fee",
-            "amount": float(getattr(delivery, "delivery_fee", 0) or 0),
-            "total_due": float(getattr(delivery, "delivery_fee", 0) or 0),
+            "amount": original_fee,
+            "total_due": total_due,
+            "note": (
+                "Cancelled — not payable"
+                if delivery_status in {"cancelled", "canceled"}
+                else (
+                    "Paid or waived"
+                    if fee_status in {"paid", "waived"}
+                    else ""
+                )
+            ),
         },
     })
 

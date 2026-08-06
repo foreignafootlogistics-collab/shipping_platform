@@ -2515,8 +2515,8 @@ Not emailed yet"></i>
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <script>
-  const categoryRates = {{ CATEGORIES| tojson }};
-  const USD_TO_JMD = {{ USD_TO_JMD }};
+  const categoryRates = {{CATEGORIES| tojson }};
+  const USD_TO_JMD = {{USD_TO_JMD}};
 
   /* =========================================================
      KEEP SHIPMENT DATATABLE STATE (length/page/search)
@@ -2575,7 +2575,7 @@ Not emailed yet"></i>
 
   window.ATTACH_UPLOAD_URL = "{{ url_for('logistics.admin_upload_package_attachments', package_id=0) }}";
 
-  window.CURRENT_SHIPMENT_ID = {{ selected_shipment.id if selected_shipment else 0 }};
+  window.CURRENT_SHIPMENT_ID = {{selected_shipment.id if selected_shipment else 0}};
 
   window.SHIPMENT_SCAN_URL = "{{ url_for(
   'logistics.scan_package_in_shipment',
@@ -2587,7 +2587,7 @@ Not emailed yet"></i>
     shipment_id = (selected_shipment.id if selected_shipment else 0)
 ) }}";
 
-  window.BAD_ADDRESS_FEE_DEFAULT = {{ (settings.bad_address_fee_jmd or 500)| float }};
+  window.BAD_ADDRESS_FEE_DEFAULT = {{(settings.bad_address_fee_jmd or 500)| float}};
 
   /* ============================================================
    BULK PACKAGE SORTING CODE
@@ -2992,13 +2992,13 @@ Not emailed yet"></i>
         "<'d-flex justify-content-between align-items-center mt-2'<'shipment-info'i>>",
       order: [[4, 'asc']],
       columnDefs: [
-        { orderable: false, targets: [0, 1, 3, 5, 7, 8, 9] }
+        {orderable: false, targets: [0, 1, 3, 5, 7, 8, 9]}
       ],
       language: {
         emptyTable: "No packages in this shipment.",
         info: "Showing _START_–_END_ of _TOTAL_",
         infoEmpty: "Showing 0–0 of 0",
-        paginate: { previous: "«", next: "»" }
+        paginate: {previous: "«", next: "»"}
       }
     });
 
@@ -3041,7 +3041,7 @@ Not emailed yet"></i>
     const btnClear = document.getElementById('btnClearFilters');
 
     function doApply() {
-      if (dt) { dt.draw(); return; }
+      if (dt) {dt.draw(); return;}
       const tbody = document.querySelector('#shipmentTable tbody');
       if (!tbody) return;
       const f = getFilterValues();
@@ -3092,7 +3092,7 @@ Not emailed yet"></i>
         subscriptionCheckbox.checked = false;
       }
 
-      if (dt) { dt.draw(); return; }
+      if (dt) {dt.draw(); return;}
       const tbody = document.querySelector('#shipmentTable tbody');
       if (!tbody) return;
       Array.from(tbody.querySelectorAll('tr')).forEach(tr => tr.style.display = '');
@@ -3118,7 +3118,7 @@ Not emailed yet"></i>
       'sortCodeFilter'
     ].forEach(id => {
       document.getElementById(id)?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); doApply(); }
+        if (e.key === 'Enter') {e.preventDefault(); doApply();}
       });
     });
   })();
@@ -3200,7 +3200,7 @@ Not emailed yet"></i>
     input[name^="other_"],
     input[name^="bad_address_"],
     input[name^="bad_address_fee_"]
-  `).forEach(el => { el.disabled = true; });
+  `).forEach(el => {el.disabled = true;});
 
     form.appendChild(holder);
   }
@@ -3210,7 +3210,7 @@ Not emailed yet"></i>
     if (e && e.preventDefault) e.preventDefault();
 
     const form = document.getElementById('shipmentForm');
-    if (!form) { console.error('shipmentForm not found'); return; }
+    if (!form) {console.error('shipmentForm not found'); return;}
 
     const applyBtn = document.getElementById('shipmentApplyBtn');
     if (applyBtn) applyBtn.disabled = true;
@@ -3218,14 +3218,14 @@ Not emailed yet"></i>
     try {
       const actionSel = form.querySelector('select[name="action"]');
       const action = actionSel ? actionSel.value : '';
-      if (!action) { alert('⚠️ Please select an action.'); return; }
+      if (!action) {alert('⚠️ Please select an action.'); return;}
 
       // gather selected IDs (across all DT pages)
       let ids = [];
 
       if (dt && window.jQuery && $.fn.DataTable && $.fn.DataTable.isDataTable('#shipmentTable')) {
         ids = $('#shipmentTable tbody .package-checkbox:checked')
-          .map(function () { return this.value; })
+          .map(function () {return this.value;})
           .get();
       } else {
         ids = Array.from(document.querySelectorAll('#shipmentTable tbody .package-checkbox:checked'))
@@ -3237,14 +3237,14 @@ Not emailed yet"></i>
       // Shipment-level actions (no selection required)
       if (action === 'finance_invoice') {
         const shipmentId = getShipmentIdFromUrl();
-        if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
+        if (!shipmentId) {alert("⚠️ No shipment selected (missing shipment_id in URL)."); return;}
         await openShipmentFinanceInvoicePreviewJSON(shipmentId, []);
         return;
       }
 
       if (action === 'purge_shipment_invoices') {
         const shipmentId = getShipmentIdFromUrl();
-        if (!shipmentId) { alert("⚠️ No shipment selected (missing shipment_id in URL)."); return; }
+        if (!shipmentId) {alert("⚠️ No shipment selected (missing shipment_id in URL)."); return;}
 
         const proceed = confirm(
           ids.length
@@ -3262,7 +3262,7 @@ Not emailed yet"></i>
               "X-CSRFToken": "{{ csrf_token() }}",
               "X-Requested-With": "XMLHttpRequest"
             },
-            body: JSON.stringify({ shipment_id: shipmentId, package_ids: ids })
+            body: JSON.stringify({shipment_id: shipmentId, package_ids: ids})
           });
 
           const data = await res.json().catch(() => null);
@@ -3282,11 +3282,11 @@ Not emailed yet"></i>
       }
 
       // Package-level actions (selection required)
-      if (!ids.length) { alert('⚠️ Please select at least one package.'); return; }
+      if (!ids.length) {alert('⚠️ Please select at least one package.'); return;}
 
       if (action === 'generate_invoice') {
-        try { await openInvoicePreview(ids); }
-        catch (err) { console.error(err); alert('⚠️ Could not load invoice preview.'); }
+        try {await openInvoicePreview(ids);}
+        catch (err) {console.error(err); alert('⚠️ Could not load invoice preview.');}
         return;
       }
 
@@ -3626,7 +3626,7 @@ Not emailed yet"></i>
 
       const weight = wEl ? (wEl.value || "0") : "0";
       const value = vEl ? (vEl.value || "0") : "0";
-      return { weight, value };
+      return {weight, value};
     }
 
     function getHiddenVal(id) {
@@ -4068,7 +4068,7 @@ Not emailed yet"></i>
           "X-CSRFToken": "{{ csrf_token() }}",
           "X-Requested-With": "XMLHttpRequest"
         },
-        body: JSON.stringify({ selections, package_ids, shipment_id: getShipmentIdFromUrl() })
+        body: JSON.stringify({selections, package_ids, shipment_id: getShipmentIdFromUrl()})
       });
 
       const ct = (res.headers.get("content-type") || "").toLowerCase();
@@ -4081,7 +4081,7 @@ Not emailed yet"></i>
         if (!res.ok) {
           throw new Error(txt || `Finalize failed (HTTP ${res.status})`);
         }
-        data = { ok: true };
+        data = {ok: true};
       }
 
       if (!res.ok || (data && data.ok === false)) {
@@ -4135,7 +4135,7 @@ Not emailed yet"></i>
     url.searchParams.set("current_shipment_id", window.CURRENT_SHIPMENT_ID || 0);
 
     const res = await fetch(url.toString(), {
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
     });
 
     const data = await res.json();
@@ -4414,7 +4414,7 @@ Not emailed yet"></i>
 
     const data = await postJSON(
       "{{ url_for('logistics.bulk_invoice_preview') }}",
-      { package_ids: selectedPkgIds }
+      {package_ids: selectedPkgIds}
     );
 
     const tbody = document.querySelector('#inv-prev-tbody');
@@ -4524,7 +4524,7 @@ Not emailed yet"></i>
           "X-CSRFToken": "{{ csrf_token() }}",
           "X-Requested-With": "XMLHttpRequest"
         },
-        body: JSON.stringify({ package_ids: packageIds || [] })
+        body: JSON.stringify({package_ids: packageIds || []})
       });
 
       const data = await r.json();
@@ -4557,20 +4557,21 @@ Not emailed yet"></i>
     `;
 
       /* ===== Service Bands ===== */
-      const serviceChargeJmd = Number(data.service_charge_jmd || 0);
+      const serviceUsdTotal = Number(data.service_usd_total || 0);
+      const serviceJmdTotal = Number(data.service_jmd_total || 0);
 
       rowsHtml += `
-        <tr>
-          <td><strong>Extra Service Charge</strong></td>
-          <td class="text-end">1</td>
-          <td class="text-end">—</td>
-          <td class="text-end">—</td>
-          <td class="text-end">${fmt2(serviceChargeJmd)}</td>
-        </tr>
-      `;
+      <tr>
+        <td><strong>Package Weight-Band Fees</strong></td>
+        <td class="text-end">${pkgCount}</td>
+        <td class="text-end">—</td>
+        <td class="text-end">$${fmt2(serviceUsdTotal)}</td>
+        <td class="text-end">${fmt2(serviceJmdTotal)}</td>
+      </tr>
+    `;
 
-      const tableUsdTotal = freightUsd;
-      const tableJmdTotal = freightJmd + serviceChargeJmd;
+      const tableUsdTotal = freightUsd + serviceUsdTotal;
+      const tableJmdTotal = freightJmd + serviceJmdTotal;
 
       /* ===== Full HTML ===== */
       const html = `
@@ -4666,8 +4667,8 @@ Not emailed yet"></i>
 
         <div class="col-md-4">
           <div class="border rounded p-2">
-            <div class="text-muted">Extra Service (JMD)</div>
-            <div class="fw-bold">${fmt2(data.extra_service_jmd)}</div>
+            <div class="text-muted">Weight-Band Fees (USD)</div>
+            <div class="fw-bold">$${fmt2(serviceUsdTotal)}</div>
           </div>
         </div>
 
@@ -4859,10 +4860,10 @@ Not emailed yet"></i>
 
     async function doUpload() {
       const pkgId = (currentPkgId || (pkgIdInput ? pkgIdInput.value : '') || '').trim();
-      if (!pkgId || pkgId === '0') { alert('Package id missing.'); return; }
+      if (!pkgId || pkgId === '0') {alert('Package id missing.'); return;}
 
       const files = fileInput ? fileInput.files : null;
-      if (!files || !files.length) { alert('Please choose a file.'); return; }
+      if (!files || !files.length) {alert('Please choose a file.'); return;}
 
       const csrf = (document.getElementById('attachCsrfToken')?.value || '').trim() || "{{ csrf_token() }}";
 
@@ -4883,7 +4884,7 @@ Not emailed yet"></i>
           method: 'POST',
           headers: {
             'X-Requested-With': 'XMLHttpRequest',
-            ...(csrf ? { 'X-CSRFToken': csrf } : {})
+            ...(csrf ? {'X-CSRFToken': csrf} : {})
           },
           body: fd
         });
@@ -4897,7 +4898,7 @@ Not emailed yet"></i>
         } else {
           const txt = await res.text().catch(() => '');
           if (!res.ok) throw new Error(txt || `Upload failed (HTTP ${res.status}).`);
-          data = { success: true };
+          data = {success: true};
         }
 
         if (!res.ok || (data && data.success === false)) {
@@ -4949,7 +4950,7 @@ Not emailed yet"></i>
       if (!confirm('Delete this attachment?')) return;
 
       const url = btn.getAttribute('data-del-url');
-      if (!url) { alert('Delete URL missing.'); return; }
+      if (!url) {alert('Delete URL missing.'); return;}
 
       const csrf =
         (document.getElementById('attachCsrfToken')?.value || '').trim() ||
@@ -4965,7 +4966,7 @@ Not emailed yet"></i>
           method: 'POST',
           headers: {
             'X-Requested-With': 'XMLHttpRequest',
-            ...(csrf ? { 'X-CSRFToken': csrf } : {})
+            ...(csrf ? {'X-CSRFToken': csrf} : {})
           },
           body: fd
         });
@@ -4978,7 +4979,7 @@ Not emailed yet"></i>
         } else {
           const txt = await res.text().catch(() => '');
           if (!res.ok) throw new Error(txt || `Delete failed (HTTP ${res.status}).`);
-          data = { success: true };
+          data = {success: true};
         }
 
         if (!res.ok || (data && data.ok === false) || (data && data.success === false)) {
@@ -5280,10 +5281,10 @@ Not emailed yet"></i>
 
     try {
       await phoneScanner.start(
-        { facingMode: "environment" },
+        {facingMode: "environment"},
         {
           fps: 15,
-          qrbox: { width: 320, height: 180 },
+          qrbox: {width: 320, height: 180},
           aspectRatio: 1.777778,
           disableFlip: false
         },

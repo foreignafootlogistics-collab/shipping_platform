@@ -104,6 +104,7 @@ from app.utils.delivery_engine import (
     calculate_real_distance,
 )
 from app.utils.invoice_totals import fetch_invoice_totals_pg
+from app.utils.expected_collections import calculate_expected_collection
 from app.utils.scheduled_pickups import (
     sync_scheduled_pickups_for_delivered_package,
 )
@@ -628,7 +629,7 @@ def _warehouse_rate_row(weight):
     Rules:
       0 - 10.000      => 1.60
       10.001 - 25.000 => 2.15
-      25.001 - 50.000 => 4.65
+      25.001 - 50.000 => 3.65
       50.001 - 100.000=> 7.00
       >= 100.001      => 9.00
     """
@@ -656,7 +657,7 @@ def _warehouse_rate_row(weight):
         return {
             "key": "25_50",
             "label": "25.001 - 50.000 lb",
-            "rate": 4.65,
+            "rate": 3.65,
         }
     elif w <= 100.000:
         return {
@@ -5418,27 +5419,69 @@ def create_empty_shipment():
         return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
 
 
-@logistics_bp.route("/shipmentlog/<int:shipment_id>/delete", methods=["POST"])
+@logistics_bp.route(
+    "/shipmentlog/<int:shipment_id>/delete",
+    methods=["POST"],
+)
 @admin_required
 def delete_shipment(shipment_id):
     sl = db.session.get(ShipmentLog, shipment_id)
+
     if not sl:
         flash("Shipment not found.", "warning")
-        return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+            )
+        )
 
     blocked = _abort_if_archived(sl)
     if blocked:
         return blocked
 
+    # Protect the Finance expected-collection record.
+    if getattr(sl, "expected_collection", None):
+        flash(
+            "This shipment cannot be deleted because it has an "
+            "Expected Package Collection finance record. "
+            "Archive or split the shipment instead.",
+            "warning",
+        )
+
+        return redirect(
+            url_for(
+                "logistics.logistics_dashboard",
+                tab="shipmentLog",
+                shipment_id=sl.id,
+            )
+        )
+
     sl_id = sl.sl_id
+
     try:
         db.session.delete(sl)
         db.session.commit()
-        flash(f"Shipment {sl_id} deleted.", "success")
+
+        flash(
+            f"Shipment {sl_id} deleted.",
+            "success",
+        )
+
     except Exception as e:
         db.session.rollback()
-        flash(f"Error deleting shipment: {e}", "danger")
-    return redirect(url_for("logistics.logistics_dashboard", tab="shipmentLog"))
+
+        flash(
+            f"Error deleting shipment: {e}",
+            "danger",
+        )
+
+    return redirect(
+        url_for(
+            "logistics.logistics_dashboard",
+            tab="shipmentLog",
+        )
+    )
 
 
 @logistics_bp.route("/shipmentlog/search", methods=["GET"])
@@ -6517,24 +6560,28 @@ def shipment_finance_invoice_preview_html(shipment_id):
     if not packages:
         return "<div class='text-muted'>No packages found for this shipment.</div>"
 
-    total_packages = len(packages)
-    total_weight_lbs = sum(float(p.weight or 0) for p in packages)
-    total_weight_kg = total_weight_lbs * 0.45359237
+    usd_to_jmd = float(
+        current_app.config.get("USD_TO_JMD", USD_TO_JMD or 165) or 165
+    )
 
-    # ✅ Finance invoice rule:
-    # $3 USD per kg + fixed 5000 JMD service charge
-    base_rate_usd_per_kg = 3.0
-    base_freight_usd = total_weight_kg * base_rate_usd_per_kg
+    calculation = calculate_expected_collection(
+        packages,
+        usd_to_jmd,
+    )
 
-    usd_to_jmd = float(current_app.config.get("USD_TO_JMD", 165) or 165)
-    service_charge_jmd = 5000.0
+    total_packages = calculation["package_count"]
+    total_weight_lbs = calculation["total_weight_lbs"]
+    total_weight_kg = calculation["total_weight_kg"]
 
-    # ✅ no shipment service bands anymore
-    service_usd_total = 0.0
-    service_jmd_total = 0.0
+    base_rate_usd_per_kg = calculation["freight_rate_usd_per_kg"]
+    base_freight_usd = calculation["freight_total_usd"]
 
-    total_usd = base_freight_usd
-    total_jmd = (total_usd * usd_to_jmd) + service_charge_jmd
+    service_usd_total = calculation["band_total_usd"]
+    service_jmd_total = service_usd_total * usd_to_jmd
+
+    service_charge_jmd = 0.0
+    total_usd = calculation["expected_total_usd"]
+    total_jmd = calculation["expected_total_jmd"]
 
     return render_template(
         "admin/logistics/_shipment_finance_invoice_preview.html",
@@ -6547,14 +6594,34 @@ def shipment_finance_invoice_preview_html(shipment_id):
         base_rate_usd_per_kg=base_rate_usd_per_kg,
         base_freight_usd=base_freight_usd,
         # ✅ force all old band counters to zero
-        c_0_10=0,
-        c_10_25=0,
-        c_25_50=0,
-        c_50_100=0,
-        c_100_plus=0,
-        service_usd_total=0.0,
-        service_jmd_total=0.0,
-        service_charge_jmd=service_charge_jmd,
+        c_0_10=next(
+            (r["quantity"] for r in calculation["summary_rows"]
+             if r["label"] == "0 - 10 lbs"),
+            0,
+        ),
+        c_10_25=next(
+            (r["quantity"] for r in calculation["summary_rows"]
+             if r["label"] == "10.01 - 25 lbs"),
+            0,
+        ),
+        c_25_50=next(
+            (r["quantity"] for r in calculation["summary_rows"]
+             if r["label"] == "25.01 - 50 lbs"),
+            0,
+        ),
+        c_50_100=next(
+            (r["quantity"] for r in calculation["summary_rows"]
+             if r["label"] == "50.01 - 100 lbs"),
+            0,
+        ),
+        c_100_plus=next(
+            (r["quantity"] for r in calculation["summary_rows"]
+             if r["label"] == "100+ lbs"),
+            0,
+        ),
+        service_usd_total=service_usd_total,
+        service_jmd_total=service_jmd_total,
+        service_charge_jmd=0.0,
         extra_usd=0.0,
         extra_jmd=0.0,
         total_usd=total_usd,
@@ -6602,53 +6669,39 @@ def shipment_finance_invoice_preview_json(shipment_id):
             404,
         )
 
-    total_weight_lbs = sum(float(p.weight or 0) for p in pkgs)
-    total_weight_kg = total_weight_lbs * 0.45359237
-
-    # ✅ Finance invoice rule:
-    # $3 USD per kg + fixed 5000 JMD service charge
-    base_rate_usd_per_kg = 3.0
-    base_freight_usd = total_weight_kg * base_rate_usd_per_kg
-
-    usd_to_jmd = float(current_app.config.get("USD_TO_JMD", 165) or 165)
-    service_charge_jmd = 5000.0
-
-    # ✅ no service bands anymore
-    service_usd_total = 0.0
-    service_jmd_total = 0.0
-
-    total_usd = base_freight_usd
-    total_jmd = (total_usd * usd_to_jmd) + service_charge_jmd
-
-    return (
-        jsonify(
-            {
-                "ok": True,
-                "shipment_id": shipment_id,
-                "package_count": len(pkgs),
-                "total_lbs": round(total_weight_lbs, 2),
-                "total_kg": round(total_weight_kg, 2),
-                # keep both names so existing JS won’t break
-                "base_rate_usd_per_kg": round(base_rate_usd_per_kg, 2),
-                "rate_usd_per_kg": round(base_rate_usd_per_kg, 2),
-                "freight_usd": round(base_freight_usd, 2),
-                # ✅ no band rows anymore
-                "service_bands": [],
-                "service_usd_total": 0.0,
-                "service_jmd_total": 0.0,
-                # keep both names so existing JS/card labels still work
-                "service_charge_jmd": round(service_charge_jmd, 2),
-                "extra_service_jmd": round(service_charge_jmd, 2),
-                # subtotals for the existing JS cards
-                "subtotal_usd": round(total_usd, 2),
-                "subtotal_jmd": round(total_usd * usd_to_jmd, 2),
-                "usd_to_jmd": round(usd_to_jmd, 2),
-                "total_usd": round(total_usd, 2),
-                "total_jmd": round(total_jmd, 2),
-            }
-        ),
-        200,
+    usd_to_jmd = float(
+        current_app.config.get("USD_TO_JMD", USD_TO_JMD or 165) or 165
     )
+
+    calculation = calculate_expected_collection(
+        pkgs,
+        usd_to_jmd,
+    )
+
+    return jsonify({
+        "ok": True,
+        "shipment_id": shipment_id,
+        "package_count": calculation["package_count"],
+        "total_lbs": calculation["total_weight_lbs"],
+        "total_kg": calculation["total_weight_kg"],
+        "base_rate_usd_per_kg": calculation["freight_rate_usd_per_kg"],
+        "rate_usd_per_kg": calculation["freight_rate_usd_per_kg"],
+        "freight_usd": calculation["freight_total_usd"],
+        "service_bands": calculation["summary_rows"],
+        "service_usd_total": calculation["band_total_usd"],
+        "service_jmd_total": round(
+            calculation["band_total_usd"] * usd_to_jmd,
+            2,
+        ),
+        "service_charge_jmd": 0.0,
+        "extra_service_jmd": 0.0,
+        "subtotal_usd": calculation["expected_total_usd"],
+        "subtotal_jmd": calculation["expected_total_jmd"],
+        "usd_to_jmd": calculation["exchange_rate"],
+        "total_usd": calculation["expected_total_usd"],
+        "total_jmd": calculation["expected_total_jmd"],
+        "package_rows": calculation["package_rows"],
+    }), 200
 
 
 @logistics_bp.route("/shipmentlog/calc-charges", methods=["GET"])
@@ -6927,7 +6980,7 @@ def view_packages_finance_invoice_preview_json():
         },
         "25_50": {
             "label": "25.001 - 50.000 lb",
-            "rate": 4.65,
+            "rate": 3.65,
             "count": 0,
             "total": 0.0,
         },
@@ -7083,7 +7136,7 @@ def view_packages_finance_invoice_export_excel():
         },
         "25_50": {
             "label": "25.001 - 50.000 lb",
-            "rate": 4.65,
+            "rate": 3.65,
             "count": 0,
             "total": 0.0,
         },
@@ -7301,7 +7354,7 @@ def view_packages_finance_invoice_export_pdf():
         },
         "25_50": {
             "label": "25.001 - 50.000 lb",
-            "rate": 4.65,
+            "rate": 3.65,
             "count": 0,
             "total": 0.0,
         },

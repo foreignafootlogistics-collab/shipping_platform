@@ -324,6 +324,13 @@
                   </li>
 
                   <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint in ['finance.expected_package_collections','finance.expected_package_collection_detail'] else '' }}"
+                      href="{{ url_for('finance.expected_package_collections') }}">
+                      <i class="bi bi-receipt-cutoff me-2"></i> Expected Collections
+                    </a>
+                  </li>
+
+                  <li class="nav-item">
                     <a class="nav-link {{ 'active' if request.endpoint == 'finance.unpaid_invoices' else '' }}"
                       href="{{ url_for('finance.unpaid_invoices') }}">
                       <i class="bi bi-clock-history me-2"></i> Unpaid / Issued Invoices
@@ -734,7 +741,7 @@
         const ct = (resp.headers.get("content-type") || "").toLowerCase();
         const data = ct.includes("application/json")
           ? await resp.json()
-          : { ok: false, error: await resp.text() };
+          : {ok: false, error: await resp.text()};
 
         if (!resp.ok || data.ok !== true) {
           console.error("❌ Payment failed:", data);
@@ -765,7 +772,7 @@
         try {
           const resp = await fetch(endpoint, {
             method: "GET",
-            headers: { "X-Requested-With": "XMLHttpRequest" },
+            headers: {"X-Requested-With": "XMLHttpRequest"},
             credentials: "same-origin",
             cache: "no-store"
           });
@@ -807,7 +814,7 @@
             }
 
             if (toastEl && window.bootstrap) {
-              const toast = new bootstrap.Toast(toastEl, { delay: 8000 });
+              const toast = new bootstrap.Toast(toastEl, {delay: 8000});
               toast.show();
             }
           }
@@ -844,7 +851,7 @@
           const userId = this.getAttribute('data-user-id');
 
           fetch(`/admin/wallet/${userId}/edit`, {
-            headers: { "X-Requested-With": "XMLHttpRequest" }
+            headers: {"X-Requested-With": "XMLHttpRequest"}
           })
             .then(res => res.text())
             .then(html => {
@@ -863,7 +870,7 @@
                 fetch(this.action, {
                   method: 'POST',
                   body: formData,
-                  headers: { "X-Requested-With": "XMLHttpRequest" }
+                  headers: {"X-Requested-With": "XMLHttpRequest"}
                 })
                   .then(res => res.json())
                   .then(data => {

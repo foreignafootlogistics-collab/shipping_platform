@@ -815,6 +815,89 @@ class ShipmentLog(db.Model):
     def __repr__(self):
         return f"<ShipmentLog {self.sl_id}>"
 
+class ExpectedPackageCollection(db.Model):
+    __tablename__ = "expected_package_collections"
+
+    id = db.Column(db.Integer, primary_key=True)
+    collection_number = db.Column(db.String(40), unique=True, nullable=False, index=True)
+    shipment_id = db.Column(
+        db.Integer,
+        db.ForeignKey("shipment_log.id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    supplier_name = db.Column(db.String(160), nullable=False, default="ShipJet Limited")
+    supplier_invoice_number = db.Column(db.String(80), nullable=True, index=True)
+    status = db.Column(db.String(24), nullable=False, default="draft", index=True)
+
+    package_count = db.Column(db.Integer, nullable=False, default=0)
+    total_weight_lbs = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_weight_kg = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    freight_rate_usd_per_kg = db.Column(db.Numeric(12, 2), nullable=False, default=3)
+    weight_band_total_usd = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    freight_total_usd = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    unknown_package_count = db.Column(
+        db.Integer,
+        nullable=False,
+        default=0,
+    )
+
+    unknown_package_fee_usd = db.Column(
+        db.Numeric(12, 2),
+        nullable=False,
+        default=5,
+    )
+
+    unknown_charge_total_usd = db.Column(
+        db.Numeric(12, 2),
+        nullable=False,
+        default=0,
+    )
+    expected_total_usd = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    exchange_rate = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    expected_total_jmd = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    actual_total_usd = db.Column(db.Numeric(12, 2), nullable=True)
+    actual_total_jmd = db.Column(db.Numeric(14, 2), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    calculation_snapshot = db.Column(db.JSON, nullable=False, default=dict)
+
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    updated_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    finalized_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    shipment = db.relationship(
+        "ShipmentLog",
+        backref=db.backref("expected_collection", uselist=False, cascade="all, delete-orphan"),
+    )
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+    updated_by = db.relationship("User", foreign_keys=[updated_by_id])
+
+    @property
+    def variance_usd(self):
+        if self.actual_total_usd is None:
+            return None
+        return Decimal(str(self.actual_total_usd)) - Decimal(str(self.expected_total_usd or 0))
+
+    @property
+    def variance_jmd(self):
+        if self.actual_total_jmd is None:
+            return None
+        return Decimal(str(self.actual_total_jmd)) - Decimal(str(self.expected_total_jmd or 0))
+
 
 shipment_packages = db.Table(
     'shipment_packages',

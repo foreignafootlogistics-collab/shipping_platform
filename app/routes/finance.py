@@ -26,7 +26,23 @@ from app.routes.admin_auth_routes import admin_required
 from app.calculator_data import USD_TO_JMD
 
 from app.extensions import db
-from app.models import Invoice, Expense, User, ExpenseAuditLog, Package, Payment, EmployeePayroll, PayrollRun, PayrollItem, AuditLog
+from app.models import (
+    Invoice,
+    Expense,
+    User,
+    ExpenseAuditLog,
+    Package,
+    Payment,
+    EmployeePayroll,
+    PayrollRun,
+    PayrollItem,
+    AuditLog,
+    ShipmentLog,
+    ExpectedPackageCollection,
+)
+from app.utils.expected_collections import calculate_expected_collection
+from decimal import Decimal, InvalidOperation
+from sqlalchemy.orm import selectinload
 import cloudinary
 import cloudinary.uploader
 
@@ -4497,4 +4513,186 @@ def daily_sales_detail(sale_date):
         total_sales=total_sales,
     )
 
+EXPECTED_COLLECTION_STATUSES = {"draft", "finalized", "matched", "disputed", "paid"}
+
+
+def _new_expected_collection_number():
+    year = datetime.now().year
+    prefix = f"EPC-{year}-"
+    last = (
+        ExpectedPackageCollection.query
+        .filter(ExpectedPackageCollection.collection_number.like(f"{prefix}%"))
+        .order_by(ExpectedPackageCollection.id.desc())
+        .first()
+    )
+    sequence = 1
+    if last:
+        try:
+            sequence = int(last.collection_number.rsplit("-", 1)[1]) + 1
+        except (TypeError, ValueError, IndexError):
+            sequence = last.id + 1
+    return f"{prefix}{sequence:06d}"
+
+
+def _decimal_form(name, required=False):
+    raw = (request.form.get(name) or "").strip().replace(",", "")
+    if not raw:
+        if required:
+            raise ValueError(f"{name.replace('_', ' ').title()} is required.")
+        return None
+    try:
+        value = Decimal(raw)
+    except InvalidOperation as exc:
+        raise ValueError(f"{name.replace('_', ' ').title()} must be a valid number.") from exc
+    if value < 0:
+        raise ValueError(f"{name.replace('_', ' ').title()} cannot be negative.")
+    return value
+
+
+def _shipment_calculation(shipment, exchange_rate):
+    packages = list(shipment.packages or [])
+    if not packages:
+        raise ValueError("This shipment has no packages.")
+    return calculate_expected_collection(packages, exchange_rate)
+
+
+def _apply_calculation(record, calculation):
+    record.package_count = calculation["package_count"]
+    record.total_weight_lbs = calculation["total_weight_lbs"]
+    record.total_weight_kg = calculation["total_weight_kg"]
+    record.freight_rate_usd_per_kg = calculation["freight_rate_usd_per_kg"]
+    record.weight_band_total_usd = calculation["band_total_usd"]
+    record.freight_total_usd = calculation["freight_total_usd"]
+    record.unknown_package_count = calculation["unknown_package_count"]
+    record.unknown_package_fee_usd = calculation["unknown_package_fee_usd"]
+    record.unknown_charge_total_usd = calculation["unknown_charge_total_usd"]
+    record.expected_total_usd = calculation["expected_total_usd"]
+    record.exchange_rate = calculation["exchange_rate"]
+    record.expected_total_jmd = calculation["expected_total_jmd"]
+    record.calculation_snapshot = calculation
+
+
+@finance_bp.route("/expected-package-collections")
+@admin_required(roles=["finance"])
+def expected_package_collections():
+    status = (request.args.get("status") or "").strip().lower()
+    search = (request.args.get("q") or "").strip()
+
+    query = (
+        db.session.query(ShipmentLog, ExpectedPackageCollection)
+        .outerjoin(ExpectedPackageCollection, ExpectedPackageCollection.shipment_id == ShipmentLog.id)
+        .options(selectinload(ShipmentLog.packages))
+        .order_by(ShipmentLog.created_at.desc())
+    )
+    if status == "not_created":
+        query = query.filter(ExpectedPackageCollection.id.is_(None))
+    elif status in EXPECTED_COLLECTION_STATUSES:
+        query = query.filter(ExpectedPackageCollection.status == status)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            or_(
+                ShipmentLog.sl_id.ilike(like),
+                ShipmentLog.sl_name.ilike(like),
+                ExpectedPackageCollection.collection_number.ilike(like),
+                ExpectedPackageCollection.supplier_invoice_number.ilike(like),
+            )
+        )
+
+    return render_template(
+        "admin/finance/expected_package_collections.html",
+        rows=query.all(),
+        selected_status=status,
+        search=search,
+    )
+
+
+@finance_bp.route("/expected-package-collections/create/<int:shipment_id>", methods=["POST"])
+@admin_required(roles=["finance"])
+def create_expected_package_collection(shipment_id):
+    shipment = ShipmentLog.query.options(selectinload(ShipmentLog.packages)).get_or_404(shipment_id)
+    existing = ExpectedPackageCollection.query.filter_by(shipment_id=shipment.id).first()
+    if existing:
+        return redirect(url_for("finance.expected_package_collection_detail", collection_id=existing.id))
+
+    try:
+        exchange_rate = _decimal_form("exchange_rate", required=True)
+        calculation = _shipment_calculation(shipment, exchange_rate)
+        record = ExpectedPackageCollection(
+            collection_number=_new_expected_collection_number(),
+            shipment_id=shipment.id,
+            supplier_name=(request.form.get("supplier_name") or "ShipJet Limited").strip(),
+            status="draft",
+            created_by_id=current_user.id,
+            updated_by_id=current_user.id,
+        )
+        _apply_calculation(record, calculation)
+        db.session.add(record)
+        db.session.commit()
+        flash("Expected package collection created.", "success")
+        return redirect(url_for("finance.expected_package_collection_detail", collection_id=record.id))
+    except Exception as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+        return redirect(url_for("finance.expected_package_collections"))
+
+
+@finance_bp.route("/expected-package-collections/<int:collection_id>")
+@admin_required(roles=["finance"])
+def expected_package_collection_detail(collection_id):
+    record = ExpectedPackageCollection.query.get_or_404(collection_id)
+    return render_template("admin/finance/expected_package_collection_detail.html", record=record)
+
+
+@finance_bp.route("/expected-package-collections/<int:collection_id>/update", methods=["POST"])
+@admin_required(roles=["finance"])
+def update_expected_package_collection(collection_id):
+    record = ExpectedPackageCollection.query.get_or_404(collection_id)
+    try:
+        requested_status = (request.form.get("status") or record.status).strip().lower()
+        if requested_status not in EXPECTED_COLLECTION_STATUSES:
+            raise ValueError("Invalid collection status.")
+
+        record.supplier_name = (request.form.get("supplier_name") or record.supplier_name).strip()
+        record.supplier_invoice_number = (request.form.get("supplier_invoice_number") or "").strip() or None
+        record.actual_total_usd = _decimal_form("actual_total_usd")
+        record.actual_total_jmd = _decimal_form("actual_total_jmd")
+        record.notes = (request.form.get("notes") or "").strip() or None
+        record.status = requested_status
+        record.updated_by_id = current_user.id
+
+        if request.form.get("recalculate") == "1":
+            if record.status != "draft":
+                raise ValueError("Only draft records can be recalculated.")
+            exchange_rate = _decimal_form("exchange_rate", required=True)
+            _apply_calculation(record, _shipment_calculation(record.shipment, exchange_rate))
+
+        if requested_status == "finalized" and record.finalized_at is None:
+            record.finalized_at = datetime.now(timezone.utc)
+
+        db.session.commit()
+        flash("Expected collection updated.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    return redirect(url_for("finance.expected_package_collection_detail", collection_id=record.id))
+
+
+@finance_bp.route("/expected-package-collections/<int:collection_id>/pdf")
+@admin_required(roles=["finance"])
+def expected_package_collection_pdf(collection_id):
+    record = ExpectedPackageCollection.query.get_or_404(collection_id)
+    html = render_template(
+        "admin/finance/expected_package_collection_pdf.html",
+        record=record,
+        logo_data_uri=_static_image_data_uri("logo.png"),
+    )
+    pdf = HTML(string=html, base_url=request.url_root).write_pdf()
+    filename = f"{record.collection_number}_expected_collection.pdf"
+    return send_file(
+        BytesIO(pdf),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=filename,
+    )
 

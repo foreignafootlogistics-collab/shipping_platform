@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+
+    <title>
+        {{ record.collection_number }} - Expected Package Collection
+    </title>
+
+    <style>
+        @page {
+            size: A4;
+            margin: 18mm 12mm 16mm;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            color: #222;
+            font-size: 10px;
+            line-height: 1.35;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 3px solid #4a148c;
+            padding-bottom: 12px;
+        }
+
+        .logo {
+            width: 105px;
+            height: auto;
+        }
+
+        .company-details {
+            margin-top: 5px;
+        }
+
+        .right {
+            text-align: right;
+        }
+
+        h1 {
+            color: #4a148c;
+            font-size: 20px;
+            margin: 0 0 5px;
+        }
+
+        h2 {
+            color: #4a148c;
+            font-size: 16px;
+            margin: 0 0 10px;
+        }
+
+        h3 {
+            color: #4a148c;
+            font-size: 13px;
+            margin: 16px 0 5px;
+        }
+
+        .cards {
+            display: flex;
+            gap: 7px;
+            margin: 14px 0;
+        }
+
+        .card {
+            width: 20%;
+            padding: 8px;
+            background: #f4ecfa;
+            border: 1px solid #ddd;
+            box-sizing: border-box;
+        }
+
+        .card.warning {
+            background: #fff8e1;
+            border-color: #f0c36d;
+        }
+
+        .label {
+            color: #666;
+            font-size: 8px;
+        }
+
+        .value {
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 3px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+        }
+
+        thead {
+            display: table-header-group;
+        }
+
+        tr {
+            page-break-inside: avoid;
+        }
+
+        th {
+            background: #4a148c;
+            color: white;
+            padding: 6px;
+            text-align: left;
+            font-size: 9px;
+        }
+
+        td {
+            padding: 5px;
+            border-bottom: 1px solid #ddd;
+            vertical-align: top;
+        }
+
+        .num {
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .summary {
+            width: 62%;
+            margin-left: auto;
+            margin-top: 15px;
+        }
+
+        .unknown-row td {
+            background: #fff8e1;
+        }
+
+        .total td {
+            font-size: 13px;
+            font-weight: bold;
+            background: #f4ecfa;
+        }
+
+        .grand-total td {
+            background: #4a148c;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .over {
+            color: #b00020;
+            font-weight: bold;
+        }
+
+        .ok {
+            color: #137333;
+            font-weight: bold;
+        }
+
+        .unknown-badge {
+            display: inline-block;
+            padding: 2px 5px;
+            background: #facc15;
+            color: #222;
+            font-size: 8px;
+            font-weight: bold;
+            border-radius: 3px;
+        }
+
+        .package-table {
+            table-layout: fixed;
+            font-size: 8px;
+        }
+
+        .package-table th,
+        .package-table td {
+            padding: 4px;
+            overflow-wrap: anywhere;
+        }
+
+        .package-table .package-col {
+            width: 8%;
+        }
+
+        .package-table .tracking-col {
+            width: 22%;
+        }
+
+        .package-table .customer-col {
+            width: 12%;
+        }
+
+        .package-table .weight-col {
+            width: 10%;
+        }
+
+        .package-table .fee-col {
+            width: 11%;
+        }
+
+        .package-table .unknown-col {
+            width: 12%;
+        }
+
+        .package-table .expected-col {
+            width: 12%;
+        }
+
+        .page-break {
+            page-break-before: always;
+        }
+
+        .notes {
+            margin-top: 14px;
+            padding: 8px;
+            background: #f7f7f7;
+            border: 1px solid #ddd;
+        }
+
+        .footer {
+            position: fixed;
+            bottom: -8mm;
+            left: 0;
+            right: 0;
+            text-align: center;
+            color: #777;
+            font-size: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    {% set snap = record.calculation_snapshot or {} %}
+
+    <!-- Header -->
+    <div class="header">
+
+        <div>
+            {% if logo_data_uri %}
+            <img class="logo" src="{{ logo_data_uri }}" alt="Foreign A Foot Logistics">
+            {% endif %}
+
+            <div class="company-details">
+                <strong>Foreign A Foot Logistics Limited</strong>
+                <br>
+                Unit 7, Lot C22, Cedar Manor
+                <br>
+                Gregory Park, St. Catherine
+                <br>
+                (876) 560-7764
+            </div>
+        </div>
+
+        <div class="right">
+            <h1>EXPECTED PACKAGE COLLECTION</h1>
+
+            <strong>{{ record.collection_number }}</strong>
+            <br>
+
+            Shipment:
+            {{ record.shipment.sl_name or record.shipment.sl_id }}
+            <br>
+
+            Supplier:
+            {{ record.supplier_name }}
+            <br>
+
+            Currency: USD
+            <br>
+
+            Status:
+            {{ record.status|title }}
+        </div>
+
+    </div>
+
+    <!-- Summary cards -->
+    <div class="cards">
+
+        <div class="card">
+            <div class="label">Packages</div>
+
+            <div class="value">
+                {{ record.package_count }}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="label">Weight</div>
+
+            <div class="value">
+                {{ '%.2f'|format(
+                record.total_weight_kg|float
+                ) }} kg
+            </div>
+        </div>
+
+        <div class="card warning">
+            <div class="label">Unknown Packages</div>
+
+            <div class="value">
+                {{ record.unknown_package_count }}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="label">Expected USD</div>
+
+            <div class="value">
+                ${{ '%.2f'|format(
+                record.expected_total_usd|float
+                ) }}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="label">Expected JMD</div>
+
+            <div class="value">
+                J${{ '{:,.2f}'.format(
+                record.expected_total_jmd|float
+                ) }}
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Package categories -->
+    <h3>Package Categories</h3>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th class="num">Quantity</th>
+                <th class="num">Rate</th>
+                <th class="num">Subtotal</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for row in snap.get('summary_rows', []) %}
+            <tr>
+                <td>{{ row.label }}</td>
+
+                <td class="num">
+                    {{ row.quantity }}
+                </td>
+
+                <td class="num">
+                    ${{ '%.2f'|format(row.rate_usd|float) }}
+                </td>
+
+                <td class="num">
+                    ${{ '%.2f'|format(row.subtotal_usd|float) }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Charge summary -->
+    <table class="summary">
+
+        <tr>
+            <td>Weight-band fees</td>
+
+            <td class="num">
+                ${{ '%.2f'|format(
+                record.weight_band_total_usd|float
+                ) }}
+            </td>
+        </tr>
+
+        <tr>
+            <td>
+                Freight:
+                {{ '%.2f'|format(
+                record.total_weight_kg|float
+                ) }} kg ×
+                ${{ '%.2f'|format(
+                record.freight_rate_usd_per_kg|float
+                ) }}
+            </td>
+
+            <td class="num">
+                ${{ '%.2f'|format(
+                record.freight_total_usd|float
+                ) }}
+            </td>
+        </tr>
+
+        <tr class="unknown-row">
+            <td>
+                Unknown package charges:
+                {{ record.unknown_package_count }} ×
+                ${{ '%.2f'|format(
+                record.unknown_package_fee_usd|float
+                ) }}
+            </td>
+
+            <td class="num">
+                ${{ '%.2f'|format(
+                record.unknown_charge_total_usd|float
+                ) }}
+            </td>
+        </tr>
+
+        <tr class="grand-total">
+            <td>Expected Total USD</td>
+
+            <td class="num">
+                ${{ '%.2f'|format(
+                record.expected_total_usd|float
+                ) }}
+            </td>
+        </tr>
+
+        <tr class="total">
+            <td>
+                Expected Total JMD
+                ({{ '%.2f'|format(record.exchange_rate|float) }})
+            </td>
+
+            <td class="num">
+                J${{ '{:,.2f}'.format(
+                record.expected_total_jmd|float
+                ) }}
+            </td>
+        </tr>
+
+        {% if record.actual_total_usd is not none %}
+        <tr>
+            <td>Supplier Actual USD</td>
+
+            <td class="num">
+                ${{ '%.2f'|format(
+                record.actual_total_usd|float
+                ) }}
+            </td>
+        </tr>
+
+        <tr>
+            <td>Variance USD</td>
+
+            <td class="num {{
+                'over'
+                if record.variance_usd|float > 0
+                else 'ok'
+            }}">
+                {{ '$%+.2f'|format(
+                record.variance_usd|float
+                ) }}
+            </td>
+        </tr>
+        {% endif %}
+
+    </table>
+
+    {% if record.notes %}
+    <div class="notes">
+        <strong>Notes:</strong>
+        {{ record.notes }}
+    </div>
+    {% endif %}
+
+    <!-- Package breakdown -->
+    <div class="page-break"></div>
+
+    <h2>Packages in Collection</h2>
+
+    <table class="package-table">
+
+        <thead>
+            <tr>
+                <th class="package-col">Package</th>
+                <th class="tracking-col">Tracking / AWB</th>
+                <th class="customer-col">Customer</th>
+                <th class="weight-col num">Weight</th>
+                <th class="fee-col num">Band Fee</th>
+                <th class="fee-col num">Freight</th>
+                <th class="unknown-col num">Unknown Fee</th>
+                <th class="expected-col num">Expected</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for row in snap.get('package_rows', []) %}
+            {% set unknown_fee = row.get(
+            'unknown_fee_usd',
+            0
+            )|float %}
+
+            <tr class="{{
+                'unknown-row'
+                if row.get('is_unknown_package', false)
+                else ''
+            }}">
+                <td>
+                    #{{ row.package_id }}
+
+                    {% if row.get(
+                    'is_unknown_package',
+                    false
+                    ) %}
+                    <br>
+                    <span class="unknown-badge">
+                        EPC
+                    </span>
+                    {% endif %}
+                </td>
+
+                <td>
+                    {{ row.tracking_number or '-' }}
+
+                    {% if row.house_awb %}
+                    <br>
+                    {{ row.house_awb }}
+                    {% endif %}
+                </td>
+
+                <td>
+                    {{ row.customer_code or '-' }}
+                </td>
+
+                <td class="num">
+                    {{ '%.2f'|format(
+                    row.weight_lbs|float
+                    ) }} lb
+                </td>
+
+                <td class="num">
+                    ${{ '%.2f'|format(
+                    row.band_fee_usd|float
+                    ) }}
+                </td>
+
+                <td class="num">
+                    ${{ '%.2f'|format(
+                    row.freight_usd|float
+                    ) }}
+                </td>
+
+                <td class="num">
+                    ${{ '%.2f'|format(unknown_fee) }}
+                </td>
+
+                <td class="num">
+                    <strong>
+                        ${{ '%.2f'|format(
+                        row.expected_cost_usd|float
+                        ) }}
+                    </strong>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+
+    </table>
+
+    <div class="footer">
+        FAFL expected-cost document - generated from the shipment log
+    </div>
+</body>
+
+</html>

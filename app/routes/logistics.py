@@ -5440,7 +5440,7 @@ def delete_shipment(shipment_id):
     if blocked:
         return blocked
 
-    # Protect the Finance expected-collection record.
+    # Protect Finance records from accidental deletion.
     if getattr(sl, "expected_collection", None):
         flash(
             "This shipment cannot be deleted because it has an "
@@ -5460,6 +5460,28 @@ def delete_shipment(shipment_id):
     sl_id = sl.sl_id
 
     try:
+        # Delete scan-history records referencing this shipment.
+        ShipmentScanLog.query.filter_by(
+            shipment_id=shipment_id
+        ).delete(
+            synchronize_session=False
+        )
+
+        # Delete archive-history records referencing this shipment.
+        ShipmentArchiveLog.query.filter_by(
+            shipment_id=shipment_id
+        ).delete(
+            synchronize_session=False
+        )
+
+        # Remove package-to-shipment association rows.
+        db.session.execute(
+            shipment_packages.delete().where(
+                shipment_packages.c.shipment_id == shipment_id
+            )
+        )
+
+        # Delete the shipment itself.
         db.session.delete(sl)
         db.session.commit()
 
@@ -5470,6 +5492,11 @@ def delete_shipment(shipment_id):
 
     except Exception as e:
         db.session.rollback()
+
+        current_app.logger.exception(
+            "Failed to delete shipment %s",
+            shipment_id,
+        )
 
         flash(
             f"Error deleting shipment: {e}",

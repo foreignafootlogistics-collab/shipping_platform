@@ -861,6 +861,21 @@ class ExpectedPackageCollection(db.Model):
 
     actual_total_usd = db.Column(db.Numeric(12, 2), nullable=True)
     actual_total_jmd = db.Column(db.Numeric(14, 2), nullable=True)
+    expense_id = db.Column(
+        db.Integer,
+        db.ForeignKey(
+            "expenses.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+
+    paid_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True,
+    )
     notes = db.Column(db.Text, nullable=True)
     calculation_snapshot = db.Column(db.JSON, nullable=False, default=dict)
 
@@ -882,6 +897,14 @@ class ExpectedPackageCollection(db.Model):
     shipment = db.relationship(
         "ShipmentLog",
         backref=db.backref("expected_collection", uselist=False, cascade="all, delete-orphan"),
+    )
+    expense = db.relationship(
+        "Expense",
+        foreign_keys=[expense_id],
+        backref=db.backref(
+            "expected_collection",
+            uselist=False,
+        ),
     )
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     updated_by = db.relationship("User", foreign_keys=[updated_by_id])

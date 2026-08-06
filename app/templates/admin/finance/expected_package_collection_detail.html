@@ -10,7 +10,8 @@
 <div class="container-fluid py-4">
 
     <!-- Header -->
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div class="d-flex flex-wrap justify-content-between
+               align-items-center gap-2 mb-3">
         <div>
             <h2 class="mb-0">
                 {{ record.collection_number }}
@@ -22,7 +23,9 @@
         </div>
 
         <div class="d-flex gap-2">
-            <a class="btn btn-outline-secondary" href="{{ url_for('finance.expected_package_collections') }}">
+            <a class="btn btn-outline-secondary" href="{{ url_for(
+                    'finance.expected_package_collections'
+                ) }}">
                 <i class="bi bi-arrow-left me-1"></i>
                 Back
             </a>
@@ -43,7 +46,9 @@
         <div class="col-md-6 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Packages</div>
+                    <div class="text-muted small">
+                        Packages
+                    </div>
 
                     <div class="fs-4 fw-bold">
                         {{ record.package_count }}
@@ -55,10 +60,14 @@
         <div class="col-md-6 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Total Weight</div>
+                    <div class="text-muted small">
+                        Total Weight
+                    </div>
 
                     <div class="fs-4 fw-bold">
-                        {{ '%.2f'|format(record.total_weight_kg|float) }} kg
+                        {{ '%.2f'|format(
+                        record.total_weight_kg|float
+                        ) }} kg
                     </div>
                 </div>
             </div>
@@ -87,10 +96,12 @@
         <div class="col-md-6 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Expected USD</div>
+                    <div class="text-muted small">
+                        Expected USD
+                    </div>
 
                     <div class="fs-4 fw-bold">
-                        ${{ '%.2f'|format(
+                        ${{ '{:,.2f}'.format(
                         record.expected_total_usd|float
                         ) }}
                     </div>
@@ -101,7 +112,9 @@
         <div class="col-md-6 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Expected JMD</div>
+                    <div class="text-muted small">
+                        Expected JMD
+                    </div>
 
                     <div class="fs-4 fw-bold">
                         J${{ '{:,.2f}'.format(
@@ -112,10 +125,47 @@
             </div>
         </div>
 
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">
+                        Actual JMD Paid
+                    </div>
+
+                    <div class="fs-4 fw-bold">
+                        {% if record.actual_total_jmd is not none %}
+                        J${{ '{:,.2f}'.format(
+                        record.actual_total_jmd|float
+                        ) }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </div>
+
+                    {% if record.variance_jmd is not none %}
+                    {% set variance_jmd =
+                    record.variance_jmd|float %}
+
+                    <div class="{{
+                            'text-danger'
+                            if variance_jmd > 0
+                            else 'text-success'
+                        }} small fw-semibold mt-1">
+                        Variance:
+                        J${{ '{:+,.2f}'.format(
+                        variance_jmd
+                        ) }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
     </div>
 
-    <!-- Charge summary -->
+    <!-- Expected charge summary -->
     <div class="card border-0 shadow-sm mb-3">
+
         <div class="card-header bg-white fw-bold">
             Expected Supplier Charge Summary
         </div>
@@ -130,7 +180,7 @@
                         </div>
 
                         <div class="fw-bold fs-5">
-                            ${{ '%.2f'|format(
+                            ${{ '{:,.2f}'.format(
                             record.weight_band_total_usd|float
                             ) }}
                         </div>
@@ -144,7 +194,7 @@
                         </div>
 
                         <div class="fw-bold fs-5">
-                            ${{ '%.2f'|format(
+                            ${{ '{:,.2f}'.format(
                             record.freight_total_usd|float
                             ) }}
                         </div>
@@ -167,7 +217,7 @@
                         </div>
 
                         <div class="fw-bold fs-5">
-                            ${{ '%.2f'|format(
+                            ${{ '{:,.2f}'.format(
                             record.unknown_charge_total_usd|float
                             ) }}
                         </div>
@@ -188,7 +238,7 @@
                         </div>
 
                         <div class="fw-bold fs-4">
-                            ${{ '%.2f'|format(
+                            ${{ '{:,.2f}'.format(
                             record.expected_total_usd|float
                             ) }}
                         </div>
@@ -211,7 +261,6 @@
 
                 <div class="table-responsive">
                     <table class="table table-sm table-hover align-middle mb-0">
-
                         <thead class="table-light">
                             <tr>
                                 <th>Package</th>
@@ -226,7 +275,11 @@
                         </thead>
 
                         <tbody>
-                            {% for row in snap.get('package_rows', []) %}
+                            {% for row in snap.get(
+                            'package_rows',
+                            []
+                            ) %}
+
                             {% set unknown_fee = row.get(
                             'unknown_fee_usd',
                             0
@@ -234,9 +287,13 @@
 
                             <tr class="{{
                                 'table-warning'
-                                if row.get('is_unknown_package', false)
+                                if row.get(
+                                    'is_unknown_package',
+                                    false
+                                )
                                 else ''
                             }}">
+
                                 <td>
                                     #{{ row.package_id }}
 
@@ -287,7 +344,9 @@
                                 <td class="text-end">
                                     {% if unknown_fee > 0 %}
                                     <span class="badge bg-warning text-dark">
-                                        ${{ '%.2f'|format(unknown_fee) }}
+                                        ${{ '%.2f'|format(
+                                        unknown_fee
+                                        ) }}
                                     </span>
                                     {% else %}
                                     $0.00
@@ -299,7 +358,9 @@
                                     row.expected_cost_usd|float
                                     ) }}
                                 </td>
+
                             </tr>
+
                             {% else %}
                             <tr>
                                 <td colspan="8" class="text-center text-muted py-4">
@@ -308,7 +369,6 @@
                             </tr>
                             {% endfor %}
                         </tbody>
-
                     </table>
                 </div>
             </div>
@@ -327,12 +387,33 @@
                     Supplier Invoice Comparison
 
                     <div class="small text-muted fw-normal mt-1">
-                        Optional — complete this section after the supplier
-                        invoice is received.
+                        Optional until the supplier invoice is received.
                     </div>
                 </div>
 
                 <div class="card-body">
+
+                    {% if record.expense %}
+                    <div class="alert alert-success">
+                        <div class="fw-semibold">
+                            <i class="bi bi-check-circle-fill me-1"></i>
+                            Posted to Monthly Expenses
+                        </div>
+
+                        <div class="small mt-1">
+                            Expense #{{ record.expense.id }}
+                            · J${{ '{:,.2f}'.format(
+                            record.expense.amount|float
+                            ) }}
+                            · {{ record.expense.date }}
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-light border small">
+                        An expense will be created automatically when
+                        this collection is marked Paid.
+                    </div>
+                    {% endif %}
 
                     <label class="form-label">
                         Supplier
@@ -359,8 +440,12 @@
                         }}">
 
                     <label class="form-label">
-                        Actual JMD
+                        Actual JMD Paid
                     </label>
+
+                    <div class="form-text mb-1">
+                        Required when changing the status to Paid.
+                    </div>
 
                     <input class="form-control mb-2" type="number" step="0.01" min="0" name="actual_total_jmd" value="{{
                             record.actual_total_jmd
@@ -373,6 +458,11 @@
                     </label>
 
                     <select class="form-select mb-2" name="status">
+                        {% if record.expense %}
+                        <option value="paid" selected>
+                            Paid
+                        </option>
+                        {% else %}
                         {% for value in [
                         'draft',
                         'finalized',
@@ -384,6 +474,7 @@
                             {{ value|title }}
                         </option>
                         {% endfor %}
+                        {% endif %}
                     </select>
 
                     <label class="form-label">
@@ -393,28 +484,56 @@
                     <textarea class="form-control mb-3" name="notes" rows="3">{{ record.notes or '' }}</textarea>
 
                     {% if record.variance_usd is not none %}
+                    {% set variance_usd =
+                    record.variance_usd|float %}
+
                     <div class="alert {{
-                        'alert-danger'
-                        if record.variance_usd|float > 0
-                        else 'alert-success'
-                    }}">
+                            'alert-danger'
+                            if variance_usd > 0
+                            else 'alert-success'
+                        }}">
                         USD variance:
 
                         <strong>
                             {{ '$%+.2f'|format(
-                            record.variance_usd|float
+                            variance_usd
+                            ) }}
+                        </strong>
+                    </div>
+                    {% endif %}
+
+                    {% if record.variance_jmd is not none %}
+                    {% set variance_jmd =
+                    record.variance_jmd|float %}
+
+                    <div class="alert {{
+                            'alert-danger'
+                            if variance_jmd > 0
+                            else 'alert-success'
+                        }}">
+                        JMD variance:
+
+                        <strong>
+                            J${{ '{:+,.2f}'.format(
+                            variance_jmd
                             ) }}
                         </strong>
                     </div>
                     {% endif %}
 
                     <button class="btn btn-purple w-100">
+                        {% if record.expense %}
+                        Update Paid Expense
+                        {% else %}
                         Save Comparison
+                        {% endif %}
                     </button>
+
                 </div>
             </form>
 
-            {% if record.status == 'draft' %}
+            {% if record.status == 'draft'
+            and not record.expense %}
             <form class="mt-2" method="post" action="{{ url_for(
                     'finance.update_expected_package_collection',
                     collection_id=record.id

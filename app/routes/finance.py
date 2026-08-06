@@ -4748,69 +4748,263 @@ def _apply_calculation(record, calculation):
     record.calculation_snapshot = calculation
 
 
-@finance_bp.route("/expected-package-collections")
+@finance_bp.route(
+    "/expected-package-collections"
+)
 @admin_required(roles=["finance"])
 def expected_package_collections():
-    status = (request.args.get("status") or "").strip().lower()
-    search = (request.args.get("q") or "").strip()
+    status = (
+        request.args.get("status")
+        or ""
+    ).strip().lower()
 
+    search = (
+        request.args.get("q")
+        or ""
+    ).strip()
+
+    # Show only Expected Collections that have already
+    # been created in the main table.
     query = (
-        db.session.query(ShipmentLog, ExpectedPackageCollection)
-        .outerjoin(ExpectedPackageCollection, ExpectedPackageCollection.shipment_id == ShipmentLog.id)
-        .options(selectinload(ShipmentLog.packages))
-        .order_by(ShipmentLog.created_at.desc())
+        db.session.query(
+            ShipmentLog,
+            ExpectedPackageCollection,
+        )
+        .join(
+            ExpectedPackageCollection,
+            ExpectedPackageCollection.shipment_id
+            == ShipmentLog.id,
+        )
+        .options(
+            selectinload(
+                ShipmentLog.packages
+            )
+        )
+        .order_by(
+            ExpectedPackageCollection.created_at.desc(),
+            ExpectedPackageCollection.id.desc(),
+        )
     )
-    if status == "not_created":
-        query = query.filter(ExpectedPackageCollection.id.is_(None))
-    elif status in EXPECTED_COLLECTION_STATUSES:
-        query = query.filter(ExpectedPackageCollection.status == status)
+
+    if status in EXPECTED_COLLECTION_STATUSES:
+        query = query.filter(
+            ExpectedPackageCollection.status
+            == status
+        )
+
     if search:
         like = f"%{search}%"
+
         query = query.filter(
             or_(
                 ShipmentLog.sl_id.ilike(like),
                 ShipmentLog.sl_name.ilike(like),
-                ExpectedPackageCollection.collection_number.ilike(like),
-                ExpectedPackageCollection.supplier_invoice_number.ilike(like),
+                ExpectedPackageCollection
+                .collection_number.ilike(like),
+                ExpectedPackageCollection
+                .supplier_invoice_number.ilike(like),
+                ExpectedPackageCollection
+                .payment_reference.ilike(like),
             )
         )
 
+    rows = query.all()
+
+    # Load active Shipment Logs that do not already have
+    # an Expected Package Collection.
+    available_query = (
+        ShipmentLog.query
+        .outerjoin(
+            ExpectedPackageCollection,
+            ExpectedPackageCollection.shipment_id
+            == ShipmentLog.id,
+        )
+        .filter(
+            ExpectedPackageCollection.id.is_(None)
+        )
+        .filter(
+            ShipmentLog.is_archived.is_(False)
+        )
+        .options(
+            selectinload(
+                ShipmentLog.packages
+            )
+        )
+        .order_by(
+            ShipmentLog.created_at.desc()
+        )
+    )
+
+    # Do not show empty Shipment Logs in the creation dropdown.
+    available_shipments = [
+        shipment
+        for shipment in available_query.all()
+        if shipment.packages
+    ]
+
     return render_template(
         "admin/finance/expected_package_collections.html",
-        rows=query.all(),
+        rows=rows,
+        available_shipments=available_shipments,
         selected_status=status,
         search=search,
     )
 
-
-@finance_bp.route("/expected-package-collections/create/<int:shipment_id>", methods=["POST"])
+@finance_bp.route(
+    "/expected-package-collections/create",
+    methods=["POST"],
+)
+@finance_bp.route(
+    "/expected-package-collections/create/<int:shipment_id>",
+    methods=["POST"],
+)
 @admin_required(roles=["finance"])
-def create_expected_package_collection(shipment_id):
-    shipment = ShipmentLog.query.options(selectinload(ShipmentLog.packages)).get_or_404(shipment_id)
-    existing = ExpectedPackageCollection.query.filter_by(shipment_id=shipment.id).first()
+def create_expected_package_collection(
+    shipment_id=None,
+):
+    if shipment_id is None:
+        raw_shipment_id = (
+            request.form.get("shipment_id")
+            or ""
+        ).strip()
+
+        try:
+            shipment_id = int(
+                raw_shipment_id
+            )
+        except (TypeError, ValueError):
+            flash(
+                "Select a valid Shipment Log.",
+                "danger",
+            )
+
+            return redirect(
+                url_for(
+                    "finance.expected_package_collections"
+                )
+            )
+
+    shipment = (
+        ShipmentLog.query
+        .options(
+            selectinload(
+                ShipmentLog.packages
+            )
+        )
+        .get_or_404(shipment_id)
+    )
+
+    if shipment.is_archived:
+        flash(
+            "Archived Shipment Logs cannot be used to "
+            "create an Expected Package Collection.",
+            "warning",
+        )
+
+        return redirect(
+            url_for(
+                "finance.expected_package_collections"
+            )
+        )
+
+    if not shipment.packages:
+        flash(
+            "This Shipment Log has no packages.",
+            "warning",
+        )
+
+        return redirect(
+            url_for(
+                "finance.expected_package_collections"
+            )
+        )
+
+    existing = (
+        ExpectedPackageCollection.query
+        .filter_by(
+            shipment_id=shipment.id
+        )
+        .first()
+    )
+
     if existing:
-        return redirect(url_for("finance.expected_package_collection_detail", collection_id=existing.id))
+        flash(
+            "An Expected Package Collection already "
+            "exists for this Shipment Log.",
+            "info",
+        )
+
+        return redirect(
+            url_for(
+                "finance.expected_package_collection_detail",
+                collection_id=existing.id,
+            )
+        )
 
     try:
-        exchange_rate = _decimal_form("exchange_rate", required=True)
-        calculation = _shipment_calculation(shipment, exchange_rate)
+        exchange_rate = _decimal_form(
+            "exchange_rate",
+            required=True,
+        )
+
+        calculation = _shipment_calculation(
+            shipment,
+            exchange_rate,
+        )
+
         record = ExpectedPackageCollection(
-            collection_number=_new_expected_collection_number(),
+            collection_number=(
+                _new_expected_collection_number()
+            ),
             shipment_id=shipment.id,
-            supplier_name=(request.form.get("supplier_name") or "ShipJet Limited").strip(),
+            supplier_name=(
+                request.form.get("supplier_name")
+                or "ShipJet Limited"
+            ).strip(),
             status="draft",
             created_by_id=current_user.id,
             updated_by_id=current_user.id,
         )
-        _apply_calculation(record, calculation)
+
+        _apply_calculation(
+            record,
+            calculation,
+        )
+
         db.session.add(record)
         db.session.commit()
-        flash("Expected package collection created.", "success")
-        return redirect(url_for("finance.expected_package_collection_detail", collection_id=record.id))
+
+        flash(
+            "Expected Package Collection created.",
+            "success",
+        )
+
+        return redirect(
+            url_for(
+                "finance.expected_package_collection_detail",
+                collection_id=record.id,
+            )
+        )
+
     except Exception as exc:
         db.session.rollback()
-        flash(str(exc), "danger")
-        return redirect(url_for("finance.expected_package_collections"))
+
+        current_app.logger.exception(
+            "Failed to create Expected Package "
+            "Collection for shipment %s",
+            shipment_id,
+        )
+
+        flash(
+            str(exc),
+            "danger",
+        )
+
+        return redirect(
+            url_for(
+                "finance.expected_package_collections"
+            )
+        )
 
 
 @finance_bp.route("/expected-package-collections/<int:collection_id>")

@@ -830,6 +830,11 @@ class ExpectedPackageCollection(db.Model):
 
     supplier_name = db.Column(db.String(160), nullable=False, default="ShipJet Limited")
     supplier_invoice_number = db.Column(db.String(80), nullable=True, index=True)
+    payment_reference = db.Column(
+        db.String(160),
+        nullable=True,
+        index=True,
+    )
     status = db.Column(db.String(24), nullable=False, default="draft", index=True)
 
     package_count = db.Column(db.Integer, nullable=False, default=0)

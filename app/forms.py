@@ -359,6 +359,10 @@ class ExpenseForm(FlaskForm):
             ("Marketing", "Marketing"),
             ("Maintenance", "Maintenance"),
             ("Invoices", "Invoices"),
+            (
+                "Supplier Package Collection",
+                "Supplier Package Collection",
+            ),
             ("Other", "Other"),
         ],
         validators=[DataRequired()]

@@ -1,60 +1,260 @@
-{% extends 'layout_admin.html' %}
-{% block title %}Edit Expense{% endblock %}
+{% extends "layout_admin.html" %}
+
+{% block title %}
+Edit Expense
+{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-  <h2 class="mb-4">Edit Expense</h2>
 
-  <div class="card shadow-sm">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <div>
+      <h2 class="mb-1">
+        Edit Expense
+      </h2>
+
+      <p class="text-muted mb-0">
+        Update the expense or attach supporting documentation.
+      </p>
+    </div>
+
+    <a href="{{ url_for('finance.monthly_expenses') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-arrow-left me-1"></i>
+      Back to Expenses
+    </a>
+  </div>
+
+  {% if linked_collection %}
+  <div class="alert alert-info">
+    <div class="fw-semibold">
+      <i class="bi bi-link-45deg me-1"></i>
+      Automatic Supplier Collection Expense
+    </div>
+
+    <div class="small mt-1">
+      This expense is linked to
+      <strong>
+        {{ linked_collection.collection_number }}
+      </strong>.
+
+      The category, amount, date and description are controlled
+      by the Expected Package Collection. You can attach or
+      replace the supplier invoice here.
+    </div>
+
+    <div class="mt-2">
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for(
+                    'finance.expected_package_collection_detail',
+                    collection_id=linked_collection.id
+                ) }}">
+        Open Expected Collection
+      </a>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card border-0 shadow-sm">
     <div class="card-body">
+
       <form method="POST" class="row g-3" enctype="multipart/form-data">
         {{ form.hidden_tag() }}
 
+        <!-- Amount -->
         <div class="col-md-3">
-          {{ form.amount.label(class="form-label") }}
-          {{ form.amount(class="form-control", step="0.01") }}
+          {{ form.amount.label(
+          class="form-label"
+          ) }}
+
+          {% if linked_collection %}
+          {{ form.amount(
+          class="form-control bg-light",
+          step="0.01",
+          readonly=True
+          ) }}
+
+          <div class="form-text">
+            Controlled by the actual JMD paid.
+          </div>
+          {% else %}
+          {{ form.amount(
+          class="form-control",
+          step="0.01"
+          ) }}
+          {% endif %}
+
+          {% for error in form.amount.errors %}
+          <div class="text-danger small">
+            {{ error }}
+          </div>
+          {% endfor %}
         </div>
 
+        <!-- Category -->
         <div class="col-md-3">
-          {{ form.category.label(class="form-label") }}
-          {{ form.category(class="form-select") }}
+          {{ form.category.label(
+          class="form-label"
+          ) }}
+
+          {% if linked_collection %}
+          {{ form.category(
+          class="form-select bg-light",
+          disabled=True
+          ) }}
+
+          <!-- Disabled fields are not submitted, so this
+                             hidden value allows WTForms validation. -->
+          <input type="hidden" name="category" value="Supplier Package Collection">
+
+          <div class="form-text">
+            Automatic supplier expense category.
+          </div>
+          {% else %}
+          {{ form.category(
+          class="form-select"
+          ) }}
+          {% endif %}
+
+          {% for error in form.category.errors %}
+          <div class="text-danger small">
+            {{ error }}
+          </div>
+          {% endfor %}
         </div>
 
+        <!-- Date -->
         <div class="col-md-3">
-          {{ form.date.label(class="form-label") }}
-          {{ form.date(class="form-control") }}
+          {{ form.date.label(
+          class="form-label"
+          ) }}
+
+          {% if linked_collection %}
+          {{ form.date(
+          class="form-control bg-light",
+          readonly=True
+          ) }}
+
+          <div class="form-text">
+            Original payment posting date.
+          </div>
+          {% else %}
+          {{ form.date(
+          class="form-control"
+          ) }}
+          {% endif %}
+
+          {% for error in form.date.errors %}
+          <div class="text-danger small">
+            {{ error }}
+          </div>
+          {% endfor %}
         </div>
 
+        <!-- Description -->
         <div class="col-md-3">
-          {{ form.description.label(class="form-label") }}
-          {{ form.description(class="form-control", rows=2) }}
+          {{ form.description.label(
+          class="form-label"
+          ) }}
+
+          {% if linked_collection %}
+          {{ form.description(
+          class="form-control bg-light",
+          rows=3,
+          readonly=True
+          ) }}
+          {% else %}
+          {{ form.description(
+          class="form-control",
+          rows=3
+          ) }}
+          {% endif %}
+
+          {% for error in form.description.errors %}
+          <div class="text-danger small">
+            {{ error }}
+          </div>
+          {% endfor %}
         </div>
 
+        <!-- Replace attachment -->
         <div class="col-md-6">
-          <label class="form-label">Replace Attachment</label>
-          {{ form.attachment(class="form-control", accept=".pdf,.png,.jpg,.jpeg") }}
-          <div class="form-text">Leave blank to keep the current attachment. Allowed: PDF, JPG, JPEG, PNG.</div>
-        </div>
-
-        <div class="col-md-6">
-          <label class="form-label">Current Attachment</label>
-          <div>
+          <label class="form-label">
             {% if expense.attachment_url %}
-              <a href="{{ url_for('finance.download_expense_attachment', expense_id=expense.id) }}"
-                 target="_blank"
-                 class="btn btn-sm btn-outline-primary">
-                📎 {{ expense.attachment_name or 'View Attachment' }}
-              </a>
+            Replace Supplier Invoice
             {% else %}
-              <span class="text-muted">No attachment uploaded</span>
+            Attach Supplier Invoice
+            {% endif %}
+          </label>
+
+          {{ form.attachment(
+          class="form-control",
+          accept=".pdf,.png,.jpg,.jpeg"
+          ) }}
+
+          <div class="form-text">
+            {% if expense.attachment_url %}
+            Leave blank to keep the current attachment.
+            {% else %}
+            Upload the supplier’s actual invoice.
+            {% endif %}
+            Allowed: PDF, JPG, JPEG and PNG.
+          </div>
+
+          {% for error in form.attachment.errors %}
+          <div class="text-danger small">
+            {{ error }}
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- Current attachment -->
+        <div class="col-md-6">
+          <label class="form-label">
+            Current Attachment
+          </label>
+
+          <div class="border rounded p-3 bg-light h-100">
+            {% if expense.attachment_url %}
+            <a href="{{ url_for(
+                                    'finance.download_expense_attachment',
+                                    expense_id=expense.id
+                                ) }}" target="_blank" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-paperclip me-1"></i>
+              {{ expense.attachment_name or
+              "View Attachment" }}
+            </a>
+
+            {% if expense.attachment_uploaded_at %}
+            <div class="small text-muted mt-2">
+              Uploaded:
+              {{ expense.attachment_uploaded_at }}
+            </div>
+            {% endif %}
+            {% else %}
+            <span class="text-muted">
+              No attachment uploaded
+            </span>
             {% endif %}
           </div>
         </div>
 
+        <!-- Actions -->
         <div class="col-12 mt-3">
-          <button type="submit" class="btn btn-primary">Update Expense</button>
-          <a href="{{ url_for('finance.monthly_expenses') }}" class="btn btn-secondary">Cancel</a>
+          <button type="submit" class="btn btn-primary">
+            {% if linked_collection %}
+            <i class="bi bi-paperclip me-1"></i>
+            Save Supplier Invoice
+            {% else %}
+            Update Expense
+            {% endif %}
+          </button>
+
+          <a href="{{ url_for(
+                            'finance.monthly_expenses'
+                        ) }}" class="btn btn-secondary">
+            Cancel
+          </a>
         </div>
+
       </form>
     </div>
   </div>

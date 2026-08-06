@@ -40,7 +40,7 @@
         </div>
     </div>
 
-    <!-- Summary cards -->
+    <!-- Summary -->
     <div class="row g-3 mb-3">
 
         <div class="col-md-6 col-xl">
@@ -147,10 +147,10 @@
                     record.variance_jmd|float %}
 
                     <div class="{{
-                            'text-danger'
-                            if variance_jmd > 0
-                            else 'text-success'
-                        }} small fw-semibold mt-1">
+                        'text-danger'
+                        if variance_jmd > 0
+                        else 'text-success'
+                    }} small fw-semibold mt-1">
                         Variance:
                         J${{ '{:+,.2f}'.format(
                         variance_jmd
@@ -253,6 +253,7 @@
 
         <!-- Package calculation -->
         <div class="col-lg-8">
+
             <div class="card border-0 shadow-sm">
 
                 <div class="card-header bg-white fw-bold">
@@ -260,7 +261,8 @@
                 </div>
 
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover align-middle mb-0">
+                    <table class="table table-sm table-hover
+                               align-middle mb-0">
                         <thead class="table-light">
                             <tr>
                                 <th>Package</th>
@@ -358,7 +360,6 @@
                                     row.expected_cost_usd|float
                                     ) }}
                                 </td>
-
                             </tr>
 
                             {% else %}
@@ -369,25 +370,27 @@
                             </tr>
                             {% endfor %}
                         </tbody>
+
                     </table>
                 </div>
             </div>
         </div>
 
-        <!-- Supplier comparison -->
+        <!-- Supplier payment -->
         <div class="col-lg-4">
 
-            <form class="card border-0 shadow-sm" method="post" action="{{ url_for(
+            <form class="card border-0 shadow-sm" method="post" enctype="multipart/form-data" action="{{ url_for(
                     'finance.update_expected_package_collection',
                     collection_id=record.id
                 ) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                 <div class="card-header bg-white fw-bold">
-                    Supplier Invoice Comparison
+                    Supplier Invoice and Payment
 
                     <div class="small text-muted fw-normal mt-1">
-                        Optional until the supplier invoice is received.
+                        Complete these details when the supplier
+                        invoice is received and payment is made.
                     </div>
                 </div>
 
@@ -410,8 +413,8 @@
                     </div>
                     {% else %}
                     <div class="alert alert-light border small">
-                        An expense will be created automatically when
-                        this collection is marked Paid.
+                        The expense will be created automatically
+                        when this collection is marked Paid.
                     </div>
                     {% endif %}
 
@@ -427,7 +430,7 @@
 
                     <input class="form-control mb-2" name="supplier_invoice_number" value="{{
                             record.supplier_invoice_number or ''
-                        }}">
+                        }}" placeholder="Example: BAG-2026-668242">
 
                     <label class="form-label">
                         Actual USD
@@ -444,7 +447,7 @@
                     </label>
 
                     <div class="form-text mb-1">
-                        Required when changing the status to Paid.
+                        Required when marking the collection Paid.
                     </div>
 
                     <input class="form-control mb-2" type="number" step="0.01" min="0" name="actual_total_jmd" value="{{
@@ -452,6 +455,48 @@
                             if record.actual_total_jmd is not none
                             else ''
                         }}">
+
+                    <label class="form-label">
+                        Payment Reference
+                    </label>
+
+                    <div class="form-text mb-1">
+                        Required when marking the collection Paid.
+                    </div>
+
+                    <input class="form-control mb-2" name="payment_reference"
+                        value="{{ record.payment_reference or '' }}"
+                        placeholder="Transfer, cheque or transaction reference">
+
+                    <label class="form-label">
+                        Supplier Invoice Attachment
+                    </label>
+
+                    <input class="form-control mb-2" type="file" name="supplier_invoice_attachment"
+                        accept=".pdf,.png,.jpg,.jpeg">
+
+                    <div class="form-text mb-2">
+                        Upload the supplier invoice. Leave blank when
+                        saving again to keep the current attachment.
+                    </div>
+
+                    {% if record.expense
+                    and record.expense.attachment_url %}
+                    <div class="border rounded p-2 mb-3 bg-light">
+                        <div class="small text-muted mb-1">
+                            Current Supplier Invoice
+                        </div>
+
+                        <a href="{{ url_for(
+                                'finance.download_expense_attachment',
+                                expense_id=record.expense.id
+                            ) }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-paperclip me-1"></i>
+                            {{ record.expense.attachment_name
+                            or "View Invoice" }}
+                        </a>
+                    </div>
+                    {% endif %}
 
                     <label class="form-label">
                         Status
@@ -488,10 +533,10 @@
                     record.variance_usd|float %}
 
                     <div class="alert {{
-                            'alert-danger'
-                            if variance_usd > 0
-                            else 'alert-success'
-                        }}">
+                        'alert-danger'
+                        if variance_usd > 0
+                        else 'alert-success'
+                    }}">
                         USD variance:
 
                         <strong>
@@ -507,10 +552,10 @@
                     record.variance_jmd|float %}
 
                     <div class="alert {{
-                            'alert-danger'
-                            if variance_jmd > 0
-                            else 'alert-success'
-                        }}">
+                        'alert-danger'
+                        if variance_jmd > 0
+                        else 'alert-success'
+                    }}">
                         JMD variance:
 
                         <strong>
@@ -523,9 +568,9 @@
 
                     <button class="btn btn-purple w-100">
                         {% if record.expense %}
-                        Update Paid Expense
+                        Update Payment and Invoice
                         {% else %}
-                        Save Comparison
+                        Save Supplier Payment
                         {% endif %}
                     </button>
 

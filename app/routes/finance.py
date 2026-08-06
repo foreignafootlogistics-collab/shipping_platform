@@ -2507,17 +2507,40 @@ def view_expenses():
     return redirect(url_for('finance.monthly_expenses'))
 
 # ---------------------- EDIT EXPENSE ---------------------- #
-@finance_bp.route('/expenses/edit/<int:expense_id>', methods=['GET', 'POST'])
-@admin_required(roles=['finance'])
+@finance_bp.route(
+    "/expenses/edit/<int:expense_id>",
+    methods=["GET", "POST"],
+)
+@admin_required(roles=["finance"])
 def edit_expense(expense_id):
-    expense = db.session.get(Expense, expense_id)
+    expense = db.session.get(
+        Expense,
+        expense_id,
+    )
+
     if not expense:
-        flash("Expense not found.", "danger")
-        return redirect(url_for('finance.monthly_expenses'))
+        flash(
+            "Expense not found.",
+            "danger",
+        )
 
-    form = ExpenseForm(obj=expense)
+        return redirect(
+            url_for(
+                "finance.monthly_expenses"
+            )
+        )
 
-    if request.method == 'GET':
+    linked_collection = getattr(
+        expense,
+        "expected_collection",
+        None,
+    )
+
+    form = ExpenseForm(
+        obj=expense
+    )
+
+    if request.method == "GET":
         form.date.data = expense.date
         form.category.data = expense.category
         form.amount.data = expense.amount
@@ -2525,47 +2548,129 @@ def edit_expense(expense_id):
 
     if form.validate_on_submit():
         try:
-            expense.date = form.date.data
-            expense.category = form.category.data
-            expense.amount = float(form.amount.data)
-            expense.description = form.description.data or ''
-
-            # ✅ Optional: replace attachment
-            file_obj = request.files.get("attachment")
-            if file_obj and file_obj.filename:
-                # delete old cloudinary file first
-                old_public_id = getattr(expense, "attachment_public_id", None)
-                old_mime = getattr(expense, "attachment_mime", None)
-                if old_public_id:
-                    _delete_cloudinary_asset(old_public_id, old_mime)
-
-                attachment_name, attachment_url, attachment_public_id, attachment_mime = (
-                    _upload_expense_attachment_to_cloudinary(file_obj)
+            if linked_collection:
+                # This expense was posted automatically from an
+                # Expected Package Collection. Its financial fields
+                # must remain synchronized with that record.
+                expense.category = (
+                    "Supplier Package Collection"
                 )
 
-                expense.attachment_name = attachment_name
-                expense.attachment_url = attachment_url
-                expense.attachment_public_id = attachment_public_id
-                expense.attachment_mime = attachment_mime
-                expense.attachment_uploaded_at = datetime.utcnow()
+                if linked_collection.actual_total_jmd is not None:
+                    expense.amount = float(
+                        linked_collection.actual_total_jmd
+                    )
+
+                # Preserve the original posting date and automatically
+                # generated description. Only the attachment is edited.
+
+            else:
+                # Regular manually entered expense.
+                expense.date = form.date.data
+                expense.category = form.category.data
+                expense.amount = float(
+                    form.amount.data
+                )
+                expense.description = (
+                    form.description.data or ""
+                )
+
+            # Attach or replace the invoice.
+            file_obj = request.files.get(
+                "attachment"
+            )
+
+            if file_obj and file_obj.filename:
+                old_public_id = getattr(
+                    expense,
+                    "attachment_public_id",
+                    None,
+                )
+
+                old_mime = getattr(
+                    expense,
+                    "attachment_mime",
+                    None,
+                )
+
+                if old_public_id:
+                    _delete_cloudinary_asset(
+                        old_public_id,
+                        old_mime,
+                    )
+
+                (
+                    attachment_name,
+                    attachment_url,
+                    attachment_public_id,
+                    attachment_mime,
+                ) = _upload_expense_attachment_to_cloudinary(
+                    file_obj
+                )
+
+                expense.attachment_name = (
+                    attachment_name
+                )
+                expense.attachment_url = (
+                    attachment_url
+                )
+                expense.attachment_public_id = (
+                    attachment_public_id
+                )
+                expense.attachment_mime = (
+                    attachment_mime
+                )
+                expense.attachment_uploaded_at = (
+                    datetime.utcnow()
+                )
 
             db.session.flush()
 
-            # ✅ audit log
-            _log_expense_action("UPDATED", expense, request)
+            _log_expense_action(
+                "UPDATED",
+                expense,
+                request,
+            )
 
             db.session.commit()
-            flash("Expense updated successfully.", "success")
-            return redirect(url_for('finance.monthly_expenses'))
+
+            if linked_collection:
+                flash(
+                    "Supplier invoice attachment updated. "
+                    "The Supplier Package Collection category "
+                    "and paid amount were preserved.",
+                    "success",
+                )
+            else:
+                flash(
+                    "Expense updated successfully.",
+                    "success",
+                )
+
+            return redirect(
+                url_for(
+                    "finance.monthly_expenses"
+                )
+            )
 
         except Exception as e:
             db.session.rollback()
-            flash(f"Error updating expense: {e}", "danger")
+
+            current_app.logger.exception(
+                "Failed to update expense %s",
+                expense_id,
+            )
+
+            flash(
+                f"Error updating expense: {e}",
+                "danger",
+            )
 
     return render_template(
-        'admin/finance/edit_expense.html',
+        "admin/finance/edit_expense.html",
         form=form,
-        expense=expense
+        expense=expense,
+        linked_collection=linked_collection,
     )
 
 @finance_bp.route("/expense_audit_logs")
@@ -4736,8 +4841,11 @@ def update_expected_package_collection(collection_id):
                 "Invalid collection status."
             )
 
-        # Once an expense has been posted, the record must remain Paid.
-        if record.expense_id and requested_status != "paid":
+        # Once posted to Expenses, the record must remain Paid.
+        if (
+            record.expense_id
+            and requested_status != "paid"
+        ):
             raise ValueError(
                 "This collection has already been posted to "
                 "Monthly Expenses and must remain marked Paid."
@@ -4751,32 +4859,58 @@ def update_expected_package_collection(collection_id):
 
         supplier_invoice_number = (
             request.form.get("supplier_invoice_number")
+            or record.supplier_invoice_number
             or ""
         ).strip() or None
 
-        actual_total_usd = _decimal_form(
-            "actual_total_usd"
-        )
+        payment_reference = (
+            request.form.get("payment_reference")
+            or record.payment_reference
+            or ""
+        ).strip() or None
 
-        actual_total_jmd = _decimal_form(
-            "actual_total_jmd"
-        )
+        # Preserve existing actual amounts when a form such as
+        # Recalculate Draft does not submit those fields.
+        if "actual_total_usd" in request.form:
+            actual_total_usd = _decimal_form(
+                "actual_total_usd"
+            )
+        else:
+            actual_total_usd = (
+                record.actual_total_usd
+            )
+
+        if "actual_total_jmd" in request.form:
+            actual_total_jmd = _decimal_form(
+                "actual_total_jmd"
+            )
+        else:
+            actual_total_jmd = (
+                record.actual_total_jmd
+            )
 
         notes = (
             request.form.get("notes")
-            or ""
-        ).strip() or None
+            if "notes" in request.form
+            else record.notes
+        )
+
+        notes = (
+            (notes or "").strip()
+            or None
+        )
 
         record.supplier_name = supplier_name
         record.supplier_invoice_number = (
             supplier_invoice_number
         )
+        record.payment_reference = payment_reference
         record.actual_total_usd = actual_total_usd
         record.actual_total_jmd = actual_total_jmd
         record.notes = notes
         record.updated_by_id = current_user.id
 
-        # Recalculate only while the record is still a draft.
+        # Recalculate only while still a draft.
         if request.form.get("recalculate") == "1":
             if record.status != "draft":
                 raise ValueError(
@@ -4806,7 +4940,8 @@ def update_expected_package_collection(collection_id):
                 timezone.utc
             )
 
-        # Automatically post the supplier payout to expenses.
+        # Automatically post the actual supplier payment
+        # to Monthly Expenses.
         if requested_status == "paid":
             if (
                 actual_total_jmd is None
@@ -4817,15 +4952,30 @@ def update_expected_package_collection(collection_id):
                     "marking this collection as Paid."
                 )
 
+            if not payment_reference:
+                raise ValueError(
+                    "Enter the payment reference before "
+                    "marking this collection as Paid."
+                )
+
             shipment_reference = (
                 record.shipment.sl_name
                 or record.shipment.sl_id
             )
 
             description_parts = [
-                f"Expected Collection: {record.collection_number}",
-                f"Shipment: {shipment_reference}",
-                f"Supplier: {record.supplier_name}",
+                (
+                    "Expected Collection: "
+                    f"{record.collection_number}"
+                ),
+                (
+                    "Shipment: "
+                    f"{shipment_reference}"
+                ),
+                (
+                    "Supplier: "
+                    f"{record.supplier_name}"
+                ),
             ]
 
             if record.supplier_invoice_number:
@@ -4840,16 +4990,26 @@ def update_expected_package_collection(collection_id):
                     f"${actual_total_usd:.2f}"
                 )
 
+            description_parts.append(
+                "Payment Reference: "
+                f"{payment_reference}"
+            )
+
             description = " | ".join(
                 description_parts
             )
+
+            expense_action = None
+            expense_changed = False
 
             if record.expense_id is None:
                 expense = Expense(
                     date=to_jamaica(
                         datetime.utcnow()
                     ).date(),
-                    category="Supplier Package Collection",
+                    category=(
+                        "Supplier Package Collection"
+                    ),
                     amount=float(actual_total_jmd),
                     description=description,
                 )
@@ -4862,15 +5022,10 @@ def update_expected_package_collection(collection_id):
                     timezone.utc
                 )
 
-                _log_expense_action(
-                    "CREATED",
-                    expense,
-                    request,
-                )
+                expense_action = "CREATED"
+                expense_changed = True
 
             else:
-                # Keep the linked expense synchronized if Finance
-                # corrects the paid amount or supplier reference.
                 expense = db.session.get(
                     Expense,
                     record.expense_id,
@@ -4892,17 +5047,106 @@ def update_expected_package_collection(collection_id):
                     != description
                 )
 
-                if amount_changed or description_changed:
+                category_changed = (
+                    expense.category
+                    != "Supplier Package Collection"
+                )
+
+                if amount_changed:
                     expense.amount = float(
                         actual_total_jmd
                     )
+
+                if description_changed:
                     expense.description = description
 
-                    _log_expense_action(
-                        "UPDATED",
-                        expense,
-                        request,
+                if category_changed:
+                    expense.category = (
+                        "Supplier Package Collection"
                     )
+
+                if (
+                    amount_changed
+                    or description_changed
+                    or category_changed
+                ):
+                    expense_action = "UPDATED"
+                    expense_changed = True
+
+            # Upload or replace the supplier invoice attachment.
+            supplier_invoice_file = request.files.get(
+                "supplier_invoice_attachment"
+            )
+
+            if (
+                supplier_invoice_file
+                and supplier_invoice_file.filename
+            ):
+                # Upload the replacement first. This prevents
+                # losing the old attachment if the new upload fails.
+                (
+                    attachment_name,
+                    attachment_url,
+                    attachment_public_id,
+                    attachment_mime,
+                ) = _upload_expense_attachment_to_cloudinary(
+                    supplier_invoice_file
+                )
+
+                old_public_id = getattr(
+                    expense,
+                    "attachment_public_id",
+                    None,
+                )
+
+                old_mime = getattr(
+                    expense,
+                    "attachment_mime",
+                    None,
+                )
+
+                expense.attachment_name = (
+                    attachment_name
+                )
+                expense.attachment_url = (
+                    attachment_url
+                )
+                expense.attachment_public_id = (
+                    attachment_public_id
+                )
+                expense.attachment_mime = (
+                    attachment_mime
+                )
+                expense.attachment_uploaded_at = (
+                    datetime.utcnow()
+                )
+
+                if old_public_id:
+                    try:
+                        _delete_cloudinary_asset(
+                            old_public_id,
+                            old_mime,
+                        )
+                    except Exception:
+                        current_app.logger.exception(
+                            "Could not delete old supplier "
+                            "invoice attachment for expense %s",
+                            expense.id,
+                        )
+
+                if expense_action is None:
+                    expense_action = "UPDATED"
+
+                expense_changed = True
+
+            if expense_changed and expense_action:
+                db.session.flush()
+
+                _log_expense_action(
+                    expense_action,
+                    expense,
+                    request,
+                )
 
         record.status = requested_status
 
@@ -4910,8 +5154,9 @@ def update_expected_package_collection(collection_id):
 
         if requested_status == "paid":
             flash(
-                "Collection marked Paid and the supplier "
-                "payment was posted to Monthly Expenses.",
+                "Collection marked Paid. The supplier payment, "
+                "payment reference and invoice attachment were "
+                "posted to Monthly Expenses.",
                 "success",
             )
         else:
@@ -4922,6 +5167,12 @@ def update_expected_package_collection(collection_id):
 
     except Exception as exc:
         db.session.rollback()
+
+        current_app.logger.exception(
+            "Failed to update expected collection %s",
+            collection_id,
+        )
+
         flash(
             str(exc),
             "danger",

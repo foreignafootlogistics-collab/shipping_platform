@@ -331,6 +331,13 @@
                   </li>
 
                   <li class="nav-item">
+                    <a class="nav-link {{ 'active' if request.endpoint == 'finance.shipment_profitability' else '' }}"
+                      href="{{ url_for('finance.shipment_profitability') }}">
+                      <i class="bi bi-bar-chart-line me-2"></i> Shipment Profitability
+                    </a>
+                  </li>
+
+                  <li class="nav-item">
                     <a class="nav-link {{ 'active' if request.endpoint == 'finance.unpaid_invoices' else '' }}"
                       href="{{ url_for('finance.unpaid_invoices') }}">
                       <i class="bi bi-clock-history me-2"></i> Unpaid / Issued Invoices

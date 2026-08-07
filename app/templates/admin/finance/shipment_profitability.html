@@ -1,0 +1,782 @@
+{% extends "layout_admin.html" %}
+
+{% block title %}Shipment Profitability{% endblock %}
+
+{% block content %}
+<style>
+    .profit-page {
+        --profit-purple: #4a148c;
+        --profit-purple-light: #f5effb;
+        --profit-green: #198754;
+        --profit-red: #dc3545;
+    }
+
+    .profit-header {
+        color: white;
+        padding: 22px;
+        border-radius: 14px;
+        background:
+            radial-gradient(circle at 90% 20%,
+                rgba(255, 255, 255, .12),
+                transparent 30%),
+            linear-gradient(120deg,
+                #4a148c,
+                #5d189f);
+    }
+
+    .profit-header-icon {
+        width: 65px;
+        height: 65px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, .3);
+        background: rgba(255, 255, 255, .12);
+        border-radius: 14px;
+        font-size: 30px;
+    }
+
+    .profit-filter-card,
+    .profit-card,
+    .profit-table-card,
+    .profit-detail {
+        border: 0;
+        border-radius: 13px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, .07);
+    }
+
+    .profit-card {
+        height: 100%;
+    }
+
+    .profit-card .card-body {
+        padding: 17px;
+    }
+
+    .profit-card-icon {
+        width: 42px;
+        height: 42px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--profit-purple);
+        background: var(--profit-purple-light);
+        border-radius: 12px;
+        font-size: 20px;
+    }
+
+    .profit-card-value {
+        color: var(--profit-purple);
+        font-weight: 700;
+        font-size: 1.42rem;
+        margin-top: 13px;
+        white-space: nowrap;
+    }
+
+    .profit-card-value.green {
+        color: var(--profit-green);
+    }
+
+    .profit-card-value.red {
+        color: var(--profit-red);
+    }
+
+    .profit-table-card {
+        overflow: hidden;
+    }
+
+    .profit-table-card table {
+        min-width: 1200px;
+    }
+
+    .profit-table-card thead th {
+        background: #fafafa;
+        color: #374151;
+        border-bottom: 1px solid #dee2e6;
+        font-size: .82rem;
+        padding: 13px 10px;
+        white-space: nowrap;
+    }
+
+    .profit-table-card tbody td {
+        padding: 12px 10px;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+
+    .profit-row-selected {
+        background: #faf7fe;
+        box-shadow: inset 4px 0 var(--profit-purple);
+    }
+
+    .profit-positive {
+        color: var(--profit-green);
+        font-weight: 600;
+    }
+
+    .profit-negative {
+        color: var(--profit-red);
+        font-weight: 600;
+    }
+
+    .profit-status {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 6px;
+        padding: 4px 9px;
+        font-size: .72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .profit-status.projected {
+        color: #54229a;
+        background: #eee4ff;
+    }
+
+    .profit-status.partial {
+        color: #a96200;
+        background: #fff2cf;
+    }
+
+    .profit-status.realized {
+        color: #18733a;
+        background: #dcf3e4;
+    }
+
+    .profit-detail {
+        border: 1px solid #6921af;
+        margin: 12px;
+        padding: 18px;
+        background: white;
+    }
+
+    .calculation-grid {
+        display: grid;
+        grid-template-columns:
+            minmax(145px, 1fr) 24px minmax(145px, 1fr) 24px minmax(145px, 1fr) 24px minmax(145px, 1fr) 24px minmax(145px, 1fr) 24px minmax(145px, 1fr);
+        gap: 8px;
+        align-items: stretch;
+    }
+
+    .calculation-card {
+        border: 1px solid #e3e3e3;
+        border-radius: 9px;
+        padding: 13px;
+        min-height: 115px;
+    }
+
+    .calculation-symbol {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6b7280;
+        font-size: 23px;
+    }
+
+    .calculation-label {
+        color: #333;
+        font-size: .83rem;
+        min-height: 38px;
+    }
+
+    .calculation-value {
+        color: var(--profit-purple);
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin-top: 10px;
+        white-space: nowrap;
+    }
+
+    .collection-progress {
+        height: 11px;
+        border-radius: 20px;
+        overflow: hidden;
+        background: #dc3545;
+    }
+
+    .collection-progress-bar {
+        height: 100%;
+        background: #34a853;
+    }
+
+    @media (max-width: 1400px) {
+        .calculation-grid {
+            grid-template-columns: repeat(3, minmax(180px, 1fr));
+        }
+
+        .calculation-symbol {
+            display: none;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .calculation-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .profit-header {
+            padding: 17px;
+        }
+
+        .profit-header-icon {
+            width: 52px;
+            height: 52px;
+            font-size: 25px;
+        }
+    }
+</style>
+
+{% macro money(value) -%}
+J${{ "{:,.2f}".format(value|default(0, true)|float) }}
+{%- endmacro %}
+
+{% macro status_badge(status) -%}
+{% set status_value = status|default('projected', true)|lower %}
+<span class="profit-status {{ status_value }}">
+    {{ status_value|title }}
+</span>
+{%- endmacro %}
+
+{% set billed = totals.get('customer_billed_jmd', 0)|float %}
+{% set revenue = totals.get('fafl_revenue_jmd', 0)|float %}
+{% set collected = totals.get('customer_collected_jmd', 0)|float %}
+{% set outstanding = totals.get('customer_outstanding_jmd', 0)|float %}
+{% set supplier_cost = totals.get('supplier_cost_jmd', 0)|float %}
+{% set gross_profit = totals.get('gross_profit_jmd', 0)|float %}
+{% set overall_margin = totals.get('profit_margin', 0)|float %}
+
+<div class="container-fluid py-4 profit-page">
+
+    <div class="profit-header mb-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="profit-header-icon">
+                <i class="bi bi-calculator"></i>
+            </div>
+
+            <div>
+                <h2 class="mb-1 fw-bold">
+                    Shipment Profitability
+                </h2>
+
+                <div class="text-white-50">
+                    Track billed revenue, supplier costs and profit by shipment.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form method="get" action="{{ url_for('finance.shipment_profitability') }}" class="card profit-filter-card mb-3">
+
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+
+                <div class="col-lg-4">
+                    <label class="form-label fw-semibold">
+                        Search
+                    </label>
+
+                    <div class="input-group">
+                        <span class="input-group-text bg-white">
+                            <i class="bi bi-search"></i>
+                        </span>
+
+                        <input type="text" class="form-control" name="q" value="{{ search }}"
+                            placeholder="Shipment, EPC or supplier invoice">
+                    </div>
+                </div>
+
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label fw-semibold">
+                        Status
+                    </label>
+
+                    <select class="form-select" name="status">
+                        <option value="">
+                            All statuses
+                        </option>
+
+                        {% for value, label in [
+                        ('projected', 'Projected'),
+                        ('partial', 'Partial'),
+                        ('realized', 'Realized')
+                        ] %}
+                        <option value="{{ value }}" {{ 'selected' if selected_status==value else '' }}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label fw-semibold">
+                        From
+                    </label>
+
+                    <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
+                </div>
+
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label fw-semibold">
+                        To
+                    </label>
+
+                    <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
+                </div>
+
+                <div class="col-lg-2 d-grid">
+                    <button type="submit" class="btn btn-purple">
+                        <i class="bi bi-funnel me-1"></i>
+                        Filter
+                    </button>
+                </div>
+
+                {% if search or selected_status or date_from or date_to %}
+                <div class="col-12">
+                    <a href="{{ url_for('finance.shipment_profitability') }}" class="small text-decoration-none">
+                        <i class="bi bi-x-circle me-1"></i>
+                        Clear all filters
+                    </a>
+                </div>
+                {% endif %}
+
+            </div>
+        </div>
+    </form>
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-xl-6 g-3 mb-3">
+
+        <div class="col">
+            <div class="card profit-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="profit-card-icon">
+                            <i class="bi bi-person"></i>
+                        </span>
+                        <span class="small fw-semibold">
+                            Customer Billed
+                        </span>
+                    </div>
+
+                    <div class="profit-card-value">
+                        {{ money(billed) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card profit-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="profit-card-icon">
+                            <i class="bi bi-credit-card"></i>
+                        </span>
+                        <span class="small fw-semibold">
+                            FAFL Revenue
+                        </span>
+                    </div>
+
+                    <div class="profit-card-value">
+                        {{ money(revenue) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card profit-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="profit-card-icon">
+                            <i class="bi bi-cash-coin"></i>
+                        </span>
+                        <span class="small fw-semibold">
+                            Customer Collected
+                        </span>
+                    </div>
+
+                    <div class="profit-card-value">
+                        {{ money(collected) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card profit-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="profit-card-icon">
+                            <i class="bi bi-clock"></i>
+                        </span>
+                        <span class="small fw-semibold">
+                            Outstanding
+                        </span>
+                    </div>
+
+                    <div class="profit-card-value red">
+                        {{ money(outstanding) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card profit-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="profit-card-icon">
+                            <i class="bi bi-box-seam"></i>
+                        </span>
+                        <span class="small fw-semibold">
+                            Supplier Cost
+                        </span>
+                    </div>
+
+                    <div class="profit-card-value">
+                        {{ money(supplier_cost) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card profit-card">
+                <div class="card-body">
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="profit-card-icon">
+                            <i class="bi bi-graph-up-arrow"></i>
+                        </span>
+                        <span class="small fw-semibold">
+                            Gross Profit
+                        </span>
+                    </div>
+
+                    <div class="profit-card-value {{ 'green' if gross_profit >= 0 else 'red' }}">
+                        {{ money(gross_profit) }}
+                    </div>
+
+                    <div class="small {{ 'text-success' if overall_margin >= 0 else 'text-danger' }}">
+                        {{ "%.2f"|format(overall_margin) }}% margin
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="card profit-table-card">
+        <div class="card-header bg-white py-3">
+            <h5 class="mb-0 fw-bold">
+                Profit by Shipment
+            </h5>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th>Shipment</th>
+                        <th class="text-center">Packages</th>
+                        <th class="text-end">Customer Billed</th>
+                        <th class="text-end">Pass-through</th>
+                        <th class="text-end">FAFL Revenue</th>
+                        <th class="text-end">Collected</th>
+                        <th class="text-end">Outstanding</th>
+                        <th class="text-end">Supplier Cost</th>
+                        <th class="text-end">Gross Profit</th>
+                        <th class="text-end">Margin</th>
+                        <th>Status</th>
+                        <th class="text-end">Options</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for row in rows %}
+                    {% set is_selected =
+                    selected_row
+                    and selected_row.get('collection_id') == row.get('collection_id')
+                    %}
+
+                    <tr class="{{ 'profit-row-selected' if is_selected else '' }}">
+                        <td>
+                            <strong>
+                                {{ row.get('shipment_name') or row.get('shipment_reference') }}
+                            </strong>
+
+                            <div class="small text-muted">
+                                {{ row.get('collection_number') }}
+                            </div>
+                        </td>
+
+                        <td class="text-center">
+                            {{ row.get('package_count', 0) }}
+                        </td>
+
+                        <td class="text-end">
+                            {{ money(row.get('customer_billed_jmd', 0)) }}
+                        </td>
+
+                        <td class="text-end">
+                            {{ money(row.get('pass_through_jmd', 0)) }}
+                        </td>
+
+                        <td class="text-end">
+                            {{ money(row.get('fafl_revenue_jmd', 0)) }}
+                        </td>
+
+                        <td class="text-end">
+                            {{ money(row.get('customer_collected_jmd', 0)) }}
+                        </td>
+
+                        <td class="text-end">
+                            {{ money(row.get('customer_outstanding_jmd', 0)) }}
+                        </td>
+
+                        <td class="text-end">
+                            {{ money(row.get('supplier_cost_jmd', 0)) }}
+
+                            <div class="small text-muted">
+                                {{ row.get('supplier_cost_source', '') }}
+                            </div>
+                        </td>
+
+                        {% set row_profit = row.get('gross_profit_jmd', 0)|float %}
+
+                        <td class="text-end {{ 'profit-positive' if row_profit >= 0 else 'profit-negative' }}">
+                            {{ money(row_profit) }}
+                        </td>
+
+                        <td class="text-end">
+                            {{ "%.2f"|format(row.get('profit_margin', 0)|float) }}%
+                        </td>
+
+                        <td>
+                            {{ status_badge(row.get('status')) }}
+                        </td>
+
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" href="{{ url_for(
+                                   'finance.shipment_profitability',
+                                   q=search,
+                                   status=selected_status,
+                                   date_from=date_from,
+                                   date_to=date_to,
+                                   selected=row.get('collection_id')
+                               ) }}">
+                                Open
+                                <i class="bi bi-chevron-down ms-1"></i>
+                            </a>
+                        </td>
+                    </tr>
+
+                    {% if is_selected %}
+                    {% set detail_billed = row.get('customer_billed_jmd', 0)|float %}
+                    {% set detail_pass = row.get('pass_through_jmd', 0)|float %}
+                    {% set detail_revenue = row.get('fafl_revenue_jmd', 0)|float %}
+                    {% set detail_collected = row.get('customer_collected_jmd', 0)|float %}
+                    {% set detail_outstanding = row.get('customer_outstanding_jmd', 0)|float %}
+                    {% set detail_supplier = row.get('supplier_cost_jmd', 0)|float %}
+                    {% set detail_profit = row.get('gross_profit_jmd', 0)|float %}
+                    {% set detail_margin = row.get('profit_margin', 0)|float %}
+                    {% set collected_percent =
+                    (detail_collected / detail_billed * 100)
+                    if detail_billed > 0 else 0
+                    %}
+
+                    <tr>
+                        <td colspan="12" class="p-0">
+                            <div class="profit-detail">
+
+                                <div class="d-flex flex-wrap justify-content-between gap-3 mb-3">
+                                    <div>
+                                        <strong class="text-purple">
+                                            Shipment:
+                                            {{ row.get('shipment_name') or row.get('shipment_reference') }}
+                                        </strong>
+
+                                        <span class="ms-2">
+                                            {{ status_badge(row.get('status')) }}
+                                        </span>
+                                    </div>
+
+                                    <div style="min-width:300px;max-width:500px;width:100%;">
+                                        <div class="d-flex justify-content-between small mb-1">
+                                            <span class="text-success fw-semibold">
+                                                Collected:
+                                                {{ money(detail_collected) }}
+                                                ({{ "%.2f"|format(collected_percent) }}%)
+                                            </span>
+
+                                            <span class="text-danger fw-semibold">
+                                                Outstanding:
+                                                {{ money(detail_outstanding) }}
+                                            </span>
+                                        </div>
+
+                                        <div class="collection-progress">
+                                            <div class="collection-progress-bar"
+                                                style="width:{{ [collected_percent, 100]|min }}%;">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="calculation-grid">
+
+                                    <div class="calculation-card">
+                                        <div class="calculation-label">
+                                            Customer billed
+                                        </div>
+                                        <div class="calculation-value">
+                                            {{ money(detail_billed) }}
+                                        </div>
+                                    </div>
+
+                                    <div class="calculation-symbol">−</div>
+
+                                    <div class="calculation-card">
+                                        <div class="calculation-label">
+                                            Less customs/pass-through
+                                        </div>
+                                        <div class="calculation-value">
+                                            {{ money(detail_pass) }}
+                                        </div>
+                                    </div>
+
+                                    <div class="calculation-symbol">=</div>
+
+                                    <div class="calculation-card">
+                                        <div class="calculation-label">
+                                            FAFL operating revenue
+                                        </div>
+                                        <div class="calculation-value">
+                                            {{ money(detail_revenue) }}
+                                        </div>
+                                    </div>
+
+                                    <div class="calculation-symbol">−</div>
+
+                                    <div class="calculation-card">
+                                        <div class="calculation-label">
+                                            Supplier cost
+                                            <div class="small text-muted">
+                                                {{ row.get('supplier_cost_source', '') }}
+                                            </div>
+                                        </div>
+                                        <div class="calculation-value">
+                                            {{ money(detail_supplier) }}
+                                        </div>
+                                    </div>
+
+                                    <div class="calculation-symbol">=</div>
+
+                                    <div class="calculation-card">
+                                        <div class="calculation-label">
+                                            Shipment gross profit
+                                        </div>
+                                        <div
+                                            class="calculation-value {{ 'text-success' if detail_profit >= 0 else 'text-danger' }}">
+                                            {{ money(detail_profit) }}
+                                        </div>
+                                    </div>
+
+                                    <div class="calculation-symbol">=</div>
+
+                                    <div class="calculation-card">
+                                        <div class="calculation-label">
+                                            Profit margin
+                                        </div>
+                                        <div
+                                            class="calculation-value {{ 'text-success' if detail_margin >= 0 else 'text-danger' }}">
+                                            {{ "%.2f"|format(detail_margin) }}%
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                {% if row.get('missing_package_count', 0) %}
+                                <div class="alert alert-warning mt-3 mb-0">
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
+
+                                    {{ row.get('missing_package_count') }}
+                                    package record(s) from the EPC snapshot could not be found.
+                                </div>
+                                {% endif %}
+
+                                {% if row.get('invoice_rows') %}
+                                <div class="mt-4">
+                                    <h6 class="fw-bold">
+                                        Included customer invoices
+                                    </h6>
+
+                                    <div class="table-responsive border rounded">
+                                        <table class="table table-sm mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>Invoice</th>
+                                                    <th>Customer</th>
+                                                    <th class="text-center">Packages</th>
+                                                    <th class="text-end">Allocated billed</th>
+                                                    <th class="text-end">Allocated collected</th>
+                                                </tr>
+                                            </thead>
+
+                                            <tbody>
+                                                {% for invoice in row.get('invoice_rows', []) %}
+                                                <tr>
+                                                    <td>
+                                                        {{ invoice.get('invoice_number') }}
+                                                    </td>
+
+                                                    <td>
+                                                        {{ invoice.get('customer_name') or '-' }}
+                                                    </td>
+
+                                                    <td class="text-center">
+                                                        {{ invoice.get('package_count', 0) }}
+                                                    </td>
+
+                                                    <td class="text-end">
+                                                        {{ money(invoice.get('allocated_billed_jmd', 0)) }}
+                                                    </td>
+
+                                                    <td class="text-end">
+                                                        {{ money(invoice.get('allocated_collected_jmd', 0)) }}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                            </div>
+                        </td>
+                    </tr>
+                    {% endif %}
+
+                    {% else %}
+                    <tr>
+                        <td colspan="12" class="text-center text-muted py-5">
+                            <i class="bi bi-bar-chart fs-1 d-block mb-2"></i>
+                            No shipment profitability records were found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="small text-muted mt-3">
+        <i class="bi bi-info-circle me-1"></i>
+        Projected uses the EPC expected supplier cost. Partial means some
+        customer payments have been collected. Realized means the supplier
+        has been paid and the customer invoices are fully collected.
+    </div>
+
+</div>
+{% endblock %}

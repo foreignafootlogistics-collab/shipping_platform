@@ -42,6 +42,7 @@ from app.models import (
 )
 from app.utils.expected_collections import calculate_expected_collection
 from app.utils.time import to_jamaica
+from app.utils.shipment_profitability import calculate_profitability_report
 from decimal import Decimal, InvalidOperation
 from sqlalchemy.orm import selectinload
 import cloudinary
@@ -4687,6 +4688,242 @@ def daily_sales_detail(sale_date):
         rows=rows,
         selected_date=selected_date,
         total_sales=total_sales,
+    )
+
+
+@finance_bp.route("/shipment-profitability")
+@admin_required(roles=["finance"])
+def shipment_profitability():
+    current_app.logger.info("[PROFIT] Route started")
+
+    search = (request.args.get("q") or "").strip()
+    selected_status = (
+        request.args.get("status") or ""
+    ).strip().lower()
+
+    date_from_text = (
+        request.args.get("date_from") or ""
+    ).strip()
+
+    date_to_text = (
+        request.args.get("date_to") or ""
+    ).strip()
+
+    allowed_statuses = {
+        "",
+        "projected",
+        "partial",
+        "realized",
+    }
+
+    if selected_status not in allowed_statuses:
+        selected_status = ""
+
+    query = (
+        ExpectedPackageCollection.query
+        .join(
+            ShipmentLog,
+            ExpectedPackageCollection.shipment_id
+            == ShipmentLog.id,
+        )
+        .options(
+            selectinload(
+                ExpectedPackageCollection.shipment
+            )
+        )
+    )
+
+    if search:
+        search_term = f"%{search}%"
+
+        query = query.filter(
+            or_(
+                ExpectedPackageCollection.collection_number.ilike(
+                    search_term
+                ),
+                ExpectedPackageCollection.supplier_name.ilike(
+                    search_term
+                ),
+                ExpectedPackageCollection.supplier_invoice_number.ilike(
+                    search_term
+                ),
+                ExpectedPackageCollection.payment_reference.ilike(
+                    search_term
+                ),
+                ShipmentLog.sl_id.ilike(search_term),
+                ShipmentLog.sl_name.ilike(search_term),
+            )
+        )
+
+    date_from = None
+    date_to = None
+
+    if date_from_text:
+        try:
+            date_from = date.fromisoformat(
+                date_from_text
+            )
+
+            query = query.filter(
+                func.date(
+                    ExpectedPackageCollection.created_at
+                ) >= date_from
+            )
+        except ValueError:
+            flash(
+                "Invalid starting date.",
+                "warning",
+            )
+            date_from_text = ""
+
+    if date_to_text:
+        try:
+            date_to = date.fromisoformat(
+                date_to_text
+            )
+
+            query = query.filter(
+                func.date(
+                    ExpectedPackageCollection.created_at
+                ) <= date_to
+            )
+        except ValueError:
+            flash(
+                "Invalid ending date.",
+                "warning",
+            )
+            date_to_text = ""
+
+    if (
+        date_from is not None
+        and date_to is not None
+        and date_from > date_to
+    ):
+        flash(
+            "The starting date cannot be after the ending date.",
+            "warning",
+        )
+
+        date_from_text = ""
+        date_to_text = ""
+
+        query = (
+            ExpectedPackageCollection.query
+            .join(
+                ShipmentLog,
+                ExpectedPackageCollection.shipment_id
+                == ShipmentLog.id,
+            )
+            .options(
+                selectinload(
+                    ExpectedPackageCollection.shipment
+                )
+            )
+        )
+
+        if search:
+            search_term = f"%{search}%"
+
+            query = query.filter(
+                or_(
+                    ExpectedPackageCollection.collection_number.ilike(
+                        search_term
+                    ),
+                    ExpectedPackageCollection.supplier_name.ilike(
+                        search_term
+                    ),
+                    ExpectedPackageCollection.supplier_invoice_number.ilike(
+                        search_term
+                    ),
+                    ExpectedPackageCollection.payment_reference.ilike(
+                        search_term
+                    ),
+                    ShipmentLog.sl_id.ilike(search_term),
+                    ShipmentLog.sl_name.ilike(search_term),
+                )
+            )
+
+    current_app.logger.info(
+        "[PROFIT] Loading EPC records"
+    )
+
+    records = (
+        query
+        .order_by(
+            ExpectedPackageCollection.created_at.desc(),
+            ExpectedPackageCollection.id.desc(),
+        )
+        .all()
+    )
+
+    current_app.logger.info(
+        "[PROFIT] Loaded %s EPC records",
+        len(records),
+    )
+
+    current_app.logger.info(
+        "[PROFIT] Starting calculations"
+    )
+
+    rows, totals = calculate_profitability_report(
+        records
+    )
+
+    current_app.logger.info(
+        "[PROFIT] Calculations completed"
+    )
+
+    # Profitability status is calculated rather than stored,
+    # so this filter must be applied after the calculations.
+    if selected_status:
+        filtered_records = []
+
+        for record, row in zip(records, rows):
+            if (
+                row.get("status", "").lower()
+                == selected_status
+            ):
+                filtered_records.append(record)
+
+        records = filtered_records
+
+        # Recalculate the KPI totals using only the rows
+        # included by the status filter.
+        rows, totals = calculate_profitability_report(
+            records
+        )
+
+    selected_collection_id = request.args.get(
+        "selected",
+        type=int,
+    )
+
+    selected_row = None
+
+    if selected_collection_id:
+        selected_row = next(
+            (
+                row
+                for row in rows
+                if row.get("collection_id")
+                == selected_collection_id
+            ),
+            None,
+        )
+
+    # Open the first row when the page initially loads.
+    if selected_row is None and rows:
+        selected_row = rows[0]
+
+    return render_template(
+        "admin/finance/shipment_profitability.html",
+        rows=rows,
+        totals=totals,
+        selected_row=selected_row,
+        search=search,
+        selected_status=selected_status,
+        date_from=date_from_text,
+        date_to=date_to_text,
     )
 
 EXPECTED_COLLECTION_STATUSES = {"draft", "finalized", "matched", "disputed", "paid"}

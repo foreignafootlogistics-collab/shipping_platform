@@ -1059,11 +1059,50 @@
             </div>
 
             <div class="mb-3">
-              <strong>Total Owed:</strong> ${{ money(total_owed) }} |
-              <strong>Total Paid:</strong> ${{ money(total_paid) }} |
-              <strong>Balance:</strong> ${{ money(balance) }}
+              <div class="d-flex flex-wrap gap-3 align-items-center">
+                <span>
+                  <strong>Invoice Value:</strong>
+                  JMD {{ money(total_invoice_value) }}
+                </span>
 
+                <span>
+                  <strong>Recorded Payments:</strong>
+                  JMD {{ money(recorded_payments) }}
+                </span>
 
+                {% if subscription_covered|float > 0 %}
+                <span class="text-info">
+                  <strong>Subscription/Waived:</strong>
+                  JMD {{ money(subscription_covered) }}
+                </span>
+                {% endif %}
+
+                <span>
+                  <strong>Invoice Outstanding:</strong>
+                  <span class="{{ 'text-danger' if invoice_outstanding|float > 0 else 'text-success' }}">
+                    JMD {{ money(invoice_outstanding) }}
+                  </span>
+                </span>
+
+                {% if unpaid_delivery_fees|float > 0 %}
+                <span class="text-warning">
+                  <strong>Delivery Fees:</strong>
+                  JMD {{ money(unpaid_delivery_fees) }}
+                </span>
+                {% endif %}
+
+                <span>
+                  <strong>Total Customer Owing:</strong>
+                  <span class="{{ 'text-danger' if total_customer_owing|float > 0 else 'text-success' }}">
+                    JMD {{ money(total_customer_owing) }}
+                  </span>
+                </span>
+              </div>
+
+              <div class="small text-muted mt-1">
+                Recorded Payments shows actual completed payments.
+                Subscription-covered and waived amounts reduce the balance but are not counted as cash.
+              </div>
             </div>
             <div class="table-responsive">
               <table id="invoiceTable" class="table table-striped table-bordered">
@@ -1075,7 +1114,7 @@
                     <th>ID</th>
                     <th>Description</th>
                     <th class="text-end">Amount Due</th>
-                    <th class="text-end">Amount Paid</th>
+                    <th class="text-end">Payments / Credits</th>
                     <th class="text-end">Amount Owed</th>
                     <th>Status</th>
                     <th class="text-center" style="width:60px;">Delete</th>
@@ -1085,15 +1124,11 @@
                   {% for inv, paid_sum in invoices_rows %}
                   {% set inv_status = (inv.status or 'unpaid')|lower %}
 
-                  {% set gross_total = (
-                  inv.grand_total
-                  if inv.grand_total is defined
-                  and inv.grand_total is not none
-                  else inv.subtotal
-                  if inv.subtotal is defined
-                  and inv.subtotal is not none
-                  else 0
-                  )|float %}
+                  {#
+                  Invoice.grand_total already contains the total after
+                  the manual invoice discount. Do not subtract the
+                  discount from grand_total again.
+                  #}
 
                   {% set invoice_discount = (
                   inv.discount_total
@@ -1102,13 +1137,31 @@
                   else 0
                   )|float %}
 
-                  {% set due = (
-                  gross_total - invoice_discount
-                  )|round(2) %}
+                  {% set original_subtotal = (
+                  inv.subtotal_before_discount
+                  if inv.subtotal_before_discount is defined
+                  and inv.subtotal_before_discount is not none
+                  and inv.subtotal_before_discount|float > 0
+                  else (
+                  inv.grand_total|float + invoice_discount
+                  if inv.grand_total is defined
+                  and inv.grand_total is not none
+                  else 0
+                  )
+                  )|float %}
 
-                  {% if due < 0 %} {% set due=0.00 %} {% endif %} {% set paid=paid_sum|float %} {% set owed=( due - paid
-                    )|round(2) %} {% if owed < 0 %} {% set owed=0.00 %} {% endif %} <tr data-invoice-id="{{ inv.id }}"
-                    data-owed="{{ owed|float }}"
+                  {% set due = (
+                  inv.grand_total
+                  if inv.grand_total is defined
+                  and inv.grand_total is not none
+                  else original_subtotal - invoice_discount
+                  )|float|round(2) %}
+
+                  {% if due < 0 %} {% set due=0.00 %} {% endif %} {% set paid=paid_sum|float %} {% set
+                    non_outstanding_statuses=[ 'paid' , 'cancelled' , 'canceled' , 'draft' , 'quoted' , 'void'
+                    , 'voided' ] %} {% if inv_status in non_outstanding_statuses %} {% set owed=0.00 %} {% else %} {%
+                    set owed=(due - paid)|round(2) %} {% if owed < 0 %} {% set owed=0.00 %} {% endif %} {% endif %} <tr
+                    data-invoice-id="{{ inv.id }}" data-owed="{{ owed|float }}"
                     data-label="{{ (inv.invoice_number or ('INV' ~ '%05d'|format(inv.id)))|e }}">
                     <td class="text-center align-middle">
                       {% if owed|float > 0 %}
@@ -4657,7 +4710,7 @@
           "modalDeliveryPackageCount"
         );
 
-        const eligiblePackagesUrlTemplate = {{ url_for(
+        const eligiblePackagesUrlTemplate = {{url_for(
           "logistics.scheduled_delivery_eligible_packages",
           user_id = 0
         ) | tojson
@@ -5539,7 +5592,7 @@
                   "X-Requested-With": "XMLHttpRequest",
                   "X-CSRFToken": csrf
                 },
-                body: JSON.stringify({ package_ids: ids })
+                body: JSON.stringify({package_ids: ids})
               }
             );
 
@@ -5567,8 +5620,8 @@
         const discountOverlay = root.querySelector('#inlineDiscountOverlay');
         const bdOverlay = root.querySelector('#inlineBreakdownOverlay');
 
-        const showOverlay = (el) => { if (el) el.classList.remove('d-none'); };
-        const hideOverlay = (el) => { if (el) el.classList.add('d-none'); };
+        const showOverlay = (el) => {if (el) el.classList.remove('d-none');};
+        const hideOverlay = (el) => {if (el) el.classList.add('d-none');};
 
         [payOverlay, discountOverlay, bdOverlay].forEach(el => el && el.classList.add('d-none'));
 
@@ -5616,7 +5669,7 @@
             if (isNaN(num)) num = 0;
             hidden.value = num.toFixed(2);
             display.textContent =
-              'JMD ' + num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              'JMD ' + num.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
           }
 
           function pushKey(key) {
@@ -5634,15 +5687,15 @@
           }
 
           payOverlay.querySelectorAll('.payment-key-btn').forEach(btn => {
-            btn.onclick = function () { pushKey(this.getAttribute('data-key')); };
+            btn.onclick = function () {pushKey(this.getAttribute('data-key'));};
           });
 
           payOverlay.querySelectorAll('.payment-quick-btn[data-quick]').forEach(btn => {
-            btn.onclick = function () { current = String(this.getAttribute('data-quick') || '0'); updateDisplay(); };
+            btn.onclick = function () {current = String(this.getAttribute('data-quick') || '0'); updateDisplay();};
           });
 
           const clearBtn = payOverlay.querySelector('#payClearBtnInline');
-          if (clearBtn) clearBtn.onclick = function () { current = '0'; updateDisplay(); };
+          if (clearBtn) clearBtn.onclick = function () {current = '0'; updateDisplay();};
 
           // payment method
           const methodInput = payOverlay.querySelector('#payMethodInputInline');
@@ -5692,55 +5745,299 @@
         function setupDiscountLogic() {
           if (!discountOverlay) return;
 
-          const form = discountOverlay.querySelector('#inlineDiscountForm');
+          const form = discountOverlay.querySelector(
+            '#inlineDiscountForm'
+          );
+
           if (!form) return;
 
-          const balance = parseFloat(form.getAttribute('data-balance') || '0') || 0;
-          const tabs = discountOverlay.querySelector('#discountTabsInline');
-          const panePct = discountOverlay.querySelector('#discountPercentPaneInline');
-          const paneAmt = discountOverlay.querySelector('#discountAmountPaneInline');
-          const pctInput = discountOverlay.querySelector('#discountPercentInputInline');
-          const pctLbl = discountOverlay.querySelector('#discountPercentAmountInline');
-          const amtInput = discountOverlay.querySelector('#discountAmountInputInline');
-          const hidden = discountOverlay.querySelector('#discountHiddenAmountInline');
+          // The shared invoice template contains a basic fallback
+          // submission guard. This page handles the form through AJAX,
+          // so remove the fallback handler.
+          form.removeAttribute('onsubmit');
 
-          let mode = tabs?.querySelector('.discount-tab.active')?.getAttribute('data-mode') || 'percent';
+          const balance = (
+            parseFloat(
+              form.getAttribute('data-balance') || '0'
+            ) || 0
+          );
 
-          function formatJMD(v) {
-            const n = parseFloat(v || '0') || 0;
-            return 'JMD ' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          const tabs = discountOverlay.querySelector(
+            '#discountTabsInline'
+          );
+
+          const panePct = discountOverlay.querySelector(
+            '#discountPercentPaneInline'
+          );
+
+          const paneAmt = discountOverlay.querySelector(
+            '#discountAmountPaneInline'
+          );
+
+          const pctInput = discountOverlay.querySelector(
+            '#discountPercentInputInline'
+          );
+
+          const pctLbl = discountOverlay.querySelector(
+            '#discountPercentAmountInline'
+          );
+
+          const amtInput = discountOverlay.querySelector(
+            '#discountAmountInputInline'
+          );
+
+          const hidden = discountOverlay.querySelector(
+            '#discountHiddenAmountInline'
+          );
+
+          const submitButton = form.querySelector(
+            '#saveInvoiceDiscountButton'
+          );
+
+          let mode = (
+            tabs
+              ?.querySelector('.discount-tab.active')
+              ?.getAttribute('data-mode')
+            || 'percent'
+          );
+
+          let isSubmitting = false;
+
+          function formatJMD(value) {
+            const number = (
+              parseFloat(value || '0') || 0
+            );
+
+            return (
+              'JMD '
+              + number.toLocaleString(
+                undefined,
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                }
+              )
+            );
           }
 
           function recalc() {
             if (!hidden) return;
+
             if (mode === 'percent') {
-              const pct = parseFloat(pctInput?.value || '0') || 0;
-              const disc = Math.max(0, balance * pct / 100);
-              hidden.value = disc.toFixed(2);
-              if (pctLbl) pctLbl.textContent = formatJMD(disc);
+              const percent = (
+                parseFloat(
+                  pctInput?.value || '0'
+                ) || 0
+              );
+
+              const discount = Math.max(
+                0,
+                balance * percent / 100
+              );
+
+              hidden.value = discount.toFixed(2);
+
+              if (pctLbl) {
+                pctLbl.textContent = formatJMD(
+                  discount
+                );
+              }
             } else {
-              const v = parseFloat(amtInput?.value || '0') || 0;
-              hidden.value = v.toFixed(2);
+              const amount = (
+                parseFloat(
+                  amtInput?.value || '0'
+                ) || 0
+              );
+
+              hidden.value = amount.toFixed(2);
             }
           }
 
           if (tabs) {
-            tabs.querySelectorAll('.discount-tab').forEach(btn => {
-              btn.onclick = function () {
-                tabs.querySelectorAll('.discount-tab').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-                mode = this.getAttribute('data-mode') || 'percent';
-                if (panePct && paneAmt) {
-                  if (mode === 'percent') { panePct.classList.remove('d-none'); paneAmt.classList.add('d-none'); }
-                  else { panePct.classList.add('d-none'); paneAmt.classList.remove('d-none'); }
-                }
-                recalc();
-              };
-            });
+            tabs
+              .querySelectorAll('.discount-tab')
+              .forEach(button => {
+                button.onclick = function () {
+                  tabs
+                    .querySelectorAll('.discount-tab')
+                    .forEach(tab => {
+                      tab.classList.remove('active');
+                    });
+
+                  this.classList.add('active');
+
+                  mode = (
+                    this.getAttribute('data-mode')
+                    || 'percent'
+                  );
+
+                  if (panePct && paneAmt) {
+                    if (mode === 'percent') {
+                      panePct.classList.remove(
+                        'd-none'
+                      );
+
+                      paneAmt.classList.add(
+                        'd-none'
+                      );
+                    } else {
+                      panePct.classList.add(
+                        'd-none'
+                      );
+
+                      paneAmt.classList.remove(
+                        'd-none'
+                      );
+                    }
+                  }
+
+                  recalc();
+                };
+              });
           }
 
-          if (pctInput) pctInput.oninput = recalc;
-          if (amtInput) amtInput.oninput = recalc;
+          if (pctInput) {
+            pctInput.oninput = recalc;
+          }
+
+          if (amtInput) {
+            amtInput.oninput = recalc;
+          }
+
+          form.addEventListener(
+            'submit',
+            async function (event) {
+              event.preventDefault();
+
+              if (isSubmitting) {
+                return;
+              }
+
+              recalc();
+
+              const discountAmount = (
+                parseFloat(
+                  hidden?.value || '0'
+                ) || 0
+              );
+
+              if (discountAmount <= 0) {
+                alert(
+                  'Enter a discount amount greater than 0.'
+                );
+                return;
+              }
+
+              isSubmitting = true;
+
+              const originalButtonHtml = (
+                submitButton
+                  ? submitButton.innerHTML
+                  : ''
+              );
+
+              if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.innerHTML = (
+                  '<span class="spinner-border '
+                  + 'spinner-border-sm me-1"></span>'
+                  + 'Saving...'
+                );
+              }
+
+              try {
+                const response = await fetch(
+                  form.action,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'X-Requested-With':
+                        'XMLHttpRequest'
+                    },
+                    body: new FormData(form)
+                  }
+                );
+
+                const data = await response.json();
+
+                if (!response.ok || !data.ok) {
+                  throw new Error(
+                    data.error
+                    || 'The discount could not be saved.'
+                  );
+                }
+
+                // Update the invoice row behind the modal.
+                const invoiceRow = document.querySelector(
+                  'tr[data-invoice-id="'
+                  + data.invoice_id
+                  + '"]'
+                );
+
+                if (invoiceRow) {
+                  invoiceRow.dataset.owed = (
+                    data.amount_due || 0
+                  );
+
+                  const cells = (
+                    invoiceRow.querySelectorAll('td')
+                  );
+
+                  // Column 4: discounted invoice total.
+                  if (cells[3]) {
+                    cells[3].textContent = formatJMD(
+                      data.grand_total || 0
+                    );
+                  }
+
+                  // Column 6: outstanding balance.
+                  if (cells[5]) {
+                    const owed = (
+                      Number(data.amount_due || 0)
+                    );
+
+                    cells[5].innerHTML = (
+                      '<span class="fw-bold '
+                      + (
+                        owed > 0
+                          ? 'text-danger'
+                          : 'text-success'
+                      )
+                      + '">'
+                      + formatJMD(owed)
+                      + '</span>'
+                    );
+                  }
+                }
+
+                // Reload the modal from the server so its subtotal,
+                // discount, total and balance are immediately current.
+                openInvoiceModal(
+                  data.invoice_id
+                );
+
+                alert(
+                  data.message
+                  || 'Invoice discount saved.'
+                );
+
+              } catch (error) {
+                alert(
+                  error.message
+                  || 'The discount could not be saved.'
+                );
+
+                isSubmitting = false;
+
+                if (submitButton) {
+                  submitButton.disabled = false;
+                  submitButton.innerHTML = (
+                    originalButtonHtml
+                  );
+                }
+              }
+            }
+          );
 
           recalc();
         }
@@ -5819,12 +6116,12 @@
         const url = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1"
           .replace('0', String(invoiceId));
 
-        fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-          .then(r => { if (!r.ok) throw new Error('Failed to load invoice'); return r.text(); })
+        fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+          .then(r => {if (!r.ok) throw new Error('Failed to load invoice'); return r.text();})
           .then(html => {
             const host = document.getElementById('invoiceInlineHost');
             host.innerHTML = html;
-            host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            host.scrollIntoView({behavior: 'smooth', block: 'start'});
             initInlineInvoice(host);
           })
           .catch(() => alert('⚠️ Unable to load invoice inline.'));
@@ -5833,7 +6130,9 @@
       // Load invoice into modal
       function openInvoiceModal(invoiceId) {
         const modalEl = document.getElementById("invoiceModal");
-        const modal = new bootstrap.Modal(modalEl);
+        const modal = bootstrap.Modal.getOrCreateInstance(
+          modalEl
+        );
         const bodyEl = document.getElementById("invoiceModalBody");
 
         bodyEl.innerHTML = "<p class='text-muted mb-0'>Loading invoice…</p>";
@@ -5841,8 +6140,8 @@
         const base = "{{ url_for('admin.view_invoice', invoice_id=0) }}?inline=1";
         const url = base.replace('0', String(invoiceId));
 
-        fetch(url, { headers: { "X-Requested-With": "XMLHttpRequest" } })
-          .then(r => { if (!r.ok) throw new Error("Failed"); return r.text(); })
+        fetch(url, {headers: {"X-Requested-With": "XMLHttpRequest"}})
+          .then(r => {if (!r.ok) throw new Error("Failed"); return r.text();})
           .then(html => {
             bodyEl.innerHTML = html;
             initInlineInvoice(modalEl);
@@ -5860,7 +6159,7 @@
 
           fetch(form.getAttribute('action'), {
             method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
             body: formData
           })
             .then(res => res.json())
@@ -6006,7 +6305,7 @@
 
         fetch(action, {
           method: 'POST',
-          headers: { 'X-Requested-With': 'XMLHttpRequest' },
+          headers: {'X-Requested-With': 'XMLHttpRequest'},
           body: formData
         })
           .then(r => r.json())
@@ -6048,8 +6347,8 @@
         );
 
         function readCart() {
-          try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); }
-          catch { return []; }
+          try {return JSON.parse(localStorage.getItem(CART_KEY) || '[]');}
+          catch {return [];}
         }
 
         function writeCart(ids) {
@@ -6137,15 +6436,15 @@
           e.preventDefault();
 
           const ids = readCart();
-          if (!ids.length) { alert("Cart is empty."); return; }
+          if (!ids.length) {alert("Cart is empty."); return;}
 
           const amount = parseFloat(document.getElementById('bulkPayAmount')?.value || '0') || 0;
           const payment_type = document.getElementById('bulkPayType')?.value || 'Cash';
           const authorized_by = (document.getElementById('bulkPayAuthBy')?.value || '').trim();
           const allocation = document.getElementById('bulkPayAlloc')?.value || 'oldest_first';
 
-          if (amount <= 0) { alert("Enter a valid amount."); return; }
-          if (!authorized_by) { alert("Authorized By is required."); return; }
+          if (amount <= 0) {alert("Enter a valid amount."); return;}
+          if (!authorized_by) {alert("Authorized By is required."); return;}
 
           const csrf = document.querySelector('input[name="csrf_token"]')?.value || "";
 
@@ -6197,7 +6496,7 @@
 
         function formatMoney(n) {
           const num = parseFloat(n || 0) || 0;
-          return '$' + num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          return '$' + num.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
 
         // -----------------------
@@ -6220,7 +6519,7 @@
 
           if (hidden) hidden.value = n.toFixed(2);
           if (display) display.textContent =
-            'JMD ' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            'JMD ' + n.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
         }
 
         function pushBulkKey(key) {

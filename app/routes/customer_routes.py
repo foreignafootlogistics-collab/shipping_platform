@@ -40,6 +40,9 @@ from app.calculator_data import categories
 from app import mail
 from app.utils.files import allowed_file
 from app.utils.time import to_jamaica
+from app.utils.customer_balances import (
+    calculate_customer_balance_summary,
+)
 from app.extensions import db, csrf
 from app.calculator_data import calculate_charges, CATEGORIES, USD_TO_JMD
 from app.calculator_data import get_freight
@@ -311,94 +314,19 @@ def customer_dashboard():
     subscription_summary = get_subscription_summary(current_user.id)
 
     # --------------------------------
-    # Total Owed (Dashboard)
+    # Shared customer balance summary
     # --------------------------------
-    def _num(x):
-        try:
-            return float(x or 0)
-        except Exception:
-            return 0.0
+    balance_summary = (
+        calculate_customer_balance_summary(user)
+    )
 
-    customer_invoices = Invoice.query.filter_by(user_id=current_user.id).all()
+    total_owed = balance_summary[
+        "total_customer_owing"
+    ]
 
-    total_owed = 0.0
-    pending_invoice_count = 0
-
-    for inv in customer_invoices:
-
-        invoice_status = (
-            getattr(inv, "status", None)
-            or "unpaid"
-        ).strip().lower()
-
-        if invoice_status in {
-            "draft",
-            "quoted",
-            "cancelled",
-            "canceled",
-            "paid",
-            "void",
-            "voided",
-        }:
-            continue
-
-        inv_total = _num(
-            getattr(
-                inv,
-                "grand_total",
-                getattr(inv, "subtotal", 0),
-            )
-        )
-
-        payments_list = [
-            p for p in (getattr(inv, "payments", None) or [])
-            if (
-                getattr(p, "status", "completed") or "completed"
-            ).strip().lower() in ("completed", "settled")
-            and getattr(
-                p,
-                "transaction_type",
-                "invoice_payment"
-            ) in (
-                "invoice_payment",
-                "subscription_payment",
-                "subscription_upgrade_payment",
-                "subscription_waiver",
-            )
-        ]
-
-        paid_sum = sum(
-            _num(getattr(p, "amount_jmd", 0))
-            for p in payments_list
-        )
-
-        owed = max(inv_total - paid_sum, 0.0)
-
-        if owed > 0:
-            total_owed += owed
-            pending_invoice_count += 1
-
-    # Include unpaid fees for active delivery requests in the same amount owed.
-    customer_deliveries = ScheduledDelivery.query.filter_by(
-        user_id=user.id
-    ).all()
-    for delivery in customer_deliveries:
-        delivery_status = (
-            getattr(delivery, "status", "") or ""
-        ).strip().lower()
-        fee_status = (
-            getattr(delivery, "fee_status", "") or ""
-        ).strip().lower()
-
-        if delivery_status in {"cancelled", "canceled"}:
-            continue
-        if fee_status in {"paid", "waived"}:
-            continue
-
-        delivery_fee = _num(getattr(delivery, "delivery_fee", 0))
-        if delivery_fee > 0.01:
-            total_owed += delivery_fee
-            pending_invoice_count += 1
+    pending_invoice_count = balance_summary[
+        "pending_charge_count"
+    ]
 
     return render_template(
         'customer/customer_dashboard.html',
@@ -418,6 +346,7 @@ def customer_dashboard():
         subscription_summary=subscription_summary,
         total_owed=total_owed,
         pending_invoice_count=pending_invoice_count,
+        balance_summary=balance_summary,
     )
 
 

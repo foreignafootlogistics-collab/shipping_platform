@@ -53,6 +53,9 @@ from app.utils.sorting_codes import (
     normalize_sort_code,
     set_package_sort_code,
 )
+from app.utils.customer_balances import (
+    calculate_customer_balance_summary,
+)
 
 # Models (these exist in your file)
 from app.models import (
@@ -1248,12 +1251,19 @@ def view_user(id):
         completed_payment_join = (
             (Payment.invoice_id == Invoice.id)
             & (
-                func.lower(Payment.status)
-                == "completed"
+                func.lower(Payment.status).in_(
+                    ("completed", "settled")
+                )
             )
             & (
-                Payment.transaction_type
-                == "invoice_payment"
+                Payment.transaction_type.in_(
+                    (
+                        "invoice_payment",
+                        "subscription_payment",
+                        "subscription_upgrade_payment",
+                        "subscription_waiver",
+                    )
+                )
             )
         )
 
@@ -1308,15 +1318,6 @@ def view_user(id):
         inv_show_from = 0 if total_invoices == 0 else ((inv_page - 1) * inv_per_page + 1)
         inv_show_to   = min(inv_page * inv_per_page, total_invoices)
 
-        def _inv_due(inv):
-            for attr in ("grand_total", "amount_due", "total"):
-                if hasattr(inv, attr) and getattr(inv, attr) is not None:
-                    try:
-                        return float(getattr(inv, attr))
-                    except Exception:
-                        pass
-            return 0.0
-
         all_rows = (
             db.session.query(
                 Invoice,
@@ -1326,23 +1327,72 @@ def view_user(id):
                 Payment,
                 completed_payment_join,
             )
-            .filter(*inv_query._where_criteria)
+            .filter(
+                *inv_query._where_criteria
+            )
             .group_by(Invoice.id)
             .all()
         )
 
-        total_owed = sum(max(_inv_due(inv) - float(paid_sum or 0), 0.0) for inv, paid_sum in all_rows)
-        total_paid = sum(float(paid_sum or 0) for _, paid_sum in all_rows)
+        # Use the same balance calculation as the
+        # customer dashboard.
+        balance_summary = (
+            calculate_customer_balance_summary(user)
+        )
+
+        total_invoice_value = balance_summary[
+            "total_invoice_value"
+        ]
+
+        recorded_payments = balance_summary[
+            "recorded_payments"
+        ]
+
+        subscription_covered = balance_summary[
+            "subscription_covered"
+        ]
+
+        invoice_outstanding = balance_summary[
+            "invoice_outstanding"
+        ]
+
+        unpaid_delivery_fees = balance_summary[
+            "unpaid_delivery_fees"
+        ]
+
+        total_customer_owing = balance_summary[
+            "total_customer_owing"
+        ]
+
+        # Keep these older variable names temporarily because
+        # other parts of the template may still use them.
+        total_owed = total_invoice_value
+        total_paid = recorded_payments
+        balance = total_customer_owing
 
     except Exception as e:
-        current_app.logger.exception("Error loading invoices for user %s: %s", id, e)
+        current_app.logger.exception(
+            "Error loading invoices for user %s: %s",
+            id,
+            e,
+        )
+
         db.session.rollback()
+
         invoices_rows = []
-        total_owed = 0.0
-        total_paid = 0.0
         all_rows = []
 
-    balance = max(total_owed, 0.0)
+        total_invoice_value = 0.0
+        recorded_payments = 0.0
+        subscription_covered = 0.0
+        invoice_outstanding = 0.0
+        unpaid_delivery_fees = 0.0
+        total_customer_owing = 0.0
+
+        # Compatibility variables.
+        total_owed = 0.0
+        total_paid = 0.0
+        balance = 0.0
 
     # Payments (server-side pagination + date filter)
     pay_page = request.args.get("pay_page", 1, type=int)
@@ -1563,6 +1613,14 @@ def view_user(id):
         pay_show_to=pay_show_to,
         pay_from=pay_from,
         pay_to=pay_to,
+        total_invoice_value=total_invoice_value,
+        recorded_payments=recorded_payments,
+        subscription_covered=subscription_covered,
+        invoice_outstanding=invoice_outstanding,
+        unpaid_delivery_fees=unpaid_delivery_fees,
+        total_customer_owing=total_customer_owing,
+
+        # Older names retained for template compatibility.
         total_owed=total_owed,
         total_paid=total_paid,
         msg_page=msg_page,

@@ -934,54 +934,144 @@ else 0 %}
   </form>
 </div>
 
-{# Add Discount overlay #}
+{# Add / update invoice discount overlay #}
 <div class="fa-inline-overlay d-none" id="inlineDiscountOverlay">
-  <form class="fa-inline-dialog" method="POST" action="{{ url_for('admin.add_discount', invoice_id=invoice.id or 0) }}"
-    id="inlineDiscountForm" data-balance="{{ invoice.preview_total_due or 0 }}">
-    <!-- 🔐 CSRF token -->
+
+  <form class="fa-inline-dialog" method="POST" action="{{ url_for(
+          'admin.add_discount',
+          invoice_id=invoice.id or 0
+        ) }}" id="inlineDiscountForm" data-balance="{{ invoice.preview_subtotal or 0 }}" onsubmit="
+          if (this.dataset.submitting === '1') {
+            return false;
+          }
+
+          this.dataset.submitting = '1';
+
+          const button = this.querySelector(
+            '#saveInvoiceDiscountButton'
+          );
+
+          if (button) {
+            button.disabled = true;
+            button.innerHTML =
+              '<span class=&quot;spinner-border spinner-border-sm me-1&quot;></span> Saving...';
+          }
+
+          return true;
+        ">
+
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
     <div class="fa-inline-dialog-header">
-      <h6 class="mb-0">Add Discount — {{ inv_no }}</h6>
-      <button type="button" class="fa-inline-close" data-close="discount">&times;</button>
+      <h6 class="mb-0">
+        Set Invoice Discount — {{ inv_no }}
+      </h6>
+
+      <button type="button" class="fa-inline-close" data-close="discount">
+        &times;
+      </button>
     </div>
 
     <div class="fa-inline-dialog-body">
+
+      {% set current_invoice_discount = (
+      invoice.discount_total or 0
+      )|float %}
+
+      {% if current_invoice_discount > 0 %}
+      <div class="alert alert-info py-2 mb-3">
+        <div class="small">
+          Current invoice discount
+        </div>
+
+        <strong>
+          JMD {{
+          "{:,.2f}".format(
+          current_invoice_discount
+          )
+          }}
+        </strong>
+
+        <div class="small mt-1">
+          Saving a new amount will replace this discount.
+          It will not be added to it.
+        </div>
+      </div>
+      {% endif %}
+
       <div class="discount-tabs" id="discountTabsInline">
+
         <button type="button" class="discount-tab active" data-mode="percent">
-          <i class="bi bi-percent"></i> Percent
+          <i class="bi bi-percent"></i>
+          Percent
         </button>
+
         <button type="button" class="discount-tab" data-mode="amount">
-          <i class="bi bi-hash"></i> Amount
+          <i class="bi bi-hash"></i>
+          Amount
         </button>
       </div>
 
       <div id="discountPercentPaneInline">
-        <label class="form-label">Discount Percent</label>
+
+        <label class="form-label">
+          Discount Percent
+        </label>
+
         <input type="number" class="form-control" id="discountPercentInputInline" min="0" max="100" step="0.01"
           value="0">
+
         <div class="discount-help text-muted mt-1">
-          Applies to balance
-          (JMD {{ "%.2f"|format(invoice.preview_total_due or 0) }}).<br>
+          The percentage is calculated from the original
+          invoice subtotal of
+
+          <strong>
+            JMD {{
+            "{:,.2f}".format(
+            invoice.preview_subtotal or 0
+            )
+            }}
+          </strong>.
+
+          <br>
+
           Discount amount:
-          <span class="fw-semibold" id="discountPercentAmountInline">JMD 0.00</span>
+
+          <span class="fw-semibold" id="discountPercentAmountInline">
+            JMD 0.00
+          </span>
         </div>
       </div>
 
       <div id="discountAmountPaneInline" class="d-none">
-        <label class="form-label">Discount Amount (JMD)</label>
-        <input type="number" class="form-control" id="discountAmountInputInline" step="0.01" value="0">
+
+        <label class="form-label">
+          Total Discount Amount (JMD)
+        </label>
+
+        <input type="number" class="form-control" id="discountAmountInputInline" min="0.01" step="0.01"
+          value="{{ '%.2f'|format(current_invoice_discount) }}">
+
         <div class="discount-help text-muted mt-1">
-          Enter the flat amount to reduce from the balance.
+          Enter the total discount that this invoice should
+          have. This replaces the existing invoice discount
+          instead of adding another deduction.
         </div>
       </div>
 
       <input type="hidden" name="amount_jmd" id="discountHiddenAmountInline" value="0">
+
+      <div class="alert alert-light border small mt-3 mb-0">
+        <i class="bi bi-shield-check me-1"></i>
+        Saving the same discount twice will not reduce the
+        invoice twice.
+      </div>
     </div>
 
     <div class="fa-inline-dialog-footer">
-      <button class="btn btn-outline-purple">
-        <i class="bi bi-percent"></i> Add Discount
+      <button type="submit" class="btn btn-outline-purple" id="saveInvoiceDiscountButton">
+        <i class="bi bi-percent"></i>
+        Save Discount
       </button>
     </div>
   </form>
@@ -1095,7 +1185,7 @@ else 0 %}
     try {
       const resp = await fetch(
         "{{ url_for('admin.invoice_breakdown', package_id=0) }}".replace("0", pkgId),
-        { headers: { "X-Requested-With": "XMLHttpRequest" } }
+        {headers: {"X-Requested-With": "XMLHttpRequest"}}
       );
 
       if (!resp.ok) throw new Error("Breakdown request failed");

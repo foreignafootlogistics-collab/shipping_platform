@@ -5798,6 +5798,13 @@ def add_payment(invoice_id):
 )
 @admin_required
 def add_discount(invoice_id):
+    is_ajax = (
+        request.headers.get(
+            "X-Requested-With"
+        )
+        == "XMLHttpRequest"
+    )
+
     inv = (
         Invoice.query
         .filter(Invoice.id == invoice_id)
@@ -5805,12 +5812,16 @@ def add_discount(invoice_id):
         .first_or_404()
     )
 
-    if not shop_for_me_invoice_is_payable(inv):
-        flash(
-            "A discount cannot be applied to an "
-            "unapproved Shop For Me quote.",
-            "warning",
-        )
+    def error_response(message, status_code=400):
+        db.session.rollback()
+
+        if is_ajax:
+            return jsonify({
+                "ok": False,
+                "error": message,
+            }), status_code
+
+        flash(message, "warning")
 
         return redirect(
             url_for(
@@ -5819,19 +5830,11 @@ def add_discount(invoice_id):
             )
         )
 
-    previous_status = (
-        inv.status or "unpaid"
-    ).strip().lower()
-
-    old_grand_total = float(
-        inv.grand_total
-        or inv.amount
-        or 0
-    )
-
-    old_amount_due = float(
-        inv.amount_due or 0
-    )
+    if not shop_for_me_invoice_is_payable(inv):
+        return error_response(
+            "A discount cannot be applied to an "
+            "unapproved Shop For Me quote."
+        )
 
     try:
         amount = round(
@@ -5848,19 +5851,15 @@ def add_discount(invoice_id):
         amount = 0.00
 
     if amount <= 0:
-        flash(
-            "Discount amount must be greater than 0.",
-            "warning",
+        return error_response(
+            "Discount amount must be greater than 0."
         )
 
-        return redirect(
-            url_for(
-                "admin.view_invoice",
-                invoice_id=inv.id,
-            )
-        )
+    previous_status = (
+        inv.status or "unpaid"
+    ).strip().lower()
 
-    base_total_before = round(
+    old_grand_total = round(
         float(
             inv.grand_total
             or inv.amount
@@ -5869,34 +5868,102 @@ def add_discount(invoice_id):
         2,
     )
 
-    if amount > base_total_before:
-        flash(
-            "Discount cannot exceed the invoice "
-            f"total of JMD {base_total_before:,.2f}.",
-            "warning",
-        )
+    old_amount_due = round(
+        float(inv.amount_due or 0),
+        2,
+    )
 
-        return redirect(
-            url_for(
-                "admin.view_invoice",
-                invoice_id=inv.id,
+    old_discount = round(
+        float(
+            getattr(
+                inv,
+                "discount_total",
+                0,
             )
-        )
+            or 0
+        ),
+        2,
+    )
 
     try:
-        base_total_after = round(
+        # -----------------------------------------------------
+        # Establish the original invoice subtotal
+        # -----------------------------------------------------
+        package_total = (
+            db.session.query(
+                func.coalesce(
+                    func.sum(Package.amount_due),
+                    0.0,
+                )
+            )
+            .filter(
+                Package.invoice_id == inv.id
+            )
+            .scalar()
+            or 0.0
+        )
+
+        package_total = round(
+            max(float(package_total), 0.0),
+            2,
+        )
+
+        stored_subtotal = round(
             max(
-                base_total_before - amount,
+                float(
+                    getattr(
+                        inv,
+                        "subtotal_before_discount",
+                        0,
+                    )
+                    or 0
+                ),
                 0.0,
             ),
             2,
         )
 
-        inv.grand_total = base_total_after
+        # For package invoices, the package sum is the reliable
+        # original subtotal. This does not change when a manual
+        # invoice discount is applied.
+        if package_total > 0:
+            original_subtotal = package_total
 
-        if hasattr(inv, "amount"):
-            inv.amount = base_total_after
+        elif stored_subtotal > 0:
+            original_subtotal = stored_subtotal
 
+        else:
+            # Legacy fallback: reconstruct the original total
+            # from the current net total plus its saved discount.
+            original_subtotal = round(
+                max(
+                    float(
+                        inv.grand_total
+                        or inv.amount
+                        or 0
+                    )
+                    + old_discount,
+                    0.0,
+                ),
+                2,
+            )
+
+        if original_subtotal <= 0:
+            return error_response(
+                "The original invoice subtotal could not "
+                "be determined."
+            )
+
+        if amount > original_subtotal:
+            return error_response(
+                "Discount cannot exceed the original "
+                f"invoice subtotal of "
+                f"JMD {original_subtotal:,.2f}."
+            )
+
+        # -----------------------------------------------------
+        # Calculate completed invoice payments
+        # -----------------------------------------------------
         payment_column = (
             Payment.amount_jmd
             if hasattr(Payment, "amount_jmd")
@@ -5915,26 +5982,72 @@ def add_discount(invoice_id):
             )
         )
 
-        if hasattr(Payment, "status"):
+        if hasattr(Payment, "transaction_type"):
             paid_query = paid_query.filter(
-                func.lower(Payment.status).in_(
-                    ["completed", "settled"]
-                )
+                Payment.transaction_type
+                == "invoice_payment"
             )
 
-        paid_sum = float(
-            paid_query.scalar() or 0.0
+        if hasattr(Payment, "status"):
+            paid_query = paid_query.filter(
+                func.lower(Payment.status)
+                == "completed"
+            )
+
+        paid_sum = round(
+            max(
+                float(
+                    paid_query.scalar()
+                    or 0
+                ),
+                0.0,
+            ),
+            2,
         )
+
+        discounted_total = round(
+            max(
+                original_subtotal - amount,
+                0.0,
+            ),
+            2,
+        )
+
+        if discounted_total < paid_sum:
+            return error_response(
+                "This discount would reduce the invoice "
+                "below the amount already paid. The largest "
+                "available discount is "
+                f"JMD {max(original_subtotal - paid_sum, 0):,.2f}."
+            )
+
+        # Treat the submitted value as the invoice's total
+        # discount, not another deduction from its current total.
+        #
+        # Submitting JMD 21,552 twice therefore leaves the total
+        # discount at JMD 21,552 instead of JMD 43,104.
+        inv.subtotal_before_discount = (
+            original_subtotal
+        )
+        inv.discount_type = "fixed"
+        inv.discount_amount = amount
+        inv.discount_total = amount
+
+        inv.grand_total = discounted_total
+
+        if hasattr(inv, "amount"):
+            inv.amount = discounted_total
 
         new_due = round(
             max(
-                base_total_after - paid_sum,
+                discounted_total - paid_sum,
                 0.0,
             ),
             2,
         )
 
         inv.amount_due = new_due
+
         now_utc = datetime.now(timezone.utc)
 
         if new_due <= 0.01:
@@ -5971,40 +6084,58 @@ def add_discount(invoice_id):
             total_due=inv.amount_due,
         )
 
-        db.session.add(
-            AuditLog(
-                module="Finance",
-                action="Invoice Discount Added",
-                admin_id=current_user.id,
-                user_id=inv.user_id,
-                entity_type="Invoice",
-                entity_id=inv.id,
-                reason="Manual invoice discount",
-                description=(
-                    f"Discount of JMD {amount:,.2f} "
-                    f"added to invoice "
-                    f"{inv.invoice_number or ('#' + str(inv.id))}. "
-                    f"Status changed from "
-                    f"{previous_status} to "
-                    f"{inv.status}."
-                ),
-                old_value=(
-                    f"Status: {previous_status}; "
-                    f"Grand Total: JMD "
-                    f"{old_grand_total:,.2f}; "
-                    f"Amount Due: JMD "
-                    f"{old_amount_due:,.2f}"
-                ),
-                new_value=(
-                    f"Status: {inv.status}; "
-                    f"Grand Total: JMD "
-                    f"{float(inv.grand_total or 0):,.2f}; "
-                    f"Amount Due: JMD "
-                    f"{float(inv.amount_due or 0):,.2f}; "
-                    f"Discount: JMD {amount:,.2f}"
-                ),
-            )
+        # Do not create a second audit entry when exactly the
+        # same discount form is submitted again.
+        discount_changed = (
+            abs(old_discount - amount) > 0.009
+            or abs(
+                old_grand_total
+                - discounted_total
+            ) > 0.009
         )
+
+        if discount_changed:
+            db.session.add(
+                AuditLog(
+                    module="Finance",
+                    action="Invoice Discount Set",
+                    admin_id=current_user.id,
+                    user_id=inv.user_id,
+                    entity_type="Invoice",
+                    entity_id=inv.id,
+                    reason="Manual invoice discount",
+                    description=(
+                        f"Invoice discount set to "
+                        f"JMD {amount:,.2f} for "
+                        f"{inv.invoice_number or ('#' + str(inv.id))}. "
+                        f"Status changed from "
+                        f"{previous_status} to "
+                        f"{inv.status}."
+                    ),
+                    old_value=(
+                        f"Status: {previous_status}; "
+                        f"Subtotal: JMD "
+                        f"{original_subtotal:,.2f}; "
+                        f"Discount: JMD "
+                        f"{old_discount:,.2f}; "
+                        f"Grand Total: JMD "
+                        f"{old_grand_total:,.2f}; "
+                        f"Amount Due: JMD "
+                        f"{old_amount_due:,.2f}"
+                    ),
+                    new_value=(
+                        f"Status: {inv.status}; "
+                        f"Subtotal: JMD "
+                        f"{original_subtotal:,.2f}; "
+                        f"Discount: JMD "
+                        f"{amount:,.2f}; "
+                        f"Grand Total: JMD "
+                        f"{discounted_total:,.2f}; "
+                        f"Amount Due: JMD "
+                        f"{new_due:,.2f}"
+                    ),
+                )
+            )
 
         db.session.commit()
 
@@ -6012,14 +6143,21 @@ def add_discount(invoice_id):
         db.session.rollback()
 
         current_app.logger.exception(
-            "Adding discount to invoice %s failed",
+            "Setting discount on invoice %s failed",
             inv.id,
         )
 
-        flash(
-            f"The discount could not be added: {error}",
-            "danger",
+        message = (
+            f"The discount could not be saved: {error}"
         )
+
+        if is_ajax:
+            return jsonify({
+                "ok": False,
+                "error": message,
+            }), 500
+
+        flash(message, "danger")
 
         return redirect(
             url_for(
@@ -6028,7 +6166,39 @@ def add_discount(invoice_id):
             )
         )
 
-    flash("Discount added.", "success")
+    message = (
+        f"Discount of JMD {amount:,.2f} saved."
+        if discount_changed
+        else
+        f"The JMD {amount:,.2f} discount was "
+        "already saved; it was not applied again."
+    )
+
+    if is_ajax:
+        return jsonify({
+            "ok": True,
+            "message": message,
+            "invoice_id": inv.id,
+            "subtotal": float(
+                inv.subtotal_before_discount
+                or 0
+            ),
+            "discount_total": float(
+                inv.discount_total
+                or 0
+            ),
+            "grand_total": float(
+                inv.grand_total
+                or 0
+            ),
+            "amount_due": float(
+                inv.amount_due
+                or 0
+            ),
+            "status": inv.status,
+        })
+
+    flash(message, "success")
 
     return redirect(
         url_for(
@@ -6036,7 +6206,6 @@ def add_discount(invoice_id):
             invoice_id=inv.id,
         )
     )
-
 
 @admin_bp.route(
     "/proforma-invoice-modal/<int:invoice_id>",

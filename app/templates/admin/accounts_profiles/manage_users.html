@@ -528,205 +528,105 @@ Finance Collections Toolbar
     </div>
   </div>
 
-  <!-- Customers Table -->
-  <div class="modern-table-wrapper">
-
-    <div class="table-responsive mobile-table-scroll">
-      <table class="table table-hover align-middle mb-0 modern-users-table">
-
-        <thead class="modern-table-head">
-          <tr>
-            <th>Customer</th>
-
-            <th>
-              Registration #
-              <a href="#" id="regSortLink" class="reg-sort ms-1"></a>
-            </th>
-
-            <th>Contact</th>
-            <th>Date Registered</th>
-            <th>Unpaid Invoices</th>
-            <th>Last Payment Reminder</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {% if users %}
-          {% for user in users %}
-          <tr>
-            <td>
-              <a href="{{ url_for(
-                             'accounts_profiles.view_user',
-                             id=user.id,
-                             next=url_for(
-                               'accounts_profiles.manage_users',
-                               page=page,
-                               search=search,
-                               sort=sort_by,
-                               unpaid_only=(
-                                 '1' if unpaid_only else None
-                               )
-                             )
-                           ) }}" class="modern-user-link">
-
-                <div class="user-info-cell">
-                  <div class="user-avatar">
-                    {{ user.full_name[:1]
-                    if user.full_name else 'U' }}
-                  </div>
-
-                  <div>
-                    <div class="user-name">
-                      {{ user.full_name or "Customer" }}
-                    </div>
-                  </div>
-                </div>
-              </a>
-            </td>
-
-            <td>
-              {{ user.registration_number or "Not assigned" }}
-            </td>
-
-            <td>
-              <div class="customer-contact-cell">
-                <a href="mailto:{{ user.email }}" class="customer-email-link">
-                  {{ user.email or "No email" }}
-                </a>
-
-                <small class="d-block text-muted mt-1">
-                  <i class="fas fa-phone-alt me-1"></i>
-                  {{ user.mobile or "No mobile number" }}
-                </small>
-              </div>
-            </td>
-
-            <td>
-              {{ user.date_registered[:10]
-              if user.date_registered else "N/A" }}
-            </td>
-
-            <td>
-              {% if user.unpaid_count > 0 %}
-              <span class="badge unpaid-badge-danger">
-                {{ user.unpaid_count }}
-              </span>
-              {% else %}
-              <span class="badge unpaid-badge-success">
-                0
-              </span>
-              {% endif %}
-            </td>
-
-            <td>
-              {% if user.last_reminder_display %}
-              <div class="last-reminder-cell" title="{{ user.last_reminder_title }}">
-
-                <i class="fas fa-envelope-circle-check
-                              text-success me-1"></i>
-
-                <span>
-                  {{ user.last_reminder_display }}
-                </span>
-
-                <small class="d-block text-muted mt-1">
-                  Reminder sent
-                </small>
-              </div>
-              {% else %}
-              <span class="text-muted">
-                <i class="far fa-envelope me-1"></i>
-                Never sent
-              </span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-
-          {% else %}
-          <tr>
-            <td colspan="6" class="text-center py-5 text-muted">
-
-              <i class="fas fa-users fa-2x mb-2 d-block"></i>
-
-              No customers found.
-            </td>
-          </tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Table Footer / Pagination -->
-    <div class="modern-table-footer">
-      <div class="text-muted small">
-        Showing customers on page {{ page }}
+  <!-- Customer master-detail workspace -->
+  <div class="customer-workspace" id="customerWorkspace">
+    <aside class="customer-directory" id="customerDirectory">
+      <div class="directory-heading">
+        <div>
+          <h5 class="mb-1">Customers</h5>
+          <small>Choose a customer to open their account</small>
+        </div>
+        <a href="#" id="regSortLink" class="directory-sort" title="Sort customers">
+          <i class="fas fa-sort-alpha-down"></i>
+        </a>
       </div>
 
-      {% if total_pages > 1 %}
-      <nav aria-label="Customer page navigation">
-        <ul class="pagination justify-content-end mb-0">
+      <div class="customer-directory-list">
+        {% if users %}
+        {% for user in users %}
+        {% set customer_url = url_for(
+        'accounts_profiles.view_user',
+        id=user.id,
+        next=url_for(
+        'accounts_profiles.manage_users',
+        page=page,
+        search=search,
+        sort=sort_by,
+        unpaid_only=('1' if unpaid_only else None)
+        )
+        ) %}
+        <a href="{{ customer_url }}" class="customer-directory-item js-customer-select" data-user-id="{{ user.id }}"
+          data-customer-name="{{ user.full_name or 'Customer' }}" data-customer-url="{{ customer_url }}">
+          <div class="directory-avatar">
+            {{ user.full_name[:1]|upper if user.full_name else 'U' }}
+          </div>
 
-          {% set start_page =
-          (page - 1) if (page - 1) > 1 else 1 %}
-
-          {% set end_page =
-          (page + 1)
-          if (page + 1) < total_pages else total_pages %} {% if page> 1 %}
-            <li class="page-item">
-              <a class="page-link text-purple"
-                href="?page=1&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
-                &laquo; First
-              </a>
-            </li>
-
-            <li class="page-item">
-              <a class="page-link text-purple"
-                href="?page={{ page - 1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
-                &lt; Prev
-              </a>
-            </li>
-            {% endif %}
-
-            {% for page_number in range(
-            start_page,
-            end_page + 1
-            ) %}
-
-            <li class="page-item
-                       {% if page_number == page %}active{% endif %}">
-
-              <a class="page-link
-                        {% if page_number == page %}
-                          bg-purple text-white
-                        {% else %}
-                          text-purple
-                        {% endif %}"
-                href="?page={{ page_number }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
-
-                {{ page_number }}
-              </a>
-            </li>
-            {% endfor %}
-
-            {% if page < total_pages %} <li class="page-item">
-              <a class="page-link text-purple"
-                href="?page={{ page + 1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
-                Next &gt;
-              </a>
-              </li>
-
-              <li class="page-item">
-                <a class="page-link text-purple"
-                  href="?page={{ total_pages }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}">
-                  Last &raquo;
-                </a>
-              </li>
+          <div class="directory-customer-copy">
+            <div class="directory-name-row">
+              <strong>{{ user.full_name or "Customer" }}</strong>
+              {% if user.unpaid_count > 0 %}
+              <span class="directory-owing-badge owing">{{ user.unpaid_count }}</span>
+              {% else %}
+              <span class="directory-owing-badge">0</span>
               {% endif %}
-        </ul>
-      </nav>
-      {% endif %}
-    </div>
+            </div>
+            <span>{{ user.registration_number or "Not assigned" }}</span>
+            <small>{{ user.email or user.mobile or "No contact information" }}</small>
+          </div>
+          <i class="fas fa-chevron-right directory-chevron"></i>
+        </a>
+        {% endfor %}
+        {% else %}
+        <div class="directory-empty">
+          <i class="fas fa-users"></i>
+          <strong>No customers found</strong>
+          <span>Try changing the search or filter.</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="directory-footer">
+        <span>Page {{ page }} of {{ total_pages }}</span>
+        {% if total_pages > 1 %}
+        <div class="directory-pagination">
+          <a class="directory-page-btn {% if page <= 1 %}disabled{% endif %}" {% if page> 1 %}
+            href="?page={{ page - 1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if
+            unpaid_only %}&unpaid_only=1{% endif %}"
+            {% else %}href="#" aria-disabled="true"{% endif %}>
+            <i class="fas fa-chevron-left"></i>
+          </a>
+          <a class="directory-page-btn {% if page >= total_pages %}disabled{% endif %}" {% if page < total_pages %}
+            href="?page={{ page + 1 }}&search={{ search }}{% if sort_by %}&sort={{ sort_by }}{% endif %}{% if unpaid_only %}&unpaid_only=1{% endif %}"
+            {% else %}href="#" aria-disabled="true" {% endif %}>
+            <i class="fas fa-chevron-right"></i>
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </aside>
+
+    <button type="button" class="workspace-collapse-btn" id="toggleCustomerDirectory" title="Collapse customer list"
+      aria-label="Collapse customer list">
+      <i class="fas fa-angle-left"></i>
+    </button>
+
+    <section class="customer-detail-panel" id="customerDetailPanel">
+      <div class="customer-detail-empty" id="customerDetailEmpty">
+        <div class="empty-detail-icon">
+          <i class="fas fa-user-circle"></i>
+        </div>
+        <h3>Select a customer</h3>
+        <p>Choose a customer from the list to view packages, invoices, payments, subscription and account details.</p>
+      </div>
+
+      <div class="customer-detail-loading d-none" id="customerDetailLoading">
+        <div class="spinner-border text-purple" role="status"></div>
+        <span>Opening customer account…</span>
+      </div>
+
+      <iframe id="customerDetailFrame" class="customer-detail-frame d-none" title="Selected customer account"
+        scrolling="no"></iframe>
+    </section>
   </div>
 
 </div>
@@ -1958,6 +1858,337 @@ MOBILE RESPONSIVE
     min-width: 220px;
   }
 
+  /* =========================================================
+     Customer master-detail workspace
+     ========================================================= */
+  .customer-workspace {
+    position: relative;
+    display: grid;
+    grid-template-columns: 285px minmax(0, 1fr);
+    min-height: 720px;
+    background: #fff;
+    border: 1px solid #e4e8f0;
+    border-radius: 18px;
+    box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+    transition: grid-template-columns .25s ease;
+  }
+
+  .customer-workspace.directory-collapsed {
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
+  .customer-directory {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-right: 1px solid #e5e7eb;
+    overflow: hidden;
+    transition: opacity .2s ease, visibility .2s ease;
+  }
+
+  .directory-collapsed .customer-directory {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .directory-heading {
+    min-height: 76px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px;
+    border-bottom: 1px solid #edf0f5;
+    background: #fbfaff;
+  }
+
+  .directory-heading h5 {
+    color: #1f2937;
+    font-weight: 800;
+  }
+
+  .directory-heading small {
+    color: #6b7280;
+  }
+
+  .directory-sort {
+    width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #4a148c;
+    background: #f3e8ff;
+    border-radius: 10px;
+    text-decoration: none;
+  }
+
+  .customer-directory-list {
+    flex: 1;
+    min-height: 0;
+    max-height: 650px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #c4b5d5 transparent;
+  }
+
+  .customer-directory-item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 15px;
+    gap: 12px;
+    align-items: center;
+    min-height: 92px;
+    padding: 14px 16px;
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid #edf0f5;
+    transition: background .15s ease, box-shadow .15s ease;
+  }
+
+  .customer-directory-item:hover {
+    color: inherit;
+    background: #faf7ff;
+  }
+
+  .customer-directory-item.active {
+    background: linear-gradient(90deg, #f4e9ff 0%, #fbf8ff 100%);
+    box-shadow: inset 4px 0 0 #4a148c;
+  }
+
+  .directory-avatar {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: #4a148c;
+    background: #f1e3ff;
+    font-weight: 800;
+  }
+
+  .directory-customer-copy {
+    min-width: 0;
+  }
+
+  .directory-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .directory-name-row strong {
+    color: #4a148c;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .directory-customer-copy>span,
+  .directory-customer-copy>small {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .directory-customer-copy>span {
+    margin-top: 3px;
+    color: #374151;
+    font-size: .84rem;
+  }
+
+  .directory-customer-copy>small {
+    margin-top: 2px;
+    color: #6b7280;
+  }
+
+  .directory-owing-badge {
+    min-width: 28px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 8px;
+    border-radius: 999px;
+    color: #137333;
+    background: #dcfce7;
+    font-size: .74rem;
+    font-weight: 800;
+  }
+
+  .directory-owing-badge.owing {
+    color: #b42318;
+    background: #fee2e2;
+  }
+
+  .directory-chevron {
+    color: #b6bdc9;
+    font-size: .75rem;
+  }
+
+  .directory-footer {
+    min-height: 62px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid #edf0f5;
+    color: #6b7280;
+    background: #fff;
+    font-size: .84rem;
+  }
+
+  .directory-pagination {
+    display: flex;
+    gap: 6px;
+  }
+
+  .directory-page-btn {
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #d9dce4;
+    border-radius: 9px;
+    color: #4a148c;
+    background: #fff;
+    text-decoration: none;
+  }
+
+  .directory-page-btn.disabled {
+    opacity: .35;
+    pointer-events: none;
+  }
+
+  .workspace-collapse-btn {
+    position: absolute;
+    z-index: 5;
+    top: 86px;
+    left: 271px;
+    width: 28px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 8px;
+    color: #fff;
+    background: #4a148c;
+    box-shadow: 0 6px 16px rgba(74, 20, 140, .25);
+    transition: left .25s ease;
+  }
+
+  .directory-collapsed .workspace-collapse-btn {
+    left: 8px;
+  }
+
+  .customer-detail-panel {
+    position: relative;
+    min-width: 0;
+    min-height: 720px;
+    background: #f8f9fc;
+  }
+
+  .customer-detail-empty,
+  .customer-detail-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 40px;
+    text-align: center;
+  }
+
+  .customer-detail-empty h3 {
+    margin: 0;
+    color: #1f2937;
+    font-weight: 800;
+  }
+
+  .customer-detail-empty p {
+    max-width: 520px;
+    margin: 0;
+    color: #6b7280;
+  }
+
+  .empty-detail-icon {
+    width: 82px;
+    height: 82px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 24px;
+    color: #4a148c;
+    background: #f0e4ff;
+    font-size: 2.35rem;
+  }
+
+  .customer-detail-frame {
+    width: 100%;
+    height: 100%;
+    min-height: 720px;
+    border: 0;
+    background: #f8f9fc;
+    overflow: hidden;
+  }
+
+  .directory-empty {
+    min-height: 280px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 30px;
+    color: #6b7280;
+    text-align: center;
+  }
+
+  .directory-empty i {
+    color: #c4b5d5;
+    font-size: 2rem;
+  }
+
+  @media (max-width: 1199.98px) {
+    .customer-workspace {
+      grid-template-columns: 255px minmax(0, 1fr);
+    }
+
+    .workspace-collapse-btn {
+      left: 241px;
+    }
+  }
+
+  @media (max-width: 767.98px) {
+    .customer-workspace {
+      display: block;
+      min-height: auto;
+    }
+
+    .customer-directory {
+      border-right: 0;
+    }
+
+    .customer-directory-list {
+      max-height: none;
+    }
+
+    .customer-detail-panel,
+    .workspace-collapse-btn {
+      display: none;
+    }
+  }
+
   .last-reminder-cell {
     min-width: 150px;
     color: #1f2937;
@@ -1965,6 +2196,273 @@ MOBILE RESPONSIVE
 </style>
 
 <script>
+  // ==========================================
+  // Customer master-detail workspace
+  // ==========================================
+  (function setupCustomerWorkspace() {
+    const workspace = document.getElementById('customerWorkspace');
+    const directoryToggle = document.getElementById('toggleCustomerDirectory');
+    const detailFrame = document.getElementById('customerDetailFrame');
+    const detailEmpty = document.getElementById('customerDetailEmpty');
+    const detailLoading = document.getElementById('customerDetailLoading');
+    const customerLinks = Array.from(
+      document.querySelectorAll('.js-customer-select')
+    );
+
+    if (!workspace || !detailFrame || !customerLinks.length) return;
+
+    const selectedStorageKey = 'fafl_manage_users_selected_customer';
+
+    function isMobileWorkspace() {
+      return window.matchMedia('(max-width: 767.98px)').matches;
+    }
+
+    function setSelectedLink(selectedLink) {
+      customerLinks.forEach((link) => {
+        const isSelected = link === selectedLink;
+        link.classList.toggle('active', isSelected);
+        link.setAttribute('aria-current', isSelected ? 'true' : 'false');
+      });
+    }
+
+    function prepareEmbeddedCustomerPage() {
+      try {
+        const frameDocument = detailFrame.contentDocument;
+        if (!frameDocument) return;
+
+        const style = frameDocument.createElement('style');
+        style.textContent = `
+          #adminSidebar,
+          #sidebar,
+          .sidebar,
+          .admin-sidebar,
+          .main-sidebar,
+          .top-navbar,
+          .admin-navbar,
+          .main-header,
+          .mobile-admin-header,
+          body > footer,
+          #adminCalculatorModal,
+          main.content > .d-flex.align-items-center.mb-4 {
+            display: none !important;
+          }
+
+          html, body {
+            background: #f8f9fc !important;
+            overflow: hidden !important;
+          }
+
+          body,
+          main,
+          .main-content,
+          .content-wrapper,
+          .admin-content,
+          #content {
+            width: 100% !important;
+            max-width: none !important;
+            margin-left: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+          }
+
+          main.content {
+            flex: 0 0 100% !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+          }
+
+          .container,
+          .container-fluid {
+            max-width: none !important;
+          }
+
+          /* The parent page is already Manage Users. */
+          main.content > .container.mt-4 > .card:first-child
+          > .d-flex.justify-content-between.align-items-center.p-2
+          > div:first-child {
+            display: none !important;
+          }
+
+          main.content > .container.mt-4 > .card:first-child
+          > .d-flex.justify-content-between.align-items-center.p-2 {
+            justify-content: flex-end !important;
+          }
+
+          /* Keep all customer account tabs on one compact row. */
+          #profileTab {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            gap: 2px !important;
+            padding-left: 6px !important;
+            padding-right: 6px !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
+          }
+
+          #profileTab .nav-item {
+            flex: 0 0 auto !important;
+          }
+
+          #profileTab .nav-link {
+            min-width: 0 !important;
+            padding: 9px 11px !important;
+            margin-right: 0 !important;
+            font-size: 14px !important;
+            line-height: 1.2 !important;
+            white-space: nowrap !important;
+          }
+
+          #profileTab .nav-link i {
+            margin-right: 3px !important;
+            font-size: 13px !important;
+          }
+        `;
+        frameDocument.head.appendChild(style);
+
+        frameDocument.documentElement.classList.add('embedded-customer-view');
+
+        if (detailFrame._faflResizeObserver) {
+          detailFrame._faflResizeObserver.disconnect();
+        }
+
+        const embeddedContent =
+          frameDocument.querySelector(
+            'main.content > .container.mt-4'
+          )
+          || frameDocument.querySelector('main.content')
+          || frameDocument.body;
+
+        const resizeFrameToContent = function () {
+          if (!embeddedContent) return;
+
+          const contentBottom = Math.ceil(
+            embeddedContent.getBoundingClientRect().bottom
+          );
+
+          detailFrame.style.height = `${Math.max(
+            contentBottom + 16,
+            720
+          )}px`;
+        };
+
+        resizeFrameToContent();
+
+        if ('ResizeObserver' in window && embeddedContent) {
+          const resizeObserver = new ResizeObserver(
+            resizeFrameToContent
+          );
+
+          resizeObserver.observe(embeddedContent);
+          detailFrame._faflResizeObserver = resizeObserver;
+        }
+
+        frameDocument.addEventListener(
+          'click',
+          function () {
+            window.setTimeout(resizeFrameToContent, 100);
+            window.setTimeout(resizeFrameToContent, 400);
+          },
+          true
+        );
+      } catch (error) {
+        console.debug('Customer page loaded without embedded cleanup.', error);
+      }
+    }
+
+    function openCustomer(link, updateHistory = true) {
+      if (!link) return;
+
+      const customerUrl = link.dataset.customerUrl || link.href;
+      const customerId = link.dataset.userId;
+
+      if (!customerUrl) return;
+
+      setSelectedLink(link);
+
+      if (detailEmpty) detailEmpty.classList.add('d-none');
+      if (detailLoading) detailLoading.classList.remove('d-none');
+      detailFrame.classList.add('d-none');
+
+      detailFrame.src = customerUrl;
+
+      try {
+        sessionStorage.setItem(selectedStorageKey, customerId || '');
+      } catch (_error) {
+        // Storage is optional; the workspace still works without it.
+      }
+
+      if (updateHistory && customerId) {
+        const pageUrl = new URL(window.location.href);
+        pageUrl.searchParams.set('selected_user', customerId);
+        window.history.replaceState({}, '', pageUrl.toString());
+      }
+    }
+
+    customerLinks.forEach((link) => {
+      link.addEventListener('click', function (event) {
+        if (isMobileWorkspace()) return;
+
+        event.preventDefault();
+        openCustomer(link);
+      });
+    });
+
+    detailFrame.addEventListener('load', function () {
+      prepareEmbeddedCustomerPage();
+      if (detailLoading) detailLoading.classList.add('d-none');
+      detailFrame.classList.remove('d-none');
+    });
+
+    directoryToggle?.addEventListener('click', function () {
+      const collapsed = workspace.classList.toggle('directory-collapsed');
+      const icon = this.querySelector('i');
+
+      icon?.classList.toggle('fa-angle-left', !collapsed);
+      icon?.classList.toggle('fa-angle-right', collapsed);
+
+      this.title = collapsed
+        ? 'Show customer list'
+        : 'Collapse customer list';
+    });
+
+    // Restore the selected customer after searching, filtering or paging.
+    const requestedId = new URL(window.location.href)
+      .searchParams.get('selected_user');
+
+    let storedId = '';
+    try {
+      storedId = sessionStorage.getItem(selectedStorageKey) || '';
+    } catch (_error) {
+      storedId = '';
+    }
+
+    const initialId = requestedId || storedId;
+    let initialLink = initialId
+      ? customerLinks.find((link) => link.dataset.userId === initialId)
+      : null;
+
+    // When nothing has been selected yet, open the Administrator
+    // account by default. If that account is not present in the
+    // current search/filter/page, open the first available customer.
+    if (!initialLink) {
+      initialLink = customerLinks.find((link) => {
+        return (
+          link.dataset.customerName || ''
+        ).trim().toLowerCase() === 'administrator';
+      });
+    }
+
+    if (!initialLink) {
+      initialLink = customerLinks[0];
+    }
+
+    if (initialLink && !isMobileWorkspace()) {
+      openCustomer(initialLink, false);
+    }
+  })();
+
   // ==========================================
   // Show / Hide Password
   // ==========================================

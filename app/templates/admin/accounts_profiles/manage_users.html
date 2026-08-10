@@ -19,14 +19,34 @@
     </div>
 
     <div class="admin-page-header__actions">
-      <div class="header-user-count">
-        <span>
-          {{ users_with_unpaid_invoices }}
-        </span>
+      <div class="header-quick-actions" role="group" aria-label="Customer management actions">
+        <button class="header-action-btn" type="button" data-bs-toggle="collapse" data-bs-target="#addSingleUserSection"
+          data-label="Add Customer" aria-label="Add Customer">
+          <i class="fas fa-user-plus"></i>
+        </button>
 
-        <small>
-          Users Owing
-        </small>
+        <button class="header-action-btn" type="button" data-bs-toggle="collapse" data-bs-target="#bulkUploadSection"
+          data-label="Bulk Upload" aria-label="Bulk Upload Customers">
+          <i class="fas fa-upload"></i>
+        </button>
+
+        <a href="{{ url_for(
+               'accounts_profiles.export_users',
+               format='excel',
+               search=search,
+               unpaid_only=('1' if unpaid_only else None),
+               sort=sort_by
+             ) }}" class="header-action-btn" data-label="Export Customer List" aria-label="Export Customer List">
+          <i class="fas fa-file-excel"></i>
+        </a>
+
+        <a href="{{ url_for(
+               'finance.unpaid_users_pdf',
+               search=search
+             ) }}" target="_blank" rel="noopener" class="header-action-btn" data-label="Unpaid Accounts PDF"
+          aria-label="Open Unpaid Accounts PDF">
+          <i class="fas fa-file-pdf"></i>
+        </a>
       </div>
     </div>
   </div>
@@ -42,54 +62,6 @@
   {% endfor %}
   {% endif %}
   {% endwith %}
-
-
-  <!-- Modern Toolbar -->
-  <div class="modern-toolbar mb-4">
-
-    <div class="toolbar-left">
-
-      <button class="btn modern-btn-primary" type="button" data-bs-toggle="collapse"
-        data-bs-target="#addSingleUserSection" title="Add Single User">
-        <i class="fas fa-user-plus me-2"></i>
-        Add Customer
-      </button>
-
-      <button class="btn modern-btn-outline" type="button" data-bs-toggle="collapse" data-bs-target="#bulkUploadSection"
-        title="Bulk Upload Users">
-        <i class="fas fa-upload me-2"></i>
-        Bulk Upload
-      </button>
-
-    </div>
-
-    <div class="toolbar-right">
-
-      <a href="{{ url_for(
-             'accounts_profiles.export_users',
-             format='excel',
-             search=search,
-             unpaid_only=('1' if unpaid_only else None),
-             sort=sort_by
-           ) }}" class="btn modern-export-btn" title="Download the currently filtered customer list">
-
-        <i class="fas fa-file-excel me-2"></i>
-        Export Current List
-      </a>
-
-      <a href="{{ url_for(
-             'finance.unpaid_users_pdf',
-             search=search
-           ) }}" target="_blank" rel="noopener" class="btn modern-export-btn"
-        title="Download a PDF containing outstanding customer accounts">
-
-        <i class="fas fa-file-pdf me-2"></i>
-        Unpaid Accounts Report
-      </a>
-
-    </div>
-
-  </div>
 
   <!-- Add Single User Section -->
   <div class="collapse mb-4" id="addSingleUserSection">
@@ -644,6 +616,105 @@ Finance Collections Toolbar
 
   /* Header */
 
+  .admin-page-header {
+    position: relative;
+    z-index: 20;
+    overflow: visible !important;
+  }
+
+  .header-quick-actions {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid rgba(255, 255, 255, .32);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .12);
+    box-shadow: 0 6px 18px rgba(25, 6, 48, .14);
+    overflow: visible;
+  }
+
+  .header-action-btn {
+    position: relative;
+    width: 50px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-left: 1px solid rgba(255, 255, 255, .28);
+    border-radius: 0;
+    color: #fff;
+    background: transparent;
+    text-decoration: none;
+    font-size: 1.05rem;
+    transition: background .16s ease, color .16s ease;
+  }
+
+  .header-action-btn:first-child {
+    border-left: 0;
+    border-radius: 11px 0 0 11px;
+  }
+
+  .header-action-btn:last-child {
+    border-radius: 0 11px 11px 0;
+  }
+
+  .header-action-btn:hover,
+  .header-action-btn:focus-visible {
+    color: #4a148c;
+    background: #fff;
+    outline: none;
+  }
+
+  /* Custom hover label for each icon. */
+  .header-action-btn::after {
+    content: attr(data-label);
+    position: absolute;
+    z-index: 1100;
+    top: calc(100% + 10px);
+    left: 50%;
+    padding: 7px 10px;
+    border-radius: 7px;
+    color: #fff;
+    background: #111827;
+    box-shadow: 0 7px 18px rgba(15, 23, 42, .2);
+    font-size: .75rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, -4px);
+    transition: opacity .14s ease, transform .14s ease;
+  }
+
+  .header-action-btn:hover::after,
+  .header-action-btn:focus-visible::after {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  .header-action-btn:first-child::after {
+    left: 0;
+    transform: translate(0, -4px);
+  }
+
+  .header-action-btn:first-child:hover::after,
+  .header-action-btn:first-child:focus-visible::after {
+    transform: translate(0, 0);
+  }
+
+  .header-action-btn:last-child::after {
+    right: 0;
+    left: auto;
+    transform: translate(0, -4px);
+  }
+
+  .header-action-btn:last-child:hover::after,
+  .header-action-btn:last-child:focus-visible::after {
+    transform: translate(0, 0);
+  }
+
   .header-user-count {
     text-align: center;
     background: rgba(255, 255, 255, 0.14);
@@ -791,12 +862,12 @@ Finance Collections Toolbar
   /* Search Bar */
   .modern-search-bar {
     background: white;
-    border-radius: 18px;
-    padding: 18px;
+    border-radius: 14px;
+    padding: 10px 14px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 18px;
+    gap: 10px;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
     border: 1px solid rgba(0, 0, 0, 0.04);
   }
@@ -809,16 +880,16 @@ Finance Collections Toolbar
 
   .search-wrapper i {
     position: absolute;
-    left: 18px;
+    left: 14px;
     top: 50%;
     transform: translateY(-50%);
     color: #9ca3af;
   }
 
   .modern-search-input {
-    padding-left: 46px;
-    height: 50px;
-    border-radius: 14px;
+    padding-left: 40px;
+    height: 42px;
+    border-radius: 11px;
     border: 1px solid #d7dce3;
   }
 
@@ -850,9 +921,10 @@ Finance Collections Toolbar
   }
 
   .modern-clear-btn {
-    border-radius: 12px;
+    min-height: 42px;
+    border-radius: 10px;
     border: 1px solid #d7dce3;
-    padding: 10px 18px;
+    padding: 8px 14px;
     color: #374151;
     background: white;
   }
@@ -865,14 +937,14 @@ Finance Collections Toolbar
     display: inline-flex;
     align-items: stretch;
     border: 1px solid #7e22ce;
-    border-radius: 12px;
+    border-radius: 10px;
     overflow: hidden;
     flex-shrink: 0;
   }
 
   .customer-view-btn {
-    min-height: 46px;
-    padding: 10px 18px;
+    min-height: 42px;
+    padding: 8px 14px;
     border: 0;
     border-right: 1px solid #7e22ce;
     background: #ffffff;
@@ -1148,8 +1220,14 @@ MOBILE RESPONSIVE
       align-items: stretch;
     }
 
-    .header-user-count {
-      margin-top: 16px;
+    .header-quick-actions {
+      margin-top: 12px;
+      align-self: flex-start;
+    }
+
+    .header-action-btn {
+      width: 46px;
+      height: 44px;
     }
 
     .toolbar-left,

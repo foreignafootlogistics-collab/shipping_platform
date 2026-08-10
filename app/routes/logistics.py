@@ -2501,6 +2501,7 @@ def logistics_dashboard():
                 Package,
                 User.full_name,
                 User.registration_number,
+                User.mobile,
                 Invoice.invoice_number,
                 Invoice.invoice_emailed_at,
                 Invoice.invoice_email_failed,
@@ -2514,7 +2515,7 @@ def logistics_dashboard():
             .all()
         )
 
-        shipment_pkg_ids = [p.id for (p, _, _, _, _, _, _) in rows]
+        shipment_pkg_ids = [p.id for (p, _, _, _, _, _, _, _) in rows]
 
         # 2) load attachments in ONE query
         attachments_by_pkg = {}
@@ -2546,6 +2547,7 @@ def logistics_dashboard():
             p,
             full_name,
             reg,
+            mobile,
             invoice_number,
             invoice_emailed_at,
             invoice_email_failed,
@@ -2565,6 +2567,7 @@ def logistics_dashboard():
                     "user_id": p.user_id,
                     "full_name": full_name,
                     "registration_number": reg,
+                    "mobile": mobile,
                     "tracking_number": p.tracking_number,
                     "received_scan_status": getattr(
                         p, "received_scan_status", "not_scanned"

@@ -4970,18 +4970,62 @@ def _shipment_calculation(shipment, exchange_rate):
 
 
 def _apply_calculation(record, calculation):
-    record.package_count = calculation["package_count"]
-    record.total_weight_lbs = calculation["total_weight_lbs"]
-    record.total_weight_kg = calculation["total_weight_kg"]
-    record.freight_rate_usd_per_kg = calculation["freight_rate_usd_per_kg"]
-    record.weight_band_total_usd = calculation["band_total_usd"]
-    record.freight_total_usd = calculation["freight_total_usd"]
-    record.unknown_package_count = calculation["unknown_package_count"]
-    record.unknown_package_fee_usd = calculation["unknown_package_fee_usd"]
-    record.unknown_charge_total_usd = calculation["unknown_charge_total_usd"]
-    record.expected_total_usd = calculation["expected_total_usd"]
-    record.exchange_rate = calculation["exchange_rate"]
-    record.expected_total_jmd = calculation["expected_total_jmd"]
+    record.package_count = calculation[
+        "package_count"
+    ]
+
+    record.total_weight_lbs = calculation[
+        "total_weight_lbs"
+    ]
+
+    record.total_weight_kg = calculation[
+        "total_weight_kg"
+    ]
+
+    record.freight_rate_usd_per_kg = calculation[
+        "freight_rate_usd_per_kg"
+    ]
+
+    record.weight_band_total_usd = calculation[
+        "band_total_usd"
+    ]
+
+    record.freight_total_usd = calculation[
+        "freight_total_usd"
+    ]
+
+    record.unknown_package_count = calculation[
+        "unknown_package_count"
+    ]
+
+    record.unknown_package_fee_usd = calculation[
+        "unknown_package_fee_usd"
+    ]
+
+    record.unknown_charge_total_usd = calculation[
+        "unknown_charge_total_usd"
+    ]
+
+    record.service_charge_jmd = calculation[
+        "service_charge_jmd"
+    ]
+
+    record.has_invoice_over_100 = calculation[
+        "has_invoice_over_100"
+    ]
+
+    record.expected_total_usd = calculation[
+        "expected_total_usd"
+    ]
+
+    record.exchange_rate = calculation[
+        "exchange_rate"
+    ]
+
+    record.expected_total_jmd = calculation[
+        "expected_total_jmd"
+    ]
+
     record.calculation_snapshot = calculation
 
 

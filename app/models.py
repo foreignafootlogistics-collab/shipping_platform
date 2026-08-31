@@ -860,8 +860,25 @@ class ExpectedPackageCollection(db.Model):
         nullable=False,
         default=0,
     )
+
+    service_charge_jmd = db.Column(
+        db.Numeric(14, 2),
+        nullable=False,
+        default=5000,
+        server_default="5000.00",
+    )
+
+    has_invoice_over_100 = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
+
     expected_total_usd = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
     exchange_rate = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
     expected_total_jmd = db.Column(db.Numeric(14, 2), nullable=False, default=0)
 
     actual_total_usd = db.Column(db.Numeric(12, 2), nullable=True)

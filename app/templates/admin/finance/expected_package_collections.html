@@ -173,6 +173,7 @@ Expected Package Collections
                     <tr>
                         <th>Shipment</th>
                         <th class="text-center">Packages</th>
+                        <th class="text-end">Service Charge</th>
                         <th class="text-end">Expected USD</th>
                         <th class="text-end">Expected JMD</th>
                         <th class="text-end">Actual USD</th>
@@ -217,6 +218,23 @@ Expected Package Collections
                                 </span>
                             </div>
                             {% endif %}
+                        </td>
+
+                        <!-- Service Charge -->
+                        <td class="text-end text-nowrap">
+                            J${{ '{:,.2f}'.format(
+                            record.service_charge_jmd|float
+                            ) }}
+
+                            <div class="small text-muted">
+                                {% if record.has_invoice_over_100 %}
+                                Invoice over USD $100
+                                {% elif record.package_count > 100 %}
+                                High-volume rate
+                                {% else %}
+                                Standard rate
+                                {% endif %}
+                            </div>
                         </td>
 
                         <!-- Expected USD -->
@@ -360,7 +378,7 @@ Expected Package Collections
 
                     {% else %}
                     <tr>
-                        <td colspan="10" class="text-center text-muted py-4">
+                        <td colspan="11" class="text-center text-muted py-4">
                             No Expected Package Collections found.
                         </td>
                     </tr>

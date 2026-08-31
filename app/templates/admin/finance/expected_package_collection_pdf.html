@@ -66,7 +66,7 @@
         }
 
         .card {
-            width: 20%;
+            width: 16.66%;
             padding: 8px;
             background: #f4ecfa;
             border: 1px solid #ddd;
@@ -181,11 +181,15 @@
         }
 
         .package-table .tracking-col {
-            width: 22%;
+            width: 18%;
         }
 
         .package-table .customer-col {
-            width: 12%;
+            width: 10%;
+        }
+
+        .package-table .invoice-col {
+            width: 10%;
         }
 
         .package-table .weight-col {
@@ -302,6 +306,21 @@
         </div>
 
         <div class="card">
+            <div class="label">Service Charge</div>
+
+            <div class="value">
+                J${{ '{:,.2f}'.format(
+                record.service_charge_jmd|float
+                ) }}
+            </div>
+
+            <div class="label">
+                Invoice over USD $100:
+                {{ 'Yes' if record.has_invoice_over_100 else 'No' }}
+            </div>
+        </div>
+
+        <div class="card">
             <div class="label">Expected USD</div>
 
             <div class="value">
@@ -404,6 +423,36 @@
             </td>
         </tr>
 
+        <tr>
+            <td>
+                Service charge
+                {% if snap.get(
+                'qualifies_for_high_service_charge',
+                false
+                ) %}
+                (more than 100 packages and no invoice
+                value over USD $100)
+                {% else %}
+                (standard)
+                {% endif %}
+            </td>
+
+            <td class="num">
+                J${{ '{:,.2f}'.format(
+                record.service_charge_jmd|float
+                ) }}
+
+                <br>
+
+                <span style="font-size:8px;color:#666;">
+                    USD equivalent:
+                    ${{ '%.2f'|format(
+                    snap.get('service_charge_usd', 0)|float
+                    ) }}
+                </span>
+            </td>
+        </tr>
+
         <tr class="grand-total">
             <td>Expected Total USD</td>
 
@@ -474,6 +523,7 @@
                 <th class="package-col">Package</th>
                 <th class="tracking-col">Tracking / AWB</th>
                 <th class="customer-col">Customer</th>
+                <th class="invoice-col num">Invoice Value</th>
                 <th class="weight-col num">Weight</th>
                 <th class="fee-col num">Band Fee</th>
                 <th class="fee-col num">Freight</th>
@@ -519,6 +569,12 @@
 
                 <td>
                     {{ row.customer_code or '-' }}
+                </td>
+
+                <td class="num">
+                    ${{ '%.2f'|format(
+                    row.get('invoice_value_usd', 0)|float
+                    ) }}
                 </td>
 
                 <td class="num">

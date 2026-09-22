@@ -616,6 +616,20 @@ def checkout():
     if discount > subtotal:
         discount = subtotal
 
+    # An existing invoice may contain packages that were not selected
+    # for this checkout. Repricing that invoice from the selected package
+    # subset would overwrite its original total. Apply discounts to an
+    # existing invoice from the invoice screen instead.
+    if discount > Decimal("0.00") and selected_invoice_ids:
+        return jsonify({
+            "ok": False,
+            "error": (
+                "A POS discount cannot be applied to an existing invoice. "
+                "Apply the discount from the invoice screen, then return "
+                "to POS to collect payment."
+            ),
+        }), 400
+
     final_total = subtotal - discount
 
     if final_total < Decimal("0.00"):
@@ -1029,50 +1043,24 @@ def checkout():
                     ),
                 }), 400
 
-            group_total = Decimal("0.00")
+            # IMPORTANT: Never rebuild an existing invoice from pkg_list.
+            # pkg_list contains only the packages selected at POS and may
+            # represent only part of a multi-package invoice. Use the full
+            # invoice totals and completed payments already in the database.
+            (
+                invoice_subtotal,
+                invoice_discount_total,
+                invoice_payments_total,
+                invoice_live_balance,
+            ) = fetch_invoice_totals_pg(invoice.id)
 
-            for p in pkg_list:
-                group_total += _package_charge_amount(p)
+            existing_paid = _to_decimal(
+                invoice_payments_total
+            ).quantize(Decimal("0.01"))
 
-            group_discount = Decimal("0.00")
-            if discount > 0:
-                group_discount = (group_total / total_before_discount) * discount
-
-            group_final_total = group_total - group_discount
-
-            if group_final_total < Decimal("0.00"):
-                group_final_total = Decimal("0.00")
-
-            invoice.subtotal_before_discount = group_total
-            invoice.discount_type = discount_type if group_discount > 0 else "none"
-            invoice.discount_amount = (
-                discount_amount if group_discount > 0 else Decimal("0.00")
-            )
-            invoice.discount_total = group_discount
-            invoice.grand_total = float(group_final_total)
-            invoice.amount = float(group_final_total)
-
-            # Check payments already recorded against this invoice.
-            existing_paid_raw = (
-                db.session.query(
-                    func.coalesce(func.sum(Payment.amount_jmd), 0)
-                )
-                .filter(
-                    Payment.invoice_id == invoice.id,
-                    func.lower(Payment.status) == "completed",
-                )
-                .scalar()
-            )
-
-            existing_paid = Decimal(str(existing_paid_raw or 0)).quantize(
-                Decimal("0.01")
-            )
-
-            invoice_total = group_final_total.quantize(Decimal("0.01"))
-
-            remaining_due = (invoice_total - existing_paid).quantize(
-                Decimal("0.01")
-            )
+            remaining_due = _to_decimal(
+                invoice_live_balance
+            ).quantize(Decimal("0.01"))
 
             if remaining_due < Decimal("0.00"):
                 remaining_due = Decimal("0.00")
